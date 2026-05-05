@@ -62,9 +62,9 @@ function updateStatsUI() {
     const remaining = MAX_POINTS - pointsUsed();
     document.getElementById('points-display').textContent = remaining;
     document.querySelector('.points-left').style.color = remaining === 0 ? '#e94560' : '#00ff88';
-    document.getElementById('val-hp').textContent  = stats.hp;
-    document.getElementById('val-dmg').textContent = stats.dmg;
-    document.getElementById('val-spd').textContent = stats.spd;
+    document.getElementById('val-hp').textContent  = (500 + stats.hp  * 20) + ' HP';
+    document.getElementById('val-dmg').textContent = (5   + stats.dmg *  5) + ' DMG';
+    document.getElementById('val-spd').textContent = (3   + stats.spd * 0.5).toFixed(1) + ' SPD';
     document.getElementById('bar-hp').style.width  = (stats.hp  / 10 * 100) + '%';
     document.getElementById('bar-dmg').style.width = (stats.dmg / 10 * 100) + '%';
     document.getElementById('bar-spd').style.width = (stats.spd / 10 * 100) + '%';

@@ -373,9 +373,9 @@ body {
 /* Valoarea numerica a stat-ului */
 .stat-value {
     font-family: var(--font-title);
-    font-size: 0.9rem;
-    color: var(--text);
-    min-width: 20px;
+    font-size: 0.85rem;
+    color: var(--neon-green);
+    min-width: 80px;
     text-align: right;
 }
 
