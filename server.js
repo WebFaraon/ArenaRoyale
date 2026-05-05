@@ -13,7 +13,7 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 // ---------- CONSTANTE ----------
 const ARENA_W             = 2000;
 const ARENA_H             = 2000;
-const TICK_RATE           = 45;
+const TICK_RATE           = 60;
 const BULLET_SPEED        = 40;
 const BULLET_RADIUS       = 6;
 const PLAYER_SIZE         = 60;

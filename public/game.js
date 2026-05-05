@@ -261,10 +261,13 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     // Predictie client-side — pozitia locala nu asteapta server-ul
     let predX = null, predY = null, predSpeed = 3;
 
+    // Interpolare pentru ceilalti jucatori — pozitii prev/curr intre tick-uri server
+    const interpPlayers = {};
+
     // Throttle emit-uri joystick — max 20/sec (50ms) reduce freeze-urile
     let lastMoveEmit  = 0;
     let lastShootEmit = 0;
-    const EMIT_MS = 50;
+    const EMIT_MS = 16;
 
     joystickLeft.on('move', (evt, data) => {
         const force = data.force || 0;
@@ -317,24 +320,27 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     let gameState = null;
 
     socket.on('game-state', (state) => {
+        const now = performance.now();
+        state.players.forEach(p => {
+            const prev = interpPlayers[p.id];
+            interpPlayers[p.id] = {
+                x0: prev ? prev.x1 : p.x,  y0: prev ? prev.y1 : p.y,
+                a0: prev ? prev.a1 : p.angle,
+                x1: p.x, y1: p.y, a1: p.angle,
+                t: now
+            };
+        });
+
         gameState = state;
         const me = state.players.find(p => p.id === socket.id);
         if (me) {
             // Sincronizare viteza si reconciliere pozitie
             if (me.speed !== undefined) predSpeed = me.speed;
             if (predX === null || isNaN(predX) || isNaN(predY)) {
-                // Prima initializare sau stare invalida — teleportam direct
                 predX = me.x; predY = me.y;
-            } else {
-                const dist = Math.hypot(me.x - predX, me.y - predY);
-                if (dist > 250) {
-                    // Diferenta prea mare (ex: teleport) — snap direct
-                    predX = me.x; predY = me.y;
-                } else if (dist > 8) {
-                    // Corectie lenta catre pozitia serverului (lerp) — fara sacadat
-                    predX += (me.x - predX) * 0.2;
-                    predY += (me.y - predY) * 0.2;
-                }
+            } else if (Math.hypot(me.x - predX, me.y - predY) > 120) {
+                // Snap doar la diferente mari (perete, teleport) — fara lerp continuu
+                predX = me.x; predY = me.y;
             }
             const hpPercent = (me.hp / me.maxHp) * 100;
             const hpBar     = document.getElementById('hp-bar-fill');
@@ -356,7 +362,7 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     });
 
     // ---------- BUCLA DE RANDARE ----------
-    const TICK_MS = 1000 / 45; // durata unui tick server in ms
+    const TICK_MS = 1000 / 60; // durata unui tick server in ms
     let lastTime  = 0;
     function draw(timestamp) {
         requestAnimationFrame(draw);
@@ -464,18 +470,31 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         });
 
         // --- JUCATORI ---
+        const nowDraw = performance.now();
         ctx.font     = 'bold 14px Rajdhani, Arial';
         ctx.textAlign = 'center';
         gameState.players.forEach(player => {
             if (!player.alive) return;
             const isMe = player.id === socket.id;
-            const px   = isMe && predX !== null ? predX : player.x;
-            const py   = isMe && predY !== null ? predY : player.y;
+            let px, py, pangle;
+            if (isMe && predX !== null) {
+                px = predX; py = predY; pangle = player.angle || 0;
+            } else {
+                const ip = interpPlayers[player.id];
+                if (ip) {
+                    const t = Math.min((nowDraw - ip.t) / TICK_MS, 1);
+                    px     = ip.x0 + (ip.x1 - ip.x0) * t;
+                    py     = ip.y0 + (ip.y1 - ip.y0) * t;
+                    pangle = ip.a0 + (ip.a1 - ip.a0) * t;
+                } else {
+                    px = player.x; py = player.y; pangle = player.angle || 0;
+                }
+            }
             const size = 90;
 
             ctx.save();
             ctx.translate(px, py);
-            ctx.rotate(player.angle || 0);
+            ctx.rotate(pangle);
             const img = playerImages[player.id];
             if (img && img.complete && img.naturalWidth > 0) {
                 ctx.drawImage(img, -size / 2, -size / 2, size, size);

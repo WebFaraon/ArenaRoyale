@@ -46,14 +46,17 @@ body {
 
 /* ---------- ECRANUL DE LOBBY ---------- */
 #screen-lobby {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
+    position: fixed;
+    inset: 0;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
+#screen-lobby::-webkit-scrollbar { display: none; }
 
 /* ---------- PARTICULE DECORATIVE IN FUNDAL ---------- */
 /* Cercuri mici care pulseaza in fundal pentru atmosfera */
@@ -102,6 +105,7 @@ body {
     width: 100%;
     max-width: 480px;
     padding: 20px;
+    margin: auto;
 }
 
 /* ---------- LOGO / TITLU ---------- */
@@ -710,8 +714,8 @@ body {
     .logo-container,
     .players-online { display: none; }
 
-    /* Lobby-ul devine scrollabil pe Y in caz de nevoie */
-    #screen-lobby { overflow-y: auto; align-items: flex-start; }
+    /* Lobby-ul e deja scrollabil global; reducem doar dimensiunile */
+    #screen-lobby { align-items: flex-start; }
 
     /* Continutul: centrat, padding redus */
     .lobby-content {
@@ -790,6 +794,23 @@ body {
     .card         { padding: 16px; }
 }
 
+/* Ecrane foarte scunde (telefoane mici in portrait) */
+@media (max-height: 650px) and (orientation: portrait) {
+    .logo-glow      { font-size: 1.5rem; }
+    .title          { font-size: 1.5rem; }
+    .title span     { font-size: 1.2rem; }
+    .subtitle       { display: none; }
+    .lobby-content  { gap: 8px; padding: 12px; }
+    .card           { padding: 12px; }
+    .avatar-upload  { width: 70px; height: 70px; }
+    .avatar-section { margin-bottom: 12px; }
+    .input-group    { margin-bottom: 10px; }
+    .build-section  { padding: 10px; margin-bottom: 10px; }
+    .build-header   { margin-bottom: 8px; }
+    .stat-row       { margin-bottom: 6px; }
+    #btn-join       { padding: 12px; }
+}
+
 /* ---------- ECRANUL DE ASTEPTARE ---------- */
 #screen-waiting {
     display: none;
@@ -799,9 +820,14 @@ body {
     background: var(--bg-dark);
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     z-index: 100;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
+#screen-waiting::-webkit-scrollbar { display: none; }
 
 .waiting-content {
     display: flex;
@@ -811,6 +837,7 @@ body {
     padding: 30px;
     width: 100%;
     max-width: 600px;
+    margin: auto;
 }
 
 .waiting-logo {
@@ -971,11 +998,15 @@ body {
     inset: 0;
     background: var(--bg-dark);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     z-index: 200;
     overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
+#screen-room::-webkit-scrollbar { display: none; }
 
 .room-content {
     position: relative;
@@ -988,6 +1019,7 @@ body {
     width: 100%;
     max-width: 400px;
     margin: auto;
+    min-height: min-content;
 }
 
 /* Logo */
@@ -1122,7 +1154,7 @@ body {
 }
 
 .lobby-back-btn {
-    position: absolute;
+    position: fixed;
     top: 16px;
     left: 16px;
     z-index: 10;
