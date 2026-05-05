@@ -280,10 +280,6 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         } else {
             moveDir.x = 0; moveDir.y = 0;
         }
-        if (!isShooting) {
-            myAngle = Math.atan2(data.vector.y, -data.vector.x) + Math.PI / 2;
-            socket.emit('rotate', myAngle); // imediat, fara throttle
-        }
         const now = performance.now();
         if (now - lastMoveEmit >= EMIT_MS) {
             socket.emit('move', moveDir);
