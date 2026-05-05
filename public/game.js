@@ -264,6 +264,9 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     // Interpolare pentru ceilalti jucatori — pozitii prev/curr intre tick-uri server
     const interpPlayers = {};
 
+    // Offset fix per glont: stocat la spawn, aplicat constant pe toata traiectoria
+    const bulletOffsets = {};
+
     // Throttle emit-uri joystick — max 20/sec (50ms) reduce freeze-urile
     let lastMoveEmit  = 0;
     let lastShootEmit = 0;
@@ -347,6 +350,22 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
             hpBar.style.width      = hpPercent + '%';
             hpBar.style.background = hpPercent > 60 ? '#00ff88' : hpPercent > 30 ? '#ff8c00' : '#e94560';
         }
+
+        // Stocam offsetul predX-me.x la momentul spawn-ului fiecarui glont propriu
+        // Astfel glontul vizual apare mereu din centrul jucatorului, indiferent de lag
+        const activeBulletIds = new Set();
+        state.bullets.forEach(b => {
+            activeBulletIds.add(b.id);
+            if (!(b.id in bulletOffsets)) {
+                bulletOffsets[b.id] = (b.ownerId === socket.id && predX !== null && me)
+                    ? { ox: predX - me.x, oy: predY - me.y }
+                    : { ox: 0, oy: 0 };
+            }
+        });
+        for (const id in bulletOffsets) {
+            if (!activeBulletIds.has(+id)) delete bulletOffsets[id];
+        }
+
         document.getElementById('players-alive').textContent =
             state.players.filter(p => p.alive).length;
     });
@@ -442,33 +461,33 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         }
 
         // --- INDICATOR TRAIECTORIE ---
-        // Porneste din me.x/me.y (pozitia server) = exact de unde spawneaza glontul
+        // Porneste din camX/camY (pozitia vizuala = predX/predY)
         if (isShooting && me && me.alive) {
-            const dirX  = -Math.sin(myAngle);
-            const dirY  =  Math.cos(myAngle);
-            const origX = me.x;
-            const origY = me.y;
+            const dirX = -Math.sin(myAngle);
+            const dirY =  Math.cos(myAngle);
             ctx.save();
             ctx.strokeStyle = '#ffffff55';
             ctx.lineWidth   = 3 / ZOOM;
             ctx.setLineDash([12 / ZOOM, 8 / ZOOM]);
             ctx.beginPath();
-            ctx.moveTo(origX + dirX * 50, origY + dirY * 50);
-            ctx.lineTo(origX + dirX * 600, origY + dirY * 600);
+            ctx.moveTo(camX + dirX * 50, camY + dirY * 50);
+            ctx.lineTo(camX + dirX * 600, camY + dirY * 600);
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.beginPath();
-            ctx.arc(origX + dirX * 600, origY + dirY * 600, 8 / ZOOM, 0, Math.PI * 2);
+            ctx.arc(camX + dirX * 600, camY + dirY * 600, 8 / ZOOM, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff40';
             ctx.fill();
             ctx.restore();
         }
 
         // --- GLOANTE ---
+        // Offsetul per-glont (stocat la spawn) aliniaza glontul cu pozitia vizuala
         ctx.fillStyle = '#ffe020';
         gameState.bullets.forEach(bullet => {
+            const off = bulletOffsets[bullet.id] || { ox: 0, oy: 0 };
             ctx.beginPath();
-            ctx.arc(bullet.x, bullet.y, bullet.radius || 6, 0, Math.PI * 2);
+            ctx.arc(bullet.x + off.ox, bullet.y + off.oy, bullet.radius || 6, 0, Math.PI * 2);
             ctx.fill();
         });
 

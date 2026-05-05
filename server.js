@@ -40,6 +40,7 @@ function newRoom(hostId) {
         hostId,
         players:     {},
         bullets:     [],
+        nextBulletId: 0,
         gameStarted: false,
         gameLoop:    null,
         zone: {
@@ -113,6 +114,7 @@ function startRoomLoop(code, room) {
 
             if (player.shooting && player.shootCooldown <= 0) {
                 room.bullets.push({
+                    id: room.nextBulletId++,
                     ownerId: player.id,
                     x: player.x, y: player.y,
                     dx: player.shootDir.x * BULLET_SPEED,
@@ -153,7 +155,7 @@ function startRoomLoop(code, room) {
                 size: p.size, hp: p.hp, maxHp: p.maxHp, alive: p.alive,
                 speed: p.speed
             })),
-            bullets: room.bullets.map(b => ({ x: b.x, y: b.y, radius: b.radius, ownerId: b.ownerId })),
+            bullets: room.bullets.map(b => ({ id: b.id, ownerId: b.ownerId, x: b.x, y: b.y, radius: b.radius })),
             zone: room.zone
         });
 
