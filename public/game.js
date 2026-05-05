@@ -367,7 +367,8 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         updateKeyMove();
     });
 
-    canvas.addEventListener('mousemove', (e) => {
+    canvas.addEventListener('pointermove', (e) => {
+        if (e.pointerType !== 'mouse') return;
         mouseActive = true;
         const rect = canvas.getBoundingClientRect();
         const W  = canvas.width  / Math.min(window.devicePixelRatio || 1, 2);
@@ -387,10 +388,13 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         }
     });
 
-    canvas.addEventListener('mouseleave', () => { mouseActive = false; });
+    canvas.addEventListener('pointerleave', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        mouseActive = false;
+    });
 
-    canvas.addEventListener('mousedown', (e) => {
-        if (e.button !== 0) return;
+    canvas.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
         isShooting = true;
         shootDir.x = -Math.sin(myAngle);
         shootDir.y =  Math.cos(myAngle);
@@ -398,10 +402,14 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         lastShootEmit = performance.now();
     });
 
-    canvas.addEventListener('mouseup', (e) => {
-        if (e.button !== 0) return;
+    canvas.addEventListener('pointerup', (e) => {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
         isShooting = false;
         socket.emit('stop-shoot');
+        if (moveDir.x !== 0 || moveDir.y !== 0) {
+            myAngle = moveAngle;
+            socket.emit('rotate', myAngle);
+        }
     });
 
     // ---------- STAREA JOCULUI ----------
