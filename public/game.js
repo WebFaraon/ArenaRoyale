@@ -381,8 +381,12 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         const visBottom = visTop  + H / ZOOM;
 
         // --- FUNDAL ---
-        ctx.fillStyle = '#4a7c2f';
+        // Zona din afara arenei (void)
+        ctx.fillStyle = '#1c2b14';
         ctx.fillRect(visLeft, visTop, W / ZOOM, H / ZOOM);
+        // Arena propriu-zisa
+        ctx.fillStyle = '#4a7c2f';
+        ctx.fillRect(0, 0, ARENA_W, ARENA_H);
 
         // --- GRILA (un singur path — mult mai rapid) ---
         ctx.strokeStyle = 'rgba(20, 50, 10, 0.25)';

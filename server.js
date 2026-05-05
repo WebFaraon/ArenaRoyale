@@ -66,8 +66,8 @@ function addPlayer(code, room, socket, data) {
 
     room.players[socket.id] = {
         id: socket.id, name: data.name, image: data.image,
-        x: Math.random() * (ARENA_W - 200) + 100,
-        y: Math.random() * (ARENA_H - 200) + 100,
+        x: Math.random() * (ARENA_W - 800) + 400,
+        y: Math.random() * (ARENA_H - 800) + 400,
         angle: 0, size: PLAYER_SIZE,
         hp: maxHp, maxHp, damage, speed,
         moveDir:  { x: 0, y: 0 },
