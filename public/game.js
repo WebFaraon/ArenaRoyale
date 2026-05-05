@@ -279,11 +279,11 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         }
         if (!isShooting) {
             myAngle = Math.atan2(data.vector.y, -data.vector.x) + Math.PI / 2;
+            socket.emit('rotate', myAngle); // imediat, fara throttle
         }
         const now = performance.now();
         if (now - lastMoveEmit >= EMIT_MS) {
             socket.emit('move', moveDir);
-            if (!isShooting) socket.emit('rotate', myAngle);
             lastMoveEmit = now;
         }
     });
@@ -300,10 +300,10 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
             if (len > 0) { shootDir.x = data.vector.x / len; shootDir.y = -data.vector.y / len; }
             isShooting = true;
             myAngle = Math.atan2(data.vector.y, -data.vector.x) + Math.PI / 2;
+            socket.emit('rotate', myAngle); // imediat, fara throttle
             const now = performance.now();
             if (now - lastShootEmit >= EMIT_MS) {
                 socket.emit('shoot', shootDir);
-                socket.emit('rotate', myAngle);
                 lastShootEmit = now;
             }
         } else {
@@ -442,37 +442,33 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         }
 
         // --- INDICATOR TRAIECTORIE ---
+        // Porneste din me.x/me.y (pozitia server) = exact de unde spawneaza glontul
         if (isShooting && me && me.alive) {
-            const dirX = -Math.sin(myAngle);
-            const dirY =  Math.cos(myAngle);
+            const dirX  = -Math.sin(myAngle);
+            const dirY  =  Math.cos(myAngle);
+            const origX = me.x;
+            const origY = me.y;
             ctx.save();
-            ctx.strokeStyle = '#ffffffaa';
+            ctx.strokeStyle = '#ffffff55';
             ctx.lineWidth   = 3 / ZOOM;
             ctx.setLineDash([12 / ZOOM, 8 / ZOOM]);
             ctx.beginPath();
-            ctx.moveTo(camX + dirX * 50, camY + dirY * 50);
-            ctx.lineTo(camX + dirX * 600, camY + dirY * 600);
+            ctx.moveTo(origX + dirX * 50, origY + dirY * 50);
+            ctx.lineTo(origX + dirX * 600, origY + dirY * 600);
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.beginPath();
-            ctx.arc(camX + dirX * 600, camY + dirY * 600, 8 / ZOOM, 0, Math.PI * 2);
-            ctx.fillStyle = '#ffffff80';
+            ctx.arc(origX + dirX * 600, origY + dirY * 600, 8 / ZOOM, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff40';
             ctx.fill();
             ctx.restore();
         }
 
-        // --- GLOANTE (fara shadowBlur — prea lent pe mobile) ---
-        // Offset pentru propriile gloante: serverul le spawneaza la me.x/me.y
-        // dar local jucatorul e desenat la predX/predY — aliniem vizual
-        const predOffX = (predX !== null && me) ? predX - me.x : 0;
-        const predOffY = (predY !== null && me) ? predY - me.y : 0;
+        // --- GLOANTE ---
         ctx.fillStyle = '#ffe020';
         gameState.bullets.forEach(bullet => {
-            const isMine = bullet.ownerId === socket.id;
-            const bx = isMine ? bullet.x + predOffX : bullet.x;
-            const by = isMine ? bullet.y + predOffY : bullet.y;
             ctx.beginPath();
-            ctx.arc(bx, by, bullet.radius || 6, 0, Math.PI * 2);
+            ctx.arc(bullet.x, bullet.y, bullet.radius || 6, 0, Math.PI * 2);
             ctx.fill();
         });
 
