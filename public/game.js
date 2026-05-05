@@ -323,10 +323,18 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
             // Sincronizare viteza si reconciliere pozitie
             if (me.speed !== undefined) predSpeed = me.speed;
             if (predX === null || isNaN(predX) || isNaN(predY)) {
+                // Prima initializare sau stare invalida — teleportam direct
                 predX = me.x; predY = me.y;
-            } else if (Math.hypot(me.x - predX, me.y - predY) > 120) {
-                // Daca ne-am deparat prea mult de server, snap inapoi
-                predX = me.x; predY = me.y;
+            } else {
+                const dist = Math.hypot(me.x - predX, me.y - predY);
+                if (dist > 250) {
+                    // Diferenta prea mare (ex: teleport) — snap direct
+                    predX = me.x; predY = me.y;
+                } else if (dist > 8) {
+                    // Corectie lenta catre pozitia serverului (lerp) — fara sacadat
+                    predX += (me.x - predX) * 0.2;
+                    predY += (me.y - predY) * 0.2;
+                }
             }
             const hpPercent = (me.hp / me.maxHp) * 100;
             const hpBar     = document.getElementById('hp-bar-fill');
@@ -348,7 +356,9 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     });
 
     // ---------- BUCLA DE RANDARE ----------
-    function draw() {
+    const TICK_MS = 1000 / 45; // durata unui tick server in ms
+    let lastTime  = 0;
+    function draw(timestamp) {
         requestAnimationFrame(draw);
 
         const dpr  = Math.min(window.devicePixelRatio || 1, 2);
@@ -357,12 +367,16 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         const ZOOM = Math.min(W / VIEW_W, H / VIEW_H);
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (!gameState) return;
+        if (!gameState) { lastTime = timestamp; return; }
+
+        // dt = fractie dintr-un tick server scurs de la ultimul frame (~0.75 la 60fps)
+        const dt = lastTime ? Math.min((timestamp - lastTime) / TICK_MS, 3) : 1;
+        lastTime = timestamp;
 
         // --- PREDICTIE CLIENT-SIDE: miscam jucatorul local fara sa asteptam serverul ---
         if (predX !== null) {
-            predX = Math.max(20, Math.min(ARENA_W - 20, predX + moveDir.x * predSpeed));
-            predY = Math.max(20, Math.min(ARENA_H - 20, predY + moveDir.y * predSpeed));
+            predX = Math.max(20, Math.min(ARENA_W - 20, predX + moveDir.x * predSpeed * dt));
+            predY = Math.max(20, Math.min(ARENA_H - 20, predY + moveDir.y * predSpeed * dt));
         }
 
         const me   = gameState.players.find(p => p.id === socket.id);
