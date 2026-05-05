@@ -55,6 +55,7 @@ body {
     overflow-x: hidden;
     scrollbar-width: none;
     -ms-overflow-style: none;
+    touch-action: manipulation;
 }
 #screen-lobby::-webkit-scrollbar { display: none; }
 
@@ -826,6 +827,7 @@ body {
     overflow-x: hidden;
     scrollbar-width: none;
     -ms-overflow-style: none;
+    touch-action: manipulation;
 }
 #screen-waiting::-webkit-scrollbar { display: none; }
 
@@ -1005,6 +1007,7 @@ body {
     overflow-x: hidden;
     scrollbar-width: none;
     -ms-overflow-style: none;
+    touch-action: manipulation;
 }
 #screen-room::-webkit-scrollbar { display: none; }
 

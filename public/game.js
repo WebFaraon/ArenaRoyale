@@ -267,6 +267,8 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     // Offset fix per glont: stocat la spawn, aplicat constant pe toata traiectoria
     const bulletOffsets = {};
 
+    let mouseActive = false;
+
     // Throttle emit-uri joystick — max 20/sec (50ms) reduce freeze-urile
     let lastMoveEmit  = 0;
     let lastShootEmit = 0;
@@ -311,6 +313,72 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     });
 
     joystickRight.on('end', () => {
+        isShooting = false;
+        socket.emit('stop-shoot');
+    });
+
+    // ---------- WASD + MOUSE CONTROLS (laptop) ----------
+    const keysHeld = new Set();
+
+    function updateKeyMove() {
+        let dx = 0, dy = 0;
+        if (keysHeld.has('w') || keysHeld.has('arrowup'))    dy -= 1;
+        if (keysHeld.has('s') || keysHeld.has('arrowdown'))  dy += 1;
+        if (keysHeld.has('a') || keysHeld.has('arrowleft'))  dx -= 1;
+        if (keysHeld.has('d') || keysHeld.has('arrowright')) dx += 1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0) { moveDir.x = dx / len; moveDir.y = dy / len; }
+        else         { moveDir.x = 0;        moveDir.y = 0; }
+        socket.emit('move', moveDir);
+    }
+
+    window.addEventListener('keydown', (e) => {
+        const k = e.key.toLowerCase();
+        if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) {
+            e.preventDefault();
+            keysHeld.add(k);
+            updateKeyMove();
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        keysHeld.delete(e.key.toLowerCase());
+        updateKeyMove();
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        mouseActive = true;
+        const rect = canvas.getBoundingClientRect();
+        const W  = canvas.width  / Math.min(window.devicePixelRatio || 1, 2);
+        const H  = canvas.height / Math.min(window.devicePixelRatio || 1, 2);
+        const dx = (e.clientX - rect.left) - W / 2;
+        const dy = (e.clientY - rect.top)  - H / 2;
+        myAngle = Math.atan2(-dx, dy);
+        socket.emit('rotate', myAngle);
+        if (isShooting) {
+            shootDir.x = -Math.sin(myAngle);
+            shootDir.y =  Math.cos(myAngle);
+            const now = performance.now();
+            if (now - lastShootEmit >= EMIT_MS) {
+                socket.emit('shoot', shootDir);
+                lastShootEmit = now;
+            }
+        }
+    });
+
+    canvas.addEventListener('mouseleave', () => { mouseActive = false; });
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        isShooting = true;
+        shootDir.x = -Math.sin(myAngle);
+        shootDir.y =  Math.cos(myAngle);
+        socket.emit('shoot', shootDir);
+        lastShootEmit = performance.now();
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+        if (e.button !== 0) return;
         isShooting = false;
         socket.emit('stop-shoot');
     });
@@ -458,7 +526,7 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
 
         // --- INDICATOR TRAIECTORIE ---
         // Porneste din camX/camY (pozitia vizuala = predX/predY)
-        if (isShooting && me && me.alive) {
+        if ((isShooting || mouseActive) && me && me.alive) {
             const dirX = -Math.sin(myAngle);
             const dirY =  Math.cos(myAngle);
             ctx.save();
