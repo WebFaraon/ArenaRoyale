@@ -149,7 +149,8 @@ function startRoomLoop(code, room) {
             players: Object.values(room.players).map(p => ({
                 id: p.id, name: p.name,
                 x: p.x, y: p.y, angle: p.angle,
-                size: p.size, hp: p.hp, maxHp: p.maxHp, alive: p.alive
+                size: p.size, hp: p.hp, maxHp: p.maxHp, alive: p.alive,
+                speed: p.speed
             })),
             bullets: room.bullets.map(b => ({ x: b.x, y: b.y, radius: b.radius })),
             zone: room.zone

@@ -321,8 +321,8 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         const me = state.players.find(p => p.id === socket.id);
         if (me) {
             // Sincronizare viteza si reconciliere pozitie
-            predSpeed = me.speed;
-            if (predX === null) {
+            if (me.speed !== undefined) predSpeed = me.speed;
+            if (predX === null || isNaN(predX) || isNaN(predY)) {
                 predX = me.x; predY = me.y;
             } else if (Math.hypot(me.x - predX, me.y - predY) > 120) {
                 // Daca ne-am deparat prea mult de server, snap inapoi
