@@ -16,6 +16,11 @@ function selectCreate() {
     document.getElementById('screen-lobby').style.display = 'flex';
 }
 
+function goBackToRoom() {
+    document.getElementById('screen-lobby').style.display = 'none';
+    document.getElementById('screen-room').style.display  = 'flex';
+}
+
 function selectJoin() {
     const code  = (document.getElementById('room-code-input').value || '').trim().toUpperCase();
     const errEl = document.getElementById('room-error-msg');
@@ -146,8 +151,11 @@ function initGame(playerName, playerImage, playerStats, roomAction) {
     const ctx    = canvas.getContext('2d');
 
     function resizeCanvas() {
-        canvas.width  = window.innerWidth;
-        canvas.height = window.innerHeight;
+        const dpr     = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width  = Math.floor(window.innerWidth  * dpr);
+        canvas.height = Math.floor(window.innerHeight * dpr);
+        canvas.style.width  = window.innerWidth  + 'px';
+        canvas.style.height = window.innerHeight + 'px';
     }
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
@@ -247,37 +255,38 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
 
     let moveDir    = { x: 0, y: 0 };
     let shootDir   = { x: 0, y: 0 };
-
-    // isShooting — true cand joystickul drept e apasat suficient
-    // Folosit si pentru a afisa indicatorul de traiectorie
     let isShooting = false;
+    let myAngle    = 0;
 
-    // Unghiul curent al jucatorului nostru pentru indicator
-    let myAngle = 0;
+    // Predictie client-side — pozitia locala nu asteapta server-ul
+    let predX = null, predY = null, predSpeed = 3;
+
+    // Throttle emit-uri joystick — max 20/sec (50ms) reduce freeze-urile
+    let lastMoveEmit  = 0;
+    let lastShootEmit = 0;
+    const EMIT_MS = 50;
 
     joystickLeft.on('move', (evt, data) => {
         const force = data.force || 0;
         if (force >= MOVE_THRESHOLD) {
             const len = Math.sqrt(data.vector.x ** 2 + data.vector.y ** 2);
-            if (len > 0) {
-                moveDir.x =  data.vector.x / len;
-                moveDir.y = -data.vector.y / len;
-            }
+            if (len > 0) { moveDir.x = data.vector.x / len; moveDir.y = -data.vector.y / len; }
         } else {
-            moveDir = { x: 0, y: 0 };
+            moveDir.x = 0; moveDir.y = 0;
         }
-        socket.emit('move', moveDir);
-
-        // Rotatie din miscare doar daca nu tragem
         if (!isShooting) {
-            const angle = Math.atan2(data.vector.y, -data.vector.x) + Math.PI / 2;
-            myAngle = angle;
-            socket.emit('rotate', angle);
+            myAngle = Math.atan2(data.vector.y, -data.vector.x) + Math.PI / 2;
+        }
+        const now = performance.now();
+        if (now - lastMoveEmit >= EMIT_MS) {
+            socket.emit('move', moveDir);
+            if (!isShooting) socket.emit('rotate', myAngle);
+            lastMoveEmit = now;
         }
     });
 
     joystickLeft.on('end', () => {
-        moveDir = { x: 0, y: 0 };
+        moveDir.x = 0; moveDir.y = 0;
         socket.emit('move', moveDir);
     });
 
@@ -285,20 +294,17 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         const force = data.force || 0;
         if (force >= SHOOT_THRESHOLD) {
             const len = Math.sqrt(data.vector.x ** 2 + data.vector.y ** 2);
-            if (len > 0) {
-                shootDir.x =  data.vector.x / len;
-                shootDir.y = -data.vector.y / len;
-            }
+            if (len > 0) { shootDir.x = data.vector.x / len; shootDir.y = -data.vector.y / len; }
             isShooting = true;
-            socket.emit('shoot', shootDir);
-
-            // Joystickul de tragere are prioritate la rotatie
-            const angle = Math.atan2(data.vector.y, -data.vector.x) + Math.PI / 2;
-            myAngle = angle;
-            socket.emit('rotate', angle);
+            myAngle = Math.atan2(data.vector.y, -data.vector.x) + Math.PI / 2;
+            const now = performance.now();
+            if (now - lastShootEmit >= EMIT_MS) {
+                socket.emit('shoot', shootDir);
+                socket.emit('rotate', myAngle);
+                lastShootEmit = now;
+            }
         } else {
-            isShooting = false;
-            socket.emit('stop-shoot');
+            if (isShooting) { isShooting = false; socket.emit('stop-shoot'); }
         }
     });
 
@@ -314,15 +320,21 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         gameState = state;
         const me = state.players.find(p => p.id === socket.id);
         if (me) {
+            // Sincronizare viteza si reconciliere pozitie
+            predSpeed = me.speed;
+            if (predX === null) {
+                predX = me.x; predY = me.y;
+            } else if (Math.hypot(me.x - predX, me.y - predY) > 120) {
+                // Daca ne-am deparat prea mult de server, snap inapoi
+                predX = me.x; predY = me.y;
+            }
             const hpPercent = (me.hp / me.maxHp) * 100;
             const hpBar     = document.getElementById('hp-bar-fill');
-            hpBar.style.width = hpPercent + '%';
-            if (hpPercent > 60)      hpBar.style.background = '#00ff88';
-            else if (hpPercent > 30) hpBar.style.background = '#ff8c00';
-            else                     hpBar.style.background = '#e94560';
+            hpBar.style.width      = hpPercent + '%';
+            hpBar.style.background = hpPercent > 60 ? '#00ff88' : hpPercent > 30 ? '#ff8c00' : '#e94560';
         }
-        const alive = state.players.filter(p => p.alive).length;
-        document.getElementById('players-alive').textContent = alive;
+        document.getElementById('players-alive').textContent =
+            state.players.filter(p => p.alive).length;
     });
 
     socket.on('eliminated', () => {
@@ -338,43 +350,52 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     // ---------- BUCLA DE RANDARE ----------
     function draw() {
         requestAnimationFrame(draw);
-        const W    = canvas.width;
-        const H    = canvas.height;
+
+        const dpr  = Math.min(window.devicePixelRatio || 1, 2);
+        const W    = canvas.width  / dpr;   // pixeli logici
+        const H    = canvas.height / dpr;
         const ZOOM = Math.min(W / VIEW_W, H / VIEW_H);
-        ctx.clearRect(0, 0, W, H);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (!gameState) return;
 
-        const me = gameState.players.find(p => p.id === socket.id);
+        // --- PREDICTIE CLIENT-SIDE: miscam jucatorul local fara sa asteptam serverul ---
+        if (predX !== null) {
+            predX = Math.max(20, Math.min(ARENA_W - 20, predX + moveDir.x * predSpeed));
+            predY = Math.max(20, Math.min(ARENA_H - 20, predY + moveDir.y * predSpeed));
+        }
+
+        const me   = gameState.players.find(p => p.id === socket.id);
+        const camX = predX !== null ? predX : (me ? me.x : ARENA_W / 2);
+        const camY = predY !== null ? predY : (me ? me.y : ARENA_H / 2);
 
         ctx.save();
+        ctx.scale(dpr, dpr);                // corecție DPR — fix blur pe telefon
         ctx.translate(W / 2, H / 2);
         ctx.scale(ZOOM, ZOOM);
+        ctx.translate(-camX, -camY);
 
-        const worldX = me ? -me.x : -ARENA_W / 2;
-        const worldY = me ? -me.y : -ARENA_H / 2;
-        ctx.translate(worldX, worldY);
-
-        const visLeft   = (me ? me.x : ARENA_W / 2) - W / (2 * ZOOM);
-        const visTop    = (me ? me.y : ARENA_H / 2) - H / (2 * ZOOM);
+        const visLeft   = camX - W / (2 * ZOOM);
+        const visTop    = camY - H / (2 * ZOOM);
         const visRight  = visLeft + W / ZOOM;
         const visBottom = visTop  + H / ZOOM;
 
-        // --- FUNDAL VERDE ---
+        // --- FUNDAL ---
         ctx.fillStyle = '#4a7c2f';
         ctx.fillRect(visLeft, visTop, W / ZOOM, H / ZOOM);
 
-        // --- GRILA ---
+        // --- GRILA (un singur path — mult mai rapid) ---
         ctx.strokeStyle = 'rgba(20, 50, 10, 0.25)';
         ctx.lineWidth   = 1 / ZOOM;
         const gridSize  = 50;
-        const startGX   = Math.floor(visLeft / gridSize) * gridSize;
-        const startGY   = Math.floor(visTop  / gridSize) * gridSize;
-        for (let x = startGX; x < visRight;  x += gridSize) {
-            ctx.beginPath(); ctx.moveTo(x, visTop); ctx.lineTo(x, visBottom); ctx.stroke();
+        ctx.beginPath();
+        for (let x = Math.floor(visLeft / gridSize) * gridSize; x < visRight; x += gridSize) {
+            ctx.moveTo(x, visTop); ctx.lineTo(x, visBottom);
         }
-        for (let y = startGY; y < visBottom; y += gridSize) {
-            ctx.beginPath(); ctx.moveTo(visLeft, y); ctx.lineTo(visRight, y); ctx.stroke();
+        for (let y = Math.floor(visTop / gridSize) * gridSize; y < visBottom; y += gridSize) {
+            ctx.moveTo(visLeft, y); ctx.lineTo(visRight, y);
         }
+        ctx.stroke();
 
         // --- MARGINILE HARTII ---
         ctx.strokeStyle = '#1a3a0a';
@@ -389,7 +410,6 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
             ctx.strokeStyle = '#ff4444cc';
             ctx.lineWidth   = 4 / ZOOM;
             ctx.stroke();
-
             ctx.beginPath();
             ctx.rect(visLeft, visTop, W / ZOOM, H / ZOOM);
             ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2, true);
@@ -398,67 +418,45 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         }
 
         // --- INDICATOR TRAIECTORIE ---
-        // Afisam doar cand jucatorul trage activ (isShooting = true)
         if (isShooting && me && me.alive) {
-            // Calculam directia din unghiul curent
-            // Folosim sin/cos pentru a obtine vectorul de directie
-            // myAngle e unghiul in radiani trimis la server
-            const dirX = -Math.sin(myAngle); // Negat pentru directia corecta
+            const dirX = -Math.sin(myAngle);
             const dirY =  Math.cos(myAngle);
-
-            const startDist = 50;  // Incepe la marginea personajului
-            const endDist   = 600; // Lungime mare — usor de vizat
-
             ctx.save();
-
-            // Linia principala — alba semitransparenta
             ctx.strokeStyle = '#ffffffaa';
             ctx.lineWidth   = 3 / ZOOM;
             ctx.setLineDash([12 / ZOOM, 8 / ZOOM]);
             ctx.beginPath();
-            ctx.moveTo(
-                me.x + dirX * startDist,
-                me.y + dirY * startDist
-            );
-            ctx.lineTo(
-                me.x + dirX * endDist,
-                me.y + dirY * endDist
-            );
+            ctx.moveTo(camX + dirX * 50, camY + dirY * 50);
+            ctx.lineTo(camX + dirX * 600, camY + dirY * 600);
             ctx.stroke();
-
-            // Punct final — cercul de tinta
             ctx.setLineDash([]);
             ctx.beginPath();
-            ctx.arc(
-                me.x + dirX * endDist,
-                me.y + dirY * endDist,
-                8 / ZOOM,
-                0, Math.PI * 2
-            );
-            ctx.fillStyle   = '#ffffff80';
+            ctx.arc(camX + dirX * 600, camY + dirY * 600, 8 / ZOOM, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff80';
             ctx.fill();
-
             ctx.restore();
         }
 
-        // --- GLOANTE ---
+        // --- GLOANTE (fara shadowBlur — prea lent pe mobile) ---
+        ctx.fillStyle = '#ffe020';
         gameState.bullets.forEach(bullet => {
             ctx.beginPath();
             ctx.arc(bullet.x, bullet.y, bullet.radius || 6, 0, Math.PI * 2);
-            ctx.fillStyle   = '#ffff00';
-            ctx.shadowBlur  = 12;
-            ctx.shadowColor = '#ffff00';
             ctx.fill();
-            ctx.shadowBlur  = 0;
         });
 
         // --- JUCATORI ---
+        ctx.font     = 'bold 14px Rajdhani, Arial';
+        ctx.textAlign = 'center';
         gameState.players.forEach(player => {
             if (!player.alive) return;
+            const isMe = player.id === socket.id;
+            const px   = isMe && predX !== null ? predX : player.x;
+            const py   = isMe && predY !== null ? predY : player.y;
             const size = 90;
 
             ctx.save();
-            ctx.translate(player.x, player.y);
+            ctx.translate(px, py);
             ctx.rotate(player.angle || 0);
             const img = playerImages[player.id];
             if (img && img.complete && img.naturalWidth > 0) {
@@ -471,22 +469,20 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
             }
             ctx.restore();
 
-            // Bara HP (deasupra personajului)
-            const barW    = 70;
-            const barH    = 6;
-            const barX    = player.x - barW / 2;
-            const barY    = player.y - size / 2 - 18;
+            // Numele — outline in loc de shadowBlur (mult mai rapid pe mobile)
+            const nameY  = py - size / 2 - 26;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth   = 3;
+            ctx.lineJoin    = 'round';
+            ctx.fillStyle   = isMe ? '#00ff88' : '#ffffff';
+            ctx.strokeText(player.name, px, nameY);
+            ctx.fillText(player.name,   px, nameY);
 
-            // Numele (deasupra barei HP)
-            ctx.fillStyle   = player.id === socket.id ? '#00ff88' : '#ffffff';
-            ctx.font        = 'bold 14px Rajdhani, Arial';
-            ctx.textAlign   = 'center';
-            ctx.shadowBlur  = 6;
-            ctx.shadowColor = '#000000';
-            ctx.fillText(player.name, player.x, player.y - size / 2 - 26);
-            ctx.shadowBlur  = 0;
+            // Bara HP
+            const barW  = 70, barH = 6;
+            const barX  = px - barW / 2;
+            const barY  = py - size / 2 - 18;
             const hpRatio = player.hp / player.maxHp;
-
             ctx.fillStyle = '#00000060';
             ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 3); ctx.fill();
             ctx.fillStyle = hpRatio > 0.5 ? '#00ff88' : hpRatio > 0.25 ? '#ff8c00' : '#e94560';

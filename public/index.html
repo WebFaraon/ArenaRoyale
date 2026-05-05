@@ -41,38 +41,45 @@
             <span></span><span></span><span></span>
         </div>
         <div class="room-content">
-            <div class="logo-glow" style="font-size:3rem;filter:drop-shadow(0 0 20px #e94560)">⚔️</div>
-            <h1 class="title">ARENA<span>ROYALE</span></h1>
-            <p class="subtitle">Multiplayer Battle Royale</p>
 
-            <div class="room-card">
-                <button class="room-btn-create" onclick="selectCreate()">
-                    <span class="room-btn-icon">＋</span>
-                    <span>CREEAZĂ CAMERĂ</span>
-                </button>
-
-                <div class="room-separator"><span>sau intră cu cod</span></div>
-
-                <div class="room-join-row">
-                    <input
-                        id="room-code-input"
-                        class="room-code-input"
-                        placeholder="ABCDE"
-                        maxlength="5"
-                        autocomplete="off"
-                        autocapitalize="characters"
-                        oninput="this.value = this.value.toUpperCase()"
-                    >
-                    <button class="room-btn-join" onclick="selectJoin()">INTRĂ →</button>
-                </div>
-                <div class="room-error-msg" id="room-error-msg"></div>
+            <div class="room-logo-area">
+                <div class="room-logo-icon">⚔️</div>
+                <h1 class="room-title">ARENA<span>ROYALE</span></h1>
             </div>
+
+            <!-- Sectiunea CREATE -->
+            <div class="room-section">
+                <p class="room-section-label">JOC NOU</p>
+                <button class="room-btn-create" onclick="selectCreate()">
+                    ＋ &nbsp; CREEAZĂ CAMERĂ
+                </button>
+            </div>
+
+            <div class="room-divider"><span>SAU</span></div>
+
+            <!-- Sectiunea JOIN -->
+            <div class="room-section">
+                <p class="room-section-label">INTRĂ ÎNTR-O CAMERĂ</p>
+                <input
+                    id="room-code-input"
+                    class="room-code-input"
+                    placeholder="Cod cameră (ex: KBNJM)"
+                    maxlength="5"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    oninput="this.value = this.value.toUpperCase()"
+                >
+                <button class="room-btn-join" onclick="selectJoin()">INTRĂ →</button>
+                <p class="room-error-msg" id="room-error-msg"></p>
+            </div>
+
         </div>
     </div>
 
     <!-- ========== ECRANUL DE LOBBY ========== -->
-    <!-- Acesta e primul ecran pe care il vede jucatorul -->
     <div id="screen-lobby" style="display:none">
+
+        <button class="lobby-back-btn" onclick="goBackToRoom()">← Înapoi</button>
 
         <!-- Particule decorative in fundal -->
         <div class="particles">

@@ -974,7 +974,7 @@ body {
     align-items: center;
     justify-content: center;
     z-index: 200;
-    overflow: hidden;
+    overflow-y: auto;
 }
 
 .room-content {
@@ -982,31 +982,63 @@ body {
     z-index: 1;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 16px;
-    padding: 24px;
+    align-items: stretch;
+    gap: 12px;
+    padding: 24px 20px;
     width: 100%;
-    max-width: 420px;
-    text-align: center;
+    max-width: 400px;
+    margin: auto;
 }
 
-.room-card {
+/* Logo */
+.room-logo-area {
+    text-align: center;
+    margin-bottom: 8px;
+}
+.room-logo-icon {
+    font-size: 2.8rem;
+    filter: drop-shadow(0 0 16px var(--accent));
+    animation: pulse 2s infinite;
+}
+.room-title {
+    font-family: var(--font-title);
+    font-size: clamp(1.8rem, 6vw, 2.6rem);
+    font-weight: 900;
+    letter-spacing: 4px;
+    color: var(--text);
+    text-shadow: 0 0 24px var(--accent);
+    line-height: 1.1;
+    margin-top: 4px;
+}
+.room-title span {
+    display: block;
+    color: var(--accent);
+    font-size: clamp(1.3rem, 4vw, 2rem);
+    letter-spacing: 8px;
+}
+
+/* Sectiuni CREATE / JOIN */
+.room-section {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 28px 24px;
-    width: 100%;
-    box-shadow: 0 0 40px #00000080, 0 0 80px var(--accent-glow);
+    border-radius: 16px;
+    padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
+    box-shadow: 0 4px 24px #00000060;
 }
 
+.room-section-label {
+    font-family: var(--font-title);
+    font-size: 0.6rem;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    margin: 0;
+}
+
+/* Buton CREEAZA */
 .room-btn-create {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
     width: 100%;
     padding: 16px;
     background: linear-gradient(135deg, var(--accent), #c0392b);
@@ -1020,60 +1052,63 @@ body {
     box-shadow: 0 0 20px var(--accent-glow);
     transition: transform 0.1s, box-shadow 0.1s;
 }
-.room-btn-create:active { transform: scale(0.97); }
-.room-btn-icon { font-size: 1.3rem; font-weight: bold; }
+.room-btn-create:active { transform: scale(0.97); box-shadow: 0 0 8px var(--accent-glow); }
 
-.room-separator {
+/* Divider SAU */
+.room-divider {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     color: var(--text-dim);
-    font-size: 0.8rem;
-    letter-spacing: 2px;
+    font-size: 0.75rem;
+    letter-spacing: 3px;
 }
-.room-separator::before,
-.room-separator::after {
+.room-divider::before,
+.room-divider::after {
     content: '';
     flex: 1;
     height: 1px;
     background: var(--border);
 }
 
-.room-join-row {
-    display: flex;
-    gap: 10px;
-}
-
+/* Input cod */
 .room-code-input {
-    flex: 1;
+    width: 100%;
+    box-sizing: border-box;
     background: var(--bg-dark);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 12px 14px;
+    padding: 14px;
     color: var(--text);
     font-family: var(--font-title);
-    font-size: 1.3rem;
-    letter-spacing: 6px;
+    font-size: 1.4rem;
+    letter-spacing: 8px;
     text-align: center;
     outline: none;
     text-transform: uppercase;
     transition: border-color 0.2s;
 }
 .room-code-input:focus { border-color: var(--neon-blue); }
-.room-code-input::placeholder { letter-spacing: 4px; color: var(--text-dim); font-size: 1rem; }
+.room-code-input::placeholder {
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-family: var(--font-body);
+}
 
+/* Buton INTRA */
 .room-btn-join {
-    padding: 12px 18px;
-    background: var(--bg-card2);
+    width: 100%;
+    padding: 14px;
+    background: transparent;
     border: 1px solid var(--neon-blue);
-    border-radius: 10px;
+    border-radius: 12px;
     color: var(--neon-blue);
     font-family: var(--font-title);
-    font-size: 0.9rem;
-    letter-spacing: 1px;
+    font-size: 1rem;
+    letter-spacing: 2px;
     cursor: pointer;
-    transition: background 0.2s, transform 0.1s;
-    white-space: nowrap;
+    transition: background 0.2s, color 0.2s, transform 0.1s;
 }
 .room-btn-join:hover  { background: var(--neon-blue); color: var(--bg-dark); }
 .room-btn-join:active { transform: scale(0.97); }
@@ -1081,8 +1116,27 @@ body {
 .room-error-msg {
     color: var(--accent);
     font-size: 0.85rem;
-    min-height: 18px;
+    min-height: 16px;
+    margin: 0;
+    text-align: center;
 }
+
+.lobby-back-btn {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-dim);
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+}
+.lobby-back-btn:hover { color: var(--text); border-color: var(--text-dim); }
 
 /* ---------- COD CAMERA IN SALA DE ASTEPTARE ---------- */
 .waiting-code-box {
