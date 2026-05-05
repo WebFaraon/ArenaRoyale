@@ -104,8 +104,9 @@ function startRoomLoop(code, room) {
 
             if (room.zone.shrinking) {
                 const dist = Math.hypot(player.x - room.zone.x, player.y - room.zone.y);
-                if (dist > room.zone.radius) {
-                    player.hp -= 1;
+                // Buffer 35px: compenseaza offsetul predictie/server si marimea jucatorului
+                if (dist > room.zone.radius + 35) {
+                    player.hp -= 0.3;
                     if (player.hp <= 0) eliminatePlayer(code, room, player);
                 }
             }
@@ -152,7 +153,7 @@ function startRoomLoop(code, room) {
                 size: p.size, hp: p.hp, maxHp: p.maxHp, alive: p.alive,
                 speed: p.speed
             })),
-            bullets: room.bullets.map(b => ({ x: b.x, y: b.y, radius: b.radius })),
+            bullets: room.bullets.map(b => ({ x: b.x, y: b.y, radius: b.radius, ownerId: b.ownerId })),
             zone: room.zone
         });
 

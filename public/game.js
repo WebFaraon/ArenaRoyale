@@ -462,10 +462,17 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         }
 
         // --- GLOANTE (fara shadowBlur — prea lent pe mobile) ---
+        // Offset pentru propriile gloante: serverul le spawneaza la me.x/me.y
+        // dar local jucatorul e desenat la predX/predY — aliniem vizual
+        const predOffX = (predX !== null && me) ? predX - me.x : 0;
+        const predOffY = (predY !== null && me) ? predY - me.y : 0;
         ctx.fillStyle = '#ffe020';
         gameState.bullets.forEach(bullet => {
+            const isMine = bullet.ownerId === socket.id;
+            const bx = isMine ? bullet.x + predOffX : bullet.x;
+            const by = isMine ? bullet.y + predOffY : bullet.y;
             ctx.beginPath();
-            ctx.arc(bullet.x, bullet.y, bullet.radius || 6, 0, Math.PI * 2);
+            ctx.arc(bx, by, bullet.radius || 6, 0, Math.PI * 2);
             ctx.fill();
         });
 
@@ -478,7 +485,7 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
             const isMe = player.id === socket.id;
             let px, py, pangle;
             if (isMe && predX !== null) {
-                px = predX; py = predY; pangle = player.angle || 0;
+                px = predX; py = predY; pangle = myAngle;
             } else {
                 const ip = interpPlayers[player.id];
                 if (ip) {
