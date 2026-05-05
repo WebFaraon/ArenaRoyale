@@ -267,6 +267,8 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
 
     // Offset fix per glont: stocat la spawn, aplicat constant pe toata traiectoria
     const bulletOffsets = {};
+    const particles     = [];
+    const prevAlive     = {};
 
     let mouseActive = false;
 
@@ -412,6 +414,31 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         }
     });
 
+    // ---------- EFECT MOARTE ----------
+    function spawnDeathParticles(x, y, img) {
+        const count = 14;
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 / count) * i + (Math.random() - 0.5) * 0.6;
+            const speed = 5 + Math.random() * 10;
+            const chunk = 50 + Math.random() * 50;
+            particles.push({
+                x:  x + (Math.random() - 0.5) * 20,
+                y:  y + (Math.random() - 0.5) * 20,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 4,
+                size:     18 + Math.random() * 18,
+                srcX:     Math.random() * (200 - chunk),
+                srcY:     Math.random() * (200 - chunk),
+                srcChunk: chunk,
+                rotation: Math.random() * Math.PI * 2,
+                rotSpeed: (Math.random() - 0.5) * 0.18,
+                life:  1,
+                decay: 0.012 + Math.random() * 0.012,
+                img:   img || null
+            });
+        }
+    }
+
     // ---------- STAREA JOCULUI ----------
     let gameState = null;
 
@@ -459,18 +486,30 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
             if (!activeBulletIds.has(+id)) delete bulletOffsets[id];
         }
 
+        state.players.forEach(p => {
+            if (prevAlive[p.id] === true && !p.alive) {
+                const ip = interpPlayers[p.id];
+                spawnDeathParticles(ip ? ip.x1 : p.x, ip ? ip.y1 : p.y, playerImages[p.id]);
+            }
+            prevAlive[p.id] = p.alive;
+        });
+
         document.getElementById('players-alive').textContent =
             state.players.filter(p => p.alive).length;
     });
 
     socket.on('eliminated', () => {
-        document.getElementById('screen-gameover').style.display = 'flex';
+        setTimeout(() => {
+            document.getElementById('screen-gameover').style.display = 'flex';
+        }, 2000);
     });
 
     socket.on('winner', () => {
-        document.getElementById('gameover-title').textContent = '🏆 AI CÂȘTIGAT!';
-        document.getElementById('gameover-msg').textContent   = 'Ești ultimul supraviețuitor!';
-        document.getElementById('screen-gameover').style.display = 'flex';
+        setTimeout(() => {
+            document.getElementById('gameover-title').textContent = '🏆 AI CÂȘTIGAT!';
+            document.getElementById('gameover-msg').textContent   = 'Ești ultimul supraviețuitor!';
+            document.getElementById('screen-gameover').style.display = 'flex';
+        }, 2000);
     });
 
     // ---------- BUCLA DE RANDARE ----------
@@ -640,6 +679,31 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
             ctx.fillStyle = hpRatio > 0.5 ? '#00ff88' : hpRatio > 0.25 ? '#ff8c00' : '#e94560';
             ctx.beginPath(); ctx.roundRect(barX, barY, barW * hpRatio, barH, 3); ctx.fill();
         });
+
+        // --- PARTICULE MOARTE ---
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x  += p.vx;
+            p.y  += p.vy;
+            p.vy += 0.3;
+            p.vx *= 0.93;
+            p.vy *= 0.93;
+            p.rotation += p.rotSpeed;
+            p.life -= p.decay;
+            if (p.life <= 0) { particles.splice(i, 1); continue; }
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, p.life);
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rotation);
+            if (p.img && p.img.complete && p.img.naturalWidth > 0) {
+                ctx.drawImage(p.img, p.srcX, p.srcY, p.srcChunk, p.srcChunk,
+                              -p.size / 2, -p.size / 2, p.size, p.size);
+            } else {
+                ctx.fillStyle = '#e94560';
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+            }
+            ctx.restore();
+        }
 
         ctx.restore();
     }
