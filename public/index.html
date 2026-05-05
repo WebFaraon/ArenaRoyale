@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <link rel="manifest" href="/manifest.json">
+    <!-- Face jocul sa arate ca o aplicatie nativa pe iPad -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
+    <meta name="apple-mobile-web-app-title" content="Arena Royale">
+
+    <meta charset="UTF-8">
+    <!-- Previne zoom-ul pe tablete -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Arena Royale</title>
+
+    <!-- Font special pentru titlu si text -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
+
+    <!-- Stilurile noastre -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- ========== OVERLAY FULLSCREEN ========== -->
+    <div id="fs-overlay">
+        <div class="fs-content">
+            <div class="fs-icon">⚔️</div>
+            <h2>ARENA ROYALE</h2>
+            <div id="fs-ios-hint">
+                <p>Pentru fullscreen pe iOS:</p>
+                <p>Apasă <strong>Share</strong> → <strong>Adaugă pe ecran principal</strong></p>
+                <button id="fs-btn">CONTINUĂ ORICUM</button>
+            </div>
+            <button id="fs-btn-android">INTRĂ ÎN FULLSCREEN</button>
+        </div>
+    </div>
+
+    <!-- ========== ECRANUL DE SELECTIE CAMERA ========== -->
+    <div id="screen-room">
+        <div class="particles">
+            <span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+        </div>
+        <div class="room-content">
+            <div class="logo-glow" style="font-size:3rem;filter:drop-shadow(0 0 20px #e94560)">⚔️</div>
+            <h1 class="title">ARENA<span>ROYALE</span></h1>
+            <p class="subtitle">Multiplayer Battle Royale</p>
+
+            <div class="room-card">
+                <button class="room-btn-create" onclick="selectCreate()">
+                    <span class="room-btn-icon">＋</span>
+                    <span>CREEAZĂ CAMERĂ</span>
+                </button>
+
+                <div class="room-separator"><span>sau intră cu cod</span></div>
+
+                <div class="room-join-row">
+                    <input
+                        id="room-code-input"
+                        class="room-code-input"
+                        placeholder="ABCDE"
+                        maxlength="5"
+                        autocomplete="off"
+                        autocapitalize="characters"
+                        oninput="this.value = this.value.toUpperCase()"
+                    >
+                    <button class="room-btn-join" onclick="selectJoin()">INTRĂ →</button>
+                </div>
+                <div class="room-error-msg" id="room-error-msg"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== ECRANUL DE LOBBY ========== -->
+    <!-- Acesta e primul ecran pe care il vede jucatorul -->
+    <div id="screen-lobby" style="display:none">
+
+        <!-- Particule decorative in fundal -->
+        <div class="particles">
+            <span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+        </div>
+
+        <!-- Continutul principal al lobby-ului -->
+        <div class="lobby-content">
+
+            <!-- Logo / Titlu -->
+            <div class="logo-container">
+                <div class="logo-glow">⚔️</div>
+                <h1 class="title">ARENA<span>ROYALE</span></h1>
+                <p class="subtitle">Ultimul supraviețuitor câștigă</p>
+            </div>
+
+            <!-- Card-ul de creare personaj -->
+            <div class="card">
+
+                <div class="card-header">
+                    <div class="card-dot red"></div>
+                    <div class="card-dot yellow"></div>
+                    <div class="card-dot green"></div>
+                    <span>Creează-ți Personajul</span>
+                </div>
+
+                <div class="card-col-left">
+
+                <!-- Sectiunea de upload imagine -->
+                <div class="avatar-section">
+                    <!-- Zona de click pentru upload -->
+                    <label for="input-image" class="avatar-upload">
+                        <!-- Previzualizarea imaginii uploadate -->
+                        <img id="preview" src="" alt="">
+                        <!-- Iconita si textul default -->
+                        <div class="avatar-placeholder" id="placeholder">
+                            <span class="upload-icon">+</span>
+                            <span class="upload-text">Adaugă personajul</span>
+                            <span class="upload-hint">Generat cu AI</span>
+                        </div>
+                    </label>
+                    <!-- Input-ul real de file, ascuns vizual -->
+                    <input type="file" id="input-image" accept="image/*">
+                </div>
+
+                <!-- Input pentru numele jucatorului -->
+                <div class="input-group">
+                    <label class="input-label">NUME JUCĂTOR</label>
+                    <input
+                        type="text"
+                        id="input-name"
+                        placeholder="Introdu numele tău..."
+                        maxlength="15"
+                        autocomplete="off"
+                    >
+                    <div class="input-line"></div>
+                </div>
+
+                </div><!-- /card-col-left -->
+                <div class="card-col-right">
+
+                <!-- Sistemul de puncte pentru build -->
+                <div class="build-section">
+                    <div class="build-header">
+                        <span class="build-title">DISTRIBUIE PUNCTELE</span>
+                        <!-- Contorul de puncte ramase -->
+                        <span class="points-left"><span id="points-display">10</span> / 10</span>
+                    </div>
+
+                    <!-- Stat: HP -->
+                    <div class="stat-row">
+                        <div class="stat-info">
+                            <span class="stat-icon">❤️</span>
+                            <span class="stat-name">HP</span>
+                            <span class="stat-value" id="val-hp">1</span>
+                        </div>
+                        <div class="stat-controls">
+                            <!-- Buton scade -->
+                            <button class="stat-btn minus" onclick="changeStat('hp', -1)">−</button>
+                            <!-- Bara vizuala a stat-ului -->
+                            <div class="stat-bar">
+                                <div class="stat-fill red" id="bar-hp" style="width:10%"></div>
+                            </div>
+                            <!-- Buton creste -->
+                            <button class="stat-btn plus" onclick="changeStat('hp', 1)">+</button>
+                        </div>
+                    </div>
+
+                    <!-- Stat: Damage -->
+                    <div class="stat-row">
+                        <div class="stat-info">
+                            <span class="stat-icon">💥</span>
+                            <span class="stat-name">DMG</span>
+                            <span class="stat-value" id="val-dmg">1</span>
+                        </div>
+                        <div class="stat-controls">
+                            <button class="stat-btn minus" onclick="changeStat('dmg', -1)">−</button>
+                            <div class="stat-bar">
+                                <div class="stat-fill orange" id="bar-dmg" style="width:10%"></div>
+                            </div>
+                            <button class="stat-btn plus" onclick="changeStat('dmg', 1)">+</button>
+                        </div>
+                    </div>
+
+                    <!-- Stat: Viteza -->
+                    <div class="stat-row">
+                        <div class="stat-info">
+                            <span class="stat-icon">⚡</span>
+                            <span class="stat-name">SPD</span>
+                            <span class="stat-value" id="val-spd">1</span>
+                        </div>
+                        <div class="stat-controls">
+                            <button class="stat-btn minus" onclick="changeStat('spd', -1)">−</button>
+                            <div class="stat-bar">
+                                <div class="stat-fill blue" id="bar-spd" style="width:10%"></div>
+                            </div>
+                            <button class="stat-btn plus" onclick="changeStat('spd', 1)">+</button>
+                        </div>
+                    </div>
+
+                    <!-- Descrierea build-ului ales -->
+                    <div class="build-type" id="build-type">⚖️ Build Echilibrat</div>
+                </div>
+
+                <!-- Butonul principal de intrare in joc -->
+                <button id="btn-join" onclick="joinGame()">
+                    <span class="btn-text">INTRU ÎN ARENĂ</span>
+                    <span class="btn-arrow">→</span>
+                </button>
+
+                <!-- Mesaj de eroare daca lipseste ceva -->
+                <div class="error-msg" id="error-msg"></div>
+
+                </div><!-- /card-col-right -->
+            </div>
+
+            <!-- Contor de jucatori conectati -->
+            <div class="players-online">
+                <div class="online-dot"></div>
+                <span id="online-count">0</span> jucători online
+            </div>
+
+        </div>
+    </div>
+
+        <!-- ========== ECRANUL DE ASTEPTARE ========== -->
+    <div id="screen-waiting">
+        <div class="waiting-content">
+            <div class="waiting-logo">⚔️</div>
+            <h2 class="waiting-title">SALA DE AȘTEPTARE</h2>
+
+            <div class="waiting-code-box">
+                <span class="waiting-code-label">COD CAMERĂ</span>
+                <span class="waiting-code-value" id="waiting-code-display">—</span>
+            </div>
+
+            <div class="waiting-stats">
+                <div class="online-dot"></div>
+                <span id="waiting-count">0</span> jucători conectați
+            </div>
+
+            <div class="waiting-players-grid" id="waiting-players"></div>
+
+            <button id="btn-start-game" class="btn-start-game" onclick="startGame()" style="display:none">
+                ▶ PORNEȘTE JOCUL
+            </button>
+            <p class="waiting-sub" id="waiting-sub-msg">Aşteaptă ca hostul să pornească jocul...</p>
+        </div>
+    </div>
+
+    <!-- ========== ECRANUL DE JOACĂ ========== -->
+    <!-- Acest ecran e ascuns la inceput, apare dupa join -->
+    <div id="screen-game">
+
+        <!-- Canvas-ul pe care se deseneaza intregul joc -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- UI suprapus pe joc (nu blocheaza input-ul) -->
+        <div id="game-ui">
+            <!-- Numarul de jucatori ramasi in viata -->
+            <div class="ui-players">
+                <span>👥</span>
+                <span id="players-alive">0</span>
+            </div>
+            <!-- Bara de HP a jucatorului curent -->
+            <div class="ui-hp">
+                <span class="ui-label">HP</span>
+                <div class="ui-hp-bar">
+                    <div id="hp-bar-fill"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zona joystick stanga (miscare) -->
+        <div id="zone-left"></div>
+
+        <!-- Zona joystick dreapta (tragere) -->
+        <div id="zone-right"></div>
+
+        <!-- Ecran de Game Over -->
+        <div id="screen-gameover">
+            <div class="gameover-content">
+                <h2 id="gameover-title">💀 ELIMINAT!</h2>
+                <p id="gameover-msg">Ai fost eliminat din arenă</p>
+                <button onclick="location.reload()">JOACĂ DIN NOU</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ========== SCRIPTURI ========== -->
+    <!-- Socket.io - incarcata automat de serverul nostru -->
+    <script src="/socket.io/socket.io.js"></script>
+
+    <!-- Nipple.js - libraria pentru joystick-uri virtuale -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+    <!-- Logica jocului nostru -->
+    <script src="game.js"></script>
+
+    <script>
+        (function () {
+            const overlay    = document.getElementById('fs-overlay');
+            const btnAndroid = document.getElementById('fs-btn-android');
+            const btnIOS     = document.getElementById('fs-btn');
+            const iosHint    = document.getElementById('fs-ios-hint');
+
+            const isIOS        = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            const isStandalone = window.navigator.standalone === true;
+            const canFullscreen = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+
+            async function goFullscreen() {
+                try {
+                    const el = document.documentElement;
+                    if (el.requestFullscreen)       await el.requestFullscreen();
+                    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+                } catch (e) {}
+                try {
+                    if (screen.orientation && screen.orientation.lock)
+                        await screen.orientation.lock('landscape');
+                } catch (e) {}
+            }
+
+            if (isIOS && !isStandalone) {
+                // iOS Safari nu suporta Fullscreen API - aratam instructiunile
+                iosHint.style.display    = 'flex';
+                btnAndroid.style.display = 'none';
+                btnIOS.addEventListener('click', () => { overlay.style.display = 'none'; });
+            } else if (isStandalone || !canFullscreen) {
+                // Rulam deja ca PWA sau fullscreen nu e suportat - sarim overlay-ul
+                overlay.style.display = 'none';
+            } else {
+                // Android Chrome sau alt browser cu suport Fullscreen API
+                iosHint.style.display = 'none';
+                btnAndroid.addEventListener('click', async () => {
+                    await goFullscreen();
+                    overlay.style.display = 'none';
+                });
+            }
+        })();
+    </script>
+
+</body>
+</html>

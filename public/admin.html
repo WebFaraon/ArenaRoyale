@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arena Royale — Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            --bg:      #0a0a0f;
+            --bg2:     #12121e;
+            --bg3:     #1a1a2e;
+            --accent:  #e94560;
+            --green:   #00ff88;
+            --blue:    #00d4ff;
+            --orange:  #ff8c00;
+            --dim:     #8888aa;
+            --border:  #ffffff15;
+            --font-t:  'Orbitron', sans-serif;
+            --font-b:  'Rajdhani', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: white;
+            font-family: var(--font-b);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* ---------- HEADER ---------- */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-left h1 {
+            font-family: var(--font-t);
+            font-size: 1.4rem;
+            color: var(--accent);
+            letter-spacing: 3px;
+        }
+
+        .header-left p {
+            color: var(--dim);
+            font-size: 0.85rem;
+            margin-top: 4px;
+        }
+
+        .server-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 0.85rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--green);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+            box-shadow: 0 0 8px var(--green);
+        }
+
+        /* ---------- GRID ---------- */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+
+        .left-col { display: flex; flex-direction: column; gap: 16px; }
+
+        /* ---------- CARD ---------- */
+        .card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .card-title {
+            font-family: var(--font-t);
+            font-size: 0.65rem;
+            letter-spacing: 2px;
+            color: var(--dim);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* ---------- QR CODE ---------- */
+        .qr-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        #qrcode {
+            background: white;
+            padding: 12px;
+            border-radius: 12px;
+            display: inline-block;
+        }
+
+        .qr-url {
+            font-family: var(--font-t);
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-align: center;
+            word-break: break-all;
+            letter-spacing: 1px;
+        }
+
+        .qr-hint {
+            color: var(--dim);
+            font-size: 0.8rem;
+            text-align: center;
+        }
+
+        /* ---------- STATISTICI ---------- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .stat-box {
+            background: var(--bg3);
+            border-radius: 12px;
+            padding: 14px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .stat-box .val {
+            font-family: var(--font-t);
+            font-size: 1.8rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+        .stat-box .lbl {
+            font-size: 0.7rem;
+            color: var(--dim);
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+
+        .val.green  { color: var(--green); }
+        .val.red    { color: var(--accent); }
+        .val.blue   { color: var(--blue); }
+        .val.orange { color: var(--orange); }
+
+        /* ---------- BUTOANE CONTROL ---------- */
+        .controls { display: flex; flex-direction: column; gap: 10px; }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            font-family: var(--font-t);
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover  { transform: translateY(-2px); opacity: 0.9; }
+        .btn:active { transform: translateY(0); }
+
+        .btn-start  { background: var(--green);  color: #000; font-size: 0.85rem; padding: 18px; }
+        .btn-zone   { background: var(--orange); color: #000; }
+        .btn-reset  { background: var(--accent); color: white; }
+        .btn-disabled { background: #333; color: #666; cursor: not-allowed; }
+
+        /* ---------- JUCATORI ---------- */
+        .players-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .players-title {
+            font-family: var(--font-t);
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            color: var(--dim);
+        }
+
+        .players-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 14px;
+        }
+
+        .player-card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            transition: all 0.3s;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .player-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+        .player-card.dead  { opacity: 0.4; border-color: var(--accent); }
+
+        .player-top {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .player-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--border);
+            flex-shrink: 0;
+            background: var(--bg3);
+        }
+
+        .player-info { flex: 1; min-width: 0; }
+
+        .player-name {
+            font-family: var(--font-t);
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .player-status {
+            display: inline-block;
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-top: 3px;
+            letter-spacing: 1px;
+        }
+
+        .status-alive   { background: #00ff8830; color: var(--green); }
+        .status-waiting { background: #00d4ff30; color: var(--blue); }
+        .status-dead    { background: #e9456030; color: var(--accent); }
+
+        .player-stats { display: flex; flex-direction: column; gap: 6px; }
+
+        .pstat {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+        }
+
+        .pstat-icon  { width: 14px; text-align: center; font-size: 0.8rem; }
+        .pstat-label { font-family: var(--font-t); font-size: 0.55rem; letter-spacing: 1px; color: var(--dim); width: 28px; }
+
+        .pstat-bar { flex: 1; height: 5px; background: var(--bg3); border-radius: 10px; overflow: hidden; }
+
+        .pstat-fill { height: 100%; border-radius: 10px; transition: width 0.3s; }
+        .fill-red    { background: linear-gradient(90deg, #ff4444, #ff8888); }
+        .fill-orange { background: linear-gradient(90deg, #ff8c00, #ffcc00); }
+        .fill-blue   { background: linear-gradient(90deg, #0088ff, #00d4ff); }
+
+        .pstat-val { font-family: var(--font-t); font-size: 0.65rem; min-width: 24px; text-align: right; color: var(--dim); }
+
+        .hp-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+
+        .hp-bar-container { height: 8px; background: var(--bg3); border-radius: 10px; overflow: hidden; margin-top: 4px; }
+
+        .hp-bar-fill { height: 100%; border-radius: 10px; transition: width 0.3s, background 0.3s; }
+
+        .player-pos { font-size: 0.7rem; color: var(--dim); margin-top: 8px; text-align: right; }
+
+        /* ---------- LOG ---------- */
+        .event-log {
+            max-height: 150px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .event-log::-webkit-scrollbar { width: 4px; }
+        .event-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+        .log-entry {
+            font-size: 0.8rem;
+            color: var(--dim);
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: var(--bg3);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .log-entry.join   { color: var(--green); }
+        .log-entry.leave  { color: var(--accent); }
+        .log-entry.zone   { color: var(--orange); }
+        .log-entry.system { color: var(--blue); }
+
+        /* Status joc */
+        .game-status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-family: var(--font-t);
+            font-size: 0.65rem;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+        }
+
+        .badge-waiting { background: #00d4ff20; color: var(--blue); border: 1px solid var(--blue); }
+        .badge-running { background: #00ff8820; color: var(--green); border: 1px solid var(--green); }
+
+        .no-players {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 60px;
+            color: var(--dim);
+        }
+
+        .no-players p:first-child { font-size: 3rem; margin-bottom: 10px; }
+        .no-players p:last-child  { font-family: var(--font-t); font-size: 0.7rem; letter-spacing: 2px; }
+
+        /* ---------- ANIMATII ---------- */
+        @keyframes pulse  { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <div class="header">
+        <div class="header-left">
+            <h1>⚔️ ARENA ROYALE — ADMIN</h1>
+            <p>Panou de control profesor</p>
+        </div>
+        <div class="server-status">
+            <div class="status-dot"></div>
+            <span>Server activ</span>
+        </div>
+    </div>
+
+    <!-- GRID PRINCIPAL -->
+    <div class="main-grid">
+
+        <!-- COLOANA STANGA -->
+        <div class="left-col">
+
+            <!-- QR CODE -->
+            <div class="card">
+                <div class="card-title">QR CODE ELEVI</div>
+                <div class="qr-container">
+                    <div id="qrcode"></div>
+                    <div class="qr-url" id="game-url">Se generează...</div>
+                    <div class="qr-hint">Elevii scanează cu camera iPad-ului</div>
+                </div>
+            </div>
+
+            <!-- STATISTICI -->
+            <div class="card">
+                <div class="card-title">STATISTICI</div>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="val green" id="stat-connected">0</div>
+                        <div class="lbl">CONECTAȚI</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="val blue" id="stat-alive">0</div>
+                        <div class="lbl">ÎN VIAȚĂ</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="val red" id="stat-eliminated">0</div>
+                        <div class="lbl">ELIMINAȚI</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="val orange" id="stat-bullets">0</div>
+                        <div class="lbl">GLOANȚE</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONTROL JOC -->
+            <div class="card">
+                <div class="card-title">CONTROL JOC</div>
+
+                <!-- Badge status -->
+                <div class="game-status-badge badge-waiting" id="game-status-badge">
+                    ⏳ AȘTEPTARE
+                </div>
+
+                <div class="controls">
+                    <!-- Buton START — principal -->
+                    <button class="btn btn-start" id="btn-start" onclick="startGame()">
+                        ▶ PORNEȘTE JOCUL
+                    </button>
+
+                    <!-- Buton zona manuala -->
+                    <button class="btn btn-zone" id="btn-zone" onclick="triggerZone()">
+                        ⚠️ PORNEȘTE ZONA ACUM
+                    </button>
+
+                    <!-- Buton reset -->
+                    <button class="btn btn-reset" onclick="resetGame()">
+                        🔄 RESETEAZĂ JOCUL
+                    </button>
+                </div>
+            </div>
+
+            <!-- LOG EVENIMENTE -->
+            <div class="card">
+                <div class="card-title">EVENIMENTE</div>
+                <div class="event-log" id="event-log">
+                    <div class="log-entry system">🟢 Admin conectat la server</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- COLOANA DREAPTA -->
+        <div class="right-col">
+            <div class="players-header">
+                <span class="players-title">JUCĂTORI</span>
+            </div>
+            <div class="players-grid" id="players-grid">
+                <div class="no-players">
+                    <p>👾</p>
+                    <p>NICIUN JUCĂTOR CONECTAT</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Socket.io -->
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+        const socket = io();
+        let gameHasStarted = false;
+
+        // ---------- QR CODE ----------
+        const gameUrl = window.location.origin;
+        document.getElementById('game-url').textContent = gameUrl;
+
+        new QRCode(document.getElementById('qrcode'), {
+            text:       gameUrl,
+            width:      180,
+            height:     180,
+            colorDark:  '#000000',
+            colorLight: '#ffffff'
+        });
+
+        // ---------- LOG ----------
+        function addLog(message, type = '') {
+            const log   = document.getElementById('event-log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const time  = new Date().toLocaleTimeString('ro-RO', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+            entry.textContent = `[${time}] ${message}`;
+            log.insertBefore(entry, log.firstChild);
+            while (log.children.length > 20) log.removeChild(log.lastChild);
+        }
+
+        // ---------- DATE DE LA SERVER ----------
+        let prevPlayerIds = new Set();
+
+        socket.on('admin-data', (data) => {
+            updateStats(data);
+            updatePlayers(data.players);
+            detectEvents(data.players);
+
+            // Actualizam statusul jocului
+            if (data.gameStarted && !gameHasStarted) {
+                gameHasStarted = true;
+                updateGameStatusUI(true);
+            }
+        });
+
+        // ---------- STATISTICI ----------
+        function updateStats(data) {
+            const total = data.players.length;
+            const alive = data.players.filter(p => p.alive).length;
+            const dead  = total - alive;
+
+            document.getElementById('stat-connected').textContent  = total;
+            document.getElementById('stat-alive').textContent      = alive;
+            document.getElementById('stat-eliminated').textContent = dead;
+            document.getElementById('stat-bullets').textContent    = data.bullets;
+        }
+
+        // ---------- UI STATUS JOC ----------
+        function updateGameStatusUI(started) {
+    const badge    = document.getElementById('game-status-badge');
+    const btnStart = document.getElementById('btn-start');
+
+    if (started) {
+        badge.textContent = '🟢 JOC ÎN DESFĂȘURARE';
+        badge.className   = 'game-status-badge badge-running';
+        btnStart.textContent = '▶ JOC PORNIT';
+        btnStart.className   = 'btn btn-disabled';
+        btnStart.disabled    = true;
+    } else {
+        // Reset — reactivam butonul
+        badge.textContent = '⏳ AȘTEPTARE';
+        badge.className   = 'game-status-badge badge-waiting';
+        btnStart.textContent = '▶ PORNEȘTE JOCUL';
+        btnStart.className   = 'btn btn-start';
+        btnStart.disabled    = false;
+    }
+}
+
+        // ---------- DETECTAM EVENIMENTE ----------
+        function detectEvents(players) {
+            const currentIds = new Set(players.map(p => p.id));
+
+            players.forEach(p => {
+                if (!prevPlayerIds.has(p.id)) {
+                    addLog(`⚔️ ${p.name} a intrat în arenă`, 'join');
+                }
+            });
+
+            prevPlayerIds.forEach(id => {
+                if (!currentIds.has(id)) {
+                    addLog(`🚪 Un jucător a părăsit jocul`, 'leave');
+                }
+            });
+
+            prevPlayerIds = currentIds;
+        }
+
+        // ---------- CARDURI JUCATORI ----------
+        function updatePlayers(players) {
+            const grid = document.getElementById('players-grid');
+
+            if (players.length === 0) {
+                grid.innerHTML = `
+                    <div class="no-players">
+                        <p>👾</p>
+                        <p>NICIUN JUCĂTOR CONECTAT</p>
+                    </div>`;
+                return;
+            }
+
+            players.forEach(player => {
+                let card = document.getElementById(`player-${player.id}`);
+
+                if (!card) {
+                    card = document.createElement('div');
+                    card.id = `player-${player.id}`;
+                    grid.appendChild(card);
+                }
+
+                const hpPercent  = Math.round((player.hp / player.maxHp) * 100);
+                const dmgPercent = Math.round((player.damage / 55) * 100);
+                const spdPercent = Math.round(((player.speed - 3) / 5) * 100);
+                const hpColor    = hpPercent > 60 ? '#00ff88' : hpPercent > 30 ? '#ff8c00' : '#e94560';
+
+                // Status badge
+                let statusClass, statusText;
+                if (!gameHasStarted) {
+                    statusClass = 'status-waiting';
+                    statusText  = '● ASTEAPTĂ';
+                } else if (player.alive) {
+                    statusClass = 'status-alive';
+                    statusText  = '● VIU';
+                } else {
+                    statusClass = 'status-dead';
+                    statusText  = '✕ ELIMINAT';
+                }
+
+                card.className = `player-card ${!player.alive && gameHasStarted ? 'dead' : ''}`;
+
+                card.innerHTML = `
+                    <div class="player-top">
+                        <img class="player-avatar"
+                             src="${player.image || ''}"
+                             alt="${player.name}"
+                             onerror="this.src=''">
+                        <div class="player-info">
+                            <div class="player-name">${player.name}</div>
+                            <span class="player-status ${statusClass}">${statusText}</span>
+                        </div>
+                    </div>
+
+                    <div class="player-stats">
+                        <div class="pstat">
+                            <span class="pstat-icon">❤️</span>
+                            <span class="pstat-label">HP</span>
+                            <div class="pstat-bar">
+                                <div class="pstat-fill fill-red" style="width:${hpPercent}%"></div>
+                            </div>
+                            <span class="pstat-val">${player.hp}/${player.maxHp}</span>
+                        </div>
+                        <div class="pstat">
+                            <span class="pstat-icon">💥</span>
+                            <span class="pstat-label">DMG</span>
+                            <div class="pstat-bar">
+                                <div class="pstat-fill fill-orange" style="width:${dmgPercent}%"></div>
+                            </div>
+                            <span class="pstat-val">${player.damage}</span>
+                        </div>
+                        <div class="pstat">
+                            <span class="pstat-icon">⚡</span>
+                            <span class="pstat-label">SPD</span>
+                            <div class="pstat-bar">
+                                <div class="pstat-fill fill-blue" style="width:${spdPercent}%"></div>
+                            </div>
+                            <span class="pstat-val">${player.speed.toFixed(1)}</span>
+                        </div>
+                    </div>
+
+                    <div class="hp-row">
+                        <div style="display:flex;justify-content:space-between;font-size:0.7rem;">
+                            <span style="color:var(--dim)">HP CURENT</span>
+                            <span style="color:${hpColor}">${hpPercent}%</span>
+                        </div>
+                        <div class="hp-bar-container">
+                            <div class="hp-bar-fill" style="width:${hpPercent}%;background:${hpColor}"></div>
+                        </div>
+                    </div>
+
+                    <div class="player-pos">📍 ${player.x}, ${player.y}</div>
+                `;
+            });
+
+            // Stergem cardurile jucatorilor deconectati
+            const currentIds = new Set(players.map(p => p.id));
+            grid.querySelectorAll('.player-card').forEach(card => {
+                const id = card.id.replace('player-', '');
+                if (!currentIds.has(id)) card.remove();
+            });
+        }
+
+        // ---------- BUTOANE DE CONTROL ----------
+
+        // Porneste jocul
+        function startGame() {
+            if (gameHasStarted) return;
+            const count = parseInt(document.getElementById('stat-connected').textContent);
+            if (count === 0) {
+                alert('Nu există jucători conectați!');
+                return;
+            }
+            if (confirm(`Pornești jocul cu ${count} jucători?`)) {
+                socket.emit('admin-start');
+                addLog('▶ Jocul a fost pornit!', 'system');
+                updateGameStatusUI(true);
+                gameHasStarted = true;
+            }
+        }
+
+        // Porneste zona manual
+        function triggerZone() {
+            if (!gameHasStarted) {
+                alert('Pornește mai întâi jocul!');
+                return;
+            }
+            if (confirm('Pornești zona acum?')) {
+                socket.emit('admin-trigger-zone');
+                addLog('⚠️ Zona pornită manual', 'zone');
+            }
+        }
+
+        // Reseteaza jocul
+        function resetGame() {
+            if (confirm('Resetezi jocul? Toți jucătorii vor fi dați afară.')) {
+                socket.emit('admin-reset');
+                addLog('🔄 Joc resetat', 'system');
+                gameHasStarted = false;
+                updateGameStatusUI(false);
+            }
+        }
+    </script>
+
+</body>
+</html>

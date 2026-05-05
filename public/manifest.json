@@ -1,0 +1,9 @@
+{
+    "name": "Arena Royale",
+    "short_name": "Arena Royale",
+    "display": "fullscreen",
+    "start_url": "/",
+    "background_color": "#0a0a0f",
+    "theme_color": "#0a0a0f",
+    "orientation": "landscape"
+}

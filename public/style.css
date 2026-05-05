@@ -1,0 +1,1131 @@
+/* ============================================
+   ARENA ROYALE - style.css
+   Design: Dark Gaming / Cyberpunk / Neon
+   ============================================ */
+
+/* ---------- VARIABILE GLOBALE ---------- */
+/* Definim culorile si valorile principale o singura data
+   si le folosim peste tot. Daca vrei sa schimbi o culoare,
+   o schimbi doar aici. */
+:root {
+    --bg-dark:      #0a0a0f;       /* Fundalul principal - aproape negru */
+    --bg-card:      #12121e;       /* Fundalul card-ului */
+    --bg-card2:     #1a1a2e;       /* Fundalul secundar */
+    --accent:       #e94560;       /* Rosu neon - culoarea principala */
+    --accent-glow:  #e9456066;     /* Rosu neon transparent pentru glow */
+    --accent2:      #0f3460;       /* Albastru inchis */
+    --neon-blue:    #00d4ff;       /* Albastru neon */
+    --neon-green:   #00ff88;       /* Verde neon */
+    --neon-orange:  #ff8c00;       /* Portocaliu neon */
+    --text:         #ffffff;       /* Text principal */
+    --text-dim:     #8888aa;       /* Text secundar, estompat */
+    --border:       #ffffff15;     /* Borduri subtile */
+    --font-title:   'Orbitron', sans-serif;   /* Font pentru titluri */
+    --font-body:    'Rajdhani', sans-serif;   /* Font pentru text normal */
+}
+
+/* ---------- RESET & BASE ---------- */
+/* Eliminam toate marginile si padding-urile default ale browserului */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;       /* Dimensiunile includ padding si border */
+    -webkit-tap-highlight-color: transparent; /* Elimina highlight-ul la tap pe mobil */
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text);
+    font-family: var(--font-body);
+    overflow: hidden;             /* Nu permite scroll */
+    user-select: none;            /* Nu se poate selecta text */
+    -webkit-user-select: none;
+    width: 100vw;                 /* Exact latimea ecranului */
+    height: 100vh;                /* Exact inaltimea ecranului */
+}
+
+/* ---------- ECRANUL DE LOBBY ---------- */
+#screen-lobby {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+/* ---------- PARTICULE DECORATIVE IN FUNDAL ---------- */
+/* Cercuri mici care pulseaza in fundal pentru atmosfera */
+.particles {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;         /* Nu blocheaza click-urile */
+    z-index: 0;
+}
+
+/* Fiecare particula e un cerc pozitionat aleator */
+.particles span {
+    position: absolute;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.05;
+    animation: float 8s infinite ease-in-out;
+}
+
+/* Dimensiuni si pozitii diferite pentru fiecare particula */
+.particles span:nth-child(1) { width: 300px; height: 300px; top: -100px; left: -100px; animation-delay: 0s; }
+.particles span:nth-child(2) { width: 200px; height: 200px; top: 50%; right: -50px; animation-delay: 2s; }
+.particles span:nth-child(3) { width: 150px; height: 150px; bottom: -50px; left: 30%; animation-delay: 4s; }
+.particles span:nth-child(4) { width: 100px; height: 100px; top: 20%; left: 20%; animation-delay: 1s; background: var(--neon-blue); }
+.particles span:nth-child(5) { width: 250px; height: 250px; bottom: 10%; right: 10%; animation-delay: 3s; background: var(--accent2); opacity: 0.1; }
+.particles span:nth-child(6) { width: 80px; height: 80px; top: 60%; left: 60%; animation-delay: 5s; background: var(--neon-green); }
+.particles span:nth-child(7) { width: 180px; height: 180px; top: 10%; right: 20%; animation-delay: 1.5s; }
+.particles span:nth-child(8) { width: 120px; height: 120px; bottom: 30%; left: 5%; animation-delay: 3.5s; background: var(--neon-blue); opacity: 0.08; }
+.particles span:nth-child(9) { width: 200px; height: 200px; top: 40%; left: 40%; animation-delay: 6s; opacity: 0.03; }
+
+/* Animatia de plutire a particulelor */
+@keyframes float {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50%       { transform: translateY(-30px) scale(1.05); }
+}
+
+/* ---------- CONTINUTUL LOBBY-ULUI ---------- */
+.lobby-content {
+    position: relative;
+    z-index: 1;                   /* Deasupra particulelor */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    max-width: 480px;
+    padding: 20px;
+}
+
+/* ---------- LOGO / TITLU ---------- */
+.logo-container {
+    text-align: center;
+    animation: slideDown 0.8s ease-out;
+}
+
+/* Emoji-ul de sabie care pulseaza */
+.logo-glow {
+    font-size: 3rem;
+    animation: pulse 2s infinite;
+    filter: drop-shadow(0 0 20px var(--accent));
+}
+
+/* Titlul principal */
+.title {
+    font-family: var(--font-title);
+    font-size: clamp(2rem, 6vw, 3.5rem); /* Marime responsiva */
+    font-weight: 900;
+    letter-spacing: 4px;
+    color: var(--text);
+    text-shadow: 0 0 30px var(--accent);
+    line-height: 1;
+}
+
+/* "ROYALE" in rosu neon */
+.title span {
+    display: block;
+    color: var(--accent);
+    font-size: clamp(1.5rem, 5vw, 2.8rem);
+    letter-spacing: 8px;
+}
+
+/* Subtitlul de sub logo */
+.subtitle {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 5px;
+}
+
+/* ---------- CARD-UL PRINCIPAL ---------- */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 24px;
+    width: 100%;
+    backdrop-filter: blur(10px);  /* Efect de sticla mata */
+    box-shadow: 
+        0 0 40px #00000080,
+        0 0 80px var(--accent-glow),
+        inset 0 1px 0 #ffffff10;  /* Reflexie subtila sus */
+    animation: slideUp 0.8s ease-out;
+}
+
+/* Bara de titlu a card-ului (ca o fereastra de OS) */
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-title);
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+}
+
+/* Punctele colorate din header (decorative) */
+.card-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+.card-dot.red    { background: #ff5f57; }
+.card-dot.yellow { background: #ffbd2e; }
+.card-dot.green  { background: #28ca41; }
+
+/* ---------- SECTIUNEA DE AVATAR ---------- */
+.avatar-section {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+/* Zona de upload - un cerc pe care se da click */
+.avatar-upload {
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    border: 2px dashed var(--accent);
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    background: var(--bg-card2);
+}
+
+/* Efect hover pe zona de upload */
+.avatar-upload:hover {
+    border-color: var(--neon-blue);
+    box-shadow: 0 0 20px var(--accent-glow);
+    transform: scale(1.05);
+}
+
+/* Imaginea preview - ascunsa initial */
+#preview {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;            /* Umple cercul fara deformare */
+    display: none;
+    border-radius: 50%;
+}
+
+/* Placeholder-ul cu iconita + si text */
+.avatar-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: opacity 0.3s;
+}
+
+.upload-icon {
+    font-size: 2rem;
+    color: var(--accent);
+    line-height: 1;
+}
+
+.upload-text {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    text-align: center;
+}
+
+.upload-hint {
+    font-size: 0.65rem;
+    color: var(--accent);
+    opacity: 0.7;
+}
+
+/* Input-ul real de file - complet ascuns vizual */
+#input-image {
+    display: none;
+}
+
+/* ---------- INPUT NUME ---------- */
+.input-group {
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.input-label {
+    display: block;
+    font-family: var(--font-title);
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    color: var(--accent);
+    margin-bottom: 8px;
+}
+
+/* Input-ul de text pentru nume */
+.input-group input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    padding: 10px 0;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 1.1rem;
+    letter-spacing: 1px;
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+.input-group input::placeholder {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+}
+
+/* Linia rosie animata care apare la focus */
+.input-line {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0%;
+    height: 2px;
+    background: var(--accent);
+    transition: width 0.3s ease;
+}
+
+/* Cand input-ul e activ, linia se extinde la 100% */
+.input-group input:focus ~ .input-line {
+    width: 100%;
+}
+
+/* ---------- SECTIUNEA DE BUILD (STATISTICI) ---------- */
+.build-section {
+    background: var(--bg-card2);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border);
+}
+
+/* Header-ul sectiunii de build */
+.build-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.build-title {
+    font-family: var(--font-title);
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+}
+
+/* Contorul de puncte ramase */
+.points-left {
+    font-family: var(--font-title);
+    font-size: 0.9rem;
+    color: var(--neon-green);
+}
+
+.points-left span {
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+/* ---------- RANDUL UNUI STAT ---------- */
+.stat-row {
+    margin-bottom: 12px;
+}
+
+.stat-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.stat-icon { font-size: 0.9rem; }
+
+.stat-name {
+    font-family: var(--font-title);
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    flex: 1;
+}
+
+/* Valoarea numerica a stat-ului */
+.stat-value {
+    font-family: var(--font-title);
+    font-size: 0.9rem;
+    color: var(--text);
+    min-width: 20px;
+    text-align: right;
+}
+
+/* Randul cu butoane + bara */
+.stat-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Butoanele + si - */
+.stat-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-dark);
+    color: var(--text);
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.stat-btn:hover, .stat-btn:active {
+    background: var(--accent);
+    border-color: var(--accent);
+    transform: scale(1.1);
+}
+
+/* Bara vizuala a stat-ului */
+.stat-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--bg-dark);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Umplerea barei - latimea se schimba cu JS */
+.stat-fill {
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+/* Culori diferite pentru fiecare stat */
+.stat-fill.red    { background: linear-gradient(90deg, #ff4444, #ff8888); }
+.stat-fill.orange { background: linear-gradient(90deg, #ff8c00, #ffcc00); }
+.stat-fill.blue   { background: linear-gradient(90deg, #0088ff, #00d4ff); }
+
+/* Descrierea tipului de build */
+.build-type {
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    transition: all 0.3s;
+}
+
+/* ---------- BUTONUL PRINCIPAL ---------- */
+#btn-join {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--accent), #c0392b);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-family: var(--font-title);
+    font-size: 1rem;
+    letter-spacing: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 20px var(--accent-glow);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Efectul de shimmer pe buton */
+#btn-join::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, #ffffff20, transparent);
+    transition: left 0.5s ease;
+}
+
+#btn-join:hover::before {
+    left: 100%;
+}
+
+#btn-join:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px var(--accent-glow);
+}
+
+#btn-join:active {
+    transform: translateY(0);
+}
+
+.btn-arrow {
+    font-size: 1.2rem;
+    transition: transform 0.3s;
+}
+
+#btn-join:hover .btn-arrow {
+    transform: translateX(5px);
+}
+
+/* ---------- MESAJ DE EROARE ---------- */
+.error-msg {
+    text-align: center;
+    color: var(--accent);
+    font-size: 0.85rem;
+    margin-top: 10px;
+    min-height: 20px;
+    animation: shake 0.3s ease;
+}
+
+/* ---------- JUCATORI ONLINE ---------- */
+.players-online {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    letter-spacing: 1px;
+}
+
+/* Punctul verde animat */
+.online-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--neon-green);
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+    box-shadow: 0 0 10px var(--neon-green);
+}
+
+/* ---------- ECRANUL DE JOC ---------- */
+#screen-game {
+    display: none;                /* Ascuns initial */
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+/* Canvas-ul pe care se deseneaza totul */
+#gameCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---------- UI IN TIMPUL JOCULUI ---------- */
+#game-ui {
+    position: absolute;
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;         /* Nu blocheaza input-ul de joc */
+    z-index: 10;
+}
+
+/* Numarul de jucatori ramasi */
+.ui-players {
+    background: #00000080;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-family: var(--font-title);
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    backdrop-filter: blur(10px);
+}
+
+/* Containerul barei de HP */
+.ui-hp {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #00000080;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    backdrop-filter: blur(10px);
+}
+
+.ui-label {
+    font-family: var(--font-title);
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+}
+
+.ui-hp-bar {
+    width: 120px;
+    height: 8px;
+    background: var(--bg-dark);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Umplerea barei de HP - verde -> portocaliu -> rosu pe masura ce scade */
+#hp-bar-fill {
+    height: 100%;
+    width: 100%;
+    background: var(--neon-green);
+    border-radius: 10px;
+    transition: width 0.3s, background 0.3s;
+}
+
+/* Zonele invizibile pentru joystick-uri */
+#zone-left {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 50%;
+    height: 55%;
+    z-index: 5;
+}
+
+#zone-right {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 50%;
+    height: 55%;
+    z-index: 5;
+}
+
+/* ---------- ECRANUL DE GAME OVER ---------- */
+#screen-gameover {
+    display: none;
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #00000090;
+    backdrop-filter: blur(10px);
+    z-index: 20;
+    align-items: center;
+    justify-content: center;
+}
+
+.gameover-content {
+    text-align: center;
+    animation: slideUp 0.5s ease-out;
+}
+
+#gameover-title {
+    font-family: var(--font-title);
+    font-size: clamp(2rem, 8vw, 4rem);
+    color: var(--accent);
+    text-shadow: 0 0 30px var(--accent);
+    margin-bottom: 10px;
+}
+
+#gameover-msg {
+    color: var(--text-dim);
+    font-size: 1.1rem;
+    margin-bottom: 30px;
+}
+
+.gameover-content button {
+    padding: 15px 40px;
+    background: var(--accent);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-family: var(--font-title);
+    font-size: 1rem;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.gameover-content button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 5px 20px var(--accent-glow);
+}
+
+/* ---------- ANIMATII ---------- */
+
+/* Animatia de pulsare */
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.7; transform: scale(0.95); }
+}
+
+/* Alunecare din sus */
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-30px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Alunecare din jos */
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Animatie de scuturare pentru erori */
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25%       { transform: translateX(-5px); }
+    75%       { transform: translateX(5px); }
+}
+
+/* Wrapper-ele pentru layout landscape — transparente in portrait */
+.card-col-left,
+.card-col-right { display: contents; }
+
+/* ---------- LANDSCAPE PE TELEFON ---------- */
+/* Cand telefonul e in landscape si ecranul e scund (telefon, nu laptop) */
+@media (orientation: landscape) and (max-height: 500px) {
+
+    /* Ascundem logo-ul si contorul online ca sa castigam spatiu */
+    .logo-container,
+    .players-online { display: none; }
+
+    /* Lobby-ul devine scrollabil pe Y in caz de nevoie */
+    #screen-lobby { overflow-y: auto; align-items: flex-start; }
+
+    /* Continutul: centrat, padding redus */
+    .lobby-content {
+        max-width: 100%;
+        padding: 8px 12px;
+        gap: 8px;
+        justify-content: center;
+    }
+
+    /* Card-ul devine flex row cu doua coloane */
+    .card {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: 16px;
+        padding: 12px 16px;
+        width: 100%;
+        max-width: 700px;
+    }
+
+    /* Card-header dispare in landscape — titlul e deja absent */
+    .card-header { display: none; }
+
+    /* Coloana stanga: avatar + nume */
+    .card-col-left {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        flex: 0 0 150px;
+    }
+
+    /* Coloana dreapta: stats + buton */
+    .card-col-right {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* Avatar mai mic */
+    .avatar-upload { width: 80px; height: 80px; }
+
+    /* Input nume mai compact */
+    .input-group { margin-bottom: 0; width: 100%; }
+    .input-group input { font-size: 0.95rem; padding: 6px 0; }
+
+    /* Build section mai compact */
+    .build-section { padding: 10px; margin-bottom: 10px; }
+    .build-header { margin-bottom: 8px; }
+    .stat-row { margin-bottom: 6px; }
+    .stat-info { margin-bottom: 3px; }
+    .stat-btn { width: 28px; height: 28px; }
+
+    /* Butonul join mai mic */
+    #btn-join { padding: 10px; font-size: 0.9rem; }
+
+    /* Build type mai mic */
+    .build-type { font-size: 0.75rem; padding-top: 6px; }
+}
+
+/* ---------- RESPONSIVE PENTRU TABLETE ---------- */
+/* Ajustari pentru ecrane mai mici (iPad mini, etc.) */
+@media (max-height: 750px) {
+    .logo-glow    { font-size: 2rem; }
+    .title        { font-size: 1.8rem; }
+    .title span   { font-size: 1.5rem; }
+    .card         { padding: 16px; }
+    .lobby-content { gap: 12px; }
+    .avatar-upload { width: 80px; height: 80px; }
+}
+
+/* Ajustari pentru ecrane inguste */
+@media (max-width: 400px) {
+    .lobby-content { padding: 15px; }
+    .card         { padding: 16px; }
+}
+
+/* ---------- ECRANUL DE ASTEPTARE ---------- */
+#screen-waiting {
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: var(--bg-dark);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.waiting-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 30px;
+    width: 100%;
+    max-width: 600px;
+}
+
+.waiting-logo {
+    font-size: 3rem;
+    animation: pulse 2s infinite;
+    filter: drop-shadow(0 0 20px var(--accent));
+}
+
+.waiting-title {
+    font-family: var(--font-title);
+    font-size: clamp(1.5rem, 5vw, 2.5rem);
+    color: var(--accent);
+    text-shadow: 0 0 20px var(--accent);
+    letter-spacing: 4px;
+    text-align: center;
+}
+
+.waiting-sub {
+    color: var(--text-dim);
+    font-size: 1rem;
+    letter-spacing: 1px;
+}
+
+.waiting-stats {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 20px;
+    font-size: 1rem;
+    color: var(--neon-green);
+    font-family: var(--font-title);
+    letter-spacing: 2px;
+}
+
+.waiting-players-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    max-height: 300px;
+    overflow-y: auto;
+    width: 100%;
+}
+
+.waiting-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    min-width: 80px;
+    animation: fadeIn 0.4s ease;
+}
+
+.waiting-card img {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--accent);
+    background: var(--bg-card2);
+}
+
+.waiting-card span {
+    font-family: var(--font-title);
+    font-size: 0.65rem;
+    letter-spacing: 1px;
+    color: var(--text);
+    text-align: center;
+}
+
+.waiting-hint {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin-top: 8px;
+}
+
+/* ---------- OVERLAY FULLSCREEN ---------- */
+#fs-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-dark);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fs-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 40px;
+    text-align: center;
+}
+
+.fs-icon {
+    font-size: 4rem;
+    filter: drop-shadow(0 0 20px var(--accent));
+    animation: pulse 2s infinite;
+}
+
+.fs-content h2 {
+    font-family: var(--font-title);
+    font-size: clamp(1.8rem, 6vw, 3rem);
+    letter-spacing: 4px;
+    color: var(--text);
+}
+
+#fs-ios-hint {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    color: var(--text-dim);
+    font-size: 1rem;
+    max-width: 320px;
+}
+
+#fs-ios-hint strong {
+    color: var(--neon-blue);
+}
+
+#fs-btn,
+#fs-btn-android {
+    background: linear-gradient(135deg, var(--accent), #c0392b);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 16px 40px;
+    font-family: var(--font-title);
+    font-size: 1.1rem;
+    letter-spacing: 2px;
+    cursor: pointer;
+    box-shadow: 0 0 20px var(--accent-glow);
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+#fs-btn:active,
+#fs-btn-android:active {
+    transform: scale(0.97);
+    box-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* ---------- ECRANUL DE SELECTIE CAMERA ---------- */
+#screen-room {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    overflow: hidden;
+}
+
+.room-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 420px;
+    text-align: center;
+}
+
+.room-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px 24px;
+    width: 100%;
+    box-shadow: 0 0 40px #00000080, 0 0 80px var(--accent-glow);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.room-btn-create {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--accent), #c0392b);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-family: var(--font-title);
+    font-size: 1rem;
+    letter-spacing: 2px;
+    cursor: pointer;
+    box-shadow: 0 0 20px var(--accent-glow);
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+.room-btn-create:active { transform: scale(0.97); }
+.room-btn-icon { font-size: 1.3rem; font-weight: bold; }
+
+.room-separator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+}
+.room-separator::before,
+.room-separator::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
+.room-join-row {
+    display: flex;
+    gap: 10px;
+}
+
+.room-code-input {
+    flex: 1;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: var(--font-title);
+    font-size: 1.3rem;
+    letter-spacing: 6px;
+    text-align: center;
+    outline: none;
+    text-transform: uppercase;
+    transition: border-color 0.2s;
+}
+.room-code-input:focus { border-color: var(--neon-blue); }
+.room-code-input::placeholder { letter-spacing: 4px; color: var(--text-dim); font-size: 1rem; }
+
+.room-btn-join {
+    padding: 12px 18px;
+    background: var(--bg-card2);
+    border: 1px solid var(--neon-blue);
+    border-radius: 10px;
+    color: var(--neon-blue);
+    font-family: var(--font-title);
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    white-space: nowrap;
+}
+.room-btn-join:hover  { background: var(--neon-blue); color: var(--bg-dark); }
+.room-btn-join:active { transform: scale(0.97); }
+
+.room-error-msg {
+    color: var(--accent);
+    font-size: 0.85rem;
+    min-height: 18px;
+}
+
+/* ---------- COD CAMERA IN SALA DE ASTEPTARE ---------- */
+.waiting-code-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-card2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 24px;
+}
+.waiting-code-label {
+    font-family: var(--font-title);
+    font-size: 0.6rem;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+}
+.waiting-code-value {
+    font-family: var(--font-title);
+    font-size: 2rem;
+    letter-spacing: 8px;
+    color: var(--neon-blue);
+    text-shadow: 0 0 12px var(--neon-blue);
+}
+
+/* ---------- BUTON START JOC (HOST) ---------- */
+.btn-start-game {
+    padding: 16px 48px;
+    background: linear-gradient(135deg, var(--neon-green), #00cc66);
+    border: none;
+    border-radius: 14px;
+    color: var(--bg-dark);
+    font-family: var(--font-title);
+    font-size: 1.1rem;
+    font-weight: bold;
+    letter-spacing: 2px;
+    cursor: pointer;
+    box-shadow: 0 0 24px #00ff8866;
+    transition: transform 0.1s, box-shadow 0.1s;
+    animation: pulse 2s infinite;
+}
+.btn-start-game:active {
+    transform: scale(0.97);
+    box-shadow: 0 0 12px #00ff8844;
+}
