@@ -257,6 +257,7 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     let shootDir   = { x: 0, y: 0 };
     let isShooting = false;
     let myAngle    = 0;
+    let moveAngle  = 0;
 
     // Predictie client-side — pozitia locala nu asteapta server-ul
     let predX = null, predY = null, predSpeed = 3;
@@ -278,7 +279,15 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         const force = data.force || 0;
         if (force >= MOVE_THRESHOLD) {
             const len = Math.sqrt(data.vector.x ** 2 + data.vector.y ** 2);
-            if (len > 0) { moveDir.x = data.vector.x / len; moveDir.y = -data.vector.y / len; }
+            if (len > 0) {
+                moveDir.x = data.vector.x / len;
+                moveDir.y = -data.vector.y / len;
+                moveAngle = Math.atan2(-moveDir.x, moveDir.y);
+                if (!isShooting && !mouseActive) {
+                    myAngle = moveAngle;
+                    socket.emit('rotate', myAngle);
+                }
+            }
         } else {
             moveDir.x = 0; moveDir.y = 0;
         }
@@ -315,6 +324,10 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     joystickRight.on('end', () => {
         isShooting = false;
         socket.emit('stop-shoot');
+        if (!mouseActive && (moveDir.x !== 0 || moveDir.y !== 0)) {
+            myAngle = moveAngle;
+            socket.emit('rotate', myAngle);
+        }
     });
 
     // ---------- WASD + MOUSE CONTROLS (laptop) ----------
@@ -327,8 +340,16 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         if (keysHeld.has('a') || keysHeld.has('arrowleft'))  dx -= 1;
         if (keysHeld.has('d') || keysHeld.has('arrowright')) dx += 1;
         const len = Math.sqrt(dx * dx + dy * dy);
-        if (len > 0) { moveDir.x = dx / len; moveDir.y = dy / len; }
-        else         { moveDir.x = 0;        moveDir.y = 0; }
+        if (len > 0) {
+            moveDir.x = dx / len; moveDir.y = dy / len;
+            moveAngle = Math.atan2(-moveDir.x, moveDir.y);
+            if (!isShooting && !mouseActive) {
+                myAngle = moveAngle;
+                socket.emit('rotate', myAngle);
+            }
+        } else {
+            moveDir.x = 0; moveDir.y = 0;
+        }
         socket.emit('move', moveDir);
     }
 

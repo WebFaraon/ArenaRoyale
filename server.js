@@ -61,7 +61,7 @@ function getPlayerRoom(socketId) {
 }
 
 function addPlayer(code, room, socket, data) {
-    const maxHp  = 20 + data.stats.hp  * 20;
+    const maxHp  = 100 + data.stats.hp  * 20;
     const damage = 5  + data.stats.dmg * 5;
     const speed  = 3  + data.stats.spd * 0.5;
 
