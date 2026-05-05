@@ -4,7 +4,7 @@
 #
 
 app = 'arenaroyale'
-primary_region = 'fra'
+primary_region = 'otp'
 
 [build]
 

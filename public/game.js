@@ -223,10 +223,24 @@ function initGame(playerName, playerImage, playerStats, roomAction) {
         document.getElementById('waiting-count').textContent = playerList.length;
     });
 
+    let gameLoopStarted = false;
+    const gameControl   = {};
+
     socket.on('game-start', () => {
         document.getElementById('screen-waiting').style.display = 'none';
         document.getElementById('screen-game').style.display    = 'block';
-        startGameLoop(socket, canvas, ctx, playerImages);
+        document.getElementById('btn-rematch').onclick = () => {
+            socket.emit('rematch');
+            const btn = document.getElementById('btn-rematch');
+            btn.disabled = true;
+            btn.textContent = '⏳ Așteptând...';
+        };
+        if (!gameLoopStarted) {
+            gameLoopStarted = true;
+            startGameLoop(socket, canvas, ctx, playerImages, gameControl);
+        } else if (gameControl.reset) {
+            gameControl.reset();
+        }
     });
 
     socket.on('game-reset', () => { location.reload(); });
@@ -240,7 +254,7 @@ function startGame() {
 }
 
 // ---------- BUCLA PRINCIPALA DE JOC ----------
-function startGameLoop(socket, canvas, ctx, playerImages) {
+function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     // ---------- JOYSTICK-URI ----------
     const joystickLeft = nipplejs.create({
@@ -265,19 +279,18 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     // Interpolare pentru ceilalti jucatori — pozitii prev/curr intre tick-uri server
     const interpPlayers = {};
 
-    // Offset fix per glont: stocat la spawn, aplicat constant pe toata traiectoria
-    const bulletOffsets = {};
-    const particles     = [];
-    const prevAlive     = {};
+    const hitEffects = [];
+    const prevHp     = {};
 
     let mouseActive = false;
 
-    // Throttle emit-uri joystick — max 20/sec (50ms) reduce freeze-urile
-    let lastMoveEmit  = 0;
-    let lastShootEmit = 0;
-    const EMIT_MS = 16;
+    let lastMoveEmit   = 0;
+    let lastShootEmit  = 0;
+    let lastRotateEmit = 0;
+    const EMIT_MS = 33;
 
     joystickLeft.on('move', (evt, data) => {
+        const now   = performance.now();
         const force = data.force || 0;
         if (force >= MOVE_THRESHOLD) {
             const len = Math.sqrt(data.vector.x ** 2 + data.vector.y ** 2);
@@ -285,15 +298,15 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
                 moveDir.x = data.vector.x / len;
                 moveDir.y = -data.vector.y / len;
                 moveAngle = Math.atan2(-moveDir.x, moveDir.y);
-                if (!isShooting && !mouseActive) {
+                if (!isShooting && !mouseActive && now - lastRotateEmit >= EMIT_MS) {
                     myAngle = moveAngle;
                     socket.emit('rotate', myAngle);
+                    lastRotateEmit = now;
                 }
             }
         } else {
             moveDir.x = 0; moveDir.y = 0;
         }
-        const now = performance.now();
         if (now - lastMoveEmit >= EMIT_MS) {
             socket.emit('move', moveDir);
             lastMoveEmit = now;
@@ -308,12 +321,15 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     joystickRight.on('move', (evt, data) => {
         const force = data.force || 0;
         if (force >= SHOOT_THRESHOLD) {
+            const now = performance.now();
             const len = Math.sqrt(data.vector.x ** 2 + data.vector.y ** 2);
             if (len > 0) { shootDir.x = data.vector.x / len; shootDir.y = -data.vector.y / len; }
             isShooting = true;
             myAngle = Math.atan2(data.vector.y, -data.vector.x) + Math.PI / 2;
-            socket.emit('rotate', myAngle); // imediat, fara throttle
-            const now = performance.now();
+            if (now - lastRotateEmit >= EMIT_MS) {
+                socket.emit('rotate', myAngle);
+                lastRotateEmit = now;
+            }
             if (now - lastShootEmit >= EMIT_MS) {
                 socket.emit('shoot', shootDir);
                 lastShootEmit = now;
@@ -336,6 +352,7 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
     const keysHeld = new Set();
 
     function updateKeyMove() {
+        const now = performance.now();
         let dx = 0, dy = 0;
         if (keysHeld.has('w') || keysHeld.has('arrowup'))    dy -= 1;
         if (keysHeld.has('s') || keysHeld.has('arrowdown'))  dy += 1;
@@ -345,9 +362,10 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         if (len > 0) {
             moveDir.x = dx / len; moveDir.y = dy / len;
             moveAngle = Math.atan2(-moveDir.x, moveDir.y);
-            if (!isShooting && !mouseActive) {
+            if (!isShooting && !mouseActive && now - lastRotateEmit >= EMIT_MS) {
                 myAngle = moveAngle;
                 socket.emit('rotate', myAngle);
+                lastRotateEmit = now;
             }
         } else {
             moveDir.x = 0; moveDir.y = 0;
@@ -378,11 +396,14 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         const dx = (e.clientX - rect.left) - W / 2;
         const dy = (e.clientY - rect.top)  - H / 2;
         myAngle = Math.atan2(-dx, dy);
-        socket.emit('rotate', myAngle);
+        const now = performance.now();
+        if (now - lastRotateEmit >= EMIT_MS) {
+            socket.emit('rotate', myAngle);
+            lastRotateEmit = now;
+        }
         if (isShooting) {
             shootDir.x = -Math.sin(myAngle);
             shootDir.y =  Math.cos(myAngle);
-            const now = performance.now();
             if (now - lastShootEmit >= EMIT_MS) {
                 socket.emit('shoot', shootDir);
                 lastShootEmit = now;
@@ -414,33 +435,10 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         }
     });
 
-    // ---------- EFECT MOARTE ----------
-    function spawnDeathParticles(x, y, img) {
-        const count = 14;
-        for (let i = 0; i < count; i++) {
-            const angle = (Math.PI * 2 / count) * i + (Math.random() - 0.5) * 0.6;
-            const speed = 5 + Math.random() * 10;
-            const chunk = 50 + Math.random() * 50;
-            particles.push({
-                x:  x + (Math.random() - 0.5) * 20,
-                y:  y + (Math.random() - 0.5) * 20,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed - 4,
-                size:     18 + Math.random() * 18,
-                srcX:     Math.random() * (200 - chunk),
-                srcY:     Math.random() * (200 - chunk),
-                srcChunk: chunk,
-                rotation: Math.random() * Math.PI * 2,
-                rotSpeed: (Math.random() - 0.5) * 0.18,
-                life:  1,
-                decay: 0.012 + Math.random() * 0.012,
-                img:   img || null
-            });
-        }
-    }
-
     // ---------- STAREA JOCULUI ----------
     let gameState = null;
+    const killFeedEl  = document.getElementById('kill-feed');
+    const myKillsEl   = document.getElementById('my-kills');
 
     socket.on('game-state', (state) => {
         const now = performance.now();
@@ -457,45 +455,36 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         gameState = state;
         const me = state.players.find(p => p.id === socket.id);
         if (me) {
-            // Sincronizare viteza si reconciliere pozitie
             if (me.speed !== undefined) predSpeed = me.speed;
             if (predX === null || isNaN(predX) || isNaN(predY)) {
                 predX = me.x; predY = me.y;
-            } else if (Math.hypot(me.x - predX, me.y - predY) > 120) {
-                // Snap doar la diferente mari (perete, teleport) — fara lerp continuu
+            } else if (Math.hypot(me.x - predX, me.y - predY) > 60) {
                 predX = me.x; predY = me.y;
             }
-            const hpPercent = (me.hp / me.maxHp) * 100;
-            const hpBar     = document.getElementById('hp-bar-fill');
-            hpBar.style.width      = hpPercent + '%';
-            hpBar.style.background = hpPercent > 60 ? '#00ff88' : hpPercent > 30 ? '#ff8c00' : '#e94560';
         }
 
-        // Stocam offsetul predX-me.x la momentul spawn-ului fiecarui glont propriu
-        // Astfel glontul vizual apare mereu din centrul jucatorului, indiferent de lag
-        const activeBulletIds = new Set();
-        state.bullets.forEach(b => {
-            activeBulletIds.add(b.id);
-            if (!(b.id in bulletOffsets)) {
-                bulletOffsets[b.id] = (b.ownerId === socket.id && predX !== null && me)
-                    ? { ox: predX - me.x, oy: predY - me.y }
-                    : { ox: 0, oy: 0 };
-            }
-        });
-        for (const id in bulletOffsets) {
-            if (!activeBulletIds.has(+id)) delete bulletOffsets[id];
-        }
-
+        // Hit effects — detectate prin scaderea HP
         state.players.forEach(p => {
-            if (prevAlive[p.id] === true && !p.alive) {
+            if (prevHp[p.id] !== undefined && p.hp < prevHp[p.id]) {
                 const ip = interpPlayers[p.id];
-                spawnDeathParticles(ip ? ip.x1 : p.x, ip ? ip.y1 : p.y, playerImages[p.id]);
+                hitEffects.push({ x: ip ? ip.x1 : p.x, y: ip ? ip.y1 : p.y, life: 1 });
             }
-            prevAlive[p.id] = p.alive;
+            prevHp[p.id] = p.hp;
         });
 
-        document.getElementById('players-alive').textContent =
-            state.players.filter(p => p.alive).length;
+        const alive = state.players.filter(p => p.alive);
+        document.getElementById('players-alive').textContent = alive.length;
+        const me2 = state.players.find(p => p.id === socket.id);
+        if (me2) myKillsEl.textContent = me2.kills || 0;
+    });
+
+    socket.on('kill-event', ({ killerName, victimName }) => {
+        const entry = document.createElement('div');
+        entry.className   = 'kill-entry';
+        entry.textContent = `${killerName} ✖ ${victimName}`;
+        killFeedEl.appendChild(entry);
+        setTimeout(() => { if (entry.parentNode) entry.parentNode.removeChild(entry); }, 4000);
+        while (killFeedEl.children.length > 5) killFeedEl.removeChild(killFeedEl.firstChild);
     });
 
     socket.on('eliminated', () => {
@@ -510,6 +499,40 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
             document.getElementById('gameover-msg').textContent   = 'Ești ultimul supraviețuitor!';
             document.getElementById('screen-gameover').style.display = 'flex';
         }, 2000);
+    });
+
+    // ---------- RESET PENTRU REMATCH ----------
+    function resetForNewGame() {
+        gameState  = null;
+        predX      = null; predY = null;
+        isShooting = false;
+        moveDir.x  = 0; moveDir.y  = 0;
+        shootDir.x = 0; shootDir.y = 0;
+        myAngle = 0; moveAngle = 0; lastTime = 0;
+        for (const k in interpPlayers) delete interpPlayers[k];
+        for (const k in prevHp)        delete prevHp[k];
+        hitEffects.length = 0;
+        killFeedEl.innerHTML = '';
+        myKillsEl.textContent = '0';
+        keysHeld.clear();
+    }
+    gameControl.reset = resetForNewGame;
+
+    socket.on('rematch-vote', ({ count, total }) => {
+        const btn = document.getElementById('btn-rematch');
+        btn.textContent = `🔄 JOACĂ DIN NOU (${count}/${total})`;
+    });
+
+    socket.on('game-rematch', ({ isHost }) => {
+        resetForNewGame();
+        const btn = document.getElementById('btn-rematch');
+        btn.disabled    = false;
+        btn.textContent = '🔄 JOACĂ DIN NOU';
+        document.getElementById('screen-gameover').style.display = 'none';
+        document.getElementById('screen-game').style.display     = 'none';
+        document.getElementById('screen-waiting').style.display  = 'flex';
+        document.getElementById('btn-start-game').style.display  = isHost ? 'block' : 'none';
+        document.getElementById('waiting-sub-msg').style.display = isHost ? 'none'  : 'block';
     });
 
     // ---------- BUCLA DE RANDARE ----------
@@ -617,9 +640,8 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
         // Offsetul per-glont (stocat la spawn) aliniaza glontul cu pozitia vizuala
         ctx.fillStyle = '#ffe020';
         gameState.bullets.forEach(bullet => {
-            const off = bulletOffsets[bullet.id] || { ox: 0, oy: 0 };
             ctx.beginPath();
-            ctx.arc(bullet.x + off.ox, bullet.y + off.oy, bullet.radius || 6, 0, Math.PI * 2);
+            ctx.arc(bullet.x - (bullet.dx || 0), bullet.y - (bullet.dy || 0), bullet.radius || 6, 0, Math.PI * 2);
             ctx.fill();
         });
 
@@ -680,28 +702,18 @@ function startGameLoop(socket, canvas, ctx, playerImages) {
             ctx.beginPath(); ctx.roundRect(barX, barY, barW * hpRatio, barH, 3); ctx.fill();
         });
 
-        // --- PARTICULE MOARTE ---
-        for (let i = particles.length - 1; i >= 0; i--) {
-            const p = particles[i];
-            p.x  += p.vx;
-            p.y  += p.vy;
-            p.vy += 0.3;
-            p.vx *= 0.93;
-            p.vy *= 0.93;
-            p.rotation += p.rotSpeed;
-            p.life -= p.decay;
-            if (p.life <= 0) { particles.splice(i, 1); continue; }
+        // --- HIT EFFECTS ---
+        for (let i = hitEffects.length - 1; i >= 0; i--) {
+            const h = hitEffects[i];
+            h.life -= 0.1;
+            if (h.life <= 0) { hitEffects.splice(i, 1); continue; }
             ctx.save();
-            ctx.globalAlpha = Math.max(0, p.life);
-            ctx.translate(p.x, p.y);
-            ctx.rotate(p.rotation);
-            if (p.img && p.img.complete && p.img.naturalWidth > 0) {
-                ctx.drawImage(p.img, p.srcX, p.srcY, p.srcChunk, p.srcChunk,
-                              -p.size / 2, -p.size / 2, p.size, p.size);
-            } else {
-                ctx.fillStyle = '#e94560';
-                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
-            }
+            ctx.globalAlpha = h.life * 0.85;
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth   = 3 / ZOOM;
+            ctx.beginPath();
+            ctx.arc(h.x, h.y, 18 + (1 - h.life) * 22, 0, Math.PI * 2);
+            ctx.stroke();
             ctx.restore();
         }
 

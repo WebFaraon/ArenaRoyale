@@ -547,22 +547,20 @@ body {
 #game-ui {
     position: absolute;
     top: 15px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 15px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    pointer-events: none;         /* Nu blocheaza input-ul de joc */
+    align-items: flex-start;
+    gap: 6px;
+    pointer-events: none;
     z-index: 10;
 }
 
-/* Numarul de jucatori ramasi */
 .ui-players {
     background: #00000080;
     border: 1px solid var(--border);
     border-radius: 20px;
-    padding: 6px 16px;
+    padding: 6px 14px;
     font-family: var(--font-title);
     font-size: 0.9rem;
     display: flex;
@@ -571,40 +569,35 @@ body {
     backdrop-filter: blur(10px);
 }
 
-/* Containerul barei de HP */
-.ui-hp {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: #00000080;
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 6px 14px;
-    backdrop-filter: blur(10px);
-}
-
-.ui-label {
-    font-family: var(--font-title);
-    font-size: 0.6rem;
-    letter-spacing: 2px;
+.ui-sep {
     color: var(--text-dim);
+    margin: 0 2px;
 }
 
-.ui-hp-bar {
-    width: 120px;
-    height: 8px;
-    background: var(--bg-dark);
-    border-radius: 10px;
-    overflow: hidden;
+#kill-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 2px;
 }
 
-/* Umplerea barei de HP - verde -> portocaliu -> rosu pe masura ce scade */
-#hp-bar-fill {
-    height: 100%;
-    width: 100%;
-    background: var(--neon-green);
-    border-radius: 10px;
-    transition: width 0.3s, background 0.3s;
+.kill-entry {
+    font-family: var(--font-body);
+    font-size: clamp(0.85rem, 1.5vw, 1.15rem);
+    color: #fff;
+    background: rgba(0,0,0,0.55);
+    padding: 3px 10px;
+    border-radius: 4px;
+    border-left: 2px solid var(--accent);
+    animation: killFadeIn 4s forwards;
+    white-space: nowrap;
+}
+
+@keyframes killFadeIn {
+    0%   { opacity: 0; transform: translateX(-8px); }
+    8%   { opacity: 1; transform: translateX(0); }
+    75%  { opacity: 1; }
+    100% { opacity: 0; }
 }
 
 /* Zonele invizibile pentru joystick-uri */
@@ -674,6 +667,20 @@ body {
 .gameover-content button:hover {
     transform: scale(1.05);
     box-shadow: 0 5px 20px var(--accent-glow);
+}
+
+.gameover-content .btn-leave {
+    background: transparent;
+    border: 1px solid var(--text-dim);
+    color: var(--text-dim);
+    margin-top: 10px;
+    font-size: 0.85rem;
+    padding: 10px 30px;
+}
+.gameover-content .btn-leave:hover {
+    border-color: var(--text);
+    color: var(--text);
+    box-shadow: none;
 }
 
 /* ---------- ANIMATII ---------- */

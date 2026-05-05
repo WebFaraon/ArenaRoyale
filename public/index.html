@@ -261,18 +261,14 @@
 
         <!-- UI suprapus pe joc (nu blocheaza input-ul) -->
         <div id="game-ui">
-            <!-- Numarul de jucatori ramasi in viata -->
             <div class="ui-players">
                 <span>👥</span>
                 <span id="players-alive">0</span>
+                <span class="ui-sep">|</span>
+                <span>💀</span>
+                <span id="my-kills">0</span>
             </div>
-            <!-- Bara de HP a jucatorului curent -->
-            <div class="ui-hp">
-                <span class="ui-label">HP</span>
-                <div class="ui-hp-bar">
-                    <div id="hp-bar-fill"></div>
-                </div>
-            </div>
+            <div id="kill-feed"></div>
         </div>
 
         <!-- Zona joystick stanga (miscare) -->
@@ -286,7 +282,8 @@
             <div class="gameover-content">
                 <h2 id="gameover-title">💀 ELIMINAT!</h2>
                 <p id="gameover-msg">Ai fost eliminat din arenă</p>
-                <button onclick="location.reload()">JOACĂ DIN NOU</button>
+                <button id="btn-rematch">🔄 JOACĂ DIN NOU</button>
+                <button class="btn-leave" onclick="location.reload()">IEȘI</button>
             </div>
         </div>
 

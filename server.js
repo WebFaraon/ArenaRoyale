@@ -38,11 +38,13 @@ function generateCode() {
 function newRoom(hostId) {
     return {
         hostId,
-        players:     {},
-        bullets:     [],
+        players:      {},
+        bullets:      [],
         nextBulletId: 0,
-        gameStarted: false,
-        gameLoop:    null,
+        gameStarted:  false,
+        gameEnded:    false,
+        rematchVotes: new Set(),
+        gameLoop:     null,
         zone: {
             x:         ARENA_W / 2,
             y:         ARENA_H / 2,
@@ -61,9 +63,16 @@ function getPlayerRoom(socketId) {
 }
 
 function addPlayer(code, room, socket, data) {
-    const maxHp  = 500 + data.stats.hp  * 20;
-    const damage = 5  + data.stats.dmg * 5;
-    const speed  = 3  + data.stats.spd * 0.5;
+    const s   = data.stats || {};
+    const hp  = Math.min(10, Math.max(0, Math.floor(+s.hp  || 0)));
+    const dmg = Math.min(10, Math.max(0, Math.floor(+s.dmg || 0)));
+    const spd = Math.min(10, Math.max(0, Math.floor(+s.spd || 0)));
+    const total = hp + dmg + spd;
+    const scale = total > 10 ? 10 / total : 1;
+
+    const maxHp  = 500 + Math.round(hp  * scale) * 20;
+    const damage = 5   + Math.round(dmg * scale) * 5;
+    const speed  = 3   + Math.round(spd * scale) * 0.5;
 
     room.players[socket.id] = {
         id: socket.id, name: data.name, image: data.image,
@@ -73,7 +82,8 @@ function addPlayer(code, room, socket, data) {
         hp: maxHp, maxHp, damage, speed,
         moveDir:  { x: 0, y: 0 },
         shootDir: { x: 0, y: 0 },
-        shooting: false, shootCooldown: 0, alive: true
+        shooting: false, shootCooldown: 0, alive: true, kills: 0,
+        posHistory: []
     };
 
     // Trimitem imaginea noului jucator la toti din camera
@@ -108,7 +118,7 @@ function startRoomLoop(code, room) {
                 // Buffer 35px: compenseaza offsetul predictie/server si marimea jucatorului
                 if (dist > room.zone.radius + 35) {
                     player.hp -= 0.3;
-                    if (player.hp <= 0) eliminatePlayer(code, room, player);
+                    if (player.hp <= 0) eliminatePlayer(code, room, player, null);
                 }
             }
 
@@ -121,11 +131,15 @@ function startRoomLoop(code, room) {
                     dy: player.shootDir.y * BULLET_SPEED,
                     damage: player.damage,
                     radius: BULLET_RADIUS,
-                    lifetime: 60
+                    lifetime: 20
                 });
-                player.shootCooldown = 8;
+                player.shootCooldown = 15;
             }
             if (player.shootCooldown > 0) player.shootCooldown--;
+
+            // Salveaza istoricul pozitiilor pentru lag compensation (~133ms la 60fps)
+            player.posHistory.push({ x: player.x, y: player.y });
+            if (player.posHistory.length > 8) player.posHistory.shift();
         });
 
         room.bullets = room.bullets.filter(b => {
@@ -134,9 +148,15 @@ function startRoomLoop(code, room) {
                 return false;
             for (const p of Object.values(room.players)) {
                 if (p.id === b.ownerId || !p.alive) continue;
-                if (Math.hypot(b.x - p.x, b.y - p.y) < PLAYER_SIZE / 2 + b.radius) {
+                // Lag compensation: verifica pozitia curenta SI ultimele 6 pozitii (~100ms)
+                const checkPositions = [{ x: p.x, y: p.y }, ...p.posHistory.slice(-6)];
+                const hit = checkPositions.some(pos =>
+                    Math.hypot(b.x - pos.x, b.y - pos.y) < PLAYER_SIZE / 2 + b.radius
+                );
+                if (hit) {
                     p.hp -= b.damage;
-                    if (p.hp <= 0) eliminatePlayer(code, room, p);
+                    if (p.hp <= 0) eliminatePlayer(code, room, p, b.ownerId);
+                    else io.to(code).emit('bullet-hit', { x: b.x, y: b.y });
                     return false;
                 }
             }
@@ -153,28 +173,62 @@ function startRoomLoop(code, room) {
                 id: p.id, name: p.name,
                 x: p.x, y: p.y, angle: p.angle,
                 size: p.size, hp: p.hp, maxHp: p.maxHp, alive: p.alive,
-                speed: p.speed
+                speed: p.speed, kills: p.kills
             })),
-            bullets: room.bullets.map(b => ({ id: b.id, ownerId: b.ownerId, x: b.x, y: b.y, radius: b.radius })),
+            bullets: room.bullets.map(b => ({ id: b.id, ownerId: b.ownerId, x: b.x, y: b.y, radius: b.radius, dx: b.dx, dy: b.dy })),
             zone: room.zone
         });
 
     }, 1000 / TICK_RATE);
 }
 
-function eliminatePlayer(code, room, player) {
+function eliminatePlayer(code, room, player, killerId) {
     player.alive = false;
     player.hp    = 0;
     io.to(player.id).emit('eliminated');
-    console.log(`[${code}] ${player.name} eliminat`);
+
+    if (killerId && room.players[killerId]) {
+        room.players[killerId].kills++;
+        io.to(code).emit('kill-event', {
+            killerName: room.players[killerId].name,
+            victimName: player.name
+        });
+    }
+    console.log(`[${code}] ${player.name} eliminat de ${killerId ? room.players[killerId]?.name : 'zona'}`);
 
     const alive = Object.values(room.players).filter(p => p.alive);
     if (alive.length === 1 && Object.keys(room.players).length > 1) {
         io.to(alive[0].id).emit('winner');
+        room.gameEnded = true;
+        if (room.gameLoop) { clearInterval(room.gameLoop); room.gameLoop = null; }
     }
     if (alive.length === 0) {
-        setTimeout(() => closeRoom(code, room), 3000);
+        room.gameEnded = true;
+        if (room.gameLoop) { clearInterval(room.gameLoop); room.gameLoop = null; }
+        setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
     }
+}
+
+function triggerRematch(code, room) {
+    if (room.gameLoop) { clearInterval(room.gameLoop); room.gameLoop = null; }
+    room.gameStarted  = false;
+    room.gameEnded    = false;
+    room.rematchVotes.clear();
+    room.bullets      = [];
+    room.nextBulletId = 0;
+    room.zone = { x: ARENA_W / 2, y: ARENA_H / 2, radius: ZONE_START_RADIUS, shrinking: false, startTime: null };
+    Object.values(room.players).forEach(p => {
+        p.x = Math.random() * (ARENA_W - 800) + 400;
+        p.y = Math.random() * (ARENA_H - 800) + 400;
+        p.hp = p.maxHp; p.alive = true; p.angle = 0;
+        p.moveDir = { x: 0, y: 0 }; p.shootDir = { x: 0, y: 0 };
+        p.shooting = false; p.shootCooldown = 0; p.posHistory = [];
+    });
+    Object.keys(room.players).forEach(pid => {
+        io.to(pid).emit('game-rematch', { isHost: room.hostId === pid });
+    });
+    broadcastWaiting(code, room);
+    console.log(`[${code}] Rematch pornit`);
 }
 
 function closeRoom(code, room) {
@@ -263,10 +317,23 @@ io.on('connection', (socket) => {
             r.room.players[socket.id].shooting = false;
     });
 
+    socket.on('rematch', () => {
+        const result = getPlayerRoom(socket.id);
+        if (!result) return;
+        const { code, room } = result;
+        if (!room.gameEnded) return;
+        room.rematchVotes.add(socket.id);
+        const total = Object.keys(room.players).length;
+        const count = room.rematchVotes.size;
+        io.to(code).emit('rematch-vote', { count, total });
+        if (count >= total) triggerRematch(code, room);
+    });
+
     socket.on('disconnect', () => {
         const result = getPlayerRoom(socket.id);
         if (!result) return;
         const { code, room } = result;
+        room.rematchVotes.delete(socket.id);
         delete room.players[socket.id];
 
         if (Object.keys(room.players).length === 0) {
@@ -274,13 +341,19 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Daca hostul a plecat, transferam la urmatorul jucator
         if (room.hostId === socket.id) {
             room.hostId = Object.keys(room.players)[0];
             io.to(room.hostId).emit('host-transferred');
         }
 
         if (!room.gameStarted) broadcastWaiting(code, room);
+
+        if (room.gameEnded) {
+            const remaining = Object.keys(room.players).length;
+            const votes     = room.rematchVotes.size;
+            io.to(code).emit('rematch-vote', { count: votes, total: remaining });
+            if (votes >= remaining && remaining > 0) triggerRematch(code, room);
+        }
     });
 });
 
