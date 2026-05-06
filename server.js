@@ -11,18 +11,47 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ---------- CONSTANTE ----------
-const ARENA_W             = 2000;
-const ARENA_H             = 2000;
+const ARENA_W             = 2600;
+const ARENA_H             = 2600;
 const TICK_RATE           = 60;
 const BULLET_SPEED        = 40;
 const BULLET_RADIUS       = 6;
 const PLAYER_SIZE         = 60;
-const ZONE_START_RADIUS   = 900;
+const ZONE_START_RADIUS   = 1100;
 const ZONE_END_RADIUS     = 80;
 const ZONE_SHRINK_DURATION = 120000;
 
 // ---------- ROOMURI ----------
 const rooms = new Map(); // code -> room
+
+function generateObstacles() {
+    const obstacles = [];
+    const count  = 22;
+    const margin = 220;
+    const minGap = 90;
+
+    for (let attempt = 0; attempt < 600 && obstacles.length < count; attempt++) {
+        const isTree = Math.random() < 0.6;
+        const radius = isTree
+            ? 42 + Math.floor(Math.random() * 18)
+            : 28 + Math.floor(Math.random() * 18);
+        const x = margin + radius + Math.random() * (ARENA_W - (margin + radius) * 2);
+        const y = margin + radius + Math.random() * (ARENA_H - (margin + radius) * 2);
+        if (obstacles.every(o => Math.hypot(x - o.x, y - o.y) >= radius + o.radius + minGap))
+            obstacles.push({ type: isTree ? 'tree' : 'rock', x, y, radius });
+    }
+    return obstacles;
+}
+
+function spawnPos(obstacles) {
+    for (let i = 0; i < 40; i++) {
+        const x = 500 + Math.random() * (ARENA_W - 1000);
+        const y = 500 + Math.random() * (ARENA_H - 1000);
+        if (obstacles.every(o => Math.hypot(x - o.x, y - o.y) > o.radius + PLAYER_SIZE + 20))
+            return { x, y };
+    }
+    return { x: 500 + Math.random() * (ARENA_W - 1000), y: 500 + Math.random() * (ARENA_H - 1000) };
+}
 
 function generateCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -44,6 +73,7 @@ function newRoom(hostId) {
         gameStarted:  false,
         gameEnded:    false,
         rematchVotes: new Set(),
+        obstacles:    [],
         gameLoop:     null,
         zone: {
             x:         ARENA_W / 2,
@@ -76,8 +106,8 @@ function addPlayer(code, room, socket, data) {
 
     room.players[socket.id] = {
         id: socket.id, name: data.name, image: data.image,
-        x: Math.random() * (ARENA_W - 800) + 400,
-        y: Math.random() * (ARENA_H - 800) + 400,
+        x: 500 + Math.random() * (ARENA_W - 1000),
+        y: 500 + Math.random() * (ARENA_H - 1000),
         angle: 0, size: PLAYER_SIZE,
         hp: maxHp, maxHp, damage, speed,
         moveDir:  { x: 0, y: 0 },
@@ -102,6 +132,7 @@ function broadcastWaiting(code, room) {
 
 function startRoomLoop(code, room) {
     room.gameLoop = setInterval(() => {
+        try {
         if (!room.gameStarted || !rooms.has(code)) return;
         const now = Date.now();
 
@@ -117,7 +148,7 @@ function startRoomLoop(code, room) {
                 const dist = Math.hypot(player.x - room.zone.x, player.y - room.zone.y);
                 // Buffer 35px: compenseaza offsetul predictie/server si marimea jucatorului
                 if (dist > room.zone.radius + 35) {
-                    player.hp -= 0.3;
+                    player.hp -= 0.8;
                     if (player.hp <= 0) eliminatePlayer(code, room, player, null);
                 }
             }
@@ -137,6 +168,17 @@ function startRoomLoop(code, room) {
             }
             if (player.shootCooldown > 0) player.shootCooldown--;
 
+            // Coliziune cu obstacole — impinge jucatorul afara
+            for (const obs of room.obstacles) {
+                const dx = player.x - obs.x, dy = player.y - obs.y;
+                const dist = Math.hypot(dx, dy);
+                const minD = PLAYER_SIZE / 2 + obs.radius;
+                if (dist < minD && dist > 0) {
+                    player.x = obs.x + (dx / dist) * minD;
+                    player.y = obs.y + (dy / dist) * minD;
+                }
+            }
+
             // Salveaza istoricul pozitiilor pentru lag compensation (~133ms la 60fps)
             player.posHistory.push({ x: player.x, y: player.y });
             if (player.posHistory.length > 8) player.posHistory.shift();
@@ -146,6 +188,11 @@ function startRoomLoop(code, room) {
             b.x += b.dx; b.y += b.dy; b.lifetime--;
             if (b.lifetime <= 0 || b.x < 0 || b.x > ARENA_W || b.y < 0 || b.y > ARENA_H)
                 return false;
+            const hitObs = room.obstacles.findIndex(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius + b.radius);
+            if (hitObs >= 0) {
+                io.to(code).emit('obstacle-hit', { idx: hitObs });
+                return false;
+            }
             for (const p of Object.values(room.players)) {
                 if (p.id === b.ownerId || !p.alive) continue;
                 // Lag compensation: verifica pozitia curenta SI ultimele 6 pozitii (~100ms)
@@ -155,6 +202,7 @@ function startRoomLoop(code, room) {
                 );
                 if (hit) {
                     p.hp -= b.damage;
+                    io.to(b.ownerId).emit('damage-dealt', { amount: Math.round(b.damage), x: p.x, y: p.y });
                     if (p.hp <= 0) eliminatePlayer(code, room, p, b.ownerId);
                     else io.to(code).emit('bullet-hit', { x: b.x, y: b.y });
                     return false;
@@ -179,6 +227,9 @@ function startRoomLoop(code, room) {
             zone: room.zone
         });
 
+        } catch (err) {
+            console.error(`[${code}] Game loop error:`, err.stack || err);
+        }
     }, 1000 / TICK_RATE);
 }
 
@@ -217,15 +268,16 @@ function triggerRematch(code, room) {
     room.bullets      = [];
     room.nextBulletId = 0;
     room.zone = { x: ARENA_W / 2, y: ARENA_H / 2, radius: ZONE_START_RADIUS, shrinking: false, startTime: null };
+    room.obstacles = generateObstacles();
     Object.values(room.players).forEach(p => {
-        p.x = Math.random() * (ARENA_W - 800) + 400;
-        p.y = Math.random() * (ARENA_H - 800) + 400;
+        const pos = spawnPos(room.obstacles);
+        p.x = pos.x; p.y = pos.y;
         p.hp = p.maxHp; p.alive = true; p.angle = 0;
         p.moveDir = { x: 0, y: 0 }; p.shootDir = { x: 0, y: 0 };
         p.shooting = false; p.shootCooldown = 0; p.posHistory = [];
     });
     Object.keys(room.players).forEach(pid => {
-        io.to(pid).emit('game-rematch', { isHost: room.hostId === pid });
+        io.to(pid).emit('game-rematch', { isHost: room.hostId === pid, obstacles: room.obstacles });
     });
     broadcastWaiting(code, room);
     console.log(`[${code}] Rematch pornit`);
@@ -278,7 +330,16 @@ io.on('connection', (socket) => {
         if (room.hostId !== socket.id || room.gameStarted) return;
 
         room.gameStarted = true;
-        io.to(code).emit('game-start');
+        room.obstacles   = generateObstacles();
+
+        // Respawn jucatori departe de obstacole
+        Object.values(room.players).forEach(p => {
+            const pos = spawnPos(room.obstacles);
+            p.x = pos.x; p.y = pos.y;
+        });
+
+        const zoneStartsAt = Date.now() + 30000;
+        io.to(code).emit('game-start', { obstacles: room.obstacles, zoneStartsAt });
         console.log(`[${code}] Joc pornit cu ${Object.keys(room.players).length} jucatori`);
 
         setTimeout(() => {

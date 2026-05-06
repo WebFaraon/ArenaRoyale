@@ -2,8 +2,8 @@
 // ARENA ROYALE - game.js
 // ============================================
 
-const ARENA_W = 2000;
-const ARENA_H = 2000;
+const ARENA_W = 2600;
+const ARENA_H = 2600;
 const VIEW_W  = 1300;
 const VIEW_H  =  730;
 
@@ -19,6 +19,10 @@ function selectCreate() {
 function goBackToRoom() {
     document.getElementById('screen-lobby').style.display = 'none';
     document.getElementById('screen-room').style.display  = 'flex';
+}
+
+function leaveWaiting() {
+    location.reload();
 }
 
 function selectJoin() {
@@ -40,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') selectJoin(); });
 });
 
-const MOVE_THRESHOLD  = 0.5;
+const MOVE_THRESHOLD  = 0.1;
 const SHOOT_THRESHOLD = 0.25;
 
 // ---------- STATISTICI ----------
@@ -226,7 +230,9 @@ function initGame(playerName, playerImage, playerStats, roomAction) {
     let gameLoopStarted = false;
     const gameControl   = {};
 
-    socket.on('game-start', () => {
+    socket.on('game-start', (data) => {
+        if (gameControl.setObstacles) gameControl.setObstacles((data && data.obstacles) || []);
+        if (data && data.zoneStartsAt) gameControl.zoneStartsAt = data.zoneStartsAt;
         document.getElementById('screen-waiting').style.display = 'none';
         document.getElementById('screen-game').style.display    = 'block';
         document.getElementById('btn-rematch').onclick = () => {
@@ -237,7 +243,7 @@ function initGame(playerName, playerImage, playerStats, roomAction) {
         };
         if (!gameLoopStarted) {
             gameLoopStarted = true;
-            startGameLoop(socket, canvas, ctx, playerImages, gameControl);
+            startGameLoop(socket, canvas, ctx, playerImages, gameControl, (data && data.obstacles) || []);
         } else if (gameControl.reset) {
             gameControl.reset();
         }
@@ -254,17 +260,21 @@ function startGame() {
 }
 
 // ---------- BUCLA PRINCIPALA DE JOC ----------
-function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
+function startGameLoop(socket, canvas, ctx, playerImages, gameControl, initialObstacles) {
+    let obstacles = initialObstacles || [];
+    gameControl.setObstacles = (obs) => { obstacles = obs; };
 
     // ---------- JOYSTICK-URI ----------
+    const joystickSize = Math.min(80, window.innerWidth * 0.18);
+
     const joystickLeft = nipplejs.create({
         zone: document.getElementById('zone-left'),
-        mode: 'dynamic', color: '#ffffff', size: 120
+        mode: 'dynamic', color: '#ffffff', size: joystickSize
     });
 
     const joystickRight = nipplejs.create({
         zone: document.getElementById('zone-right'),
-        mode: 'dynamic', color: '#e94560', size: 120
+        mode: 'dynamic', color: '#e94560', size: joystickSize
     });
 
     let moveDir    = { x: 0, y: 0 };
@@ -279,8 +289,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // Interpolare pentru ceilalti jucatori — pozitii prev/curr intre tick-uri server
     const interpPlayers = {};
 
-    const hitEffects = [];
-    const prevHp     = {};
+    const hitEffects    = [];
+    const prevHp        = {};
+    const damageNumbers = [];
+    const obstacleShakes = {};
 
     let mouseActive = false;
 
@@ -437,6 +449,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     // ---------- STAREA JOCULUI ----------
     let gameState = null;
+    let lastGameStateTime = 0;
     const killFeedEl  = document.getElementById('kill-feed');
     const myKillsEl   = document.getElementById('my-kills');
 
@@ -453,19 +466,29 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         });
 
         gameState = state;
+        lastGameStateTime = performance.now();
         const me = state.players.find(p => p.id === socket.id);
         if (me) {
             if (me.speed !== undefined) predSpeed = me.speed;
             if (predX === null || isNaN(predX) || isNaN(predY)) {
                 predX = me.x; predY = me.y;
-            } else if (Math.hypot(me.x - predX, me.y - predY) > 60) {
-                predX = me.x; predY = me.y;
+            } else {
+                const dist = Math.hypot(me.x - predX, me.y - predY);
+                if (dist > 120) {
+                    // Divergenta mare (teleport/deconectare) - snap direct
+                    predX = me.x; predY = me.y;
+                } else if (dist > 1) {
+                    // Corectie maxim 3px per tick — invizibila dar converge rapid
+                    const step = Math.min(dist * 0.08, 3) / dist;
+                    predX += (me.x - predX) * step;
+                    predY += (me.y - predY) * step;
+                }
             }
         }
 
         // Hit effects — detectate prin scaderea HP
         state.players.forEach(p => {
-            if (prevHp[p.id] !== undefined && p.hp < prevHp[p.id]) {
+            if (prevHp[p.id] !== undefined && prevHp[p.id] - p.hp > 1) {
                 const ip = interpPlayers[p.id];
                 hitEffects.push({ x: ip ? ip.x1 : p.x, y: ip ? ip.y1 : p.y, life: 1 });
             }
@@ -476,6 +499,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         document.getElementById('players-alive').textContent = alive.length;
         const me2 = state.players.find(p => p.id === socket.id);
         if (me2) myKillsEl.textContent = me2.kills || 0;
+    });
+
+    socket.on('obstacle-hit', ({ idx }) => {
+        obstacleShakes[idx] = performance.now();
+    });
+
+    socket.on('damage-dealt', ({ amount, x, y }) => {
+        damageNumbers.push({ amount, x, y, dir: Math.random() > 0.5 ? 1 : -1, startTime: performance.now() });
     });
 
     socket.on('kill-event', ({ killerName, victimName }) => {
@@ -512,6 +543,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const k in interpPlayers) delete interpPlayers[k];
         for (const k in prevHp)        delete prevHp[k];
         hitEffects.length = 0;
+        damageNumbers.length = 0;
+        for (const k in obstacleShakes) delete obstacleShakes[k];
         killFeedEl.innerHTML = '';
         myKillsEl.textContent = '0';
         keysHeld.clear();
@@ -523,7 +556,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         btn.textContent = `🔄 JOACĂ DIN NOU (${count}/${total})`;
     });
 
-    socket.on('game-rematch', ({ isHost }) => {
+    socket.on('game-rematch', ({ isHost, obstacles: newObs }) => {
+        if (newObs) obstacles = newObs;
         resetForNewGame();
         const btn = document.getElementById('btn-rematch');
         btn.disabled    = false;
@@ -557,6 +591,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (predX !== null) {
             predX = Math.max(20, Math.min(ARENA_W - 20, predX + moveDir.x * predSpeed * dt));
             predY = Math.max(20, Math.min(ARENA_H - 20, predY + moveDir.y * predSpeed * dt));
+            // Coliziune obstacole in predictie
+            for (const obs of obstacles) {
+                const dx = predX - obs.x, dy = predY - obs.y;
+                const dist = Math.hypot(dx, dy);
+                const minD = 30 + obs.radius; // PLAYER_SIZE/2 = 30
+                if (dist < minD && dist > 0) { predX = obs.x + (dx / dist) * minD; predY = obs.y + (dy / dist) * minD; }
+            }
         }
 
         const me   = gameState.players.find(p => p.id === socket.id);
@@ -614,6 +655,82 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.fillStyle = '#ff000030';
             ctx.fill();
         }
+
+        // --- OBSTACOLE ---
+        // Deseneaza un pentagon cu laturi usor concave (copac) sau hexagon (stanca)
+        function drawConcavePoly(cx, cy, r, sides, concave, rot) {
+            ctx.beginPath();
+            for (let i = 0; i < sides; i++) {
+                const a1 = (i / sides) * Math.PI * 2 + rot;
+                const a2 = ((i + 1) / sides) * Math.PI * 2 + rot;
+                const am = (a1 + a2) / 2;
+                const p1x = cx + Math.cos(a1) * r, p1y = cy + Math.sin(a1) * r;
+                const p2x = cx + Math.cos(a2) * r, p2y = cy + Math.sin(a2) * r;
+                const cpx = cx + Math.cos(am) * r * concave, cpy = cy + Math.sin(am) * r * concave;
+                if (i === 0) ctx.moveTo(p1x, p1y);
+                ctx.quadraticCurveTo(cpx, cpy, p2x, p2y);
+            }
+            ctx.closePath();
+        }
+        function drawHex(cx, cy, r, rot) {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const a = (i / 6) * Math.PI * 2 + rot;
+                if (i === 0) ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+                else         ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+            }
+            ctx.closePath();
+        }
+
+        obstacles.forEach((obs, idx) => {
+            const { x: ox, y: oy, radius: r, type } = obs;
+            const rot = ((ox * 7 + oy * 13) % 628) / 100;
+
+            // Shake la impact
+            let sx = 0;
+            if (obstacleShakes[idx] !== undefined) {
+                const el = performance.now() - obstacleShakes[idx];
+                const dur = 320;
+                if (el < dur) {
+                    sx = Math.sin(el * 0.13) * 2.5 * (1 - el / dur);
+                } else {
+                    delete obstacleShakes[idx];
+                }
+            }
+            const x = ox + sx, y = oy;
+
+            if (type === 'tree') {
+                // Contur exterior inchis
+                ctx.fillStyle = '#0e2e05';
+                drawConcavePoly(x, y, r, 5, 0.72, rot);
+                ctx.fill();
+                // Corp principal verde inchis
+                ctx.fillStyle = '#1e5c0a';
+                drawConcavePoly(x, y, r * 0.88, 5, 0.72, rot);
+                ctx.fill();
+                // Strat interior mai deschis
+                ctx.fillStyle = '#2e8a14';
+                drawConcavePoly(x, y, r * 0.54, 5, 0.72, rot);
+                ctx.fill();
+            } else {
+                // Contur exterior inchis
+                ctx.fillStyle = '#18181f';
+                drawHex(x, y, r, rot);
+                ctx.fill();
+                // Corp principal gri
+                ctx.fillStyle = '#4a4a58';
+                drawHex(x, y, r * 0.88, rot);
+                ctx.fill();
+                // Hexagon interior mai deschis
+                ctx.fillStyle = '#686875';
+                drawHex(x, y, r * 0.58, rot);
+                ctx.fill();
+                // Highlight mic
+                ctx.fillStyle = '#82828f';
+                drawHex(x, y, r * 0.32, rot);
+                ctx.fill();
+            }
+        });
 
         // --- INDICATOR TRAIECTORIE ---
         // Porneste din camX/camY (pozitia vizuala = predX/predY)
@@ -683,7 +800,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.restore();
 
             // Numele — outline in loc de shadowBlur (mult mai rapid pe mobile)
-            const nameY  = py - size / 2 - 26;
+            const nameY  = isMe ? py - size / 2 - 26 : py - size / 2 - 8;
             ctx.strokeStyle = '#000000';
             ctx.lineWidth   = 3;
             ctx.lineJoin    = 'round';
@@ -691,15 +808,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.strokeText(player.name, px, nameY);
             ctx.fillText(player.name,   px, nameY);
 
-            // Bara HP
-            const barW  = 70, barH = 6;
-            const barX  = px - barW / 2;
-            const barY  = py - size / 2 - 18;
-            const hpRatio = player.hp / player.maxHp;
-            ctx.fillStyle = '#00000060';
-            ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 3); ctx.fill();
-            ctx.fillStyle = hpRatio > 0.5 ? '#00ff88' : hpRatio > 0.25 ? '#ff8c00' : '#e94560';
-            ctx.beginPath(); ctx.roundRect(barX, barY, barW * hpRatio, barH, 3); ctx.fill();
+            // Bara HP — doar pentru jucatorul local
+            if (isMe) {
+                const barW  = 70, barH = 6;
+                const barX  = px - barW / 2;
+                const barY  = py - size / 2 - 18;
+                const hpRatio = player.hp / player.maxHp;
+                ctx.fillStyle = '#00000060';
+                ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 3); ctx.fill();
+                ctx.fillStyle = hpRatio > 0.5 ? '#00ff88' : hpRatio > 0.25 ? '#ff8c00' : '#e94560';
+                ctx.beginPath(); ctx.roundRect(barX, barY, barW * hpRatio, barH, 3); ctx.fill();
+            }
         });
 
         // --- HIT EFFECTS ---
@@ -717,7 +836,74 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.restore();
         }
 
+        // --- DAMAGE NUMBERS ---
+        const nowDN = performance.now();
+        ctx.textAlign = 'center';
+        for (let i = damageNumbers.length - 1; i >= 0; i--) {
+            const dn = damageNumbers[i];
+            const t  = (nowDN - dn.startTime) / 900;
+            if (t >= 1) { damageNumbers.splice(i, 1); continue; }
+            ctx.save();
+            ctx.globalAlpha  = 1 - t;
+            ctx.font         = `bold ${Math.round((22 + t * 8) / ZOOM)}px Rajdhani, Arial`;
+            ctx.strokeStyle  = '#00000099';
+            ctx.lineWidth    = 3 / ZOOM;
+            ctx.fillStyle    = '#ff3333';
+            const dnX = dn.x + dn.dir * t * 52;
+            const dnY = dn.y - t * 22;
+            ctx.strokeText(`-${dn.amount}`, dnX, dnY);
+            ctx.fillText(`-${dn.amount}`,   dnX, dnY);
+            ctx.restore();
+        }
+
         ctx.restore();
+
+        // --- TIMER ZONA (screen space) ---
+        if (gameState && !gameState.zone.shrinking && gameControl.zoneStartsAt) {
+            const secsLeft = Math.ceil((gameControl.zoneStartsAt - Date.now()) / 1000);
+            if (secsLeft > 0) {
+                ctx.save();
+                ctx.scale(dpr, dpr);
+                const label = `⚠ Zona în ${secsLeft}s`;
+                ctx.font      = `bold ${Math.max(13, W * 0.018)}px Orbitron, sans-serif`;
+                ctx.textAlign = 'center';
+                // Fundal pill
+                const tw = ctx.measureText(label).width + 24;
+                const th = Math.max(13, W * 0.018) * 1.6;
+                const tx = W / 2 - tw / 2;
+                const ty = 14;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, 8); ctx.fill();
+                // Text — rosu cand < 6s, portocaliu altfel
+                ctx.fillStyle   = secsLeft <= 6 ? '#ff4444' : '#ff8c00';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(label, W / 2, ty + th / 2);
+                ctx.restore();
+            }
+        }
+
+        // --- WATCHDOG: server inghetat (>5s fara game-state) ---
+        if (lastGameStateTime > 0 && (performance.now() - lastGameStateTime) > 5000) {
+            ctx.save();
+            ctx.scale(dpr, dpr);
+            // Fundal semi-transparent
+            ctx.fillStyle = 'rgba(0,0,0,0.72)';
+            ctx.fillRect(0, 0, W, H);
+            // Icon
+            ctx.font      = `${Math.max(32, W * 0.05)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('⚠️', W / 2, H / 2 - Math.max(32, W * 0.05));
+            // Mesaj principal
+            ctx.font      = `bold ${Math.max(16, W * 0.022)}px Orbitron, sans-serif`;
+            ctx.fillStyle = '#ff4444';
+            ctx.fillText('CONEXIUNE PIERDUTĂ', W / 2, H / 2 + 4);
+            // Sub-mesaj
+            ctx.font      = `${Math.max(12, W * 0.016)}px Rajdhani, sans-serif`;
+            ctx.fillStyle = '#aaaaaa';
+            ctx.fillText('Serverul nu răspunde. Reîncarcă pagina.', W / 2, H / 2 + Math.max(24, W * 0.038));
+            ctx.restore();
+        }
     }
 
     draw();
