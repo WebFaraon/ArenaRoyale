@@ -357,9 +357,9 @@ function updateStatsUI() {
     const barHp  = document.getElementById('bar-hp');
     const barDmg = document.getElementById('bar-dmg');
     const barSpd = document.getElementById('bar-spd');
-    if (valHp)  valHp.textContent  = (500 + stats.hp  * 30) + ' HP';
+    if (valHp)  valHp.textContent  = (500 + stats.hp  * 40) + ' HP';
     if (valDmg) valDmg.textContent = (10  + stats.dmg *  4) + ' DMG';
-    if (valSpd) valSpd.textContent = (2.0 + stats.spd * 0.3).toFixed(1) + ' SPD';
+    if (valSpd) valSpd.textContent = (2.5 + stats.spd * 0.3).toFixed(1) + ' SPD';
     if (barHp)  barHp.style.width  = (stats.hp  / 10 * 100) + '%';
     if (barDmg) barDmg.style.width = (stats.dmg / 10 * 100) + '%';
     if (barSpd) barSpd.style.width = (stats.spd / 10 * 100) + '%';
@@ -872,7 +872,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl, initialOb
             }
             const newKills  = me.kills || 0;
             const prevKills = parseInt(myKillsEl.textContent) || 0;
-            if (newKills > prevKills) showKillNotif(newKills);
+            if (newKills > prevKills && !gameControl.countdownActive) showKillNotif(newKills);
             myKillsEl.textContent = newKills;
         }
 

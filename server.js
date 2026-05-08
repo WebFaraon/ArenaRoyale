@@ -291,9 +291,9 @@ function addPlayer(code, room, socket, data) {
     const total = hp + dmg + spd;
     const scale = total > 10 ? 10 / total : 1;
 
-    const maxHp  = 500 + Math.round(hp  * scale) * 30;
+    const maxHp  = 500 + Math.round(hp  * scale) * 40;
     const damage = 10  + Math.round(dmg * scale) * 4;
-    const speed  = (2.2 + Math.round(spd * scale) * 0.3) * 60; // px/sec
+    const speed  = (2.5 + Math.round(spd * scale) * 0.3) * 60; // px/sec
 
     room.players[socket.id] = {
         id: socket.id, name: data.name, image: data.image,
