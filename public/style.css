@@ -40,8 +40,9 @@ body {
     overflow: hidden;             /* Nu permite scroll */
     user-select: none;            /* Nu se poate selecta text */
     -webkit-user-select: none;
-    width: 100vw;                 /* Exact latimea ecranului */
-    height: 100vh;                /* Exact inaltimea ecranului */
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
 }
 
 /* ---------- ECRANUL DE LOBBY ---------- */
@@ -530,10 +531,11 @@ body {
 
 /* ---------- ECRANUL DE JOC ---------- */
 #screen-game {
-    display: none;                /* Ascuns initial */
+    display: none;
     position: relative;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
 }
 
 /* Canvas-ul pe care se deseneaza totul */
@@ -824,7 +826,7 @@ body {
     display: none;
     position: fixed;
     top: 0; left: 0;
-    width: 100vw; height: 100vh;
+    width: 100vw; height: 100vh; height: 100dvh;
     background: var(--bg-dark);
     flex-direction: column;
     align-items: center;
@@ -889,9 +891,8 @@ body {
     flex-wrap: wrap;
     gap: 12px;
     justify-content: center;
-    max-height: 300px;
-    overflow-y: auto;
     width: 100%;
+    overflow: visible;
 }
 
 .waiting-card {

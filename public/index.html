@@ -2,345 +2,999 @@
 <html lang="ro">
 <head>
     <link rel="manifest" href="/manifest.json">
-    <!-- Face jocul sa arate ca o aplicatie nativa pe iPad -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
     <meta name="apple-mobile-web-app-title" content="Arena Royale">
-
     <meta charset="UTF-8">
-    <!-- Previne zoom-ul pe tablete -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Arena Royale</title>
-
-    <!-- Font special pentru titlu si text -->
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
-
-    <!-- Stilurile noastre -->
     <link rel="stylesheet" href="style.css">
+
+    <style>
+    /* ======================================================
+       VARIABILE & RESET
+    ====================================================== */
+    :root {
+        --bg:      #0a0a0f;
+        --card:    #12121e;
+        --card2:   #1a1a2e;
+        --accent:  #e94560;
+        --green:   #00ff88;
+        --orange:  #ff8c00;
+        --blue:    #00d4ff;
+        --gold:    #ffd700;
+        --dim:     #8888aa;
+        --border:  rgba(255,255,255,0.08);
+        --ft:      'Orbitron', sans-serif;
+        --fb:      'Rajdhani', sans-serif;
+    }
+
+    /* ======================================================
+       ECRAN AUTH
+    ====================================================== */
+    #screen-auth {
+        position: fixed; inset: 0;
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: flex-start;
+        background: var(--bg); overflow-y: auto;
+        scrollbar-width: none; -ms-overflow-style: none;
+    }
+    #screen-auth::-webkit-scrollbar { display: none; }
+    .auth-wrap {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 14px; width: 100%; max-width: 420px;
+        padding: 20px 16px 28px; position: relative; z-index: 1;
+        margin: auto;
+    }
+    .auth-logo { text-align: center; }
+    .auth-logo-icon { font-size: 2.6rem; }
+    .auth-logo-title {
+        font-family: var(--ft); font-size: clamp(1.6rem, 5vw, 2.2rem);
+        font-weight: 900; color: #fff; letter-spacing: 3px; margin: 4px 0 0;
+    }
+    .auth-logo-title span { color: var(--accent); }
+
+    .auth-card {
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: 16px; width: 100%; overflow: hidden;
+    }
+    /* Tabs */
+    .auth-tabs { display: flex; border-bottom: 1px solid var(--border); }
+    .auth-tab {
+        flex: 1; background: none; border: none; color: var(--dim);
+        font-family: var(--ft); font-size: 0.68rem; font-weight: 700;
+        letter-spacing: 1px; padding: 13px 8px; cursor: pointer;
+        border-bottom: 2px solid transparent; margin-bottom: -1px;
+        transition: all 0.2s;
+    }
+    .auth-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .auth-tab:hover:not(.active) { color: #fff; }
+
+    /* Forms */
+    .auth-form {
+        display: flex; flex-direction: column; gap: 12px;
+        padding: 16px 20px 20px;
+    }
+    .auth-form .input-group { margin-bottom: 0; }
+    .auth-hint {
+        font-size: 0.6rem; color: var(--dim);
+        font-weight: 400; text-transform: none; letter-spacing: normal;
+    }
+    .auth-error {
+        color: var(--accent); font-size: 0.82rem;
+        font-family: var(--fb); text-align: center; min-height: 18px;
+    }
+    .auth-btn {
+        display: flex; align-items: center; justify-content: center; gap: 10px;
+        background: linear-gradient(135deg, #e94560, #c0392b);
+        color: #fff; border: none; border-radius: 12px;
+        padding: 14px 20px; font-family: var(--ft); font-size: 0.82rem;
+        font-weight: 700; cursor: pointer; transition: all 0.2s; margin-top: 2px;
+    }
+    .auth-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233,69,96,.4); }
+    .auth-btn:disabled { opacity: .6; cursor: not-allowed; }
+    .auth-note { text-align: center; color: var(--dim); font-size: 0.72rem; font-family: var(--fb); margin: 0; }
+    .auth-note strong { color: rgba(255,255,255,.55); }
+
+    .auth-bottom { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .lb-pill {
+        color: var(--gold); text-decoration: none; font-family: var(--ft);
+        font-size: 0.7rem; font-weight: 700; letter-spacing: 1px;
+        padding: 9px 18px; border: 1px solid rgba(255,215,0,.3); border-radius: 30px;
+        transition: all 0.2s;
+    }
+    .lb-pill:hover { background: rgba(255,215,0,.08); border-color: rgba(255,215,0,.5); }
+
+    /* ======================================================
+       ECRAN LOBBY — redesign complet
+    ====================================================== */
+    #screen-lobby {
+        position: fixed; inset: 0;
+        display: flex; flex-direction: column;
+        background: var(--bg); overflow: hidden;
+    }
+
+    /* Top bar */
+    .lb-topbar {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 14px; border-bottom: 1px solid var(--border);
+        flex-shrink: 0; gap: 8px;
+    }
+    .lb-topbar-left {
+        display: flex; align-items: center; gap: 8px;
+    }
+    .lb-topbar-back {
+        background: none; border: 1px solid var(--border); color: var(--dim);
+        border-radius: 8px; padding: 6px 10px; font-family: var(--fb);
+        font-size: 0.8rem; cursor: pointer; transition: all .2s; white-space: nowrap;
+    }
+    .lb-topbar-back:hover { color: #fff; border-color: rgba(255,255,255,.2); }
+    .lb-topbar-title {
+        font-family: var(--ft); font-size: clamp(0.9rem, 3vw, 1.1rem);
+        font-weight: 900; color: #fff; letter-spacing: 2px; white-space: nowrap;
+    }
+    .lb-topbar-title span { color: var(--accent); }
+    .lb-topbar-right { display: flex; align-items: center; gap: 8px; }
+
+    /* Scrollable content */
+    .lobby-body {
+        flex: 1; overflow-y: auto; overflow-x: hidden;
+        width: 100%; display: flex; flex-direction: column;
+        scrollbar-width: none; -ms-overflow-style: none;
+    }
+    .lobby-body::-webkit-scrollbar { display: none; }
+    .lobby-inner {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 14px; padding: 16px 14px 40px;
+        max-width: 560px; margin: auto; width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* ── Character section ── */
+    .char-section {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 10px; width: 100%;
+    }
+    .char-avatar-wrap {
+        position: relative; width: clamp(110px, 28vw, 150px);
+        height: clamp(110px, 28vw, 150px);
+    }
+    .char-avatar-label {
+        display: block; width: 100%; height: 100%; border-radius: 50%;
+        border: 2px dashed rgba(255,255,255,.18); cursor: pointer;
+        overflow: hidden; background: var(--card);
+        display: flex; align-items: center; justify-content: center;
+        transition: border-color .2s; position: relative;
+    }
+    .char-avatar-label:hover { border-color: var(--accent); }
+    #preview {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        object-fit: cover; border-radius: 50%; display: none;
+    }
+    .char-avatar-placeholder {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 4px; padding: 8px; text-align: center;
+    }
+    .char-avatar-placeholder .av-icon { font-size: 1.8rem; color: var(--accent); }
+    .char-avatar-placeholder .av-text { color: var(--dim); font-size: clamp(.6rem, 2vw, .72rem); font-family: var(--fb); line-height: 1.2; }
+
+    .char-name {
+        font-family: var(--ft); font-size: clamp(1.2rem, 5vw, 1.8rem);
+        font-weight: 900; color: var(--green); letter-spacing: 3px;
+        text-align: center;
+    }
+    .char-name-hint { color: var(--dim); font-size: .65rem; font-family: var(--fb); text-align: center; }
+
+    /* ── Build card ── */
+    .build-card {
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: 14px; padding: 14px 16px; width: 100%;
+    }
+    .bc-header {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 12px;
+    }
+    .bc-title { font-family: var(--ft); font-size: .68rem; font-weight: 700; color: var(--dim); letter-spacing: 1px; }
+    .bc-points { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: var(--green); }
+
+    .stat-row {
+        display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+    }
+    .stat-icon { font-size: 1rem; flex-shrink: 0; }
+    .stat-name { font-family: var(--ft); font-size: .62rem; font-weight: 700; color: var(--dim); width: 30px; flex-shrink: 0; }
+    .stat-value { font-family: var(--fb); font-size: .78rem; font-weight: 600; color: #fff; width: 60px; text-align: right; flex-shrink: 0; }
+    .stat-controls { display: flex; align-items: center; gap: 6px; flex: 1; }
+    .stat-btn {
+        width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border);
+        background: rgba(255,255,255,.04); color: #fff; font-size: 1rem;
+        cursor: pointer; display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0; transition: all .15s; touch-action: manipulation;
+    }
+    .stat-btn:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.2); }
+    .stat-btn:active { transform: scale(.9); }
+    .stat-bar { flex: 1; height: 5px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
+    .stat-fill { height: 100%; border-radius: 3px; transition: width .2s; }
+    .stat-fill.red    { background: linear-gradient(90deg, #e94560, #ff6b6b); }
+    .stat-fill.orange { background: linear-gradient(90deg, #ff6b00, #ffa500); }
+    .stat-fill.blue   { background: linear-gradient(90deg, #00aaff, #00d4ff); }
+
+    .build-type {
+        text-align: center; font-family: var(--fb); font-size: .82rem;
+        color: var(--dim); padding: 8px; background: rgba(255,255,255,.03);
+        border-radius: 8px; margin-top: 4px;
+    }
+
+    /* ── Room card ── */
+    .room-card {
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: 14px; padding: 14px 16px; width: 100%;
+        display: flex; flex-direction: column; gap: 10px;
+    }
+    .rc-title { font-family: var(--ft); font-size: .68rem; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-align: center; }
+
+    .btn-create {
+        width: 100%; background: linear-gradient(135deg, #e94560, #c0392b);
+        color: #fff; border: none; border-radius: 12px; padding: 15px;
+        font-family: var(--ft); font-size: clamp(.75rem, 3vw, .9rem); font-weight: 700;
+        cursor: pointer; transition: all .2s; letter-spacing: 1px;
+        touch-action: manipulation;
+    }
+    .btn-create:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233,69,96,.4); }
+
+    .or-divider {
+        display: flex; align-items: center; gap: 10px;
+        color: var(--dim); font-size: .72rem; font-family: var(--fb);
+    }
+    .or-divider::before, .or-divider::after {
+        content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .join-row { display: flex; gap: 8px; }
+    .join-input {
+        flex: 1; background: rgba(255,255,255,.04); border: 1px solid var(--border);
+        border-radius: 10px; padding: 12px 12px; color: #fff;
+        font-family: var(--ft); font-size: .88rem; font-weight: 700;
+        letter-spacing: 4px; text-transform: uppercase; min-width: 0;
+        touch-action: manipulation;
+    }
+    .join-input:focus { outline: none; border-color: var(--accent); }
+    .join-input::placeholder { font-family: var(--fb); font-size: .78rem; letter-spacing: normal; color: var(--dim); font-weight: 400; text-transform: none; }
+    .btn-join {
+        background: rgba(255,255,255,.06); border: 1px solid var(--border);
+        color: #fff; border-radius: 10px; padding: 12px 14px;
+        font-family: var(--ft); font-size: .75rem; font-weight: 700;
+        cursor: pointer; transition: all .2s; white-space: nowrap;
+        touch-action: manipulation;
+    }
+    .btn-join:hover { background: rgba(255,255,255,.12); }
+
+    .room-err { color: var(--accent); font-size: .78rem; text-align: center; min-height: 16px; font-family: var(--fb); }
+    .lobby-err { color: var(--accent); font-size: .78rem; text-align: center; min-height: 16px; font-family: var(--fb); }
+
+    /* ======================================================
+       ECRAN WAITING — responsive
+    ====================================================== */
+    #screen-waiting {
+        position: fixed; inset: 0; display: none;
+        flex-direction: column; align-items: stretch; justify-content: flex-start;
+        background: var(--bg); overflow: hidden;
+    }
+    .waiting-topbar {
+        position: relative; z-index: 1; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 14px; border-bottom: 1px solid var(--border);
+        background: var(--card);
+    }
+    .waiting-scroll {
+        flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+        align-items: center; justify-content: flex-start;
+        scrollbar-width: none; -ms-overflow-style: none;
+    }
+    .waiting-scroll::-webkit-scrollbar { display: none; }
+
+    /* ======================================================
+       EXIT BUTTON (in-game)
+    ====================================================== */
+    #btn-leave-game {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        z-index: 20;
+        background: rgba(0,0,0,0.45);
+        border: 1px solid rgba(255,255,255,0.10);
+        color: rgba(255,255,255,0.30);
+        border-radius: 8px;
+        padding: 5px 12px;
+        font-size: 11px;
+        font-family: var(--ft);
+        letter-spacing: 1px;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    #btn-leave-game:hover {
+        background: rgba(180,30,30,0.65);
+        color: rgba(255,255,255,0.85);
+        border-color: rgba(255,80,80,0.35);
+    }
+
+    /* ======================================================
+       KILL NOTIFICATION
+    ====================================================== */
+    #kill-notif {
+        position: absolute;
+        top: 105px;
+        left: 50%;
+        transform: translateX(-50%) scale(1);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        pointer-events: none;
+        z-index: 30;
+        opacity: 0;
+    }
+    #kill-notif.active { animation: killPop 2.4s ease forwards; }
+    #kill-notif-skull {
+        font-size: 40px;
+        line-height: 1;
+        filter: drop-shadow(0 0 12px #e94560) drop-shadow(0 0 4px #000);
+    }
+    #kill-notif-count {
+        font-family: var(--ft);
+        font-size: 15px;
+        font-weight: 900;
+        color: #e94560;
+        text-shadow: 0 0 10px #e94560, 0 0 3px #000;
+        letter-spacing: 4px;
+        margin-top: 2px;
+    }
+    @keyframes killPop {
+        0%   { opacity: 0; transform: translateX(-50%) scale(0.3); }
+        12%  { opacity: 1; transform: translateX(-50%) scale(1.28); }
+        22%  { opacity: 1; transform: translateX(-50%) scale(0.96); }
+        60%  { opacity: 1; transform: translateX(-50%) scale(1);    }
+        100% { opacity: 0; transform: translateX(-50%) scale(1);    }
+    }
+
+    /* ======================================================
+       COUNTDOWN OVERLAY
+    ====================================================== */
+    #countdown-overlay {
+        position: absolute; inset: 0;
+        background: rgba(0,0,0,0.72);
+        display: none; align-items: center; justify-content: center;
+        z-index: 60; user-select: none;
+    }
+    #countdown-overlay.active { display: flex; }
+    #countdown-number {
+        font-family: var(--ft); font-weight: 900;
+        font-size: clamp(80px, 20vw, 160px);
+        color: #fff;
+        text-shadow: 0 0 60px rgba(233,69,96,0.9), 0 0 20px rgba(233,69,96,0.5);
+        animation: countPop 0.3s cubic-bezier(0.22,1,0.36,1);
+    }
+    @keyframes countPop {
+        from { transform: scale(1.6); opacity: 0; }
+        to   { transform: scale(1);   opacity: 1; }
+    }
+
+    /* ======================================================
+       GAMEOVER — responsive
+    ====================================================== */
+    #screen-gameover {
+        position: absolute; inset: 0; display: none;
+        flex-direction: column; align-items: center; justify-content: flex-start;
+        background: rgba(0,0,0,.82); backdrop-filter: blur(6px);
+        overflow-y: auto; padding: 16px;
+        scrollbar-width: none; -ms-overflow-style: none;
+    }
+    #screen-gameover::-webkit-scrollbar { display: none; }
+    .gameover-content {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 12px; width: 100%; max-width: 340px;
+        text-align: center; margin: auto;
+    }
+
+    /* Stats runda */
+    .round-stats {
+        background: rgba(255,255,255,.04); border: 1px solid var(--border);
+        border-radius: 12px; padding: 16px;
+        width: 100%;
+    }
+    .stats-kills-big {
+        display: flex; flex-direction: column; align-items: center; gap: 4px;
+    }
+    .stats-kills-num {
+        font-family: var(--ft); font-size: 3rem; font-weight: 900;
+        color: var(--accent); line-height: 1;
+    }
+    .stats-kills-lbl {
+        font-family: var(--ft); font-size: .6rem; font-weight: 700;
+        color: var(--dim); letter-spacing: 2px;
+    }
+
+    /* ======================================================
+       LEADERBOARD PILL — reutilizabil
+    ====================================================== */
+    .lb-btn {
+        color: var(--gold); text-decoration: none; font-family: var(--ft);
+        font-size: .65rem; font-weight: 700; letter-spacing: 1px;
+        padding: 7px 12px; border: 1px solid rgba(255,215,0,.3); border-radius: 20px;
+        transition: all .2s; white-space: nowrap; display: inline-flex;
+        align-items: center; gap: 4px;
+    }
+    .lb-btn:hover { background: rgba(255,215,0,.08); border-color: rgba(255,215,0,.5); }
+
+    /* ======================================================
+       RESPONSIVE — ajustări tablet & phone
+    ====================================================== */
+    @media (max-width: 380px) {
+        .auth-wrap { padding: 16px 12px 32px; gap: 14px; }
+        .auth-form { padding: 18px 14px; gap: 14px; }
+        .lobby-inner { padding: 12px 10px 32px; gap: 12px; }
+        .build-card, .room-card { padding: 12px; }
+        .stat-btn { width: 26px; height: 26px; }
+    }
+    @media (min-width: 600px) {
+        .char-section { flex-direction: row; align-items: center; gap: 20px; }
+        .char-section-text { text-align: left; }
+        .char-name { font-size: 2rem; }
+        .lobby-inner { gap: 18px; padding: 20px 20px 50px; }
+    }
+    @media (min-width: 900px) {
+        .lobby-inner { max-width: 640px; }
+        .build-card, .room-card { padding: 18px 20px; }
+    }
+
+    /* ======================================================
+       LEADERBOARD OVERLAY
+    ====================================================== */
+    #lb-overlay {
+        position: fixed; inset: 0; z-index: 2000;
+        display: flex; align-items: center; justify-content: center;
+        padding: 16px;
+    }
+    .lbo-backdrop {
+        position: absolute; inset: 0;
+        background: rgba(0,0,0,.78); backdrop-filter: blur(5px);
+        cursor: pointer;
+    }
+    .lbo-card {
+        position: relative; z-index: 1;
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: 16px; width: 100%; max-width: 640px;
+        max-height: 85vh; display: flex; flex-direction: column;
+        overflow: hidden;
+    }
+    .lbo-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 18px; border-bottom: 1px solid var(--border);
+        flex-shrink: 0; background: rgba(255,255,255,.02);
+    }
+    .lbo-title {
+        font-family: var(--ft); font-size: 1rem; font-weight: 900;
+        color: var(--gold); letter-spacing: 2px;
+    }
+    .lbo-close {
+        background: none; border: 1px solid var(--border); color: var(--dim);
+        border-radius: 8px; padding: 5px 10px; font-size: .85rem;
+        cursor: pointer; transition: all .2s; font-family: var(--fb);
+        line-height: 1;
+    }
+    .lbo-close:hover { color: #fff; border-color: rgba(255,255,255,.3); }
+    .lbo-table-wrap { overflow-y: auto; flex: 1; }
+    .lbo-table-wrap table { width: 100%; border-collapse: collapse; min-width: 380px; }
+    .lbo-table-wrap thead th {
+        background: rgba(255,255,255,.04); color: var(--dim);
+        font-family: var(--ft); font-size: .58rem; font-weight: 700;
+        letter-spacing: 1.5px; text-transform: uppercase;
+        padding: 10px 12px; text-align: left;
+        border-bottom: 1px solid var(--border);
+        position: sticky; top: 0; z-index: 1;
+    }
+    .lbo-table-wrap thead th.center { text-align: center; }
+    .lbo-table-wrap tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
+    .lbo-table-wrap tbody tr:last-child { border-bottom: none; }
+    .lbo-table-wrap tbody tr:hover { background: rgba(255,255,255,.03); }
+    .lbo-table-wrap tbody tr.top-1 { background: rgba(255,215,0,.06); }
+    .lbo-table-wrap tbody tr.top-2 { background: rgba(192,192,192,.05); }
+    .lbo-table-wrap tbody tr.top-3 { background: rgba(205,127,50,.05); }
+    .lbo-table-wrap td { padding: 10px 12px; font-size: .9rem; }
+    .lbo-table-wrap td.rank { font-size: 1rem; width: 44px; text-align: center; }
+    .lbo-table-wrap td.name { font-family: var(--ft); font-size: .72rem; font-weight: 700; color: #fff; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lbo-table-wrap td.wins  { color: var(--gold);  font-weight: 700; text-align: center; }
+    .lbo-table-wrap td.kills { color: var(--accent); font-weight: 700; text-align: center; }
+    .lbo-table-wrap td.games { color: var(--dim); text-align: center; }
+    .lbo-table-wrap td.krate { color: var(--green); font-weight: 700; text-align: center; }
+    .lbo-status { text-align: center; padding: 32px; color: var(--dim); font-size: .85rem; }
+
+    /* ======================================================
+       ECRAN ROTIRE DISPOZITIV
+    ====================================================== */
+    #rotate-overlay {
+        display: none; position: fixed; inset: 0; z-index: 99999;
+        background: var(--bg); flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 16px; text-align: center; padding: 24px;
+        pointer-events: all;
+    }
+    .rotate-phone {
+        font-size: 3.5rem;
+        animation: rotateTip 2s ease-in-out infinite;
+        display: block;
+    }
+    @keyframes rotateTip {
+        0%, 25%  { transform: rotate(0deg); }
+        60%, 85% { transform: rotate(90deg); }
+        100%     { transform: rotate(0deg); }
+    }
+    .rotate-title {
+        font-family: var(--ft); font-size: 1.1rem; font-weight: 900;
+        color: #fff; letter-spacing: 3px;
+    }
+    .rotate-sub { color: var(--dim); font-size: .78rem; font-family: var(--fb); }
+
+    /* ======================================================
+       LANDSCAPE COMPACT — max-height: 520px
+       (telefoane în landscape, ~360-480px înălțime)
+    ====================================================== */
+    /* Compact pentru ecrane cu înălțime mică (portret telefon / landscape mic) */
+    @media (max-height: 680px) {
+        /* Auth */
+        .auth-wrap { gap: 10px; padding: 14px 16px 18px; }
+        .auth-logo-icon { font-size: 2rem; }
+        .auth-logo-title { font-size: clamp(1.3rem, 5vw, 1.7rem); }
+        .auth-tab { padding: 10px 8px; }
+        .auth-form { padding: 12px 18px 16px; gap: 10px; }
+        .auth-btn { padding: 12px 20px; }
+        /* Gameover */
+        #gameover-title { font-size: clamp(1.4rem, 6vw, 2rem) !important; margin-bottom: 2px !important; }
+        #gameover-msg   { margin-bottom: 6px !important; font-size: .88rem; }
+        .gameover-content { gap: 10px; }
+        .gameover-content button { padding: 11px 28px; font-size: .82rem; }
+        .round-stats { padding: 10px 12px; }
+        .stats-kills-num { font-size: 2.2rem; }
+    }
+
+    @media (max-height: 520px) {
+
+        /* Lobby — 2 coloane */
+        .lobby-inner {
+            display: grid;
+            grid-template-columns: 110px 1fr;
+            grid-template-rows: auto auto auto;
+            align-items: start;
+            padding: 6px 10px 10px;
+            gap: 6px;
+        }
+        .char-section {
+            grid-column: 1; grid-row: 1 / 4;
+            flex-direction: column; align-items: center;
+            gap: 6px; padding-top: 4px; width: auto;
+        }
+        .build-card { grid-column: 2; grid-row: 1; padding: 8px 10px; }
+        .room-card  { grid-column: 2; grid-row: 2; padding: 8px 10px; gap: 5px; }
+        .lobby-err  { grid-column: 2; grid-row: 3; }
+        .char-avatar-wrap { width: 80px !important; height: 80px !important; }
+        .char-name  { font-size: .95rem !important; letter-spacing: 2px; }
+        .char-name-hint { display: none; }
+        .char-section-text { gap: 2px !important; }
+        .bc-header  { margin-bottom: 4px; }
+        .stat-row   { margin-bottom: 2px; }
+        .build-type { margin-top: 0; padding: 3px 6px; font-size: .7rem; }
+        .stat-btn   { width: 24px; height: 24px; font-size: .85rem; }
+        .stat-bar   { height: 4px; }
+        .btn-create { padding: 9px; font-size: .75rem; }
+        .join-input { padding: 8px 10px; font-size: .78rem; }
+        .btn-join   { padding: 8px 10px; font-size: .68rem; }
+        .or-divider { font-size: .62rem; }
+        .rc-title   { font-size: .6rem; }
+
+        /* Lobby topbar compact */
+        .lb-topbar  { padding: 6px 10px; }
+        .lb-topbar-title { font-size: .8rem; }
+        .lb-topbar-back  { padding: 4px 8px; font-size: .72rem; }
+
+        /* Waiting room compact */
+        .waiting-topbar { padding: 6px 10px; }
+        .waiting-logo   { display: none; }
+        .waiting-title  { font-size: 1.1rem !important; letter-spacing: 2px; }
+        .waiting-content { padding: 8px 16px 12px; gap: 8px; }
+        .waiting-code-box   { padding: 5px 14px; }
+        .waiting-code-value { font-size: 1.3rem !important; letter-spacing: 5px !important; }
+        .waiting-code-label { font-size: .55rem; }
+        .waiting-stats  { padding: 5px 14px; font-size: .82rem; }
+        .waiting-players-grid { gap: 8px; }
+        .btn-start-game { padding: 10px 28px !important; font-size: .85rem !important; }
+        .waiting-sub    { font-size: .78rem; }
+    }
+    </style>
 </head>
 <body>
 
-    <!-- ========== OVERLAY FULLSCREEN ========== -->
-    <div id="fs-overlay">
-        <div class="fs-content">
-            <div class="fs-icon">⚔️</div>
-            <h2>ARENA ROYALE</h2>
-            <div id="fs-ios-hint">
-                <p>Pentru fullscreen pe iOS:</p>
-                <p>Apasă <strong>Share</strong> → <strong>Adaugă pe ecran principal</strong></p>
-                <button id="fs-btn">CONTINUĂ ORICUM</button>
+<!-- ========== OVERLAY FULLSCREEN ========== -->
+<div id="fs-overlay">
+    <div class="fs-content">
+        <div class="fs-icon">⚔️</div>
+        <h2>ARENA ROYALE</h2>
+        <div id="fs-ios-hint">
+            <p style="font-size:.85rem;margin-bottom:4px">Bara browserului ocupă spațiu din joc.<br>Rulează ca aplicație pentru fullscreen:</p>
+            <div style="text-align:left;line-height:1.9;font-size:.95rem;padding:0 4px">
+                <div>1. Apasă <strong>⬆ Share</strong> <span style="font-size:.78rem;opacity:.7">(butonul din bara de jos)</span></div>
+                <div>2. Derulează în jos în meniu</div>
+                <div>3. Apasă <strong>Adaugă pe ecranul de pornire</strong></div>
+                <div>4. Deschide jocul de pe ecranul principal</div>
             </div>
-            <button id="fs-btn-android">INTRĂ ÎN FULLSCREEN</button>
+            <button id="fs-btn">CONTINUĂ ÎN BROWSER</button>
         </div>
+        <button id="fs-btn-android">INTRĂ ÎN FULLSCREEN</button>
     </div>
+</div>
 
-    <!-- ========== ECRANUL DE SELECTIE CAMERA ========== -->
-    <div id="screen-room">
-        <div class="particles">
-            <span></span><span></span><span></span>
-            <span></span><span></span><span></span>
-        </div>
-        <div class="room-content">
-
-            <div class="room-logo-area">
-                <div class="room-logo-icon">⚔️</div>
-                <h1 class="room-title">ARENA<span>ROYALE</span></h1>
-            </div>
-
-            <!-- Sectiunea CREATE -->
-            <div class="room-section">
-                <p class="room-section-label">JOC NOU</p>
-                <button class="room-btn-create" onclick="selectCreate()">
-                    ＋ &nbsp; CREEAZĂ CAMERĂ
-                </button>
-            </div>
-
-            <div class="room-divider"><span>SAU</span></div>
-
-            <!-- Sectiunea JOIN -->
-            <div class="room-section">
-                <p class="room-section-label">INTRĂ ÎNTR-O CAMERĂ</p>
-                <input
-                    id="room-code-input"
-                    class="room-code-input"
-                    placeholder="Cod cameră (ex: KBNJM)"
-                    maxlength="5"
-                    autocomplete="off"
-                    autocapitalize="characters"
-                    oninput="this.value = this.value.toUpperCase()"
-                >
-                <button class="room-btn-join" onclick="selectJoin()">INTRĂ →</button>
-                <p class="room-error-msg" id="room-error-msg"></p>
-            </div>
-
-        </div>
+<!-- ========== ECRANUL DE AUTENTIFICARE ========== -->
+<div id="screen-auth">
+    <div class="particles">
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
     </div>
+    <div class="auth-wrap">
 
-    <!-- ========== ECRANUL DE LOBBY ========== -->
-    <div id="screen-lobby" style="display:none">
-
-        <button class="lobby-back-btn" onclick="goBackToRoom()">← Înapoi</button>
-
-        <!-- Particule decorative in fundal -->
-        <div class="particles">
-            <span></span><span></span><span></span>
-            <span></span><span></span><span></span>
-            <span></span><span></span><span></span>
+        <div class="auth-logo">
+            <div class="auth-logo-icon">⚔️</div>
+            <h1 class="auth-logo-title">ARENA<span>ROYALE</span></h1>
         </div>
 
-        <!-- Continutul principal al lobby-ului -->
-        <div class="lobby-content">
-
-            <!-- Logo / Titlu -->
-            <div class="logo-container">
-                <div class="logo-glow">⚔️</div>
-                <h1 class="title">ARENA<span>ROYALE</span></h1>
-                <p class="subtitle">Ultimul supraviețuitor câștigă</p>
+        <div class="auth-card">
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">INTRU ÎN JOC</button>
+                <button class="auth-tab"         id="tab-register" onclick="switchTab('register')">CONT NOU</button>
             </div>
 
-            <!-- Card-ul de creare personaj -->
-            <div class="card">
-
-                <div class="card-header">
-                    <div class="card-dot red"></div>
-                    <div class="card-dot yellow"></div>
-                    <div class="card-dot green"></div>
-                    <span>Creează-ți Personajul</span>
-                </div>
-
-                <div class="card-col-left">
-
-                <!-- Sectiunea de upload imagine -->
-                <div class="avatar-section">
-                    <!-- Zona de click pentru upload -->
-                    <label for="input-image" class="avatar-upload">
-                        <!-- Previzualizarea imaginii uploadate -->
-                        <img id="preview" src="" alt="">
-                        <!-- Iconita si textul default -->
-                        <div class="avatar-placeholder" id="placeholder">
-                            <span class="upload-icon">+</span>
-                            <span class="upload-text">Adaugă personajul</span>
-                            <span class="upload-hint">Generat cu AI</span>
-                        </div>
-                    </label>
-                    <!-- Input-ul real de file, ascuns vizual -->
-                    <input type="file" id="input-image" accept="image/*">
-                </div>
-
-                <!-- Input pentru numele jucatorului -->
+            <!-- LOGIN -->
+            <div id="form-login" class="auth-form">
                 <div class="input-group">
-                    <label class="input-label">NUME JUCĂTOR</label>
-                    <input
-                        type="text"
-                        id="input-name"
-                        placeholder="Introdu numele tău..."
-                        maxlength="15"
-                        autocomplete="off"
-                    >
+                    <label class="input-label">NICKNAME</label>
+                    <input type="text" id="login-nickname" placeholder="Nickname-ul tău..."
+                        maxlength="15" autocomplete="username" autocapitalize="none"
+                        oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
                     <div class="input-line"></div>
                 </div>
-
-                </div><!-- /card-col-left -->
-                <div class="card-col-right">
-
-                <!-- Sistemul de puncte pentru build -->
-                <div class="build-section">
-                    <div class="build-header">
-                        <span class="build-title">DISTRIBUIE PUNCTELE</span>
-                        <!-- Contorul de puncte ramase -->
-                        <span class="points-left"><span id="points-display">10</span> / 10</span>
-                    </div>
-
-                    <!-- Stat: HP -->
-                    <div class="stat-row">
-                        <div class="stat-info">
-                            <span class="stat-icon">❤️</span>
-                            <span class="stat-name">HP</span>
-                            <span class="stat-value" id="val-hp">1</span>
-                        </div>
-                        <div class="stat-controls">
-                            <!-- Buton scade -->
-                            <button class="stat-btn minus" onclick="changeStat('hp', -1)">−</button>
-                            <!-- Bara vizuala a stat-ului -->
-                            <div class="stat-bar">
-                                <div class="stat-fill red" id="bar-hp" style="width:10%"></div>
-                            </div>
-                            <!-- Buton creste -->
-                            <button class="stat-btn plus" onclick="changeStat('hp', 1)">+</button>
-                        </div>
-                    </div>
-
-                    <!-- Stat: Damage -->
-                    <div class="stat-row">
-                        <div class="stat-info">
-                            <span class="stat-icon">💥</span>
-                            <span class="stat-name">DMG</span>
-                            <span class="stat-value" id="val-dmg">1</span>
-                        </div>
-                        <div class="stat-controls">
-                            <button class="stat-btn minus" onclick="changeStat('dmg', -1)">−</button>
-                            <div class="stat-bar">
-                                <div class="stat-fill orange" id="bar-dmg" style="width:10%"></div>
-                            </div>
-                            <button class="stat-btn plus" onclick="changeStat('dmg', 1)">+</button>
-                        </div>
-                    </div>
-
-                    <!-- Stat: Viteza -->
-                    <div class="stat-row">
-                        <div class="stat-info">
-                            <span class="stat-icon">⚡</span>
-                            <span class="stat-name">SPD</span>
-                            <span class="stat-value" id="val-spd">1</span>
-                        </div>
-                        <div class="stat-controls">
-                            <button class="stat-btn minus" onclick="changeStat('spd', -1)">−</button>
-                            <div class="stat-bar">
-                                <div class="stat-fill blue" id="bar-spd" style="width:10%"></div>
-                            </div>
-                            <button class="stat-btn plus" onclick="changeStat('spd', 1)">+</button>
-                        </div>
-                    </div>
-
-                    <!-- Descrierea build-ului ales -->
-                    <div class="build-type" id="build-type">⚖️ Build Echilibrat</div>
+                <div class="input-group">
+                    <label class="input-label">PAROLĂ</label>
+                    <input type="password" id="login-password" placeholder="Parola ta..."
+                        maxlength="32" autocomplete="current-password">
+                    <div class="input-line"></div>
                 </div>
-
-                <!-- Butonul principal de intrare in joc -->
-                <button id="btn-join" onclick="joinGame()">
-                    <span class="btn-text">INTRU ÎN ARENĂ</span>
+                <div class="auth-error" id="login-error"></div>
+                <button class="auth-btn" id="login-btn" onclick="doLogin()">
+                    <span class="btn-text">INTRU ÎN JOC</span>
                     <span class="btn-arrow">→</span>
                 </button>
-
-                <!-- Mesaj de eroare daca lipseste ceva -->
-                <div class="error-msg" id="error-msg"></div>
-
-                </div><!-- /card-col-right -->
+                <p class="auth-note">Nu ai cont? Apasă <strong>CONT NOU</strong> sus.</p>
             </div>
 
-            <!-- Contor de jucatori conectati -->
-            <div class="players-online">
-                <div class="online-dot"></div>
-                <span id="online-count">0</span> jucători online
+            <!-- REGISTER -->
+            <div id="form-register" class="auth-form" style="display:none">
+                <div class="input-group">
+                    <label class="input-label">NICKNAME</label>
+                    <input type="text" id="reg-nickname" placeholder="Alege un nickname..."
+                        maxlength="15" autocomplete="username" autocapitalize="none"
+                        oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
+                    <div class="input-line"></div>
+                </div>
+                <div class="input-group">
+                    <label class="input-label">PAROLĂ <span class="auth-hint">(min. 6 car., litere + cifre)</span></label>
+                    <input type="password" id="reg-password" placeholder="Alege o parolă..."
+                        maxlength="32" autocomplete="new-password">
+                    <div class="input-line"></div>
+                </div>
+                <div class="input-group">
+                    <label class="input-label">CONFIRMĂ PAROLA</label>
+                    <input type="password" id="reg-confirm" placeholder="Repetă parola..."
+                        maxlength="32" autocomplete="new-password">
+                    <div class="input-line"></div>
+                </div>
+                <div class="auth-error" id="reg-error"></div>
+                <button class="auth-btn" id="reg-btn" onclick="doRegister()">
+                    <span class="btn-text">CREEAZĂ CONT</span>
+                    <span class="btn-arrow">→</span>
+                </button>
+                <p class="auth-note">Ai deja cont? Apasă <strong>INTRU ÎN JOC</strong> sus.</p>
             </div>
+        </div>
 
+    </div>
+</div>
+
+<!-- ========== LOBBY — Personalizare + Cameră (același ecran) ========== -->
+<div id="screen-lobby" style="display:none">
+    <div class="particles" style="position:fixed;z-index:0">
+        <span></span><span></span><span></span><span></span>
+    </div>
+
+    <!-- Top bar -->
+    <div class="lb-topbar" style="position:relative;z-index:1">
+        <div class="lb-topbar-left">
+            <button class="lb-topbar-back" onclick="logoutToAuth()">← Ieși</button>
+            <span class="lb-topbar-title">ARENA<span>ROYALE</span></span>
+        </div>
+        <div class="lb-topbar-right">
+            <a href="#" class="lb-btn" onclick="openLeaderboard(); return false;">🏆 <span class="lb-btn-text">LEADERBOARD</span></a>
         </div>
     </div>
 
-        <!-- ========== ECRANUL DE ASTEPTARE ========== -->
-    <div id="screen-waiting">
-        <button class="lobby-back-btn" onclick="leaveWaiting()">← Ieși</button>
-        <div class="waiting-content">
-            <div class="waiting-logo">⚔️</div>
-            <h2 class="waiting-title">SALA DE AȘTEPTARE</h2>
+    <!-- Conținut scrollabil -->
+    <div class="lobby-body" style="position:relative;z-index:1">
+    <div class="lobby-inner">
 
-            <div class="waiting-code-box">
-                <span class="waiting-code-label">COD CAMERĂ</span>
-                <span class="waiting-code-value" id="waiting-code-display">—</span>
+        <!-- PERSONAJ -->
+        <div class="char-section">
+            <div class="char-avatar-wrap">
+                <label class="char-avatar-label" for="input-image">
+                    <img id="preview" src="" alt="">
+                    <div class="char-avatar-placeholder" id="placeholder">
+                        <span class="av-icon">+</span>
+                        <span class="av-text">Adaugă<br>personajul<br><em style="font-style:normal;color:var(--accent);font-size:.6rem">Generat cu AI</em></span>
+                    </div>
+                </label>
+                <input type="file" id="input-image" accept="image/*" style="display:none">
             </div>
 
-            <div class="waiting-stats">
-                <div class="online-dot"></div>
-                <span id="waiting-count">0</span> jucători conectați
+            <div class="char-section-text" style="display:flex;flex-direction:column;align-items:center;gap:4px">
+                <div class="char-name" id="char-name-display">JUCĂTOR</div>
+                <div class="char-name-hint">tap pe imagine pentru a schimba avatarul</div>
+            </div>
+        </div>
+
+        <!-- BUILD STATS -->
+        <div class="build-card">
+            <div class="bc-header">
+                <span class="bc-title">DISTRIBUIE PUNCTELE</span>
+                <span class="bc-points"><span id="points-display">10</span> / 10</span>
             </div>
 
-            <div class="waiting-players-grid" id="waiting-players"></div>
+            <div class="stat-row">
+                <span class="stat-icon">❤️</span>
+                <span class="stat-name">HP</span>
+                <div class="stat-controls">
+                    <button class="stat-btn minus" onclick="changeStat('hp',-1)">−</button>
+                    <div class="stat-bar"><div class="stat-fill red" id="bar-hp" style="width:10%"></div></div>
+                    <button class="stat-btn plus"  onclick="changeStat('hp', 1)">+</button>
+                </div>
+                <span class="stat-value" id="val-hp">500 HP</span>
+            </div>
 
-            <button id="btn-start-game" class="btn-start-game" onclick="startGame()" style="display:none">
-                ▶ PORNEȘTE JOCUL
+            <div class="stat-row">
+                <span class="stat-icon">💥</span>
+                <span class="stat-name">DMG</span>
+                <div class="stat-controls">
+                    <button class="stat-btn minus" onclick="changeStat('dmg',-1)">−</button>
+                    <div class="stat-bar"><div class="stat-fill orange" id="bar-dmg" style="width:10%"></div></div>
+                    <button class="stat-btn plus"  onclick="changeStat('dmg', 1)">+</button>
+                </div>
+                <span class="stat-value" id="val-dmg">5 DMG</span>
+            </div>
+
+            <div class="stat-row">
+                <span class="stat-icon">⚡</span>
+                <span class="stat-name">SPD</span>
+                <div class="stat-controls">
+                    <button class="stat-btn minus" onclick="changeStat('spd',-1)">−</button>
+                    <div class="stat-bar"><div class="stat-fill blue" id="bar-spd" style="width:10%"></div></div>
+                    <button class="stat-btn plus"  onclick="changeStat('spd', 1)">+</button>
+                </div>
+                <span class="stat-value" id="val-spd">3.0 SPD</span>
+            </div>
+
+            <div class="build-type" id="build-type">⚖️ Build Echilibrat</div>
+        </div>
+
+        <!-- CAMERĂ -->
+        <div class="room-card">
+            <p class="rc-title">SELECTEAZĂ MODUL DE JOC</p>
+
+            <button class="btn-create" onclick="startCreate()">
+                ＋ &nbsp; CREEAZĂ CAMERĂ NOUĂ
             </button>
-            <p class="waiting-sub" id="waiting-sub-msg">Aşteaptă ca hostul să pornească jocul...</p>
+
+            <div class="or-divider">SAU INTRĂ CU COD</div>
+
+            <div class="join-row">
+                <input type="text" id="room-code-input" class="join-input"
+                    placeholder="Cod cameră (ex: KBNJM)"
+                    maxlength="5" autocomplete="off" autocapitalize="characters"
+                    oninput="this.value=this.value.toUpperCase()">
+                <button class="btn-join" onclick="startJoin()">INTRĂ →</button>
+            </div>
+
+            <p class="room-err" id="room-error-msg"></p>
         </div>
+
+        <p class="lobby-err" id="error-msg"></p>
+
+    </div>
+    </div>
+</div>
+
+<!-- ========== ECRANUL DE ASTEPTARE ========== -->
+<div id="screen-waiting" style="display:none">
+
+    <div class="waiting-topbar">
+        <button class="lb-topbar-back" onclick="leaveWaiting()">← Ieși</button>
+        <a href="#" class="lb-btn" onclick="openLeaderboard(); return false;">🏆</a>
     </div>
 
-    <!-- ========== ECRANUL DE JOACĂ ========== -->
-    <!-- Acest ecran e ascuns la inceput, apare dupa join -->
-    <div id="screen-game">
+    <div class="waiting-scroll">
+    <div class="waiting-content">
+        <div class="waiting-logo">⚔️</div>
+        <h2 class="waiting-title">SALA DE AȘTEPTARE</h2>
 
-        <!-- Canvas-ul pe care se deseneaza intregul joc -->
-        <canvas id="gameCanvas"></canvas>
-
-        <!-- UI suprapus pe joc (nu blocheaza input-ul) -->
-        <div id="game-ui">
-            <div class="ui-players">
-                <span>👥</span>
-                <span id="players-alive">0</span>
-                <span class="ui-sep">|</span>
-                <span>💀</span>
-                <span id="my-kills">0</span>
-            </div>
-            <div id="kill-feed"></div>
+        <div class="waiting-code-box">
+            <span class="waiting-code-label">COD CAMERĂ</span>
+            <span class="waiting-code-value" id="waiting-code-display">—</span>
         </div>
 
-        <!-- Zona joystick stanga (miscare) -->
-        <div id="zone-left"></div>
+        <div class="waiting-stats">
+            <div class="online-dot"></div>
+            <span id="waiting-count">0</span> jucători conectați
+        </div>
 
-        <!-- Zona joystick dreapta (tragere) -->
-        <div id="zone-right"></div>
+        <div class="waiting-players-grid" id="waiting-players"></div>
 
-        <!-- Ecran de Game Over -->
-        <div id="screen-gameover">
-            <div class="gameover-content">
-                <h2 id="gameover-title">💀 ELIMINAT!</h2>
-                <p id="gameover-msg">Ai fost eliminat din arenă</p>
+        <button id="btn-start-game" class="btn-start-game" onclick="startGame()" style="display:none">
+            ▶ PORNEȘTE JOCUL
+        </button>
+        <p class="waiting-sub" id="waiting-sub-msg">Aşteaptă ca hostul să pornească jocul...</p>
+    </div>
+    </div>
+</div>
+
+<!-- ========== ECRANUL DE JOACĂ ========== -->
+<div id="screen-game" style="display:none">
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="game-ui">
+        <div class="ui-players">
+            <span>👥</span>
+            <span id="players-alive">0</span>
+            <span class="ui-sep">|</span>
+            <span>💀</span>
+            <span id="my-kills">0</span>
+        </div>
+        <div id="kill-feed"></div>
+    </div>
+
+    <div id="zone-left"></div>
+    <div id="zone-right"></div>
+
+    <!-- Exit button -->
+    <button id="btn-leave-game" onclick="returnToLobby()" title="Ieși din joc">✕ IEȘI</button>
+
+    <!-- Kill notification -->
+    <div id="kill-notif">
+        <div id="kill-notif-skull">💀</div>
+        <div id="kill-notif-count">1 KILL</div>
+    </div>
+
+    <!-- Countdown -->
+    <div id="countdown-overlay">
+        <div id="countdown-number">3</div>
+    </div>
+
+    <!-- Game Over -->
+    <div id="screen-gameover">
+        <div class="gameover-content">
+            <h2 id="gameover-title">💀 ELIMINAT!</h2>
+            <p id="gameover-msg">Ai fost eliminat din arenă</p>
+
+            <div id="round-stats-section" class="round-stats" style="display:none">
+                <div class="stats-kills-big">
+                    <span class="stats-kills-num" id="stat-round-kills">0</span>
+                    <span class="stats-kills-lbl">💀 KILLS ÎN RUNDĂ</span>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
                 <button id="btn-rematch">🔄 JOACĂ DIN NOU</button>
-                <button class="btn-leave" onclick="location.reload()">IEȘI</button>
+                <button class="btn-leave" onclick="returnToLobby()">IEȘI</button>
             </div>
+            <a href="#" class="lb-btn" style="margin-top:4px" onclick="openLeaderboard(); return false;">🏆 LEADERBOARD</a>
         </div>
-
     </div>
+</div>
 
-    <!-- ========== SCRIPTURI ========== -->
-    <!-- Socket.io - incarcata automat de serverul nostru -->
-    <script src="/socket.io/socket.io.js"></script>
+<!-- ========== OVERLAY ROTIRE ========== -->
+<div id="rotate-overlay">
+    <span class="rotate-phone">📱</span>
+    <div class="rotate-title">ROTEȘTE DISPOZITIVUL</div>
+    <div class="rotate-sub">Jocul funcționează doar în modul landscape</div>
+</div>
 
-    <!-- Nipple.js - libraria pentru joystick-uri virtuale -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+<!-- ========== LEADERBOARD OVERLAY ========== -->
+<div id="lb-overlay" style="display:none">
+    <div class="lbo-backdrop" onclick="closeLeaderboard()"></div>
+    <div class="lbo-card">
+        <div class="lbo-header">
+            <span class="lbo-title">🏆 LEADERBOARD</span>
+            <button class="lbo-close" onclick="closeLeaderboard()">✕ ÎNCHIDE</button>
+        </div>
+        <div class="lbo-table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="center">#</th>
+                        <th>NICKNAME</th>
+                        <th class="center">VICTORII</th>
+                        <th class="center">KILLS</th>
+                        <th class="center">JOCURI</th>
+                        <th class="center">K/JOC</th>
+                    </tr>
+                </thead>
+                <tbody id="lbo-body"></tbody>
+            </table>
+        </div>
+        <div id="lbo-status" class="lbo-status">⏳ Se încarcă...</div>
+    </div>
+</div>
 
-    <!-- Logica jocului nostru -->
-    <script src="game.js"></script>
+<!-- ========== SCRIPTURI ========== -->
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+<script src="game.js"></script>
 
-    <script>
-        (function () {
-            const overlay    = document.getElementById('fs-overlay');
-            const btnAndroid = document.getElementById('fs-btn-android');
-            const btnIOS     = document.getElementById('fs-btn');
-            const iosHint    = document.getElementById('fs-ios-hint');
+<script>
+(function () {
+    const overlay    = document.getElementById('fs-overlay');
+    const btnAndroid = document.getElementById('fs-btn-android');
+    const btnIOS     = document.getElementById('fs-btn');
+    const iosHint    = document.getElementById('fs-ios-hint');
+    const isIOS        = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.navigator.standalone === true;
+    const canFullscreen = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
 
-            const isIOS        = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-            const isStandalone = window.navigator.standalone === true;
-            const canFullscreen = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+    async function goFullscreen() {
+        try {
+            const el = document.documentElement;
+            if (el.requestFullscreen)            await el.requestFullscreen();
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        } catch(e) {}
+        try {
+            if (screen.orientation && screen.orientation.lock)
+                await screen.orientation.lock('landscape');
+        } catch(e) {}
+    }
 
-            async function goFullscreen() {
-                try {
-                    const el = document.documentElement;
-                    if (el.requestFullscreen)       await el.requestFullscreen();
-                    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-                } catch (e) {}
-                try {
-                    if (screen.orientation && screen.orientation.lock)
-                        await screen.orientation.lock('landscape');
-                } catch (e) {}
-            }
+    if (isIOS && !isStandalone) {
+        iosHint.style.display = 'flex'; btnAndroid.style.display = 'none';
+        btnIOS.addEventListener('click', () => { overlay.style.display = 'none'; });
+    } else if (isStandalone || !canFullscreen) {
+        overlay.style.display = 'none';
+    } else {
+        iosHint.style.display = 'none';
+        btnAndroid.addEventListener('click', async () => { await goFullscreen(); overlay.style.display = 'none'; });
+    }
 
-            if (isIOS && !isStandalone) {
-                // iOS Safari nu suporta Fullscreen API - aratam instructiunile
-                iosHint.style.display    = 'flex';
-                btnAndroid.style.display = 'none';
-                btnIOS.addEventListener('click', () => { overlay.style.display = 'none'; });
-            } else if (isStandalone || !canFullscreen) {
-                // Rulam deja ca PWA sau fullscreen nu e suportat - sarim overlay-ul
-                overlay.style.display = 'none';
-            } else {
-                // Android Chrome sau alt browser cu suport Fullscreen API
-                iosHint.style.display = 'none';
-                btnAndroid.addEventListener('click', async () => {
-                    await goFullscreen();
-                    overlay.style.display = 'none';
-                });
-            }
-        })();
-    </script>
+    // Ascunde textul "LEADERBOARD" pe ecrane mici
+    function adjustLbText() {
+        document.querySelectorAll('.lb-btn-text').forEach(el => {
+            el.style.display = window.innerWidth < 400 ? 'none' : '';
+        });
+    }
+    adjustLbText();
+    window.addEventListener('resize', adjustLbText);
+
+    // Blochează modul portret pe touch devices
+    const rotateOverlay = document.getElementById('rotate-overlay');
+    const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    function checkOrientation() {
+        if (!isTouch) { rotateOverlay.style.display = 'none'; return; }
+        rotateOverlay.style.display = window.innerHeight > window.innerWidth ? 'flex' : 'none';
+    }
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 120));
+    checkOrientation();
+})();
+</script>
 
 </body>
 </html>

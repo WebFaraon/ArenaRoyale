@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arena Royale — Leaderboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:      #0a0a0f;
+            --card:    #12121e;
+            --accent:  #e94560;
+            --green:   #00ff88;
+            --gold:    #ffd700;
+            --silver:  #c0c0c0;
+            --bronze:  #cd7f32;
+            --dim:     #8888aa;
+            --border:  rgba(255,255,255,0.08);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: var(--bg);
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            min-height: 100vh;
+        }
+
+        /* ===== HEADER ===== */
+        .lb-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px 16px;
+            border-bottom: 1px solid var(--border);
+            background: var(--card);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .lb-back {
+            color: var(--dim);
+            text-decoration: none;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            transition: color 0.2s;
+        }
+        .lb-back:hover { color: #fff; }
+        .lb-title-wrap { text-align: center; }
+        .lb-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 900;
+            color: var(--gold);
+            letter-spacing: 3px;
+            margin: 0;
+        }
+        .lb-subtitle {
+            color: var(--dim);
+            font-size: 0.75rem;
+            margin-top: 2px;
+        }
+        .lb-live {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--green);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.65rem;
+            font-weight: 700;
+        }
+        .lb-live-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: 0.4; transform: scale(0.7); }
+        }
+
+        /* ===== CONTAINER ===== */
+        .lb-container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 0 16px 40px;
+        }
+
+        /* ===== TABELA ===== */
+        .lb-table-wrap {
+            overflow-x: auto;
+            margin-top: 24px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 480px;
+        }
+        thead th {
+            background: rgba(255,255,255,0.04);
+            color: var(--dim);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.6rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        thead th.center { text-align: center; }
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+        tbody tr:last-child { border-bottom: none; }
+        tbody tr:hover { background: rgba(255,255,255,0.03); }
+
+        /* Top 3 highlight */
+        tbody tr.top-1 { background: rgba(255,215,0,0.06); }
+        tbody tr.top-2 { background: rgba(192,192,192,0.05); }
+        tbody tr.top-3 { background: rgba(205,127,50,0.05); }
+        tbody tr.top-1:hover { background: rgba(255,215,0,0.1); }
+        tbody tr.top-2:hover { background: rgba(192,192,192,0.09); }
+        tbody tr.top-3:hover { background: rgba(205,127,50,0.09); }
+
+        td {
+            padding: 12px 14px;
+            font-size: 0.95rem;
+        }
+        td.rank {
+            font-size: 1.1rem;
+            width: 52px;
+            text-align: center;
+        }
+        td.name {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #fff;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        td.wins {
+            color: var(--gold);
+            font-weight: 700;
+            text-align: center;
+        }
+        td.kills {
+            color: var(--accent);
+            font-weight: 700;
+            text-align: center;
+        }
+        td.games {
+            color: var(--dim);
+            text-align: center;
+        }
+        td.krate {
+            color: var(--green);
+            font-weight: 700;
+            text-align: center;
+        }
+
+        /* ===== LOADING / EMPTY ===== */
+        .lb-status {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--dim);
+            font-size: 0.9rem;
+        }
+        .lb-status-icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+        /* ===== MOBILE ===== */
+        @media (max-width: 480px) {
+            .lb-title { font-size: 1.1rem; letter-spacing: 2px; }
+            td, thead th { padding: 10px 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="lb-header">
+        <a href="/" class="lb-back" onclick="history.back(); return false;">← ÎNAPOI</a>
+        <div class="lb-title-wrap">
+            <h1 class="lb-title">🏆 LEADERBOARD</h1>
+            <p class="lb-subtitle">Top jucători Arena Royale</p>
+        </div>
+        <div class="lb-live">
+            <div class="lb-live-dot"></div>
+            LIVE
+        </div>
+    </div>
+
+    <div class="lb-container">
+        <div class="lb-table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="center">#</th>
+                        <th>NICKNAME</th>
+                        <th class="center">VICTORII</th>
+                        <th class="center">KILLS</th>
+                        <th class="center">JOCURI</th>
+                        <th class="center">K/JOC</th>
+                    </tr>
+                </thead>
+                <tbody id="lb-body"></tbody>
+            </table>
+        </div>
+        <div class="lb-status" id="lb-status">
+            <div class="lb-status-icon">⏳</div>
+            <div>Se încarcă...</div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const tbody   = document.getElementById('lb-body');
+        const status  = document.getElementById('lb-status');
+
+        function renderLeaderboard(data) {
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '';
+                status.innerHTML = '<div class="lb-status-icon">🎮</div><div>Niciun jucător înregistrat încă.<br>Fii primul!</div>';
+                status.style.display = 'block';
+                return;
+            }
+            status.style.display = 'none';
+            const medals = ['🥇','🥈','🥉'];
+            tbody.innerHTML = data.map((p, i) => {
+                const kRate   = p.games_played > 0
+                    ? (p.kills_total / p.games_played).toFixed(1)
+                    : '0.0';
+                const rankStr = i < 3 ? medals[i] : `#${i + 1}`;
+                const rowCls  = i < 3 ? `top-${i + 1}` : '';
+                return `<tr class="${rowCls}">
+                    <td class="rank">${rankStr}</td>
+                    <td class="name">${escHtml(p.nickname)}</td>
+                    <td class="wins">${p.wins_total   || 0}</td>
+                    <td class="kills">${p.kills_total || 0}</td>
+                    <td class="games">${p.games_played || 0}</td>
+                    <td class="krate">${kRate}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function escHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        async function loadLeaderboard() {
+            try {
+                const res  = await fetch('/api/leaderboard');
+                const data = await res.json();
+                renderLeaderboard(data);
+            } catch {
+                status.innerHTML = '<div class="lb-status-icon">⚠️</div><div>Eroare la încărcare. Reîncarcă pagina.</div>';
+                status.style.display = 'block';
+            }
+        }
+
+        // Real-time via Socket.IO
+        const socket = io();
+        socket.on('leaderboard-update', renderLeaderboard);
+
+        loadLeaderboard();
+        // Fallback refresh dacă Socket.IO pică
+        setInterval(loadLeaderboard, 30000);
+    </script>
+</body>
+</html>
