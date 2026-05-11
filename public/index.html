@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ro">
+<html lang="ro" translate="no">
 <head>
     <link rel="manifest" href="/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -7,8 +7,9 @@
     <meta name="apple-mobile-web-app-title" content="Arena Royale">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="google" content="notranslate">
     <title>Arena Royale</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 
     <style>
@@ -16,18 +17,22 @@
        VARIABILE & RESET
     ====================================================== */
     :root {
-        --bg:      #0a0a0f;
-        --card:    #12121e;
-        --card2:   #1a1a2e;
-        --accent:  #e94560;
-        --green:   #00ff88;
-        --orange:  #ff8c00;
-        --blue:    #00d4ff;
+        --bg:      #0c1118;
+        --card:    #131c28;
+        --card2:   #1b2638;
+        --accent:  #e8a020;
+        --green:   #34d39a;
+        --orange:  #f0944d;
+        --blue:    #5bb8f5;
         --gold:    #ffd700;
         --dim:     #8888aa;
         --border:  rgba(255,255,255,0.08);
-        --ft:      'Orbitron', sans-serif;
-        --fb:      'Rajdhani', sans-serif;
+        --ft:      'Lexend', sans-serif;
+        --fb:      'Lexend', sans-serif;
+    }
+
+    button, input, select, textarea {
+        font-family: inherit;
     }
 
     /* ======================================================
@@ -37,7 +42,7 @@
         position: fixed; inset: 0;
         display: flex; flex-direction: column; align-items: center;
         justify-content: flex-start;
-        background: var(--bg); overflow-y: auto;
+        background: #0a120a; overflow-y: auto;
         scrollbar-width: none; -ms-overflow-style: none;
     }
     #screen-auth::-webkit-scrollbar { display: none; }
@@ -56,20 +61,22 @@
     .auth-logo-title span { color: var(--accent); }
 
     .auth-card {
-        background: var(--card); border: 1px solid var(--border);
+        background: rgba(14,26,14,0.97); border: 1.5px solid rgba(232,160,32,0.35);
         border-radius: 16px; width: 100%; overflow: hidden;
+        box-shadow: 0 8px 40px rgba(0,0,0,.6), 0 0 0 1px rgba(80,140,60,.12);
     }
     /* Tabs */
-    .auth-tabs { display: flex; border-bottom: 1px solid var(--border); }
+    .auth-tabs { display: flex; border-bottom: 1px solid rgba(80,140,60,0.25); }
     .auth-tab {
-        flex: 1; background: none; border: none; color: var(--dim);
+        flex: 1; background: none; border: none; color: rgba(180,210,160,.5);
         font-family: var(--ft); font-size: 0.68rem; font-weight: 700;
-        letter-spacing: 1px; padding: 13px 8px; cursor: pointer;
+        letter-spacing: .5px; padding: 13px 8px; cursor: pointer;
+        line-height: 1.15;
         border-bottom: 2px solid transparent; margin-bottom: -1px;
         transition: all 0.2s;
     }
-    .auth-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .auth-tab:hover:not(.active) { color: #fff; }
+    .auth-tab.active { color: #e8a020; border-bottom-color: #e8a020; }
+    .auth-tab:hover:not(.active) { color: #e8f5e0; }
 
     /* Forms */
     .auth-form {
@@ -78,24 +85,25 @@
     }
     .auth-form .input-group { margin-bottom: 0; }
     .auth-hint {
-        font-size: 0.6rem; color: var(--dim);
+        font-size: 0.6rem; color: rgba(180,210,160,.5);
         font-weight: 400; text-transform: none; letter-spacing: normal;
     }
     .auth-error {
-        color: var(--accent); font-size: 0.82rem;
+        color: #f87171; font-size: 0.82rem;
         font-family: var(--fb); text-align: center; min-height: 18px;
     }
     .auth-btn {
         display: flex; align-items: center; justify-content: center; gap: 10px;
-        background: linear-gradient(135deg, #e94560, #c0392b);
+        background: linear-gradient(135deg, #e8a020, #b07010);
         color: #fff; border: none; border-radius: 12px;
         padding: 14px 20px; font-family: var(--ft); font-size: 0.82rem;
         font-weight: 700; cursor: pointer; transition: all 0.2s; margin-top: 2px;
+        line-height: 1.15; white-space: normal; text-align: center;
     }
-    .auth-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233,69,96,.4); }
+    .auth-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(232,160,32,.4); }
     .auth-btn:disabled { opacity: .6; cursor: not-allowed; }
-    .auth-note { text-align: center; color: var(--dim); font-size: 0.72rem; font-family: var(--fb); margin: 0; }
-    .auth-note strong { color: rgba(255,255,255,.55); }
+    .auth-note { text-align: center; color: rgba(180,210,160,.45); font-size: 0.72rem; font-family: var(--fb); margin: 0; }
+    .auth-note strong { color: rgba(232,240,220,.55); }
 
     .auth-bottom { display: flex; flex-direction: column; align-items: center; gap: 10px; }
     .lb-pill {
@@ -110,36 +118,53 @@
        ECRAN LOBBY — redesign complet
     ====================================================== */
     #screen-lobby {
-        position: fixed; inset: 0;
+        position: fixed; inset: 0; top: 0;
         display: flex; flex-direction: column;
-        background: var(--bg); overflow: hidden;
+        justify-content: flex-start; align-items: stretch;
+        overflow: hidden;
+        background: #0a120a;
+    }
+    #lobby-bg-canvas {
+        position: fixed; inset: 0; width: 100%; height: 100%;
+        z-index: 0; pointer-events: none;
+        filter: blur(5px) brightness(0.55);
+        transform: scale(1.04);
     }
 
     /* Top bar */
     .lb-topbar {
         display: flex; align-items: center; justify-content: space-between;
-        padding: 10px 14px; border-bottom: 1px solid var(--border);
-        flex-shrink: 0; gap: 8px;
+        height: 58px; padding: 0 20px; flex-shrink: 0; gap: 10px;
+        width: 100%;
+        background: linear-gradient(180deg, #141f14 0%, #0a120a 100%);
+        border-bottom: 2px solid rgba(232,160,32,0.6);
+        box-shadow:
+            0 6px 28px rgba(0,0,0,0.7),
+            inset 0 1px 0 rgba(255,255,255,0.07),
+            inset 0 -1px 0 rgba(232,160,32,0.18);
     }
     .lb-topbar-left {
-        display: flex; align-items: center; gap: 8px;
+        display: flex; align-items: center; gap: 12px;
     }
     .lb-topbar-back {
-        background: none; border: 1px solid var(--border); color: var(--dim);
-        border-radius: 8px; padding: 6px 10px; font-family: var(--fb);
-        font-size: 0.8rem; cursor: pointer; transition: all .2s; white-space: nowrap;
+        display: flex; align-items: center; gap: 5px;
+        background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+        color: rgba(200,215,200,0.7); border-radius: 8px; padding: 8px 14px;
+        font-family: var(--fb); font-size: 0.8rem; cursor: pointer;
+        transition: all .2s; white-space: nowrap;
     }
-    .lb-topbar-back:hover { color: #fff; border-color: rgba(255,255,255,.2); }
+    .lb-topbar-back:hover { color: #fff; background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,.22); }
     .lb-topbar-title {
-        font-family: var(--ft); font-size: clamp(0.9rem, 3vw, 1.1rem);
+        font-family: var(--ft); font-size: clamp(1rem, 3vw, 1.3rem);
         font-weight: 900; color: #fff; letter-spacing: 2px; white-space: nowrap;
+        text-shadow: 0 0 24px rgba(232,160,32,0.3);
     }
     .lb-topbar-title span { color: var(--accent); }
-    .lb-topbar-right { display: flex; align-items: center; gap: 8px; }
+    .lb-topbar-right { display: flex; align-items: center; gap: 10px; }
 
     /* Scrollable content */
     .lobby-body {
-        flex: 1; overflow-y: auto; overflow-x: hidden;
+        flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
         width: 100%; display: flex; flex-direction: column;
         scrollbar-width: none; -ms-overflow-style: none;
     }
@@ -156,35 +181,269 @@
         display: flex; flex-direction: column; align-items: center;
         gap: 10px; width: 100%;
     }
-    .char-avatar-wrap {
-        position: relative; width: clamp(110px, 28vw, 150px);
-        height: clamp(110px, 28vw, 150px);
+    .char-preview-outer {
+        width: clamp(110px, 28vw, 150px); height: clamp(110px, 28vw, 150px);
+        border-radius: 50%; overflow: hidden; cursor: pointer;
+        background: rgba(0,0,0,.4);
+        box-shadow: 0 0 0 3px #9ca3af, 0 0 18px #9ca3af66;
+        transition: box-shadow .25s, transform .2s;
+        flex-shrink: 0;
     }
-    .char-avatar-label {
-        display: block; width: 100%; height: 100%; border-radius: 50%;
-        border: 2px dashed rgba(255,255,255,.18); cursor: pointer;
-        overflow: hidden; background: var(--card);
-        display: flex; align-items: center; justify-content: center;
-        transition: border-color .2s; position: relative;
+    .char-preview-outer:hover { transform: scale(1.05); }
+    .char-preview-img {
+        width: 100%; height: 100%; object-fit: cover; display: block;
     }
-    .char-avatar-label:hover { border-color: var(--accent); }
-    #preview {
-        position: absolute; inset: 0; width: 100%; height: 100%;
-        object-fit: cover; border-radius: 50%; display: none;
+    .char-change-btn {
+        background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14);
+        color: #fff; font-family: var(--ft); font-size: .7rem; font-weight: 600;
+        letter-spacing: .5px; padding: 7px 14px; border-radius: 20px; cursor: pointer;
+        transition: background .2s, border-color .2s;
     }
-    .char-avatar-placeholder {
-        display: flex; flex-direction: column; align-items: center;
-        gap: 4px; padding: 8px; text-align: center;
-    }
-    .char-avatar-placeholder .av-icon { font-size: 1.8rem; color: var(--accent); }
-    .char-avatar-placeholder .av-text { color: var(--dim); font-size: clamp(.6rem, 2vw, .72rem); font-family: var(--fb); line-height: 1.2; }
-
+    .char-change-btn:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.3); }
     .char-name {
         font-family: var(--ft); font-size: clamp(1.2rem, 5vw, 1.8rem);
-        font-weight: 900; color: var(--green); letter-spacing: 3px;
-        text-align: center;
+        font-weight: 900; color: var(--green); letter-spacing: 1.5px;
+        text-align: center; max-width: 100%; overflow-wrap: anywhere;
     }
-    .char-name-hint { color: var(--dim); font-size: .65rem; font-family: var(--fb); text-align: center; }
+
+    /* ── Friends Modal ── */
+    #friends-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,.88);
+        z-index: 9000; display: flex; align-items: flex-start; justify-content: center;
+        padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    .friends-modal {
+        background: #0d1a0d; border: 1px solid rgba(80,140,60,.3);
+        border-radius: 18px; width: 100%; max-width: 480px;
+        overflow: hidden; margin: auto; box-shadow: 0 24px 80px rgba(0,0,0,.7);
+    }
+    .friends-header {
+        display: flex; align-items: center; padding: 16px 20px;
+        background: linear-gradient(180deg,#141f14,#0a120a);
+        border-bottom: 1px solid rgba(80,140,60,.25);
+    }
+    .friends-title { font-family: var(--ft); font-size: 1rem; font-weight: 800; color: #fff; letter-spacing: 1px; flex: 1; }
+    .friends-close {
+        background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+        color: #fff; font-size: 1rem; width: 34px; height: 34px; border-radius: 50%;
+        cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .friends-close:hover { background: rgba(255,80,80,.25); }
+    .friends-search-wrap {
+        display: flex; gap: 8px; padding: 14px 16px;
+        border-bottom: 1px solid rgba(80,140,60,.15);
+    }
+    .friends-search-input {
+        flex: 1; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+        border-radius: 10px; padding: 8px 12px; color: #fff; font-family: var(--ft);
+        font-size: .8rem; outline: none;
+    }
+    .friends-search-input:focus { border-color: rgba(232,160,32,.5); }
+    .friends-search-btn {
+        background: rgba(232,160,32,.18); border: 1px solid rgba(232,160,32,.4);
+        color: #e8a020; font-family: var(--ft); font-size: .7rem; font-weight: 700;
+        padding: 8px 14px; border-radius: 10px; cursor: pointer; white-space: nowrap;
+    }
+    .friends-search-btn:hover { background: rgba(232,160,32,.3); }
+    .friends-search-results { padding: 0 16px; }
+    .friends-search-result {
+        display: flex; align-items: center; gap: 10px; padding: 10px 0;
+        border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .friends-search-result:last-child { border-bottom: none; }
+    .fsr-nick { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: #fff; flex: 1; }
+    .fsr-lv { font-family: var(--ft); font-size: .65rem; color: rgba(255,255,255,.4); }
+    .fsr-btn {
+        font-family: var(--ft); font-size: .65rem; font-weight: 700;
+        padding: 5px 10px; border-radius: 8px; cursor: pointer; border: none;
+        background: rgba(80,200,120,.18); color: #5ddb8a; border: 1px solid rgba(80,200,120,.35);
+    }
+    .fsr-btn:hover { background: rgba(80,200,120,.3); }
+    .fsr-btn:disabled { opacity: .45; cursor: default; }
+    .friends-section-title {
+        font-family: var(--ft); font-size: .65rem; font-weight: 800; color: rgba(255,255,255,.35);
+        letter-spacing: 1.5px; padding: 12px 16px 6px; display: flex; align-items: center; gap: 6px;
+    }
+    .fpcount {
+        background: rgba(232,160,32,.25); color: #e8a020; border-radius: 10px;
+        font-size: .6rem; padding: 1px 6px; font-weight: 700;
+    }
+    .friends-list { padding: 0 16px 16px; max-height: 300px; overflow-y: auto; }
+    .friends-empty { color: rgba(255,255,255,.3); font-size: .75rem; text-align: center; padding: 20px 0; }
+    .friend-row {
+        display: flex; align-items: center; gap: 10px; padding: 10px 0;
+        border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+    .friend-row:last-child { border-bottom: none; }
+    .friend-online-dot {
+        width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+        background: #6b7280;
+    }
+    .friend-online-dot.online { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+    .friend-info { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+    .friend-nick { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: #fff; }
+    .friend-rank-txt { font-family: var(--ft); font-size: .62rem; font-weight: 600; letter-spacing: .5px; }
+    .friend-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+    .friend-lv-badge {
+        font-family: var(--ft); font-size: .62rem; font-weight: 800;
+        border: 1px solid; border-radius: 6px; padding: 1px 7px; letter-spacing: .5px;
+        background: rgba(0,0,0,.25);
+    }
+    .friend-status { font-family: var(--ft); font-size: .58rem; color: rgba(255,255,255,.3); }
+    .friend-status.online { color: #22c55e; }
+    .pending-row {
+        display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+        border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+    .pending-nick { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: #fff; flex: 1; }
+    .pending-actions { display: flex; gap: 6px; }
+    .pending-accept {
+        background: rgba(34,197,94,.2); color: #22c55e; border: 1px solid rgba(34,197,94,.4);
+        font-family: var(--ft); font-size: .65rem; font-weight: 700;
+        padding: 4px 10px; border-radius: 8px; cursor: pointer;
+    }
+    .pending-accept:hover { background: rgba(34,197,94,.35); }
+    .pending-reject {
+        background: rgba(239,68,68,.12); color: #f87171; border: 1px solid rgba(239,68,68,.3);
+        font-family: var(--ft); font-size: .65rem; font-weight: 700;
+        padding: 4px 10px; border-radius: 8px; cursor: pointer;
+    }
+    .pending-reject:hover { background: rgba(239,68,68,.25); }
+    .search-already-friend { color: rgba(255,255,255,.4); font-size: .7rem; font-style: italic; }
+    .friends-nav-btn { position: relative; }
+    @media (max-width: 1099px) { #friends-nav-btn { display: none !important; } }
+    .friends-nav-badge, .friends-tab-badge {
+        position: absolute; top: -4px; right: -4px; background: #ef4444;
+        color: #fff; font-size: .55rem; font-weight: 800; min-width: 16px; height: 16px;
+        border-radius: 8px; display: flex; align-items: center; justify-content: center;
+        padding: 0 3px;
+    }
+    .friends-tab-badge { position: relative; top: auto; right: auto; display: inline-flex; margin-left: 2px; }
+
+    /* ── Character Shop Modal ── */
+    #char-shop-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,.88);
+        z-index: 9000; align-items: flex-start; justify-content: center;
+        padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    .char-shop-modal {
+        background: #0d1a0d; border: 1px solid rgba(80,140,60,.3);
+        border-radius: 18px; width: 100%; max-width: 720px;
+        overflow: hidden; margin: auto; box-shadow: 0 24px 80px rgba(0,0,0,.7);
+    }
+    .char-shop-header {
+        display: flex; align-items: center; gap: 12px; padding: 16px 20px;
+        background: linear-gradient(180deg,#141f14,#0a120a);
+        border-bottom: 1px solid rgba(80,140,60,.25);
+    }
+    .char-shop-title {
+        font-family: var(--ft); font-size: 1rem; font-weight: 800;
+        color: #fff; letter-spacing: 1px; flex: 1;
+    }
+    .char-shop-currency { display: flex; gap: 10px; }
+    .csc-box {
+        background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+        border-radius: 20px; padding: 4px 12px; font-family: var(--ft);
+        font-size: .78rem; font-weight: 700; color: #fff;
+    }
+    .char-shop-close {
+        background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+        color: #fff; font-size: 1rem; width: 34px; height: 34px;
+        border-radius: 50%; cursor: pointer; display: flex; align-items: center;
+        justify-content: center; transition: background .2s;
+    }
+    .char-shop-close:hover { background: rgba(255,80,80,.25); }
+    .char-shop-filters {
+        display: flex; gap: 6px; padding: 12px 16px; flex-wrap: wrap;
+        border-bottom: 1px solid rgba(80,140,60,.18);
+    }
+    .csf-btn {
+        background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+        color: rgba(255,255,255,.5); font-family: var(--ft); font-size: .65rem;
+        font-weight: 700; letter-spacing: .5px; padding: 5px 12px;
+        border-radius: 20px; cursor: pointer; transition: all .2s;
+    }
+    /* TOATE */
+    .csf-btn[data-filter="all"].active,
+    .csf-btn[data-filter="all"]:hover { background: rgba(232,160,32,.2); border-color: rgba(232,160,32,.6); color: #e8a020; }
+    /* COMMON */
+    .csf-btn[data-filter="common"]         { border-color: rgba(156,163,175,.25); color: rgba(156,163,175,.7); }
+    .csf-btn[data-filter="common"].active,
+    .csf-btn[data-filter="common"]:hover   { background: rgba(156,163,175,.18); border-color: rgba(156,163,175,.7); color: #c0c7d0; }
+    /* RARE */
+    .csf-btn[data-filter="rare"]           { border-color: rgba(59,130,246,.3); color: rgba(59,130,246,.7); }
+    .csf-btn[data-filter="rare"].active,
+    .csf-btn[data-filter="rare"]:hover     { background: rgba(59,130,246,.18); border-color: rgba(59,130,246,.8); color: #6ba8ff; }
+    /* EPIC */
+    .csf-btn[data-filter="epic"]           { border-color: rgba(168,85,247,.3); color: rgba(168,85,247,.7); }
+    .csf-btn[data-filter="epic"].active,
+    .csf-btn[data-filter="epic"]:hover     { background: rgba(168,85,247,.18); border-color: rgba(168,85,247,.8); color: #c084fc; }
+    /* LEGENDARY */
+    .csf-btn[data-filter="legendary"]         { border-color: rgba(245,158,11,.3); color: rgba(245,158,11,.7); }
+    .csf-btn[data-filter="legendary"].active,
+    .csf-btn[data-filter="legendary"]:hover   { background: rgba(245,158,11,.18); border-color: rgba(245,158,11,.8); color: #f59e0b; }
+    .char-shop-grid {
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 10px; padding: 16px; max-height: 60vh; overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    @media (max-width: 560px) { .char-shop-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 360px) { .char-shop-grid { grid-template-columns: repeat(2, 1fr); } }
+    .char-shop-card {
+        background: rgba(255,255,255,.04); border: 1.5px solid rgba(255,255,255,.08);
+        border-radius: 12px; padding: 10px 8px 10px;
+        display: flex; flex-direction: column; align-items: center; gap: 5px;
+        cursor: pointer; transition: transform .15s, border-color .2s, background .2s;
+    }
+    /* Fundal colorat per raritate */
+    .cs-r-common    { background: rgba(156,163,175,.10); border-color: rgba(156,163,175,.2); }
+    .cs-r-rare      { background: rgba(59,130,246,.12);  border-color: rgba(59,130,246,.25); }
+    .cs-r-epic      { background: rgba(168,85,247,.12);  border-color: rgba(168,85,247,.25); }
+    .cs-r-legendary { background: rgba(245,158,11,.13);  border-color: rgba(245,158,11,.28); }
+    .cs-r-common:hover    { background: rgba(156,163,175,.18); }
+    .cs-r-rare:hover      { background: rgba(59,130,246,.20);  }
+    .cs-r-epic:hover      { background: rgba(168,85,247,.20);  }
+    .cs-r-legendary:hover { background: rgba(245,158,11,.22);  }
+    .cs-r-common.cs-card-selected    { background: rgba(156,163,175,.22); }
+    .cs-r-rare.cs-card-selected      { background: rgba(59,130,246,.24);  }
+    .cs-r-epic.cs-card-selected      { background: rgba(168,85,247,.24);  }
+    .cs-r-legendary.cs-card-selected { background: rgba(245,158,11,.25);  }
+    .char-shop-card:hover { transform: translateY(-2px); border-color: var(--rc); }
+    .char-shop-card.cs-card-selected { border-color: var(--rc); background: rgba(255,255,255,.08); box-shadow: 0 0 12px var(--rc)44; }
+    .char-shop-card.cs-card-locked { opacity: .75; }
+    .cs-img-outer {
+        position: relative; width: 68px; height: 68px; flex-shrink: 0;
+    }
+    .cs-img-wrap {
+        width: 68px; height: 68px;
+        border-radius: 50%; overflow: hidden;
+        box-shadow: 0 0 0 2.5px var(--rc, #9ca3af);
+    }
+    .cs-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .cs-lock-overlay {
+        position: absolute; inset: 0; background: rgba(0,0,0,.6);
+        display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+    }
+    .cs-selected-badge {
+        position: absolute; top: -2px; right: -2px; background: #22c55e;
+        color: #fff; font-size: .65rem; font-weight: 800; width: 20px; height: 20px;
+        border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        border: 2px solid #0e1a0e; box-shadow: 0 1px 4px rgba(0,0,0,.5);
+    }
+    .cs-rarity-label { font-family: var(--ft); font-size: .55rem; font-weight: 800; letter-spacing: .5px; }
+    .cs-char-name { font-family: var(--ft); font-size: .6rem; font-weight: 700; color: #fff; text-align: center; letter-spacing: .3px; }
+    .cs-action-btn {
+        font-family: var(--ft); font-size: .58rem; font-weight: 700; letter-spacing: .3px;
+        padding: 4px 8px; border-radius: 8px; border: none; cursor: pointer;
+        transition: opacity .2s, transform .1s; width: 100%; text-align: center;
+    }
+    .cs-action-btn:active { transform: scale(.93); }
+    .cs-select-btn   { background: transparent; color: #e8a020; border: 1.5px solid #e8a020; }
+    .cs-select-btn:hover { background: rgba(232,160,32,.15); }
+    .cs-selected-btn { background: #22c55e; color: #fff; border: 1.5px solid #22c55e; cursor: default; font-weight: 800; }
+    .cs-unlock-btn   { background: rgba(232,160,32,.2); color: #e8a020; border: 1px solid rgba(232,160,32,.4); }
+    .cs-unlock-btn:hover { background: rgba(232,160,32,.32); }
+    .cs-locked-btn   { background: rgba(255,255,255,.05); color: rgba(255,255,255,.3); border: 1px solid rgba(255,255,255,.1); cursor: not-allowed; }
 
     /* ── Build card ── */
     .build-card {
@@ -199,23 +458,23 @@
     .bc-points { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: var(--green); }
 
     .stat-row {
-        display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+        display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
     }
-    .stat-icon { font-size: 1rem; flex-shrink: 0; }
-    .stat-name { font-family: var(--ft); font-size: .62rem; font-weight: 700; color: var(--dim); width: 30px; flex-shrink: 0; }
-    .stat-value { font-family: var(--fb); font-size: .78rem; font-weight: 600; color: #fff; width: 60px; text-align: right; flex-shrink: 0; }
-    .stat-controls { display: flex; align-items: center; gap: 6px; flex: 1; }
+    .stat-icon { font-size: 1.2rem; flex-shrink: 0; }
+    .stat-name { font-family: var(--ft); font-size: .8rem; font-weight: 700; color: var(--dim); width: 38px; flex-shrink: 0; }
+    .stat-value { font-family: var(--fb); font-size: .95rem; font-weight: 700; color: #fff; width: 76px; text-align: right; flex-shrink: 0; }
+    .stat-controls { display: flex; align-items: center; gap: 8px; flex: 1; }
     .stat-btn {
-        width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border);
-        background: rgba(255,255,255,.04); color: #fff; font-size: 1rem;
+        width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(255,255,255,.06); color: #fff; font-size: 1.2rem;
         cursor: pointer; display: flex; align-items: center; justify-content: center;
         flex-shrink: 0; transition: all .15s; touch-action: manipulation;
     }
-    .stat-btn:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.2); }
-    .stat-btn:active { transform: scale(.9); }
-    .stat-bar { flex: 1; height: 5px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
-    .stat-fill { height: 100%; border-radius: 3px; transition: width .2s; }
-    .stat-fill.red    { background: linear-gradient(90deg, #e94560, #ff6b6b); }
+    .stat-btn:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.28); }
+    .stat-btn:active { transform: scale(.88); }
+    .stat-bar { flex: 1; height: 8px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; }
+    .stat-fill { height: 100%; border-radius: 4px; transition: width .2s; }
+    .stat-fill.red    { background: linear-gradient(90deg, #e8a020, #f0c050); }
     .stat-fill.orange { background: linear-gradient(90deg, #ff6b00, #ffa500); }
     .stat-fill.blue   { background: linear-gradient(90deg, #00aaff, #00d4ff); }
 
@@ -234,13 +493,14 @@
     .rc-title { font-family: var(--ft); font-size: .68rem; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-align: center; }
 
     .btn-create {
-        width: 100%; background: linear-gradient(135deg, #e94560, #c0392b);
+        width: 100%; background: linear-gradient(135deg, #e8a020, #b07010);
         color: #fff; border: none; border-radius: 12px; padding: 15px;
         font-family: var(--ft); font-size: clamp(.75rem, 3vw, .9rem); font-weight: 700;
-        cursor: pointer; transition: all .2s; letter-spacing: 1px;
+        cursor: pointer; transition: all .2s; letter-spacing: .5px;
+        line-height: 1.15; white-space: normal; text-align: center;
         touch-action: manipulation;
     }
-    .btn-create:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233,69,96,.4); }
+    .btn-create:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(232,160,32,.4); }
 
     .or-divider {
         display: flex; align-items: center; gap: 10px;
@@ -255,7 +515,7 @@
         flex: 1; background: rgba(255,255,255,.04); border: 1px solid var(--border);
         border-radius: 10px; padding: 12px 12px; color: #fff;
         font-family: var(--ft); font-size: .88rem; font-weight: 700;
-        letter-spacing: 4px; text-transform: uppercase; min-width: 0;
+        letter-spacing: 3px; text-transform: uppercase; min-width: 0;
         touch-action: manipulation;
     }
     .join-input:focus { outline: none; border-color: var(--accent); }
@@ -265,6 +525,7 @@
         color: #fff; border-radius: 10px; padding: 12px 14px;
         font-family: var(--ft); font-size: .75rem; font-weight: 700;
         cursor: pointer; transition: all .2s; white-space: nowrap;
+        line-height: 1.15;
         touch-action: manipulation;
     }
     .btn-join:hover { background: rgba(255,255,255,.12); }
@@ -283,8 +544,8 @@
     .waiting-topbar {
         position: relative; z-index: 1; flex-shrink: 0;
         display: flex; align-items: center; justify-content: space-between;
-        padding: 10px 14px; border-bottom: 1px solid var(--border);
-        background: var(--card);
+        padding: 10px 14px; border-bottom: 2px solid rgba(232,160,32,0.5);
+        background: linear-gradient(180deg, #141f14 0%, #0a120a 100%);
     }
     .waiting-scroll {
         flex: 1; overflow-y: auto; display: flex; flex-direction: column;
@@ -318,6 +579,38 @@
         border-color: rgba(255,80,80,0.35);
     }
 
+    #leave-confirm {
+        position: absolute; inset: 0; z-index: 80;
+        display: none; align-items: center; justify-content: center;
+        background: rgba(0,0,0,.62); backdrop-filter: blur(5px);
+        padding: 18px;
+    }
+    .leave-confirm-card {
+        width: min(340px, 92vw);
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: 14px; padding: 18px;
+        box-shadow: 0 18px 70px rgba(0,0,0,.45);
+        text-align: center;
+    }
+    .leave-confirm-title {
+        font-family: var(--ft); font-size: .95rem; font-weight: 900;
+        color: #fff; letter-spacing: 1px; margin-bottom: 8px;
+    }
+    .leave-confirm-text {
+        font-size: .82rem; color: var(--dim); line-height: 1.45;
+        margin-bottom: 16px;
+    }
+    .leave-confirm-actions {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    .leave-confirm-actions button {
+        border: none; border-radius: 10px; padding: 12px 10px;
+        font-family: var(--ft); font-size: .72rem; font-weight: 800;
+        cursor: pointer; line-height: 1.15;
+    }
+    .leave-confirm-cancel { background: rgba(255,255,255,.08); color: #fff; }
+    .leave-confirm-exit { background: #e94560; color: #fff; }
+
     /* ======================================================
        KILL NOTIFICATION
     ====================================================== */
@@ -337,14 +630,14 @@
     #kill-notif-skull {
         font-size: 40px;
         line-height: 1;
-        filter: drop-shadow(0 0 12px #e94560) drop-shadow(0 0 4px #000);
+        filter: drop-shadow(0 0 12px #e8a020) drop-shadow(0 0 4px #000);
     }
     #kill-notif-count {
         font-family: var(--ft);
         font-size: 15px;
         font-weight: 900;
-        color: #e94560;
-        text-shadow: 0 0 10px #e94560, 0 0 3px #000;
+        color: #e8a020;
+        text-shadow: 0 0 10px #e8a020, 0 0 3px #000;
         letter-spacing: 4px;
         margin-top: 2px;
     }
@@ -370,7 +663,7 @@
         font-family: var(--ft); font-weight: 900;
         font-size: clamp(80px, 20vw, 160px);
         color: #fff;
-        text-shadow: 0 0 60px rgba(233,69,96,0.9), 0 0 20px rgba(233,69,96,0.5);
+        text-shadow: 0 0 60px rgba(232,160,32,0.9), 0 0 20px rgba(232,160,32,0.5);
         animation: countPop 0.3s cubic-bezier(0.22,1,0.36,1);
     }
     @keyframes countPop {
@@ -417,23 +710,24 @@
        LEADERBOARD PILL — reutilizabil
     ====================================================== */
     .lb-btn {
-        color: var(--gold); text-decoration: none; font-family: var(--ft);
+        color: var(--accent); text-decoration: none; font-family: var(--ft);
         font-size: .65rem; font-weight: 700; letter-spacing: 1px;
-        padding: 7px 12px; border: 1px solid rgba(255,215,0,.3); border-radius: 20px;
+        padding: 8px 16px; border: 1px solid rgba(232,160,32,0.38); border-radius: 20px;
+        background: rgba(232,160,32,0.08);
         transition: all .2s; white-space: nowrap; display: inline-flex;
-        align-items: center; gap: 4px;
+        align-items: center; gap: 5px;
     }
-    .lb-btn:hover { background: rgba(255,215,0,.08); border-color: rgba(255,215,0,.5); }
+    .lb-btn:hover { background: rgba(232,160,32,0.18); border-color: rgba(232,160,32,0.6); }
 
     /* ======================================================
-       RESPONSIVE — ajustări tablet & phone
+       RESPONSIVE — ajustari tablet & phone
     ====================================================== */
     @media (max-width: 380px) {
         .auth-wrap { padding: 16px 12px 32px; gap: 14px; }
         .auth-form { padding: 18px 14px; gap: 14px; }
         .lobby-inner { padding: 12px 10px 32px; gap: 12px; }
         .build-card, .room-card { padding: 12px; }
-        .stat-btn { width: 26px; height: 26px; }
+        .stat-btn { width: 32px; height: 32px; }
     }
     @media (min-width: 600px) {
         .char-section { flex-direction: row; align-items: center; gap: 20px; }
@@ -461,52 +755,53 @@
     }
     .lbo-card {
         position: relative; z-index: 1;
-        background: var(--card); border: 1px solid var(--border);
+        background: #0e1a0e; border: 1.5px solid rgba(232,160,32,0.45);
         border-radius: 16px; width: 100%; max-width: 640px;
         max-height: 85vh; display: flex; flex-direction: column;
-        overflow: hidden;
+        overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,.7), 0 0 0 1px rgba(80,140,60,.15);
     }
     .lbo-header {
         display: flex; align-items: center; justify-content: space-between;
-        padding: 14px 18px; border-bottom: 1px solid var(--border);
-        flex-shrink: 0; background: rgba(255,255,255,.02);
+        padding: 14px 18px; border-bottom: 1.5px solid rgba(232,160,32,0.35);
+        flex-shrink: 0; background: linear-gradient(180deg, #141f14 0%, #0a120a 100%);
     }
     .lbo-title {
         font-family: var(--ft); font-size: 1rem; font-weight: 900;
-        color: var(--gold); letter-spacing: 2px;
+        color: #e8a020; letter-spacing: 1px;
+        text-shadow: 0 0 18px rgba(232,160,32,0.4);
     }
     .lbo-close {
-        background: none; border: 1px solid var(--border); color: var(--dim);
+        background: none; border: 1px solid rgba(255,255,255,.15); color: rgba(200,215,200,.7);
         border-radius: 8px; padding: 5px 10px; font-size: .85rem;
         cursor: pointer; transition: all .2s; font-family: var(--fb);
-        line-height: 1;
+        line-height: 1.15; white-space: normal; text-align: center;
     }
-    .lbo-close:hover { color: #fff; border-color: rgba(255,255,255,.3); }
+    .lbo-close:hover { color: #fff; border-color: rgba(232,160,32,.5); background: rgba(232,160,32,.1); }
     .lbo-table-wrap { overflow-y: auto; flex: 1; }
     .lbo-table-wrap table { width: 100%; border-collapse: collapse; min-width: 380px; }
     .lbo-table-wrap thead th {
-        background: rgba(255,255,255,.04); color: var(--dim);
+        background: rgba(14,26,14,0.97); color: rgba(180,210,160,.6);
         font-family: var(--ft); font-size: .58rem; font-weight: 700;
         letter-spacing: 1.5px; text-transform: uppercase;
         padding: 10px 12px; text-align: left;
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid rgba(80,140,60,.25);
         position: sticky; top: 0; z-index: 1;
     }
     .lbo-table-wrap thead th.center { text-align: center; }
-    .lbo-table-wrap tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
+    .lbo-table-wrap tbody tr { border-bottom: 1px solid rgba(80,140,60,.18); transition: background .15s; }
     .lbo-table-wrap tbody tr:last-child { border-bottom: none; }
-    .lbo-table-wrap tbody tr:hover { background: rgba(255,255,255,.03); }
-    .lbo-table-wrap tbody tr.top-1 { background: rgba(255,215,0,.06); }
+    .lbo-table-wrap tbody tr:hover { background: rgba(80,140,60,.07); }
+    .lbo-table-wrap tbody tr.top-1 { background: rgba(232,160,32,.08); }
     .lbo-table-wrap tbody tr.top-2 { background: rgba(192,192,192,.05); }
     .lbo-table-wrap tbody tr.top-3 { background: rgba(205,127,50,.05); }
     .lbo-table-wrap td { padding: 10px 12px; font-size: .9rem; }
     .lbo-table-wrap td.rank { font-size: 1rem; width: 44px; text-align: center; }
-    .lbo-table-wrap td.name { font-family: var(--ft); font-size: .72rem; font-weight: 700; color: #fff; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lbo-table-wrap td.wins  { color: var(--gold);  font-weight: 700; text-align: center; }
-    .lbo-table-wrap td.kills { color: var(--accent); font-weight: 700; text-align: center; }
-    .lbo-table-wrap td.games { color: var(--dim); text-align: center; }
-    .lbo-table-wrap td.krate { color: var(--green); font-weight: 700; text-align: center; }
-    .lbo-status { text-align: center; padding: 32px; color: var(--dim); font-size: .85rem; }
+    .lbo-table-wrap td.name { font-family: var(--ft); font-size: .72rem; font-weight: 700; color: #e8f5e0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lbo-table-wrap td.wins  { color: #e8a020; font-weight: 700; text-align: center; }
+    .lbo-table-wrap td.kills { color: #f87171; font-weight: 700; text-align: center; }
+    .lbo-table-wrap td.games { color: rgba(180,210,160,.55); text-align: center; }
+    .lbo-table-wrap td.krate { color: #4ade80; font-weight: 700; text-align: center; }
+    .lbo-status { text-align: center; padding: 32px; color: rgba(180,210,160,.5); font-size: .85rem; }
 
     /* ======================================================
        ECRAN ROTIRE DISPOZITIV
@@ -530,15 +825,15 @@
     }
     .rotate-title {
         font-family: var(--ft); font-size: 1.1rem; font-weight: 900;
-        color: #fff; letter-spacing: 3px;
+        color: #fff; letter-spacing: 1px;
     }
     .rotate-sub { color: var(--dim); font-size: .78rem; font-family: var(--fb); }
 
     /* ======================================================
        LANDSCAPE COMPACT — max-height: 520px
-       (telefoane în landscape, ~360-480px înălțime)
+       (telefoane in landscape, ~360-480px inaltime)
     ====================================================== */
-    /* Compact pentru ecrane cu înălțime mică (portret telefon / landscape mic) */
+    /* Compact pentru ecrane cu inaltime mica (portret telefon / landscape mic) */
     @media (max-height: 680px) {
         /* Auth */
         .auth-wrap { gap: 10px; padding: 14px 16px 18px; }
@@ -548,7 +843,7 @@
         .auth-form { padding: 12px 18px 16px; gap: 10px; }
         .auth-btn { padding: 12px 20px; }
         /* Gameover */
-        #gameover-title { font-size: clamp(1.4rem, 6vw, 2rem) !important; margin-bottom: 2px !important; }
+        #gameover-title { font-size: clamp(0.9rem, 4vw, 1.8rem) !important; margin-bottom: 2px !important; }
         #gameover-msg   { margin-bottom: 6px !important; font-size: .88rem; }
         .gameover-content { gap: 10px; }
         .gameover-content button { padding: 11px 28px; font-size: .82rem; }
@@ -575,15 +870,14 @@
         .build-card { grid-column: 2; grid-row: 1; padding: 8px 10px; }
         .room-card  { grid-column: 2; grid-row: 2; padding: 8px 10px; gap: 5px; }
         .lobby-err  { grid-column: 2; grid-row: 3; }
-        .char-avatar-wrap { width: 80px !important; height: 80px !important; }
-        .char-name  { font-size: .95rem !important; letter-spacing: 2px; }
-        .char-name-hint { display: none; }
+        .char-preview-outer { width: 80px !important; height: 80px !important; }
+        .char-name  { font-size: .95rem !important; letter-spacing: 1px; }
+        .char-change-btn { font-size: .6rem; padding: 5px 10px; }
         .char-section-text { gap: 2px !important; }
         .bc-header  { margin-bottom: 4px; }
-        .stat-row   { margin-bottom: 2px; }
-        .build-type { margin-top: 0; padding: 3px 6px; font-size: .7rem; }
-        .stat-btn   { width: 24px; height: 24px; font-size: .85rem; }
-        .stat-bar   { height: 4px; }
+        .stat-row   { margin-bottom: 4px; }
+        .stat-btn   { width: 28px; height: 28px; font-size: .95rem; }
+        .stat-bar   { height: 5px; }
         .btn-create { padding: 9px; font-size: .75rem; }
         .join-input { padding: 8px 10px; font-size: .78rem; }
         .btn-join   { padding: 8px 10px; font-size: .68rem; }
@@ -591,14 +885,14 @@
         .rc-title   { font-size: .6rem; }
 
         /* Lobby topbar compact */
-        .lb-topbar  { padding: 6px 10px; }
-        .lb-topbar-title { font-size: .8rem; }
-        .lb-topbar-back  { padding: 4px 8px; font-size: .72rem; }
+        .lb-topbar  { height: 46px; padding: 0 10px; }
+        .lb-topbar-title { font-size: .8rem; letter-spacing: 1px; }
+        .lb-topbar-back  { padding: 5px 10px; font-size: .72rem; }
 
         /* Waiting room compact */
         .waiting-topbar { padding: 6px 10px; }
         .waiting-logo   { display: none; }
-        .waiting-title  { font-size: 1.1rem !important; letter-spacing: 2px; }
+        .waiting-title  { font-size: 1.1rem !important; letter-spacing: 1px; }
         .waiting-content { padding: 8px 16px 12px; gap: 8px; }
         .waiting-code-box   { padding: 5px 14px; }
         .waiting-code-value { font-size: 1.3rem !important; letter-spacing: 5px !important; }
@@ -608,6 +902,217 @@
         .btn-start-game { padding: 10px 28px !important; font-size: .85rem !important; }
         .waiting-sub    { font-size: .78rem; }
     }
+
+    /* ======================================================
+       LOBBY — 3-column desktop enhancement (≥1100px)
+    ====================================================== */
+
+    /* Ambient orbs */
+    .lobby-orb {
+        position: fixed; border-radius: 50%;
+        filter: blur(100px); opacity: 0.05;
+        pointer-events: none; z-index: 0;
+    }
+    .lobby-orb.o1 { width: 420px; height: 420px; background: var(--accent); top: -120px; left: -80px; animation: orb-drift 18s ease-in-out infinite; }
+    .lobby-orb.o2 { width: 360px; height: 360px; background: var(--blue);   bottom: -100px; right: -60px; animation: orb-drift 22s ease-in-out infinite; animation-delay: -8s; }
+    .lobby-orb.o3 { width: 300px; height: 300px; background: var(--green);  top: 45%; left: 42%; animation: orb-drift 20s ease-in-out infinite; animation-delay: -5s; }
+    @keyframes orb-drift {
+        0%, 100% { transform: translate(0,0) scale(1); }
+        33%       { transform: translate(28px,-18px) scale(1.06); }
+        66%       { transform: translate(-18px,14px) scale(0.94); }
+    }
+
+    /* Panel containers — hidden on mobile, shown on desktop */
+    .lobby-panel-left, .lobby-panel-right {
+        display: none;
+        width: clamp(290px, 23vw, 460px); flex-shrink: 0;
+        overflow-y: auto; overflow-x: hidden;
+        scrollbar-width: none; -ms-overflow-style: none;
+        padding: 20px 16px 40px;
+        flex-direction: column; gap: 14px;
+    }
+    .lobby-panel-left::-webkit-scrollbar,
+    .lobby-panel-right::-webkit-scrollbar { display: none; }
+    .lobby-panel-left  { border-right: 1px solid rgba(80,140,60,0.2); background: rgba(8,14,8,0.88); }
+    .lobby-panel-right { border-left:  1px solid rgba(80,140,60,0.2); background: rgba(8,14,8,0.88); }
+
+    /* Center col — wraps existing lobby-inner */
+    .lobby-center {
+        flex: 1; overflow-y: auto; overflow-x: hidden;
+        scrollbar-width: none; -ms-overflow-style: none;
+        display: flex; flex-direction: column; align-items: center;
+        background: rgba(8,14,8,0.62);
+    }
+    .lobby-center::-webkit-scrollbar { display: none; }
+
+    /* Activate 3-column at 1100px */
+    @media (min-width: 1100px) {
+        .lobby-body { flex-direction: row !important; }
+        .lobby-panel-left, .lobby-panel-right { display: flex; }
+        .lobby-inner { max-width: clamp(500px, 40vw, 780px); }
+    }
+
+    /* ── Panel card ── */
+    .lp-card {
+        background: rgba(14,26,14,0.97); border: 1px solid rgba(80,140,60,0.2);
+        border-radius: 16px; padding: 20px;
+        display: flex; flex-direction: column; gap: 14px;
+    }
+    .lp-card-title {
+        font-family: var(--ft); font-size: .72rem; font-weight: 700;
+        color: var(--dim); letter-spacing: 2px; text-transform: uppercase;
+        padding-bottom: 10px; border-bottom: 1px solid rgba(80,140,60,0.2);
+    }
+    /* Build/room cards in lobby center also get the green theme */
+    #screen-lobby .build-card, #screen-lobby .room-card {
+        background: rgba(14,26,14,0.97);
+        border-color: rgba(80,140,60,0.2);
+    }
+
+    /* ── Profile section ── */
+    .lp-profile { display: flex; flex-direction: column; align-items: center; gap: 9px; }
+    .lp-avatar-ring { position: relative; width: 90px; height: 90px; }
+    .lp-avatar-ring img, .lp-av-placeholder {
+        width: 90px; height: 90px; border-radius: 50%; object-fit: cover;
+        border: 2px solid var(--accent); box-shadow: 0 0 18px rgba(232,160,32,.4);
+    }
+    .lp-av-placeholder {
+        background: var(--card2);
+        display: flex; align-items: center; justify-content: center; font-size: 2.2rem;
+    }
+    .lp-level-badge {
+        position: absolute; bottom: -7px; right: -7px;
+        background: linear-gradient(135deg, var(--gold), var(--orange));
+        color: #000; font-family: var(--ft); font-size: .88rem; font-weight: 900;
+        padding: 4px 11px; border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(255,215,0,.55); white-space: nowrap;
+        letter-spacing: .5px;
+    }
+    .lp-nick {
+        font-family: var(--ft); font-size: 1.15rem; font-weight: 900;
+        color: #fff; text-align: center; letter-spacing: .5px;
+        max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .lp-rank { font-family: var(--ft); font-size: .92rem; font-weight: 700; color: var(--dim); letter-spacing: 1px; }
+
+    /* ── XP bar ── */
+    .lp-xp-wrap { width: 100%; }
+    .lp-xp-label { display: flex; justify-content: space-between; font-family: var(--fb); font-size: .7rem; color: var(--dim); margin-bottom: 5px; }
+    .lp-xp-bar { width: 100%; height: 8px; background: rgba(255,255,255,.07); border-radius: 4px; overflow: hidden; }
+    .lp-xp-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--orange)); border-radius: 4px; transition: width .6s ease; }
+
+    /* ── Coins row ── */
+    .lp-coins-row { display: flex; gap: 8px; }
+    .lp-coin-box {
+        flex: 1; background: rgba(255,255,255,.03); border: 1px solid var(--border);
+        border-radius: 10px; padding: 10px; display: flex; align-items: center; gap: 7px;
+    }
+    .lp-coin-icon { font-size: 1rem; }
+    .lp-coin-val { font-family: var(--ft); font-size: .92rem; font-weight: 700; color: #fff; }
+
+    /* ── Stats grid ── */
+    .lp-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .lp-stat-box {
+        background: rgba(255,255,255,.03); border: 1px solid var(--border);
+        border-radius: 10px; padding: 12px 8px; text-align: center; transition: border-color .2s;
+    }
+    .lp-stat-box:hover { border-color: rgba(255,255,255,.15); }
+    .lp-stat-val { font-family: var(--ft); font-size: 1.3rem; font-weight: 900; color: #fff; line-height: 1; }
+    .lp-stat-lbl { font-family: var(--fb); font-size: .65rem; color: var(--dim); margin-top: 5px; letter-spacing: .5px; }
+
+    /* ── Daily missions ── */
+    .lp-mission { display: flex; flex-direction: column; gap: 6px; padding: 3px 0; }
+    .lp-mission + .lp-mission { border-top: 1px solid var(--border); padding-top: 11px; margin-top: 3px; }
+    .lp-mission-name { display: flex; justify-content: space-between; align-items: center; font-family: var(--fb); font-size: .84rem; color: #fff; gap: 4px; }
+    .lp-mission-reward { font-family: var(--ft); font-size: .7rem; color: var(--gold); flex-shrink: 0; }
+    .lp-mission-bar { width: 100%; height: 6px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
+    .lp-mission-fill { height: 100%; background: linear-gradient(90deg, var(--green), var(--blue)); border-radius: 3px; transition: width .5s ease; }
+    .lp-mission-done .lp-mission-fill { background: linear-gradient(90deg, var(--gold), var(--orange)); }
+    .lp-mission-prog { font-family: var(--fb); font-size: .68rem; color: var(--dim); text-align: right; }
+    .mission-claim-btn { margin-top: 7px; width: 100%; padding: 7px 10px; border: none; border-radius: 8px; background: linear-gradient(90deg, #27ae60, #2ecc71); color: #fff; font-family: var(--fb); font-size: .8rem; cursor: pointer; letter-spacing: .5px; box-shadow: 0 0 14px rgba(46,204,113,.45); transition: opacity .2s, transform .1s; }
+    .mission-claim-btn:hover:not(:disabled) { opacity: .85; transform: translateY(-1px); }
+    .mission-claim-btn:disabled { opacity: .5; cursor: default; }
+    .lp-mission-claimed .lp-mission-fill { background: linear-gradient(90deg, #27ae60, #2ecc71) !important; }
+    .mission-claimed-txt { margin-top: 6px; font-family: var(--fb); font-size: .75rem; color: #2ecc71; text-align: center; opacity: .7; }
+
+    /* ── Mini leaderboard ── */
+    .lp-lb-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .lp-lb-row:last-child { border-bottom: none; }
+    .lp-lb-rank { font-family: var(--ft); font-size: .88rem; font-weight: 900; width: 24px; text-align: center; flex-shrink: 0; }
+    .lp-lb-rank.r1 { color: var(--gold); }
+    .lp-lb-rank.r2 { color: #c0c0c0; }
+    .lp-lb-rank.r3 { color: #cd7f32; }
+    .lp-lb-nick { flex: 1; font-family: var(--fb); font-size: .84rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lp-lb-val { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: var(--green); flex-shrink: 0; }
+
+    /* ── Live event card ── */
+    .lp-event {
+        background: linear-gradient(135deg, rgba(232,160,32,.10), rgba(91,184,245,.07));
+        border: 1px solid rgba(232,160,32,.25);
+        border-radius: 13px; padding: 16px; position: relative; overflow: hidden;
+    }
+    .lp-event-glow {
+        position: absolute; inset: 0;
+        background: radial-gradient(ellipse at 20% 20%, rgba(232,160,32,.08), transparent 60%);
+        animation: ev-glow 4s ease-in-out infinite alternate; pointer-events: none;
+    }
+    @keyframes ev-glow { from { opacity: .5; } to { opacity: 1; } }
+    .lp-event-label { font-family: var(--ft); font-size: .68rem; font-weight: 700; color: var(--accent); letter-spacing: 2px; margin-bottom: 6px; }
+    .lp-event-name  { font-family: var(--ft); font-size: 1.05rem; font-weight: 900; color: #fff; margin-bottom: 10px; }
+    .lp-event-timer-label { font-family: var(--fb); font-size: .68rem; color: var(--dim); margin-bottom: 3px; }
+    .lp-event-timer {
+        font-family: var(--ft); font-size: 1.4rem; font-weight: 900;
+        color: var(--gold); letter-spacing: 2px; text-shadow: 0 0 12px rgba(255,215,0,.4);
+    }
+
+    /* ── Inline tab selector (inside topbar, mobile only) ── */
+    .lobby-tabs-inline {
+        display: flex; gap: 2px;
+        background: rgba(255,255,255,.06);
+        border: 1px solid var(--border);
+        border-radius: 20px; padding: 3px;
+        flex-shrink: 0;
+    }
+    .lti-btn {
+        background: none; border: none; color: var(--dim);
+        font-family: var(--ft); font-size: .68rem; font-weight: 700;
+        letter-spacing: .4px; cursor: pointer;
+        padding: 6px 12px; border-radius: 16px;
+        transition: all .18s; white-space: nowrap; touch-action: manipulation;
+    }
+    .lti-btn.active {
+        background: var(--accent); color: #fff;
+        box-shadow: 0 2px 10px rgba(232,160,32,.45);
+    }
+    @media (min-width: 1100px) { .lobby-tabs-inline { display: none; } }
+
+    /* Side panels when shown as mobile tab */
+    @media (max-width: 1099px) {
+        /* Topbar e mereu vizibil; lobby-body scrolleaza independent */
+        #screen-lobby { overflow: hidden !important; }
+        .lobby-body {
+            overflow-y: auto !important; overflow-x: hidden !important;
+            -webkit-overflow-scrolling: touch;
+            max-height: calc(100dvh - 58px);
+            min-height: unset !important;
+        }
+        .lobby-panel-left.tab-active,
+        .lobby-panel-right.tab-active {
+            display: flex !important;
+            width: 100%; max-width: 560px;
+            margin: 0 auto; border: none;
+            padding: 16px 14px 40px; flex: none;
+            overflow: visible; min-height: unset;
+        }
+        .lobby-center.tab-hidden { display: none !important; }
+    }
+
+    /* ── Online counter (in room card) ── */
+    .lobby-online-bar { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 4px 0; }
+    .lobby-online-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pdot 1.5s ease-in-out infinite; }
+    @keyframes pdot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(.75); } }
+    .lobby-online-text { font-family: var(--fb); font-size: .78rem; color: var(--dim); }
+    .lobby-online-text strong { color: var(--green); font-family: var(--ft); }
     </style>
 </head>
 <body>
@@ -618,16 +1123,16 @@
         <div class="fs-icon">⚔️</div>
         <h2>ARENA ROYALE</h2>
         <div id="fs-ios-hint">
-            <p style="font-size:.85rem;margin-bottom:4px">Bara browserului ocupă spațiu din joc.<br>Rulează ca aplicație pentru fullscreen:</p>
+            <p style="font-size:.85rem;margin-bottom:4px">Bara browserului ocupa spatiu din joc.<br>Ruleaza ca aplicatie pentru fullscreen:</p>
             <div style="text-align:left;line-height:1.9;font-size:.95rem;padding:0 4px">
-                <div>1. Apasă <strong>⬆ Share</strong> <span style="font-size:.78rem;opacity:.7">(butonul din bara de jos)</span></div>
-                <div>2. Derulează în jos în meniu</div>
-                <div>3. Apasă <strong>Adaugă pe ecranul de pornire</strong></div>
+                <div>1. Apasa <strong>⬆ Share</strong> <span style="font-size:.78rem;opacity:.7">(butonul din bara de jos)</span></div>
+                <div>2. Deruleaza in jos in meniu</div>
+                <div>3. Apasa <strong>Adauga pe ecranul de pornire</strong></div>
                 <div>4. Deschide jocul de pe ecranul principal</div>
             </div>
-            <button id="fs-btn">CONTINUĂ ÎN BROWSER</button>
+            <button id="fs-btn">CONTINUA IN BROWSER</button>
         </div>
-        <button id="fs-btn-android">INTRĂ ÎN FULLSCREEN</button>
+        <button id="fs-btn-android">INTRA IN FULLSCREEN</button>
     </div>
 </div>
 
@@ -646,7 +1151,7 @@
 
         <div class="auth-card">
             <div class="auth-tabs">
-                <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">INTRU ÎN JOC</button>
+                <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">INTRU IN JOC</button>
                 <button class="auth-tab"         id="tab-register" onclick="switchTab('register')">CONT NOU</button>
             </div>
 
@@ -654,23 +1159,23 @@
             <div id="form-login" class="auth-form">
                 <div class="input-group">
                     <label class="input-label">NICKNAME</label>
-                    <input type="text" id="login-nickname" placeholder="Nickname-ul tău..."
+                    <input type="text" id="login-nickname" placeholder="Nickname-ul tau..."
                         maxlength="15" autocomplete="username" autocapitalize="none"
                         oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
                     <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label">PAROLĂ</label>
+                    <label class="input-label">PAROLA</label>
                     <input type="password" id="login-password" placeholder="Parola ta..."
-                        maxlength="32" autocomplete="current-password">
+                        maxlength="32" autocomplete="off">
                     <div class="input-line"></div>
                 </div>
                 <div class="auth-error" id="login-error"></div>
                 <button class="auth-btn" id="login-btn" onclick="doLogin()">
-                    <span class="btn-text">INTRU ÎN JOC</span>
+                    <span class="btn-text">INTRU IN JOC</span>
                     <span class="btn-arrow">→</span>
                 </button>
-                <p class="auth-note">Nu ai cont? Apasă <strong>CONT NOU</strong> sus.</p>
+                <p class="auth-note">Nu ai cont? Apasa <strong>CONT NOU</strong> sus.</p>
             </div>
 
             <!-- REGISTER -->
@@ -683,66 +1188,104 @@
                     <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label">PAROLĂ <span class="auth-hint">(min. 6 car., litere + cifre)</span></label>
-                    <input type="password" id="reg-password" placeholder="Alege o parolă..."
+                    <label class="input-label">PAROLA <span class="auth-hint">(min. 6 car., litere + cifre)</span></label>
+                    <input type="password" id="reg-password" placeholder="Alege o parola..."
                         maxlength="32" autocomplete="new-password">
                     <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label">CONFIRMĂ PAROLA</label>
-                    <input type="password" id="reg-confirm" placeholder="Repetă parola..."
+                    <label class="input-label">CONFIRMA PAROLA</label>
+                    <input type="password" id="reg-confirm" placeholder="Repeta parola..."
                         maxlength="32" autocomplete="new-password">
                     <div class="input-line"></div>
                 </div>
                 <div class="auth-error" id="reg-error"></div>
                 <button class="auth-btn" id="reg-btn" onclick="doRegister()">
-                    <span class="btn-text">CREEAZĂ CONT</span>
+                    <span class="btn-text">CREEAZA CONT</span>
                     <span class="btn-arrow">→</span>
                 </button>
-                <p class="auth-note">Ai deja cont? Apasă <strong>INTRU ÎN JOC</strong> sus.</p>
+                <p class="auth-note">Ai deja cont? Apasa <strong>INTRU IN JOC</strong> sus.</p>
             </div>
         </div>
 
     </div>
 </div>
 
-<!-- ========== LOBBY — Personalizare + Cameră (același ecran) ========== -->
+<!-- ========== LOBBY — Personalizare + Camera (acelasi ecran) ========== -->
 <div id="screen-lobby" style="display:none">
-    <div class="particles" style="position:fixed;z-index:0">
-        <span></span><span></span><span></span><span></span>
-    </div>
+    <canvas id="lobby-bg-canvas"></canvas>
 
     <!-- Top bar -->
     <div class="lb-topbar" style="position:relative;z-index:1">
         <div class="lb-topbar-left">
-            <button class="lb-topbar-back" onclick="logoutToAuth()">← Ieși</button>
+            <button class="lb-topbar-back" onclick="logoutToAuth()">← Iesi</button>
             <span class="lb-topbar-title">ARENA<span>ROYALE</span></span>
         </div>
+        <!-- Tab selector (mobile only, hidden on desktop) -->
+        <div class="lobby-tabs-inline">
+            <button class="lti-btn" id="tab-left"   onclick="switchLobbyTab('left')">👤 Profil</button>
+            <button class="lti-btn active" id="tab-center" onclick="switchLobbyTab('center')">⚔️ Joc</button>
+            <button class="lti-btn" id="tab-right"  onclick="switchLobbyTab('right')">🎯 Misiuni</button>
+            <button class="lti-btn" id="tab-friends" onclick="switchLobbyTab('friends')">👥 <span id="friends-tab-badge" class="friends-tab-badge" style="display:none"></span></button>
+        </div>
         <div class="lb-topbar-right">
+            <button class="lb-btn friends-nav-btn" onclick="openFriendsPanel()" id="friends-nav-btn">
+                👥 <span class="lb-btn-text">PRIETENI</span>
+                <span id="friends-nav-badge" class="friends-nav-badge" style="display:none"></span>
+            </button>
             <a href="#" class="lb-btn" onclick="openLeaderboard(); return false;">🏆 <span class="lb-btn-text">LEADERBOARD</span></a>
         </div>
     </div>
 
-    <!-- Conținut scrollabil -->
+    <!-- Continut scrollabil -->
     <div class="lobby-body" style="position:relative;z-index:1">
+
+    <!-- ── Left panel (desktop ≥1100px) ── -->
+    <div class="lobby-panel-left">
+        <!-- Profile card -->
+        <div class="lp-card">
+            <div class="lp-profile">
+                <div class="lp-avatar-ring">
+                    <img id="lp-avatar-img" src="" alt="" style="display:none">
+                    <div class="lp-av-placeholder" id="lp-avatar-ph">⚔️</div>
+                    <div class="lp-level-badge" id="lp-level">LV 1</div>
+                </div>
+                <div class="lp-nick" id="lp-nick">JUCATOR</div>
+                <div class="lp-rank" id="lp-rank">RECRUT</div>
+            </div>
+            <div class="lp-xp-wrap">
+                <div class="lp-xp-label"><span>XP</span><span id="lp-xp-txt">0 / 50</span></div>
+                <div class="lp-xp-bar"><div class="lp-xp-fill" id="lp-xp-fill" style="width:0%"></div></div>
+            </div>
+            <div class="lp-coins-row">
+                <div class="lp-coin-box"><span class="lp-coin-icon">🪙</span><span class="lp-coin-val" id="lp-coins">0</span></div>
+                <div class="lp-coin-box"><span class="lp-coin-icon">💎</span><span class="lp-coin-val" id="lp-crystals">0</span></div>
+            </div>
+        </div>
+        <!-- Stats card -->
+        <div class="lp-card">
+            <div class="lp-card-title">STATISTICI</div>
+            <div class="lp-stats-grid">
+                <div class="lp-stat-box"><div class="lp-stat-val" id="lp-wins">0</div><div class="lp-stat-lbl">VICTORII</div></div>
+                <div class="lp-stat-box"><div class="lp-stat-val" id="lp-kills">0</div><div class="lp-stat-lbl">ELIMINARI</div></div>
+                <div class="lp-stat-box"><div class="lp-stat-val" id="lp-games">0</div><div class="lp-stat-lbl">MECIURI</div></div>
+                <div class="lp-stat-box"><div class="lp-stat-val" id="lp-winrate">0%</div><div class="lp-stat-lbl">WIN RATE</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Center col (always visible) ── -->
+    <div class="lobby-center">
     <div class="lobby-inner">
 
         <!-- PERSONAJ -->
         <div class="char-section">
-            <div class="char-avatar-wrap">
-                <label class="char-avatar-label" for="input-image">
-                    <img id="preview" src="" alt="">
-                    <div class="char-avatar-placeholder" id="placeholder">
-                        <span class="av-icon">+</span>
-                        <span class="av-text">Adaugă<br>personajul<br><em style="font-style:normal;color:var(--accent);font-size:.6rem">Generat cu AI</em></span>
-                    </div>
-                </label>
-                <input type="file" id="input-image" accept="image/*" style="display:none">
+            <div class="char-preview-outer" id="char-rarity-ring" onclick="openCharacterShop()">
+                <img id="preview" src="/images/characters/ninja.png" alt="" class="char-preview-img">
             </div>
-
-            <div class="char-section-text" style="display:flex;flex-direction:column;align-items:center;gap:4px">
-                <div class="char-name" id="char-name-display">JUCĂTOR</div>
-                <div class="char-name-hint">tap pe imagine pentru a schimba avatarul</div>
+            <div class="char-section-text" style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div class="char-name" id="char-name-display">JUCATOR</div>
+                <button class="char-change-btn" onclick="openCharacterShop()">🎭 Schimba Personajul</button>
             </div>
         </div>
 
@@ -755,7 +1298,7 @@
 
             <div class="stat-row">
                 <span class="stat-icon">❤️</span>
-                <span class="stat-name">HP</span>
+                <span class="stat-name">HEALTH</span>
                 <div class="stat-controls">
                     <button class="stat-btn minus" onclick="changeStat('hp',-1)">−</button>
                     <div class="stat-bar"><div class="stat-fill red" id="bar-hp" style="width:10%"></div></div>
@@ -766,7 +1309,7 @@
 
             <div class="stat-row">
                 <span class="stat-icon">💥</span>
-                <span class="stat-name">DMG</span>
+                <span class="stat-name">DAMAGE</span>
                 <div class="stat-controls">
                     <button class="stat-btn minus" onclick="changeStat('dmg',-1)">−</button>
                     <div class="stat-bar"><div class="stat-fill orange" id="bar-dmg" style="width:10%"></div></div>
@@ -777,7 +1320,7 @@
 
             <div class="stat-row">
                 <span class="stat-icon">⚡</span>
-                <span class="stat-name">SPD</span>
+                <span class="stat-name">SPEED</span>
                 <div class="stat-controls">
                     <button class="stat-btn minus" onclick="changeStat('spd',-1)">−</button>
                     <div class="stat-bar"><div class="stat-fill blue" id="bar-spd" style="width:10%"></div></div>
@@ -786,25 +1329,28 @@
                 <span class="stat-value" id="val-spd">3.0 SPD</span>
             </div>
 
-            <div class="build-type" id="build-type">⚖️ Build Echilibrat</div>
         </div>
 
-        <!-- CAMERĂ -->
+        <!-- CAMERA -->
         <div class="room-card">
-            <p class="rc-title">SELECTEAZĂ MODUL DE JOC</p>
+            <p class="rc-title">SELECTEAZA MODUL DE JOC</p>
 
+            <div class="lobby-online-bar">
+                <div class="lobby-online-dot"></div>
+                <span class="lobby-online-text"><strong id="lobby-online-count">--</strong> jucatori online</span>
+            </div>
             <button class="btn-create" onclick="startCreate()">
-                ＋ &nbsp; CREEAZĂ CAMERĂ NOUĂ
+                ＋ &nbsp; CREEAZA CAMERA NOUA
             </button>
 
-            <div class="or-divider">SAU INTRĂ CU COD</div>
+            <div class="or-divider">SAU INTRA CU COD</div>
 
             <div class="join-row">
                 <input type="text" id="room-code-input" class="join-input"
-                    placeholder="Cod cameră (ex: KBNJM)"
+                    placeholder="Cod camera (ex: KBNJM)"
                     maxlength="5" autocomplete="off" autocapitalize="characters"
                     oninput="this.value=this.value.toUpperCase()">
-                <button class="btn-join" onclick="startJoin()">INTRĂ →</button>
+                <button class="btn-join" onclick="startJoin()">INTRA →</button>
             </div>
 
             <p class="room-err" id="room-error-msg"></p>
@@ -813,43 +1359,120 @@
         <p class="lobby-err" id="error-msg"></p>
 
     </div>
+    </div><!-- lobby-inner / lobby-center -->
+
+    <!-- ── Right panel (desktop ≥1100px) ── -->
+    <div class="lobby-panel-right">
+        <!-- Daily missions -->
+        <div class="lp-card">
+            <div class="lp-card-title">🎯 MISIUNI ZILNICE</div>
+            <div id="lp-missions"></div>
+        </div>
+        <!-- Mini leaderboard -->
+        <div class="lp-card">
+            <div class="lp-card-title">🏆 TOP JUCATORI</div>
+            <div id="lp-mini-lb">
+                <div class="lp-lb-row" style="justify-content:center;color:var(--dim);font-size:.7rem;border:none;padding:10px 0">Se incarca...</div>
+            </div>
+        </div>
+        <!-- Live event -->
+        <div class="lp-event">
+            <div class="lp-event-glow"></div>
+            <div class="lp-event-label">⚡ LIVE EVENT</div>
+            <div class="lp-event-name">Weekend Tournament</div>
+            <div class="lp-event-timer-label">INCEPE IN</div>
+            <div class="lp-event-timer" id="lp-event-timer">--:--:--</div>
+        </div>
     </div>
+
+    </div>
+
+    <!-- ── Friends Modal ── -->
+    <div id="friends-overlay" style="display:none">
+        <div class="friends-modal">
+            <div class="friends-header">
+                <span class="friends-title">👥 PRIETENI</span>
+                <button class="friends-close" onclick="closeFriendsPanel()">✕</button>
+            </div>
+            <!-- Search -->
+            <div class="friends-search-wrap">
+                <input type="text" id="friends-search-input" class="friends-search-input"
+                    placeholder="Cauta dupa nickname..." autocomplete="off" maxlength="20"
+                    onkeydown="if(event.key==='Enter')searchFriend()">
+                <button class="friends-search-btn" onclick="searchFriend()">CAUTA</button>
+            </div>
+            <div id="friends-search-results" class="friends-search-results"></div>
+            <!-- Pending incoming -->
+            <div id="friends-pending-section" style="display:none">
+                <div class="friends-section-title">CERERI PRIMITE <span id="friends-pending-count" class="fpcount"></span></div>
+                <div id="friends-pending-list"></div>
+            </div>
+            <!-- Friends list -->
+            <div class="friends-section-title">PRIETENI <span id="friends-count" class="fpcount"></span></div>
+            <div id="friends-list" class="friends-list">
+                <div class="friends-empty">Niciun prieten inca. Cauta jucatori de mai sus!</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Character Shop Modal ── -->
+    <div id="char-shop-overlay" style="display:none">
+        <div class="char-shop-modal">
+            <div class="char-shop-header">
+                <span class="char-shop-title">🎭 PERSONAJE</span>
+                <div class="char-shop-currency">
+                    <span class="csc-box">🪙 <span id="shop-coins">0</span></span>
+                    <span class="csc-box">💎 <span id="shop-diamonds">0</span></span>
+                </div>
+                <button class="char-shop-close" onclick="closeCharacterShop()">✕</button>
+            </div>
+            <div class="char-shop-filters">
+                <button class="csf-btn active" data-filter="all"       onclick="filterCharShop('all',this)">TOATE</button>
+                <button class="csf-btn"         data-filter="common"    onclick="filterCharShop('common',this)">COMMON</button>
+                <button class="csf-btn"         data-filter="rare"      onclick="filterCharShop('rare',this)">RARE</button>
+                <button class="csf-btn"         data-filter="epic"      onclick="filterCharShop('epic',this)">EPIC</button>
+                <button class="csf-btn"         data-filter="legendary" onclick="filterCharShop('legendary',this)">LEGENDARY</button>
+            </div>
+            <div class="char-shop-grid" id="char-shop-grid"></div>
+        </div>
+    </div>
+
 </div>
 
 <!-- ========== ECRANUL DE ASTEPTARE ========== -->
 <div id="screen-waiting" style="display:none">
 
     <div class="waiting-topbar">
-        <button class="lb-topbar-back" onclick="leaveWaiting()">← Ieși</button>
+        <button class="lb-topbar-back" onclick="leaveWaiting()">← Iesi</button>
         <a href="#" class="lb-btn" onclick="openLeaderboard(); return false;">🏆</a>
     </div>
 
     <div class="waiting-scroll">
     <div class="waiting-content">
         <div class="waiting-logo">⚔️</div>
-        <h2 class="waiting-title">SALA DE AȘTEPTARE</h2>
+        <h2 class="waiting-title">SALA DE ASTEPTARE</h2>
 
         <div class="waiting-code-box">
-            <span class="waiting-code-label">COD CAMERĂ</span>
+            <span class="waiting-code-label">COD CAMERA</span>
             <span class="waiting-code-value" id="waiting-code-display">—</span>
         </div>
 
         <div class="waiting-stats">
             <div class="online-dot"></div>
-            <span id="waiting-count">0</span> jucători conectați
+            <span id="waiting-count">0</span> jucatori conectati
         </div>
 
         <div class="waiting-players-grid" id="waiting-players"></div>
 
         <button id="btn-start-game" class="btn-start-game" onclick="startGame()" style="display:none">
-            ▶ PORNEȘTE JOCUL
+            ▶ PORNESTE JOCUL
         </button>
-        <p class="waiting-sub" id="waiting-sub-msg">Aşteaptă ca hostul să pornească jocul...</p>
+        <p class="waiting-sub" id="waiting-sub-msg">Asteapta ca hostul sa porneasca jocul...</p>
     </div>
     </div>
 </div>
 
-<!-- ========== ECRANUL DE JOACĂ ========== -->
+<!-- ========== ECRANUL DE JOACA ========== -->
 <div id="screen-game" style="display:none">
     <canvas id="gameCanvas"></canvas>
 
@@ -867,8 +1490,30 @@
     <div id="zone-left"></div>
     <div id="zone-right"></div>
 
+    <!-- Spectator HUD -->
+    <div id="spectator-hud" style="display:none">
+        <button class="spec-nav-btn" onclick="window._specCycle && window._specCycle(-1)">◀</button>
+        <div class="spec-info">
+            <span class="spec-label">👁 SPECTATING</span>
+            <span id="spec-target-name">—</span>
+            <span id="spec-target-hp"></span>
+        </div>
+        <button class="spec-nav-btn" onclick="window._specCycle && window._specCycle(1)">▶</button>
+    </div>
+
     <!-- Exit button -->
-    <button id="btn-leave-game" onclick="returnToLobby()" title="Ieși din joc">✕ IEȘI</button>
+    <button id="btn-leave-game" onclick="showLeaveConfirm()" title="Iesi din joc">✕ IESI</button>
+
+    <div id="leave-confirm">
+        <div class="leave-confirm-card">
+            <div class="leave-confirm-title">IESI DIN MECI?</div>
+            <div class="leave-confirm-text">Vei parasi runda curenta si te vei intoarce in lobby.</div>
+            <div class="leave-confirm-actions">
+                <button class="leave-confirm-cancel" onclick="hideLeaveConfirm()">ANULEAZA</button>
+                <button class="leave-confirm-exit" onclick="confirmLeaveGame()">IESI</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Kill notification -->
     <div id="kill-notif">
@@ -885,18 +1530,20 @@
     <div id="screen-gameover">
         <div class="gameover-content">
             <h2 id="gameover-title">💀 ELIMINAT!</h2>
-            <p id="gameover-msg">Ai fost eliminat din arenă</p>
+            <p id="gameover-msg">Ai fost eliminat din arena</p>
 
             <div id="round-stats-section" class="round-stats" style="display:none">
                 <div class="stats-kills-big">
                     <span class="stats-kills-num" id="stat-round-kills">0</span>
-                    <span class="stats-kills-lbl">💀 KILLS ÎN RUNDĂ</span>
+                    <span class="stats-kills-lbl">💀 KILLS IN RUNDA</span>
                 </div>
             </div>
 
+            <button id="btn-spectate" style="display:none" onclick="window._startSpectating && window._startSpectating()">👁 SPECTATE</button>
+
             <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
-                <button id="btn-rematch">🔄 JOACĂ DIN NOU</button>
-                <button class="btn-leave" onclick="returnToLobby()">IEȘI</button>
+                <button id="btn-rematch">🔄 JOACA DIN NOU</button>
+                <button class="btn-leave" onclick="returnToLobby()">IESI</button>
             </div>
             <a href="#" class="lb-btn" style="margin-top:4px" onclick="openLeaderboard(); return false;">🏆 LEADERBOARD</a>
         </div>
@@ -906,8 +1553,8 @@
 <!-- ========== OVERLAY ROTIRE ========== -->
 <div id="rotate-overlay">
     <span class="rotate-phone">📱</span>
-    <div class="rotate-title">ROTEȘTE DISPOZITIVUL</div>
-    <div class="rotate-sub">Jocul funcționează doar în modul landscape</div>
+    <div class="rotate-title">ROTESTE DISPOZITIVUL</div>
+    <div class="rotate-sub">Jocul functioneaza doar in modul landscape</div>
 </div>
 
 <!-- ========== LEADERBOARD OVERLAY ========== -->
@@ -916,7 +1563,7 @@
     <div class="lbo-card">
         <div class="lbo-header">
             <span class="lbo-title">🏆 LEADERBOARD</span>
-            <button class="lbo-close" onclick="closeLeaderboard()">✕ ÎNCHIDE</button>
+            <button class="lbo-close" onclick="closeLeaderboard()">✕ INCHIDE</button>
         </div>
         <div class="lbo-table-wrap">
             <table>
@@ -933,7 +1580,7 @@
                 <tbody id="lbo-body"></tbody>
             </table>
         </div>
-        <div id="lbo-status" class="lbo-status">⏳ Se încarcă...</div>
+        <div id="lbo-status" class="lbo-status">⏳ Se incarca...</div>
     </div>
 </div>
 
@@ -983,7 +1630,7 @@
     adjustLbText();
     window.addEventListener('resize', adjustLbText);
 
-    // Blochează modul portret pe touch devices
+    // Blocheaza modul portret pe touch devices
     const rotateOverlay = document.getElementById('rotate-overlay');
     const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     function checkOrientation() {

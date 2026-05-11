@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arena Royale — Admin</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         :root {
@@ -17,11 +17,12 @@
             --orange:  #ff8c00;
             --dim:     #8888aa;
             --border:  #ffffff15;
-            --font-t:  'Orbitron', sans-serif;
-            --font-b:  'Rajdhani', sans-serif;
+            --font-t:  'Lexend', sans-serif;
+            --font-b:  'Lexend', sans-serif;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        button, input, select, textarea { font-family: inherit; }
 
         body {
             background: var(--bg);
@@ -45,7 +46,7 @@
             font-family: var(--font-t);
             font-size: 1.4rem;
             color: var(--accent);
-            letter-spacing: 3px;
+            letter-spacing: 1px;
         }
 
         .header-left p {
@@ -95,7 +96,7 @@
         .card-title {
             font-family: var(--font-t);
             font-size: 0.65rem;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
             color: var(--dim);
             margin-bottom: 16px;
             display: flex;
@@ -184,9 +185,11 @@
             border-radius: 10px;
             font-family: var(--font-t);
             font-size: 0.7rem;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
             cursor: pointer;
             transition: all 0.2s;
+            line-height: 1.15;
+            white-space: normal;
         }
 
         .btn:hover  { transform: translateY(-2px); opacity: 0.9; }
@@ -208,7 +211,7 @@
         .players-title {
             font-family: var(--font-t);
             font-size: 0.7rem;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
             color: var(--dim);
         }
 
@@ -333,8 +336,9 @@
             border-radius: 20px;
             font-family: var(--font-t);
             font-size: 0.65rem;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
             margin-bottom: 12px;
+            line-height: 1.15;
         }
 
         .badge-waiting { background: #00d4ff20; color: var(--blue); border: 1px solid var(--blue); }
@@ -348,7 +352,7 @@
         }
 
         .no-players p:first-child { font-size: 3rem; margin-bottom: 10px; }
-        .no-players p:last-child  { font-family: var(--font-t); font-size: 0.7rem; letter-spacing: 2px; }
+        .no-players p:last-child  { font-family: var(--font-t); font-size: 0.7rem; letter-spacing: 1px; }
 
         /* ---------- ANIMATII ---------- */
         @keyframes pulse  { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
@@ -380,8 +384,8 @@
                 <div class="card-title">QR CODE ELEVI</div>
                 <div class="qr-container">
                     <div id="qrcode"></div>
-                    <div class="qr-url" id="game-url">Se generează...</div>
-                    <div class="qr-hint">Elevii scanează cu camera iPad-ului</div>
+                    <div class="qr-url" id="game-url">Se genereaza...</div>
+                    <div class="qr-hint">Elevii scaneaza cu camera iPad-ului</div>
                 </div>
             </div>
 
@@ -391,19 +395,19 @@
                 <div class="stats-grid">
                     <div class="stat-box">
                         <div class="val green" id="stat-connected">0</div>
-                        <div class="lbl">CONECTAȚI</div>
+                        <div class="lbl">CONECTATI</div>
                     </div>
                     <div class="stat-box">
                         <div class="val blue" id="stat-alive">0</div>
-                        <div class="lbl">ÎN VIAȚĂ</div>
+                        <div class="lbl">IN VIATA</div>
                     </div>
                     <div class="stat-box">
                         <div class="val red" id="stat-eliminated">0</div>
-                        <div class="lbl">ELIMINAȚI</div>
+                        <div class="lbl">ELIMINATI</div>
                     </div>
                     <div class="stat-box">
                         <div class="val orange" id="stat-bullets">0</div>
-                        <div class="lbl">GLOANȚE</div>
+                        <div class="lbl">GLOANTE</div>
                     </div>
                 </div>
             </div>
@@ -414,23 +418,23 @@
 
                 <!-- Badge status -->
                 <div class="game-status-badge badge-waiting" id="game-status-badge">
-                    ⏳ AȘTEPTARE
+                    ⏳ ASTEPTARE
                 </div>
 
                 <div class="controls">
                     <!-- Buton START — principal -->
                     <button class="btn btn-start" id="btn-start" onclick="startGame()">
-                        ▶ PORNEȘTE JOCUL
+                        ▶ PORNESTE JOCUL
                     </button>
 
                     <!-- Buton zona manuala -->
                     <button class="btn btn-zone" id="btn-zone" onclick="triggerZone()">
-                        ⚠️ PORNEȘTE ZONA ACUM
+                        ⚠️ PORNESTE ZONA ACUM
                     </button>
 
                     <!-- Buton reset -->
                     <button class="btn btn-reset" onclick="resetGame()">
-                        🔄 RESETEAZĂ JOCUL
+                        🔄 RESETEAZA JOCUL
                     </button>
                 </div>
             </div>
@@ -448,12 +452,12 @@
         <!-- COLOANA DREAPTA -->
         <div class="right-col">
             <div class="players-header">
-                <span class="players-title">JUCĂTORI</span>
+                <span class="players-title">JUCATORI</span>
             </div>
             <div class="players-grid" id="players-grid">
                 <div class="no-players">
                     <p>👾</p>
-                    <p>NICIUN JUCĂTOR CONECTAT</p>
+                    <p>NICIUN JUCATOR CONECTAT</p>
                 </div>
             </div>
         </div>
@@ -525,16 +529,16 @@
     const btnStart = document.getElementById('btn-start');
 
     if (started) {
-        badge.textContent = '🟢 JOC ÎN DESFĂȘURARE';
+        badge.textContent = '🟢 JOC IN DESFASURARE';
         badge.className   = 'game-status-badge badge-running';
         btnStart.textContent = '▶ JOC PORNIT';
         btnStart.className   = 'btn btn-disabled';
         btnStart.disabled    = true;
     } else {
         // Reset — reactivam butonul
-        badge.textContent = '⏳ AȘTEPTARE';
+        badge.textContent = '⏳ ASTEPTARE';
         badge.className   = 'game-status-badge badge-waiting';
-        btnStart.textContent = '▶ PORNEȘTE JOCUL';
+        btnStart.textContent = '▶ PORNESTE JOCUL';
         btnStart.className   = 'btn btn-start';
         btnStart.disabled    = false;
     }
@@ -546,13 +550,13 @@
 
             players.forEach(p => {
                 if (!prevPlayerIds.has(p.id)) {
-                    addLog(`⚔️ ${p.name} a intrat în arenă`, 'join');
+                    addLog(`⚔️ ${p.name} a intrat in arena`, 'join');
                 }
             });
 
             prevPlayerIds.forEach(id => {
                 if (!currentIds.has(id)) {
-                    addLog(`🚪 Un jucător a părăsit jocul`, 'leave');
+                    addLog(`🚪 Un jucator a parasit jocul`, 'leave');
                 }
             });
 
@@ -567,7 +571,7 @@
                 grid.innerHTML = `
                     <div class="no-players">
                         <p>👾</p>
-                        <p>NICIUN JUCĂTOR CONECTAT</p>
+                        <p>NICIUN JUCATOR CONECTAT</p>
                     </div>`;
                 return;
             }
@@ -590,7 +594,7 @@
                 let statusClass, statusText;
                 if (!gameHasStarted) {
                     statusClass = 'status-waiting';
-                    statusText  = '● ASTEAPTĂ';
+                    statusText  = '● ASTEAPTA';
                 } else if (player.alive) {
                     statusClass = 'status-alive';
                     statusText  = '● VIU';
@@ -669,10 +673,10 @@
             if (gameHasStarted) return;
             const count = parseInt(document.getElementById('stat-connected').textContent);
             if (count === 0) {
-                alert('Nu există jucători conectați!');
+                alert('Nu exista jucatori conectati!');
                 return;
             }
-            if (confirm(`Pornești jocul cu ${count} jucători?`)) {
+            if (confirm(`Pornesti jocul cu ${count} jucatori?`)) {
                 socket.emit('admin-start');
                 addLog('▶ Jocul a fost pornit!', 'system');
                 updateGameStatusUI(true);
@@ -683,18 +687,18 @@
         // Porneste zona manual
         function triggerZone() {
             if (!gameHasStarted) {
-                alert('Pornește mai întâi jocul!');
+                alert('Porneste mai intai jocul!');
                 return;
             }
-            if (confirm('Pornești zona acum?')) {
+            if (confirm('Pornesti zona acum?')) {
                 socket.emit('admin-trigger-zone');
-                addLog('⚠️ Zona pornită manual', 'zone');
+                addLog('⚠️ Zona pornita manual', 'zone');
             }
         }
 
         // Reseteaza jocul
         function resetGame() {
-            if (confirm('Resetezi jocul? Toți jucătorii vor fi dați afară.')) {
+            if (confirm('Resetezi jocul? Toti jucatorii vor fi dati afara.')) {
                 socket.emit('admin-reset');
                 addLog('🔄 Joc resetat', 'system');
                 gameHasStarted = false;

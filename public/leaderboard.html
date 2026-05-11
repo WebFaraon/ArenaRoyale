@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arena Royale — Leaderboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg:      #0a0a0f;
@@ -18,10 +18,11 @@
             --border:  rgba(255,255,255,0.08);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        button, input, select, textarea { font-family: inherit; }
         body {
             background: var(--bg);
             color: #fff;
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Lexend', sans-serif;
             min-height: 100vh;
         }
 
@@ -40,20 +41,20 @@
         .lb-back {
             color: var(--dim);
             text-decoration: none;
-            font-family: 'Orbitron', sans-serif;
+            font-family: 'Lexend', sans-serif;
             font-size: 0.75rem;
             font-weight: 700;
-            letter-spacing: 1px;
+            letter-spacing: .5px;
             transition: color 0.2s;
         }
         .lb-back:hover { color: #fff; }
         .lb-title-wrap { text-align: center; }
         .lb-title {
-            font-family: 'Orbitron', sans-serif;
+            font-family: 'Lexend', sans-serif;
             font-size: 1.4rem;
             font-weight: 900;
             color: var(--gold);
-            letter-spacing: 3px;
+            letter-spacing: 1px;
             margin: 0;
         }
         .lb-subtitle {
@@ -66,9 +67,10 @@
             align-items: center;
             gap: 6px;
             color: var(--green);
-            font-family: 'Orbitron', sans-serif;
+            font-family: 'Lexend', sans-serif;
             font-size: 0.65rem;
             font-weight: 700;
+            line-height: 1.15;
         }
         .lb-live-dot {
             width: 7px; height: 7px;
@@ -103,10 +105,10 @@
         thead th {
             background: rgba(255,255,255,0.04);
             color: var(--dim);
-            font-family: 'Orbitron', sans-serif;
+            font-family: 'Lexend', sans-serif;
             font-size: 0.6rem;
             font-weight: 700;
-            letter-spacing: 1.5px;
+            letter-spacing: .75px;
             text-transform: uppercase;
             padding: 12px 14px;
             text-align: left;
@@ -138,7 +140,7 @@
             text-align: center;
         }
         td.name {
-            font-family: 'Orbitron', sans-serif;
+            font-family: 'Lexend', sans-serif;
             font-size: 0.8rem;
             font-weight: 700;
             color: #fff;
@@ -186,10 +188,10 @@
 <body>
 
     <div class="lb-header">
-        <a href="/" class="lb-back" onclick="history.back(); return false;">← ÎNAPOI</a>
+        <a href="/" class="lb-back" onclick="history.back(); return false;">← INAPOI</a>
         <div class="lb-title-wrap">
             <h1 class="lb-title">🏆 LEADERBOARD</h1>
-            <p class="lb-subtitle">Top jucători Arena Royale</p>
+            <p class="lb-subtitle">Top jucatori Arena Royale</p>
         </div>
         <div class="lb-live">
             <div class="lb-live-dot"></div>
@@ -215,7 +217,7 @@
         </div>
         <div class="lb-status" id="lb-status">
             <div class="lb-status-icon">⏳</div>
-            <div>Se încarcă...</div>
+            <div>Se incarca...</div>
         </div>
     </div>
 
@@ -227,7 +229,7 @@
         function renderLeaderboard(data) {
             if (!data || data.length === 0) {
                 tbody.innerHTML = '';
-                status.innerHTML = '<div class="lb-status-icon">🎮</div><div>Niciun jucător înregistrat încă.<br>Fii primul!</div>';
+                status.innerHTML = '<div class="lb-status-icon">🎮</div><div>Niciun jucator inregistrat inca.<br>Fii primul!</div>';
                 status.style.display = 'block';
                 return;
             }
@@ -263,7 +265,7 @@
                 const data = await res.json();
                 renderLeaderboard(data);
             } catch {
-                status.innerHTML = '<div class="lb-status-icon">⚠️</div><div>Eroare la încărcare. Reîncarcă pagina.</div>';
+                status.innerHTML = '<div class="lb-status-icon">⚠️</div><div>Eroare la incarcare. Reincarca pagina.</div>';
                 status.style.display = 'block';
             }
         }
@@ -273,7 +275,7 @@
         socket.on('leaderboard-update', renderLeaderboard);
 
         loadLeaderboard();
-        // Fallback refresh dacă Socket.IO pică
+        // Fallback refresh daca Socket.IO pica
         setInterval(loadLeaderboard, 30000);
     </script>
 </body>
