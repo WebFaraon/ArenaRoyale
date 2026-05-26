@@ -37,6 +37,10 @@ button, input, select, textarea {
     font-family: inherit;
 }
 
+html {
+    height: 100%;
+}
+
 body {
     background-color: var(--bg-dark);
     color: var(--text);
@@ -45,8 +49,8 @@ body {
     user-select: none;            /* Nu se poate selecta text */
     -webkit-user-select: none;
     width: 100vw;
-    height: 100vh;
-    height: 100dvh;
+    height: 100vh;                /* fallback */
+    height: 100dvh;               /* dynamic — tracks address bar show/hide */
 }
 
 /* ---------- ECRANUL DE LOBBY ---------- */
@@ -58,7 +62,7 @@ body {
     justify-content: flex-start;
     align-items: stretch;
     overflow: hidden;
-    background: #0a120a;
+    background: transparent;
     touch-action: manipulation;
 }
 #screen-lobby::-webkit-scrollbar { display: none; }
@@ -630,7 +634,7 @@ body {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    background: #00000090;
+    background: rgba(3,10,3,0.88);
     backdrop-filter: blur(10px);
     z-index: 20;
     align-items: center;
@@ -737,9 +741,9 @@ body {
 }
 
 .gameover-content button {
-    padding: 15px 40px;
-    background: var(--accent);
-    border: none;
+    padding: 14px 36px;
+    background: linear-gradient(135deg, var(--accent), #b07010);
+    border: 1px solid rgba(232,160,32,.5);
     border-radius: 12px;
     color: white;
     font-family: var(--font-title);
@@ -748,26 +752,30 @@ body {
     line-height: 1.15;
     white-space: normal;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.2s;
+    box-shadow: 0 4px 18px rgba(232,160,32,.3);
 }
 
 .gameover-content button:hover {
-    transform: scale(1.05);
-    box-shadow: 0 5px 20px var(--accent-glow);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(232,160,32,.5);
 }
 
 .gameover-content .btn-leave {
-    background: transparent;
-    border: 1px solid var(--text-dim);
-    color: var(--text-dim);
-    margin-top: 10px;
-    font-size: 0.85rem;
-    padding: 10px 30px;
+    background: rgba(80,140,60,.12);
+    border: 1px solid rgba(80,140,60,.35);
+    color: rgba(180,210,160,.75);
+    margin-top: 0;
+    font-size: 0.9rem;
+    padding: 14px 30px;
+    box-shadow: none;
 }
 .gameover-content .btn-leave:hover {
-    border-color: var(--text);
-    color: var(--text);
+    background: rgba(80,140,60,.22);
+    border-color: rgba(80,140,60,.6);
+    color: rgba(220,240,210,.95);
     box-shadow: none;
+    transform: translateY(-2px);
 }
 
 /* ---------- ANIMATII ---------- */
@@ -912,7 +920,7 @@ body {
     position: fixed;
     top: 0; left: 0;
     width: 100vw; height: 100vh; height: 100dvh;
-    background: #0a120a;
+    background: transparent;
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
@@ -961,7 +969,7 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    background: rgba(14,26,14,0.8);
+    background: rgba(14,30,14,0.58);
     border: 1px solid rgba(80,140,60,0.3);
     border-radius: 20px;
     padding: 8px 20px;
@@ -971,12 +979,19 @@ body {
     letter-spacing: 2px;
 }
 
+.waiting-players-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+}
+
 .waiting-players-grid {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
     justify-content: center;
-    width: 100%;
     overflow: visible;
 }
 
@@ -985,7 +1000,7 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 6px;
-    background: rgba(14,26,14,0.85);
+    background: rgba(14,30,14,0.65);
     border: 1px solid rgba(80,140,60,0.3);
     border-radius: 12px;
     padding: 12px;
@@ -1041,7 +1056,7 @@ body {
 #fs-overlay {
     position: fixed;
     inset: 0;
-    background: var(--bg-dark);
+    background: rgba(5,10,5,0.97);
     z-index: 9999;
     display: flex;
     align-items: center;
@@ -1112,7 +1127,7 @@ body {
 #screen-room {
     position: fixed;
     inset: 0;
-    background: var(--bg-dark);
+    background: transparent;
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -1296,7 +1311,7 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    background: rgba(14,26,14,0.85);
+    background: rgba(14,30,14,0.65);
     border: 1.5px solid rgba(232,160,32,0.4);
     border-radius: 12px;
     padding: 10px 24px;

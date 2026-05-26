@@ -6,10 +6,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
     <meta name="apple-mobile-web-app-title" content="Arena Royale">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>Arena Royale</title>
     <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="preload" href="/images/characters/ninja.png" as="image">
     <link rel="stylesheet" href="style.css">
 
     <style>
@@ -42,7 +43,7 @@
         position: fixed; inset: 0;
         display: flex; flex-direction: column; align-items: center;
         justify-content: flex-start;
-        background: #0a120a; overflow-y: auto;
+        background: transparent; overflow-y: auto;
         scrollbar-width: none; -ms-overflow-style: none;
     }
     #screen-auth::-webkit-scrollbar { display: none; }
@@ -61,7 +62,7 @@
     .auth-logo-title span { color: var(--accent); }
 
     .auth-card {
-        background: rgba(14,26,14,0.97); border: 1.5px solid rgba(232,160,32,0.35);
+        background: rgba(14,30,14,0.82); border: 1.5px solid rgba(232,160,32,0.35);
         border-radius: 16px; width: 100%; overflow: hidden;
         box-shadow: 0 8px 40px rgba(0,0,0,.6), 0 0 0 1px rgba(80,140,60,.12);
     }
@@ -122,19 +123,27 @@
         display: flex; flex-direction: column;
         justify-content: flex-start; align-items: stretch;
         overflow: hidden;
-        background: #0a120a;
+        background: transparent;
+    }
+    #screen-lobby::after {
+        content: '';
+        position: absolute;
+        top: 68px; left: 0; right: 0; bottom: 0;
+        background: rgba(8,18,8,0.28);
+        z-index: -1;
+        pointer-events: none;
     }
     #lobby-bg-canvas {
         position: fixed; inset: 0; width: 100%; height: 100%;
         z-index: 0; pointer-events: none;
-        filter: blur(5px) brightness(0.55);
+        filter: blur(4px) brightness(0.85);
         transform: scale(1.04);
     }
 
     /* Top bar */
     .lb-topbar {
         display: flex; align-items: center; justify-content: space-between;
-        height: 58px; padding: 0 20px; flex-shrink: 0; gap: 10px;
+        height: 68px; padding: 0 20px; flex-shrink: 0; gap: 10px;
         width: 100%;
         background: linear-gradient(180deg, #141f14 0%, #0a120a 100%);
         border-bottom: 2px solid rgba(232,160,32,0.6);
@@ -155,11 +164,13 @@
     }
     .lb-topbar-back:hover { color: #fff; background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,.22); }
     .lb-topbar-title {
-        font-family: var(--ft); font-size: clamp(1rem, 3vw, 1.3rem);
+        font-family: var(--ft); font-size: clamp(1.15rem, 3.5vw, 1.6rem);
         font-weight: 900; color: #fff; letter-spacing: 2px; white-space: nowrap;
-        text-shadow: 0 0 24px rgba(232,160,32,0.3);
+        text-shadow: 0 0 24px rgba(232,160,32,0.4);
+        margin-left: 20px; margin-right: 4px;
     }
     .lb-topbar-title span { color: var(--accent); }
+    .lb-topbar-left { gap: 8px; }
     .lb-topbar-right { display: flex; align-items: center; gap: 10px; }
 
     /* Scrollable content */
@@ -171,7 +182,8 @@
     .lobby-body::-webkit-scrollbar { display: none; }
     .lobby-inner {
         display: flex; flex-direction: column; align-items: center;
-        gap: 14px; padding: 16px 14px 40px;
+        gap: 14px;
+        padding: 16px 14px max(40px, calc(env(safe-area-inset-bottom) + 16px));
         max-width: 560px; margin: auto; width: 100%;
         box-sizing: border-box;
     }
@@ -181,29 +193,50 @@
         display: flex; flex-direction: column; align-items: center;
         gap: 10px; width: 100%;
     }
+    @keyframes char-float {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50%       { transform: translateY(-7px) scale(1.02); }
+    }
+    @keyframes char-ring-pulse {
+        0%, 100% { box-shadow: 0 0 0 3px var(--rc, #9ca3af), 0 0 18px color-mix(in srgb, var(--rc, #9ca3af) 40%, transparent), 0 0 32px rgba(232,160,32,0.1); }
+        50%       { box-shadow: 0 0 0 4px var(--rc, #9ca3af), 0 0 30px color-mix(in srgb, var(--rc, #9ca3af) 65%, transparent), 0 0 52px rgba(232,160,32,0.25); }
+    }
     .char-preview-outer {
-        width: clamp(110px, 28vw, 150px); height: clamp(110px, 28vw, 150px);
+        width: clamp(130px, 32vw, 170px); height: clamp(130px, 32vw, 170px);
         border-radius: 50%; overflow: hidden; cursor: pointer;
         background: rgba(0,0,0,.4);
-        box-shadow: 0 0 0 3px #9ca3af, 0 0 18px #9ca3af66;
-        transition: box-shadow .25s, transform .2s;
+        --rc: #9ca3af;
+        transition: transform .2s;
         flex-shrink: 0;
+        animation: char-ring-pulse 3s ease-in-out infinite;
     }
-    .char-preview-outer:hover { transform: scale(1.05); }
+    .char-preview-outer:hover { transform: scale(1.06); }
     .char-preview-img {
         width: 100%; height: 100%; object-fit: cover; display: block;
+        animation: char-float 3s ease-in-out infinite;
     }
     .char-change-btn {
-        background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14);
-        color: #fff; font-family: var(--ft); font-size: .7rem; font-weight: 600;
-        letter-spacing: .5px; padding: 7px 14px; border-radius: 20px; cursor: pointer;
-        transition: background .2s, border-color .2s;
+        background: linear-gradient(135deg, rgba(232,160,32,0.15), rgba(192,57,43,0.12));
+        border: 1px solid rgba(232,160,32,0.45);
+        color: #e8c070; font-family: var(--ft); font-size: .75rem; font-weight: 700;
+        letter-spacing: 1.2px; padding: 8px 22px; border-radius: 22px; cursor: pointer;
+        transition: all .2s;
+        box-shadow: 0 2px 12px rgba(232,160,32,0.15);
+        display: inline-flex; align-items: center;
     }
-    .char-change-btn:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.3); }
+    .char-change-btn:hover {
+        background: linear-gradient(135deg, rgba(232,160,32,0.32), rgba(192,57,43,0.25));
+        border-color: rgba(232,160,32,0.8);
+        box-shadow: 0 4px 20px rgba(232,160,32,0.4);
+        transform: translateY(-1px);
+        color: #fff;
+    }
     .char-name {
-        font-family: var(--ft); font-size: clamp(1.2rem, 5vw, 1.8rem);
-        font-weight: 900; color: var(--green); letter-spacing: 1.5px;
+        font-family: var(--ft); font-size: clamp(1.5rem, 5vw, 2.2rem);
+        font-weight: 900; color: var(--green); letter-spacing: 2px;
         text-align: center; max-width: 100%; overflow-wrap: anywhere;
+        text-shadow: 0 0 18px rgba(80,220,100,0.55), 0 2px 6px rgba(0,0,0,0.5);
+        line-height: 1.1;
     }
 
     /* ── Friends Modal ── */
@@ -291,6 +324,13 @@
     }
     .friend-status { font-family: var(--ft); font-size: .58rem; color: rgba(255,255,255,.3); }
     .friend-status.online { color: #22c55e; }
+    .friend-remove-btn {
+        background: none; border: none; cursor: pointer;
+        color: rgba(255,255,255,.18); font-size: .9rem; line-height: 1;
+        padding: 2px 4px; border-radius: 4px; transition: color .15s, background .15s;
+        flex-shrink: 0; align-self: center;
+    }
+    .friend-remove-btn:hover { color: #f87171; background: rgba(239,68,68,.12); }
     .pending-row {
         display: flex; align-items: center; gap: 8px; padding: 10px 16px;
         border-bottom: 1px solid rgba(255,255,255,.05);
@@ -311,7 +351,7 @@
     .pending-reject:hover { background: rgba(239,68,68,.25); }
     .search-already-friend { color: rgba(255,255,255,.4); font-size: .7rem; font-style: italic; }
     .friends-nav-btn { position: relative; }
-    @media (max-width: 1099px) { #friends-nav-btn { display: none !important; } }
+    @media (max-width: 1023px) { #friends-nav-btn { display: none !important; } }
     .friends-nav-badge, .friends-tab-badge {
         position: absolute; top: -4px; right: -4px; background: #ef4444;
         color: #fff; font-size: .55rem; font-weight: 800; min-width: 16px; height: 16px;
@@ -383,12 +423,35 @@
     .csf-btn[data-filter="legendary"].active,
     .csf-btn[data-filter="legendary"]:hover   { background: rgba(245,158,11,.18); border-color: rgba(245,158,11,.8); color: #f59e0b; }
     .char-shop-grid {
-        display: grid; grid-template-columns: repeat(4, 1fr);
-        gap: 10px; padding: 16px; max-height: 60vh; overflow-y: auto;
+        display: grid; grid-template-columns: repeat(3, 1fr);
+        gap: 14px; padding: 18px; max-height: 60vh; overflow-y: auto;
         -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(232,160,32,0.55) rgba(255,255,255,0.04);
     }
-    @media (max-width: 560px) { .char-shop-grid { grid-template-columns: repeat(3, 1fr); } }
-    @media (max-width: 360px) { .char-shop-grid { grid-template-columns: repeat(2, 1fr); } }
+    .char-shop-grid::-webkit-scrollbar { width: 6px; }
+    .char-shop-grid::-webkit-scrollbar-track {
+        background: rgba(255,255,255,0.03);
+        border-radius: 3px;
+    }
+    .char-shop-grid::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #e8a020, #c06010);
+        border-radius: 3px;
+        border: 1px solid rgba(232,160,32,0.2);
+    }
+    .char-shop-grid::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #ffd060, #e8a020);
+    }
+    @media (max-width: 420px) { .char-shop-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 600px) {
+        #char-shop-overlay { padding: 6px; }
+        .char-shop-header { padding: 8px 12px; gap: 8px; }
+        .char-shop-title { font-size: .82rem; }
+        .csc-box { padding: 3px 9px; font-size: .7rem; }
+        .char-shop-close { width: 28px; height: 28px; font-size: .85rem; }
+        .char-shop-filters { padding: 6px 10px; gap: 4px; }
+        .csf-btn { padding: 4px 9px; font-size: .58rem; }
+    }
     .char-shop-card {
         background: rgba(255,255,255,.04); border: 1.5px solid rgba(255,255,255,.08);
         border-radius: 12px; padding: 10px 8px 10px;
@@ -412,10 +475,10 @@
     .char-shop-card.cs-card-selected { border-color: var(--rc); background: rgba(255,255,255,.08); box-shadow: 0 0 12px var(--rc)44; }
     .char-shop-card.cs-card-locked { opacity: .75; }
     .cs-img-outer {
-        position: relative; width: 68px; height: 68px; flex-shrink: 0;
+        position: relative; width: 88px; height: 88px; flex-shrink: 0;
     }
     .cs-img-wrap {
-        width: 68px; height: 68px;
+        width: 88px; height: 88px;
         border-radius: 50%; overflow: hidden;
         box-shadow: 0 0 0 2.5px var(--rc, #9ca3af);
     }
@@ -429,6 +492,17 @@
         color: #fff; font-size: .65rem; font-weight: 800; width: 20px; height: 20px;
         border-radius: 50%; display: flex; align-items: center; justify-content: center;
         border: 2px solid #0e1a0e; box-shadow: 0 1px 4px rgba(0,0,0,.5);
+    }
+    .cs-new-badge {
+        position: absolute; top: -4px; left: -4px; background: #f59e0b;
+        color: #000; font-size: .48rem; font-weight: 900; letter-spacing: .5px;
+        padding: 2px 5px; border-radius: 6px;
+        border: 1.5px solid #92400e; box-shadow: 0 1px 6px rgba(245,158,11,.6);
+        animation: cs-new-pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes cs-new-pulse {
+        0%, 100% { box-shadow: 0 1px 6px rgba(245,158,11,.6); }
+        50%       { box-shadow: 0 1px 12px rgba(245,158,11,1); }
     }
     .cs-rarity-label { font-family: var(--ft); font-size: .55rem; font-weight: 800; letter-spacing: .5px; }
     .cs-char-name { font-family: var(--ft); font-size: .6rem; font-weight: 700; color: #fff; text-align: center; letter-spacing: .3px; }
@@ -445,17 +519,119 @@
     .cs-unlock-btn:hover { background: rgba(232,160,32,.32); }
     .cs-locked-btn   { background: rgba(255,255,255,.05); color: rgba(255,255,255,.3); border: 1px solid rgba(255,255,255,.1); cursor: not-allowed; }
 
+    /* ── Loadout + Gamemode row — CSS Grid pentru inaltime egala garantata ── */
+    .loadout-gamemode-row {
+        display: grid;
+        grid-template-columns: calc(52% - 6px) 1fr;
+        gap: 12px; width: 100%;
+    }
+    @media (max-width: 900px) {
+        .loadout-gamemode-row { grid-template-columns: 1fr; }
+    }
+
     /* ── Build card ── */
     .build-card {
         background: var(--card); border: 1px solid var(--border);
-        border-radius: 14px; padding: 14px 16px; width: 100%;
+        border-radius: 14px; padding: 16px 14px; width: 100%;
     }
     .bc-header {
         display: flex; justify-content: space-between; align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: 16px; gap: 6px;
     }
-    .bc-title { font-family: var(--ft); font-size: .68rem; font-weight: 700; color: var(--dim); letter-spacing: 1px; }
-    .bc-points { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: var(--green); }
+    .bc-title {
+        font-family: var(--ft); font-size: 1rem; font-weight: 900;
+        color: #fff; letter-spacing: 1.5px;
+    }
+    .bc-points {
+        font-family: var(--ft); font-size: 1rem; font-weight: 900; color: var(--green);
+        background: rgba(52,211,154,0.1); border: 1px solid rgba(52,211,154,0.25);
+        border-radius: 8px; padding: 2px 10px; white-space: nowrap;
+    }
+    /* ── LOADOUT stat rows — 2-line grid, bara mereu vizibila ── */
+    .loadout-gamemode-row .build-card .stat-row {
+        display: grid;
+        grid-template-columns: 22px 1fr 74px;
+        grid-template-rows: auto auto;
+        column-gap: 8px; row-gap: 5px;
+        align-items: center;
+        margin-bottom: 14px;
+    }
+    .loadout-gamemode-row .build-card .stat-row:last-child { margin-bottom: 0; }
+    .loadout-gamemode-row .build-card .stat-icon   { grid-column: 1; grid-row: 1; font-size: 1.1rem; }
+    .loadout-gamemode-row .build-card .stat-name   { grid-column: 2; grid-row: 1; font-size: .75rem; width: auto; white-space: nowrap; }
+    .loadout-gamemode-row .build-card .stat-value  { grid-column: 3; grid-row: 1; font-size: .9rem; width: auto; min-width: unset; text-align: right; }
+    .loadout-gamemode-row .build-card .stat-controls {
+        grid-column: 1 / 4; grid-row: 2;
+        display: flex !important; align-items: center; gap: 8px;
+    }
+    .loadout-gamemode-row .build-card .stat-bar  { flex: 1; height: 10px; border-radius: 5px; }
+    .loadout-gamemode-row .build-card .stat-btn  { width: 32px; height: 32px; font-size: 1.1rem; border-radius: 9px; flex-shrink: 0; }
+
+    /* ── Gamemode panel ── */
+    .gamemode-panel {
+        flex: 1; min-width: 0;
+        display: flex; flex-direction: column; gap: 8px;
+    }
+    .gm-label {
+        font-family: var(--ft); font-size: .68rem; font-weight: 700;
+        color: var(--dim); letter-spacing: 2px; text-align: center; padding: 2px 0;
+        flex-shrink: 0;
+    }
+    .gm-card {
+        width: 100%; flex: 1;
+        background: rgba(14,30,14,0.72);
+        border: 1.5px solid rgba(255,255,255,0.08);
+        border-radius: 12px; padding: 14px 13px;
+        display: flex; align-items: center; gap: 10px;
+        cursor: pointer; transition: all 0.22s ease; text-align: left;
+        min-height: 0;
+    }
+    .gm-card:hover { border-color: rgba(255,255,255,0.2); transform: translateY(-1px); }
+    .gm-icon { font-size: 1.6rem; flex-shrink: 0; line-height: 1; }
+    .gm-info { flex: 1; min-width: 0; }
+    .gm-name { font-family: var(--ft); font-size: .8rem; font-weight: 900; color: #fff; letter-spacing: .8px; line-height: 1.2; }
+    .gm-desc { font-family: var(--fb); font-size: .6rem; color: var(--dim); margin-top: 4px; line-height: 1.35; }
+    .gm-check {
+        width: 20px; height: 20px; border-radius: 50%;
+        border: 2px solid rgba(255,255,255,.2); flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: .65rem; color: transparent; transition: all .22s;
+    }
+    /* Battle Royale */
+    .gm-br { border-color: rgba(232,160,32,0.2); }
+    .gm-br:hover { border-color: rgba(232,160,32,0.5); background: rgba(232,160,32,0.04); }
+    .gm-br.gm-selected {
+        border-color: #e8a020; background: rgba(232,160,32,0.1);
+        box-shadow: 0 0 18px rgba(232,160,32,0.2), inset 0 0 14px rgba(232,160,32,0.04);
+    }
+    .gm-br.gm-selected .gm-check { border-color: #e8a020; background: #e8a020; color: #000; }
+    .gm-br.gm-selected .gm-name  { color: #e8c060; }
+    .gm-br.gm-deselected { opacity: 0.4; transform: scale(0.96); }
+    /* Survival PvE */
+    .gm-pve { border-color: rgba(52,211,154,0.2); }
+    .gm-pve:hover { border-color: rgba(52,211,154,0.5); background: rgba(52,211,154,0.04); }
+    .gm-pve.gm-selected {
+        border-color: #34d39a; background: rgba(52,211,154,0.1);
+        box-shadow: 0 0 18px rgba(52,211,154,0.2), inset 0 0 14px rgba(52,211,154,0.04);
+    }
+    .gm-pve.gm-selected .gm-check { border-color: #34d39a; background: #34d39a; color: #000; }
+    .gm-pve.gm-selected .gm-name  { color: #34d39a; }
+    .gm-pve.gm-deselected { opacity: 0.4; transform: scale(0.96); }
+
+    /* ── Ambient color transitions per gamemode ── */
+    .lobby-orb { transition: background 0.7s ease, opacity 0.7s ease; }
+    #screen-lobby.mode-pve .lobby-orb.o1 { background: #34d39a; opacity: 0.07; }
+    #screen-lobby.mode-pve .lobby-orb.o2 { background: #5bb8f5; opacity: 0.07; }
+    #screen-lobby.mode-pve .lobby-orb.o3 { background: #34d39a; opacity: 0.05; }
+    #screen-lobby.mode-br  .lobby-orb.o1 { background: #e8a020; opacity: 0.07; }
+    #screen-lobby.mode-br  .lobby-orb.o2 { background: #e94560; opacity: 0.07; }
+    #screen-lobby.mode-br  .lobby-orb.o3 { background: #e8a020; opacity: 0.05; }
+    #screen-lobby.mode-pve .lb-topbar {
+        border-bottom-color: rgba(52,211,154,0.6);
+        box-shadow: 0 6px 28px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(52,211,154,0.18);
+        transition: border-bottom-color 0.5s, box-shadow 0.5s;
+    }
+    .lb-topbar { transition: border-bottom-color 0.5s, box-shadow 0.5s; }
 
     .stat-row {
         display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
@@ -484,23 +660,158 @@
         border-radius: 8px; margin-top: 4px;
     }
 
-    /* ── Room card ── */
+    /* ── Room card — split layout ── */
     .room-card {
         background: var(--card); border: 1px solid var(--border);
-        border-radius: 14px; padding: 14px 16px; width: 100%;
-        display: flex; flex-direction: column; gap: 10px;
+        border-radius: 14px; width: 100%;
+        overflow: hidden; padding: 0;
     }
-    .rc-title { font-family: var(--ft); font-size: .68rem; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-align: center; }
+    .rc-split {
+        display: flex; width: 100%; min-height: 170px;
+    }
+    /* Left: mode info panel */
+    .rc-mode-panel {
+        flex: 0 0 42%; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 8px;
+        padding: 16px 12px; text-align: center;
+        background: rgba(255,255,255,0.02);
+        border-radius: 10px; margin: 8px 0 8px 8px;
+        transition: background 0.5s;
+        position: relative; overflow: hidden;
+    }
+    .rc-mode-panel::before {
+        content: '';
+        position: absolute; inset: 0;
+        background: radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.05), transparent 70%);
+        pointer-events: none;
+    }
+    #screen-lobby.mode-br  .rc-mode-panel {
+        background: linear-gradient(160deg, rgba(232,160,32,0.18), rgba(233,69,96,0.09));
+    }
+    #screen-lobby.mode-pve .rc-mode-panel {
+        background: linear-gradient(160deg, rgba(52,211,154,0.18), rgba(91,184,245,0.09));
+    }
+    .rc-no-sel {
+        display: flex; flex-direction: column; align-items: center; gap: 8px;
+        opacity: 0.45;
+    }
+    .rc-no-sel-icon { font-size: 2rem; line-height: 1; }
+    .rc-no-sel-txt { font-family: var(--ft); font-size: .65rem; font-weight: 700; color: var(--dim); letter-spacing: .5px; line-height: 1.4; }
+    .rc-mode-info { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .rc-big-icon { font-size: 2.4rem; line-height: 1; }
+    .rc-mode-big-name {
+        font-family: var(--ft); font-size: .82rem; font-weight: 900;
+        color: #fff; letter-spacing: 1px; line-height: 1.2;
+    }
+    .rc-mode-badge {
+        font-family: var(--ft); font-size: .55rem; font-weight: 800;
+        letter-spacing: 1.5px; padding: 2px 9px; border-radius: 20px;
+        background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);
+        text-transform: uppercase;
+    }
+    #screen-lobby.mode-br  .rc-mode-badge { background: rgba(232,160,32,0.22); color: #e8c060; }
+    #screen-lobby.mode-pve .rc-mode-badge { background: rgba(52,211,154,0.22); color: #34d39a; }
+    .rc-mode-big-desc { font-family: var(--fb); font-size: .59rem; color: var(--dim); line-height: 1.35; }
+    .rc-mode-features {
+        display: flex; flex-direction: column; align-items: center; gap: 3px;
+        margin-top: 2px;
+    }
+    .rc-mode-feat-line {
+        font-family: var(--fb); font-size: .57rem; color: rgba(255,255,255,0.45);
+        line-height: 1.3;
+    }
+    #screen-lobby.mode-br  .rc-mode-big-name { color: #e8c060; }
+    #screen-lobby.mode-pve .rc-mode-big-name { color: #34d39a; }
 
-    .btn-create {
-        width: 100%; background: linear-gradient(135deg, #e8a020, #b07010);
-        color: #fff; border: none; border-radius: 12px; padding: 15px;
-        font-family: var(--ft); font-size: clamp(.75rem, 3vw, .9rem); font-weight: 700;
-        cursor: pointer; transition: all .2s; letter-spacing: .5px;
-        line-height: 1.15; white-space: normal; text-align: center;
-        touch-action: manipulation;
+    /* Right: actions panel */
+    .rc-actions {
+        flex: 1; min-width: 0;
+        display: flex; flex-direction: column; gap: 8px;
+        padding: 14px 14px;
     }
-    .btn-create:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(232,160,32,.4); }
+
+    /* ── PLAY button ── */
+    .btn-play {
+        width: 100%; border: none; border-radius: 10px;
+        padding: 10px 16px; font-family: var(--ft);
+        font-size: clamp(.78rem, 2.2vw, .88rem); font-weight: 900;
+        cursor: pointer; transition: all .2s; letter-spacing: 2.5px;
+        text-align: center; touch-action: manipulation; color: #fff;
+        background: linear-gradient(135deg, #e8a020, #b07010);
+    }
+    .btn-play:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 18px rgba(232,160,32,.4); }
+    .btn-play:disabled {
+        opacity: 0.35; cursor: not-allowed;
+        background: linear-gradient(135deg, rgba(130,130,130,0.5), rgba(80,80,80,0.5));
+    }
+    #screen-lobby.mode-pve .btn-play:not(:disabled) {
+        background: linear-gradient(135deg, #34d39a, #1a9e6e);
+    }
+    #screen-lobby.mode-pve .btn-play:hover:not(:disabled) { box-shadow: 0 5px 18px rgba(52,211,154,.4); }
+
+    /* ── Mobile / tablet layout (≤768px) ── */
+    @media (max-width: 768px) {
+        /* Topbar compact — icon-only right buttons */
+        .lb-topbar { height: 60px; padding: 0 8px; gap: 4px; }
+        #screen-lobby::after { top: 60px; }
+        .lb-topbar-title { font-size: clamp(.88rem, 2.8vw, 1.15rem); letter-spacing: 1px; }
+        .lb-topbar-back { padding: 6px 10px; font-size: .7rem; }
+        .lb-btn-text { display: none; }
+        .lb-btn { padding: 6px 9px; font-size: .78rem; }
+        .lti-btn { font-size: .58rem; padding: 5px 7px; letter-spacing: 0; }
+
+        /* Character section horizontal */
+        .char-section { flex-direction: row !important; align-items: center; gap: 14px; }
+        .char-preview-outer { width: 80px !important; height: 80px !important; flex-shrink: 0; }
+        .char-name { font-size: clamp(1.1rem, 6vw, 1.6rem) !important; text-align: left !important; }
+        .char-section-text { align-items: flex-start !important; }
+
+        /* Room card — stack mode panel and actions vertically */
+        .rc-split { flex-direction: column; min-height: unset; }
+        .rc-mode-panel {
+            flex: none; border-radius: 10px; margin: 8px 8px 0 8px;
+            padding: 10px 14px; min-height: unset;
+            flex-direction: row; align-items: center; gap: 10px;
+        }
+        .rc-no-sel { flex-direction: row; gap: 8px; }
+        .rc-no-sel-icon { font-size: 1.5rem; }
+        .rc-no-sel-txt { text-align: left; }
+        .rc-mode-info {
+            flex-direction: row; flex-wrap: wrap;
+            align-items: center; gap: 4px 8px; width: 100%;
+        }
+        .rc-big-icon { font-size: 1.8rem; flex-shrink: 0; }
+        .rc-mode-big-name { font-size: .76rem; }
+        .rc-mode-badge { font-size: .52rem; padding: 2px 7px; }
+        .rc-mode-big-desc { width: 100%; text-align: left; font-size: .56rem; }
+        .rc-mode-features { width: 100%; flex-direction: row; gap: 10px; margin-top: 0; flex-wrap: wrap; }
+        .rc-mode-feat-line { font-size: .54rem; }
+        .rc-actions { padding: 10px 12px; gap: 7px; }
+        .btn-play { padding: 10px 14px; font-size: .82rem; }
+        .join-input { padding: 10px 12px; font-size: .82rem; }
+        .btn-join { padding: 10px 12px; }
+        .or-divider { font-size: .66rem; }
+
+        /* Gamemode cards compact */
+        .gm-card { padding: 10px 12px; }
+        .gm-name { font-size: .76rem; }
+        .gm-icon { font-size: 1.4rem; }
+
+        /* Chest slots tighter */
+        .chest-slot { min-height: 64px; }
+        .chest-slot-icon { font-size: 1.2rem; }
+    }
+
+    /* Very small phones (≤420px) — extra refinements */
+    @media (max-width: 420px) {
+        .rc-big-icon { font-size: 1.5rem; }
+        .lti-btn { font-size: .52rem; padding: 4px 5px; }
+        .lb-topbar-title { font-size: .85rem; }
+        .char-preview-outer { width: 68px !important; height: 68px !important; }
+    }
+
+    /* keep old btn-create stub */
+    .btn-create { display: none; }
 
     .or-divider {
         display: flex; align-items: center; gap: 10px;
@@ -539,7 +850,7 @@
     #screen-waiting {
         position: fixed; inset: 0; display: none;
         flex-direction: column; align-items: stretch; justify-content: flex-start;
-        background: var(--bg); overflow: hidden;
+        background: transparent; overflow: hidden;
     }
     .waiting-topbar {
         position: relative; z-index: 1; flex-shrink: 0;
@@ -551,6 +862,7 @@
         flex: 1; overflow-y: auto; display: flex; flex-direction: column;
         align-items: center; justify-content: flex-start;
         scrollbar-width: none; -ms-overflow-style: none;
+        background: rgba(3,8,3,0.48);
     }
     .waiting-scroll::-webkit-scrollbar { display: none; }
 
@@ -579,37 +891,255 @@
         border-color: rgba(255,80,80,0.35);
     }
 
+    #btn-mute-game {
+        position: absolute;
+        top: 12px;
+        right: 90px;
+        z-index: 20;
+        background: rgba(0,0,0,0.45);
+        border: 1px solid rgba(255,255,255,0.10);
+        color: rgba(255,255,255,0.55);
+        border-radius: 8px;
+        padding: 5px 10px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+    }
+    #btn-mute-game:hover {
+        background: rgba(60,60,60,0.7);
+        color: rgba(255,255,255,0.9);
+    }
+
+    #btn-debug-toggle {
+        position: absolute;
+        top: 12px;
+        right: 160px;
+        z-index: 20;
+        background: rgba(0,0,0,0.45);
+        border: 1px solid rgba(255,255,255,0.10);
+        color: rgba(255,255,255,0.55);
+        border-radius: 8px;
+        padding: 5px 10px;
+        font-size: 12px;
+        font-family: monospace;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+    }
+    #btn-debug-toggle:hover, #btn-debug-toggle.active {
+        background: rgba(0,255,136,0.15);
+        color: #00ff88;
+        border-color: rgba(0,255,136,0.3);
+    }
+
+    /* ── Buton + invita (stânga gridului de jucători) ── */
+    .waiting-invite-btn {
+        width: 42px; height: 42px;
+        border-radius: 50%;
+        background: #e8a020;
+        color: #000;
+        border: none;
+        font-size: 26px; font-weight: 900;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        transition: background 0.15s, transform 0.15s;
+        padding: 0;
+        box-shadow: 0 2px 10px rgba(232,160,32,0.45);
+        align-self: center;
+    }
+    .waiting-invite-btn:hover {
+        background: #ffd060;
+        transform: scale(1.12);
+    }
+
+    /* ── Panou Invita Prieteni ── */
+    #waiting-invite-panel {
+        position: fixed; inset: 0; z-index: 500;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .wip-overlay {
+        position: absolute; inset: 0;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(4px);
+    }
+    .wip-modal {
+        position: relative; z-index: 1;
+        background: #131c28;
+        border: 1.5px solid rgba(232,160,32,0.35);
+        border-radius: 16px;
+        width: min(340px, 90vw);
+        max-height: 70vh;
+        display: flex; flex-direction: column;
+        box-shadow: 0 12px 48px rgba(0,0,0,0.7);
+        overflow: hidden;
+    }
+    .wip-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 18px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .wip-title {
+        font-family: var(--ft); font-weight: 800; font-size: 0.9rem;
+        letter-spacing: 1px; color: #fff;
+    }
+    .wip-close {
+        background: none; border: none; color: rgba(255,255,255,0.5);
+        font-size: 1rem; cursor: pointer; padding: 2px 6px;
+        transition: color 0.15s;
+    }
+    .wip-close:hover { color: #fff; }
+    .wip-body {
+        overflow-y: auto; padding: 12px 14px;
+        display: flex; flex-direction: column; gap: 8px;
+    }
+    .wip-body::-webkit-scrollbar { width: 4px; }
+    .wip-body::-webkit-scrollbar-track { background: transparent; }
+    .wip-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+    .wip-empty {
+        color: rgba(255,255,255,0.35); font-size: 0.8rem;
+        text-align: center; padding: 20px 0;
+        font-family: var(--ft);
+    }
+    .wip-friend-row {
+        display: flex; align-items: center; gap: 10px;
+        background: rgba(255,255,255,0.04);
+        border-radius: 10px; padding: 10px 12px;
+    }
+    .wip-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #34d39a; flex-shrink: 0;
+    }
+    .wip-nick {
+        flex: 1; font-family: var(--ft); font-size: 0.85rem;
+        color: #fff; font-weight: 600;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .wip-invite-btn {
+        background: linear-gradient(135deg,#e8a020,#b07010);
+        color: #fff; border: none; border-radius: 8px;
+        padding: 5px 14px; font-size: 0.72rem; font-weight: 800;
+        font-family: var(--ft); letter-spacing: 0.5px;
+        cursor: pointer; transition: opacity 0.15s;
+        white-space: nowrap;
+    }
+    .wip-invite-btn:hover { opacity: 0.85; }
+    .wip-invite-btn:disabled { opacity: 0.4; cursor: default; }
+    .wip-in-room {
+        font-family: var(--ft); font-size: 0.72rem; font-weight: 700;
+        color: #34d39a; white-space: nowrap;
+    }
+
+    /* ── Popup invitatie primita ── */
+    #room-invite-popup {
+        position: fixed;
+        top: 20px; left: 50%; transform: translateX(-50%);
+        z-index: 9999;
+        animation: rip-slide-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+    @keyframes rip-slide-in {
+        from { opacity: 0; transform: translateX(-50%) translateY(-28px); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    .rip-card {
+        background: #131c28;
+        border: 1.5px solid rgba(232,160,32,0.5);
+        border-radius: 16px;
+        padding: 16px 20px;
+        width: min(320px, 90vw);
+        box-shadow: 0 8px 36px rgba(0,0,0,0.7), 0 0 0 1px rgba(232,160,32,0.1);
+        display: flex; flex-direction: column; gap: 10px;
+    }
+    .rip-badge {
+        font-family: var(--ft); font-size: 0.7rem; font-weight: 800;
+        letter-spacing: 1.5px; color: #e8a020; text-transform: uppercase;
+    }
+    .rip-body {
+        font-family: var(--ft); font-size: 0.9rem; color: #fff; line-height: 1.4;
+    }
+    .rip-body strong { color: #e8a020; }
+    .rip-code {
+        font-family: var(--ft); font-size: 0.78rem;
+        color: rgba(255,255,255,0.5);
+    }
+    .rip-code span {
+        color: #5bb8f5; font-weight: 700; letter-spacing: 2px;
+    }
+    .rip-actions {
+        display: flex; gap: 10px;
+    }
+    .rip-decline {
+        flex: 1; background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.12);
+        color: rgba(255,255,255,0.6); border-radius: 10px;
+        padding: 9px; font-family: var(--ft); font-size: 0.78rem;
+        font-weight: 700; cursor: pointer; transition: background 0.15s;
+    }
+    .rip-decline:hover { background: rgba(255,255,255,0.12); }
+    .rip-accept {
+        flex: 1; background: linear-gradient(135deg,#34d39a,#1fa870);
+        border: none; color: #000; border-radius: 10px;
+        padding: 9px; font-family: var(--ft); font-size: 0.78rem;
+        font-weight: 800; cursor: pointer; transition: opacity 0.15s;
+        letter-spacing: 0.5px;
+    }
+    .rip-accept:hover { opacity: 0.88; }
+    .rip-timer {
+        height: 3px; background: rgba(255,255,255,0.1);
+        border-radius: 2px; overflow: hidden;
+    }
+    .rip-timer-bar {
+        height: 100%; background: #e8a020; border-radius: 2px;
+        width: 100%;
+        transition: width linear;
+    }
+
     #leave-confirm {
         position: absolute; inset: 0; z-index: 80;
         display: none; align-items: center; justify-content: center;
-        background: rgba(0,0,0,.62); backdrop-filter: blur(5px);
+        background: rgba(2,8,2,.72); backdrop-filter: blur(6px);
         padding: 18px;
     }
     .leave-confirm-card {
         width: min(340px, 92vw);
-        background: var(--card); border: 1px solid var(--border);
-        border-radius: 14px; padding: 18px;
-        box-shadow: 0 18px 70px rgba(0,0,0,.45);
+        background: rgba(10,20,10,0.98);
+        border: 1.5px solid rgba(232,160,32,0.45);
+        border-radius: 16px; padding: 22px 20px 18px;
+        box-shadow: 0 20px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(80,140,60,.12), inset 0 1px 0 rgba(255,255,255,.05);
         text-align: center;
     }
+    .leave-confirm-icon {
+        font-size: 2rem; margin-bottom: 6px; display: block;
+        filter: drop-shadow(0 0 10px rgba(232,160,32,.5));
+    }
     .leave-confirm-title {
-        font-family: var(--ft); font-size: .95rem; font-weight: 900;
-        color: #fff; letter-spacing: 1px; margin-bottom: 8px;
+        font-family: var(--ft); font-size: 1rem; font-weight: 900;
+        color: #e8a020; letter-spacing: 1.5px; margin-bottom: 6px;
+        text-shadow: 0 0 16px rgba(232,160,32,.4);
     }
     .leave-confirm-text {
-        font-size: .82rem; color: var(--dim); line-height: 1.45;
-        margin-bottom: 16px;
+        font-size: .8rem; color: rgba(180,210,160,.6); line-height: 1.5;
+        margin-bottom: 18px;
     }
     .leave-confirm-actions {
         display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
     }
     .leave-confirm-actions button {
-        border: none; border-radius: 10px; padding: 12px 10px;
+        border-radius: 10px; padding: 12px 10px;
         font-family: var(--ft); font-size: .72rem; font-weight: 800;
-        cursor: pointer; line-height: 1.15;
+        cursor: pointer; line-height: 1.15; transition: all .2s;
     }
-    .leave-confirm-cancel { background: rgba(255,255,255,.08); color: #fff; }
-    .leave-confirm-exit { background: #e94560; color: #fff; }
+    .leave-confirm-cancel {
+        background: rgba(80,140,60,.15); border: 1px solid rgba(80,140,60,.35);
+        color: rgba(180,210,160,.85);
+    }
+    .leave-confirm-cancel:hover { background: rgba(80,140,60,.28); border-color: rgba(80,140,60,.6); }
+    .leave-confirm-exit {
+        background: linear-gradient(135deg, #b91c1c, #ef4444);
+        border: 1px solid rgba(239,68,68,.5);
+        color: #fff; box-shadow: 0 4px 14px rgba(185,28,28,.4);
+    }
+    .leave-confirm-exit:hover { box-shadow: 0 6px 20px rgba(239,68,68,.55); transform: translateY(-1px); }
 
     /* ======================================================
        KILL NOTIFICATION
@@ -677,33 +1207,34 @@
     #screen-gameover {
         position: absolute; inset: 0; display: none;
         flex-direction: column; align-items: center; justify-content: flex-start;
-        background: rgba(0,0,0,.82); backdrop-filter: blur(6px);
+        background: rgba(3,10,3,.88); backdrop-filter: blur(8px);
         overflow-y: auto; padding: 16px;
         scrollbar-width: none; -ms-overflow-style: none;
     }
     #screen-gameover::-webkit-scrollbar { display: none; }
     .gameover-content {
         display: flex; flex-direction: column; align-items: center;
-        gap: 12px; width: 100%; max-width: 340px;
+        gap: 14px; width: 100%; max-width: 340px;
         text-align: center; margin: auto;
     }
 
     /* Stats runda */
     .round-stats {
-        background: rgba(255,255,255,.04); border: 1px solid var(--border);
-        border-radius: 12px; padding: 16px;
+        background: rgba(80,140,60,.1); border: 1px solid rgba(80,140,60,.3);
+        border-radius: 14px; padding: 18px 16px;
         width: 100%;
     }
     .stats-kills-big {
-        display: flex; flex-direction: column; align-items: center; gap: 4px;
+        display: flex; flex-direction: column; align-items: center; gap: 6px;
     }
     .stats-kills-num {
-        font-family: var(--ft); font-size: 3rem; font-weight: 900;
+        font-family: var(--ft); font-size: 3.5rem; font-weight: 900;
         color: var(--accent); line-height: 1;
+        text-shadow: 0 0 24px rgba(232,160,32,.5);
     }
     .stats-kills-lbl {
         font-family: var(--ft); font-size: .6rem; font-weight: 700;
-        color: var(--dim); letter-spacing: 2px;
+        color: rgba(180,210,160,.6); letter-spacing: 2px;
     }
 
     /* ======================================================
@@ -711,13 +1242,14 @@
     ====================================================== */
     .lb-btn {
         color: var(--accent); text-decoration: none; font-family: var(--ft);
-        font-size: .65rem; font-weight: 700; letter-spacing: 1px;
-        padding: 8px 16px; border: 1px solid rgba(232,160,32,0.38); border-radius: 20px;
-        background: rgba(232,160,32,0.08);
+        font-size: .68rem; font-weight: 700; letter-spacing: 1px;
+        padding: 7px 13px; border: 1px solid rgba(232,160,32,0.45); border-radius: 18px;
+        background: rgba(232,160,32,0.11);
         transition: all .2s; white-space: nowrap; display: inline-flex;
         align-items: center; gap: 5px;
+        box-shadow: 0 2px 8px rgba(232,160,32,0.1);
     }
-    .lb-btn:hover { background: rgba(232,160,32,0.18); border-color: rgba(232,160,32,0.6); }
+    .lb-btn:hover { background: rgba(232,160,32,0.22); border-color: rgba(232,160,32,0.7); box-shadow: 0 4px 16px rgba(232,160,32,0.25); }
 
     /* ======================================================
        RESPONSIVE — ajustari tablet & phone
@@ -725,7 +1257,7 @@
     @media (max-width: 380px) {
         .auth-wrap { padding: 16px 12px 32px; gap: 14px; }
         .auth-form { padding: 18px 14px; gap: 14px; }
-        .lobby-inner { padding: 12px 10px 32px; gap: 12px; }
+        .lobby-inner { padding: 12px 10px max(32px, calc(env(safe-area-inset-bottom) + 12px)); gap: 12px; }
         .build-card, .room-card { padding: 12px; }
         .stat-btn { width: 32px; height: 32px; }
     }
@@ -733,7 +1265,7 @@
         .char-section { flex-direction: row; align-items: center; gap: 20px; }
         .char-section-text { text-align: left; }
         .char-name { font-size: 2rem; }
-        .lobby-inner { gap: 18px; padding: 20px 20px 50px; }
+        .lobby-inner { gap: 18px; padding: 20px 20px max(50px, calc(env(safe-area-inset-bottom) + 24px)); }
     }
     @media (min-width: 900px) {
         .lobby-inner { max-width: 640px; }
@@ -867,8 +1399,8 @@
             flex-direction: column; align-items: center;
             gap: 6px; padding-top: 4px; width: auto;
         }
-        .build-card { grid-column: 2; grid-row: 1; padding: 8px 10px; }
-        .room-card  { grid-column: 2; grid-row: 2; padding: 8px 10px; gap: 5px; }
+        .loadout-gamemode-row { grid-column: 2; grid-row: 1; }
+        #room-section { grid-column: 2; grid-row: 2; padding: 8px 10px; gap: 5px; }
         .lobby-err  { grid-column: 2; grid-row: 3; }
         .char-preview-outer { width: 80px !important; height: 80px !important; }
         .char-name  { font-size: .95rem !important; letter-spacing: 1px; }
@@ -878,16 +1410,19 @@
         .stat-row   { margin-bottom: 4px; }
         .stat-btn   { width: 28px; height: 28px; font-size: .95rem; }
         .stat-bar   { height: 5px; }
-        .btn-create { padding: 9px; font-size: .75rem; }
+        .btn-play   { padding: 9px; font-size: .75rem; }
         .join-input { padding: 8px 10px; font-size: .78rem; }
         .btn-join   { padding: 8px 10px; font-size: .68rem; }
         .or-divider { font-size: .62rem; }
         .rc-title   { font-size: .6rem; }
 
         /* Lobby topbar compact */
-        .lb-topbar  { height: 46px; padding: 0 10px; }
+        .lb-topbar  { height: 54px; padding: 0 10px; }
         .lb-topbar-title { font-size: .8rem; letter-spacing: 1px; }
         .lb-topbar-back  { padding: 5px 10px; font-size: .72rem; }
+        .lobby-body  { min-height: 0 !important; }
+        .lobby-center { height: auto; min-height: calc(100dvh - 54px); }
+        #screen-lobby::after { top: 54px; }
 
         /* Waiting room compact */
         .waiting-topbar { padding: 6px 10px; }
@@ -933,28 +1468,36 @@
     }
     .lobby-panel-left::-webkit-scrollbar,
     .lobby-panel-right::-webkit-scrollbar { display: none; }
-    .lobby-panel-left  { border-right: 1px solid rgba(80,140,60,0.2); background: rgba(8,14,8,0.88); }
-    .lobby-panel-right { border-left:  1px solid rgba(80,140,60,0.2); background: rgba(8,14,8,0.88); }
+    .lobby-panel-left  { border-right: 1px solid rgba(80,140,60,0.2); background: rgba(8,18,8,0.55); }
+    .lobby-panel-right { border-left:  1px solid rgba(80,140,60,0.2); background: rgba(8,18,8,0.55); }
 
     /* Center col — wraps existing lobby-inner */
     .lobby-center {
         flex: 1; overflow-y: auto; overflow-x: hidden;
         scrollbar-width: none; -ms-overflow-style: none;
         display: flex; flex-direction: column; align-items: center;
-        background: rgba(8,14,8,0.62);
+        background: rgba(8,18,8,0.38);
     }
     .lobby-center::-webkit-scrollbar { display: none; }
 
-    /* Activate 3-column at 1100px */
-    @media (min-width: 1100px) {
+    /* Activate 3-column at 1024px (covers iPad 9 landscape 1080px) */
+    @media (min-width: 1024px) {
         .lobby-body { flex-direction: row !important; }
         .lobby-panel-left, .lobby-panel-right { display: flex; }
-        .lobby-inner { max-width: clamp(500px, 40vw, 780px); }
+        .lobby-inner { max-width: clamp(460px, 42vw, 780px); }
+    }
+
+    /* iPad range 1024-1199px: panels mai subtiri, spatiu mai mult centrului */
+    @media (min-width: 1024px) and (max-width: 1199px) {
+        .lobby-panel-left,
+        .lobby-panel-right { width: 240px !important; min-width: 240px !important; }
+        .lobby-panel-left  { padding: 14px 12px 32px !important; }
+        .lobby-panel-right { padding: 14px 12px 32px !important; }
     }
 
     /* ── Panel card ── */
     .lp-card {
-        background: rgba(14,26,14,0.97); border: 1px solid rgba(80,140,60,0.2);
+        background: rgba(14,30,14,0.72); border: 1px solid rgba(80,140,60,0.2);
         border-radius: 16px; padding: 20px;
         display: flex; flex-direction: column; gap: 14px;
     }
@@ -965,35 +1508,35 @@
     }
     /* Build/room cards in lobby center also get the green theme */
     #screen-lobby .build-card, #screen-lobby .room-card {
-        background: rgba(14,26,14,0.97);
+        background: rgba(14,30,14,0.72);
         border-color: rgba(80,140,60,0.2);
     }
 
     /* ── Profile section ── */
-    .lp-profile { display: flex; flex-direction: column; align-items: center; gap: 9px; }
-    .lp-avatar-ring { position: relative; width: 90px; height: 90px; }
+    .lp-profile { display: flex; flex-direction: column; align-items: center; gap: 11px; }
+    .lp-avatar-ring { position: relative; width: 115px; height: 115px; }
     .lp-avatar-ring img, .lp-av-placeholder {
-        width: 90px; height: 90px; border-radius: 50%; object-fit: cover;
-        border: 2px solid var(--accent); box-shadow: 0 0 18px rgba(232,160,32,.4);
+        width: 115px; height: 115px; border-radius: 50%; object-fit: cover;
+        border: 3px solid var(--accent); box-shadow: 0 0 22px rgba(232,160,32,.5);
     }
     .lp-av-placeholder {
         background: var(--card2);
-        display: flex; align-items: center; justify-content: center; font-size: 2.2rem;
+        display: flex; align-items: center; justify-content: center; font-size: 2.8rem;
     }
     .lp-level-badge {
-        position: absolute; bottom: -7px; right: -7px;
+        position: absolute; bottom: -6px; right: -10px;
         background: linear-gradient(135deg, var(--gold), var(--orange));
-        color: #000; font-family: var(--ft); font-size: .88rem; font-weight: 900;
-        padding: 4px 11px; border-radius: 12px;
+        color: #000; font-family: var(--ft); font-size: .95rem; font-weight: 900;
+        padding: 4px 12px; border-radius: 12px;
         box-shadow: 0 2px 10px rgba(255,215,0,.55); white-space: nowrap;
         letter-spacing: .5px;
     }
     .lp-nick {
-        font-family: var(--ft); font-size: 1.15rem; font-weight: 900;
+        font-family: var(--ft); font-size: 1.35rem; font-weight: 900;
         color: #fff; text-align: center; letter-spacing: .5px;
         max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .lp-rank { font-family: var(--ft); font-size: .92rem; font-weight: 700; color: var(--dim); letter-spacing: 1px; }
+    .lp-rank { font-family: var(--ft); font-size: 1.02rem; font-weight: 700; color: var(--dim); letter-spacing: 1px; }
 
     /* ── XP bar ── */
     .lp-xp-wrap { width: 100%; }
@@ -1013,12 +1556,29 @@
     /* ── Stats grid ── */
     .lp-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .lp-stat-box {
-        background: rgba(255,255,255,.03); border: 1px solid var(--border);
-        border-radius: 10px; padding: 12px 8px; text-align: center; transition: border-color .2s;
+        border-radius: 12px; padding: 14px 8px 10px; text-align: center;
+        transition: transform .2s, box-shadow .2s;
+        border-top: 2px solid transparent; border-bottom: 1px solid transparent;
+        border-left: 1px solid transparent; border-right: 1px solid transparent;
+        position: relative;
     }
-    .lp-stat-box:hover { border-color: rgba(255,255,255,.15); }
-    .lp-stat-val { font-family: var(--ft); font-size: 1.3rem; font-weight: 900; color: #fff; line-height: 1; }
-    .lp-stat-lbl { font-family: var(--fb); font-size: .65rem; color: var(--dim); margin-top: 5px; letter-spacing: .5px; }
+    .lp-stat-box:hover { transform: translateY(-2px); }
+    .lp-stat-icon { font-size: 1.15rem; display: block; margin-bottom: 5px; }
+    .lp-stat-val { font-family: var(--ft); font-size: 1.6rem; font-weight: 900; line-height: 1; }
+    .lp-stat-lbl { font-family: var(--fb); font-size: .58rem; color: rgba(200,220,190,.5); margin-top: 5px; letter-spacing: 1px; text-transform: uppercase; }
+    /* Per-stat theming */
+    .lp-stat-wins  { background: rgba(255,215,0,.08);  border-top-color: #ffd700; border-color: rgba(255,215,0,.18); }
+    .lp-stat-wins  .lp-stat-val { color: #ffd700; text-shadow: 0 0 12px rgba(255,215,0,.45); }
+    .lp-stat-wins:hover  { box-shadow: 0 4px 16px rgba(255,215,0,.2); }
+    .lp-stat-kills { background: rgba(240,148,77,.08); border-top-color: #f0944d; border-color: rgba(240,148,77,.18); }
+    .lp-stat-kills .lp-stat-val { color: #f0944d; text-shadow: 0 0 12px rgba(240,148,77,.45); }
+    .lp-stat-kills:hover { box-shadow: 0 4px 16px rgba(240,148,77,.2); }
+    .lp-stat-games { background: rgba(91,184,245,.08); border-top-color: #5bb8f5; border-color: rgba(91,184,245,.18); }
+    .lp-stat-games .lp-stat-val { color: #5bb8f5; text-shadow: 0 0 12px rgba(91,184,245,.45); }
+    .lp-stat-games:hover { box-shadow: 0 4px 16px rgba(91,184,245,.2); }
+    .lp-stat-winrate { background: rgba(52,211,154,.08); border-top-color: #34d39a; border-color: rgba(52,211,154,.18); }
+    .lp-stat-winrate .lp-stat-val { color: #34d39a; text-shadow: 0 0 12px rgba(52,211,154,.45); }
+    .lp-stat-winrate:hover { box-shadow: 0 4px 16px rgba(52,211,154,.2); }
 
     /* ── Daily missions ── */
     .lp-mission { display: flex; flex-direction: column; gap: 6px; padding: 3px 0; }
@@ -1036,14 +1596,24 @@
     .mission-claimed-txt { margin-top: 6px; font-family: var(--fb); font-size: .75rem; color: #2ecc71; text-align: center; opacity: .7; }
 
     /* ── Mini leaderboard ── */
-    .lp-lb-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .lp-lb-row { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-bottom: 1px solid var(--border); border-radius: 8px; margin: 0 -4px; }
     .lp-lb-row:last-child { border-bottom: none; }
+    .lp-lb-row.r1 { background: linear-gradient(90deg, rgba(255,215,0,0.09), transparent); }
+    .lp-lb-row.r2 { background: linear-gradient(90deg, rgba(192,192,192,0.06), transparent); }
+    .lp-lb-row.r3 { background: linear-gradient(90deg, rgba(205,127,50,0.08), transparent); }
     .lp-lb-rank { font-family: var(--ft); font-size: .88rem; font-weight: 900; width: 24px; text-align: center; flex-shrink: 0; }
     .lp-lb-rank.r1 { color: var(--gold); }
     .lp-lb-rank.r2 { color: #c0c0c0; }
     .lp-lb-rank.r3 { color: #cd7f32; }
-    .lp-lb-nick { flex: 1; font-family: var(--fb); font-size: .84rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lp-lb-val { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: var(--green); flex-shrink: 0; }
+    .lp-lb-info { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .lp-lb-nick { font-family: var(--fb); font-size: .84rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lp-lb-nick.r1 { color: #ffd700; text-shadow: 0 0 10px rgba(255,215,0,0.45); }
+    .lp-lb-nick.r2 { color: #d4d4d4; text-shadow: 0 0 8px rgba(192,192,192,0.35); }
+    .lp-lb-nick.r3 { color: #d4956a; text-shadow: 0 0 8px rgba(205,127,50,0.35); }
+    .lp-lb-lv { font-family: var(--ft); font-size: .58rem; font-weight: 700; }
+    .lp-lb-wins { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
+    .lp-lb-val { font-family: var(--ft); font-size: .9rem; font-weight: 900; color: var(--green); line-height: 1.1; }
+    .lp-lb-wins-label { font-family: var(--fb); font-size: .52rem; color: var(--dim); }
 
     /* ── Live event card ── */
     .lp-event {
@@ -1084,24 +1654,30 @@
         background: var(--accent); color: #fff;
         box-shadow: 0 2px 10px rgba(232,160,32,.45);
     }
-    @media (min-width: 1100px) { .lobby-tabs-inline { display: none; } }
+    @media (min-width: 1024px) { .lobby-tabs-inline { display: none; } }
 
     /* Side panels when shown as mobile tab */
-    @media (max-width: 1099px) {
+    @media (max-width: 1023px) {
         /* Topbar e mereu vizibil; lobby-body scrolleaza independent */
         #screen-lobby { overflow: hidden !important; }
         .lobby-body {
             overflow-y: auto !important; overflow-x: hidden !important;
             -webkit-overflow-scrolling: touch;
-            max-height: calc(100dvh - 58px);
-            min-height: unset !important;
+            min-height: 0 !important;
+            background: rgba(8,18,8,0.38);
+        }
+        .lobby-center {
+            height: auto;
+            min-height: calc(100dvh - 68px);
+            overflow-y: visible; overflow-x: visible;
+            flex: none;
         }
         .lobby-panel-left.tab-active,
         .lobby-panel-right.tab-active {
             display: flex !important;
             width: 100%; max-width: 560px;
             margin: 0 auto; border: none;
-            padding: 16px 14px 40px; flex: none;
+            padding: 16px 14px max(40px, calc(env(safe-area-inset-bottom) + 16px)); flex: none;
             overflow: visible; min-height: unset;
         }
         .lobby-center.tab-hidden { display: none !important; }
@@ -1113,9 +1689,337 @@
     @keyframes pdot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(.75); } }
     .lobby-online-text { font-family: var(--fb); font-size: .78rem; color: var(--dim); }
     .lobby-online-text strong { color: var(--green); font-family: var(--ft); }
+
+    /* ── Chest slots ── */
+    .chest-row { width: 100%; }
+    .chest-row-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 8px; padding: 0 2px;
+    }
+    .chest-row-title {
+        font-family: var(--ft); font-size: .68rem; font-weight: 700;
+        color: var(--dim); letter-spacing: 2px;
+    }
+    .chest-row-sub {
+        font-family: var(--fb); font-size: .58rem; color: rgba(255,255,255,.2);
+    }
+    .chest-slots {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    }
+    .chest-slot {
+        background: rgba(14,30,14,0.65);
+        border: 1.5px dashed rgba(255,255,255,0.1);
+        border-radius: 12px; min-height: 76px;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 5px;
+        transition: border-color 0.2s, background 0.2s;
+        position: relative; overflow: hidden;
+    }
+    .chest-slot::before {
+        content: '';
+        position: absolute; inset: 0;
+        background: radial-gradient(ellipse at 50% 0%, rgba(232,160,32,0.04), transparent 70%);
+        pointer-events: none;
+    }
+    .chest-slot:hover { border-color: rgba(232,160,32,0.25); background: rgba(14,30,14,0.85); }
+    .chest-slot-icon { font-size: 1.5rem; opacity: 0.18; filter: grayscale(1); line-height: 1; }
+    .chest-slot-label {
+        font-family: var(--ft); font-size: .55rem; font-weight: 700;
+        color: rgba(255,255,255,.2); letter-spacing: 1.5px; text-transform: uppercase;
+    }
+
+    /* ── Responsive: landscape compact ── */
+    @media (max-height: 520px) {
+        .loadout-gamemode-row { display: flex !important; flex-direction: row !important; gap: 8px !important; }
+        .loadout-gamemode-row .build-card { flex: 0 0 calc(55% - 6px) !important; width: auto !important; }
+        .gamemode-panel { flex: 1 !important; width: auto !important; }
+        .gm-icon { font-size: 1.1rem; }
+        .gm-name { font-size: .68rem; }
+        .gm-desc { display: none; }
+        .gm-card { padding: 8px 10px; }
+        .chest-row { display: none; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       LOBBY RESPONSIVE — Refactorizat corect
+       Principiu: fix CHIRURGICAL per breakpoint, nu comprimare globala.
+       Desktop: proportii naturale, spatiu inteligent.
+       Mobile: single-line stats, ascundere redundante, fara overflow.
+    ═══════════════════════════════════════════════════════════════ */
+
+    /* ────────────────────────────────────────────────────────────
+       DESKTOP ≥1024px — 3 coloane: chest ascuns (120px economisiti),
+       padding usor mai mic, side panels la inaltimea content-ului.
+       Elementele raman la dimensiunile originale (nu se comprima).
+    ──────────────────────────────────────────────────────────────*/
+    @media (min-width: 1024px) {
+        .chest-row { display: none !important; }
+        .lobby-inner {
+            padding: 16px 20px max(20px, calc(env(safe-area-inset-bottom) + 16px)) !important;
+            gap: 16px !important;
+        }
+        .lobby-panel-left,
+        .lobby-panel-right {
+            padding: 16px 14px max(28px, calc(env(safe-area-inset-bottom) + 16px)) !important;
+            gap: 14px !important;
+        }
+    }
+
+    /* ────────────────────────────────────────────────────────────
+       CHARACTER SECTION — orizontal de la 500px in sus.
+       Originalul il face orizontal la ≥600px; extindem la ≥500px.
+    ──────────────────────────────────────────────────────────────*/
+    @media (min-width: 500px) {
+        .char-section {
+            flex-direction: row !important;
+            align-items: center !important;
+            gap: 16px !important;
+        }
+        .char-section-text { align-items: flex-start !important; }
+        .char-name { text-align: left !important; }
+    }
+
+    /* ────────────────────────────────────────────────────────────
+       TABLET <1024px — topbar usor mai mic, tab panels corect.
+    ──────────────────────────────────────────────────────────────*/
+    @media (max-width: 1023px) {
+        .lb-topbar { height: 58px !important; padding: 0 12px !important; gap: 6px !important; }
+        #screen-lobby::after { top: 58px !important; }
+        .lobby-center { min-height: calc(100dvh - 58px) !important; }
+        .lobby-panel-left.tab-active,
+        .lobby-panel-right.tab-active {
+            padding: 14px 14px max(24px, calc(env(safe-area-inset-bottom) + 14px)) !important;
+            gap: 12px !important;
+        }
+        /* Topbar — icon-only buttons pe telefoane si tablete */
+        .lb-btn-text { display: none !important; }
+        .lb-btn { padding: 6px 10px !important; font-size: .82rem !important; }
+        .lb-topbar-back { padding: 5px 9px !important; font-size: .8rem !important; }
+        .lb-topbar-title {
+            font-size: clamp(.9rem, 2.2vw, 1.25rem) !important;
+            margin-left: 8px !important;
+        }
+        .lti-btn { font-size: .62rem !important; padding: 4px 9px !important; letter-spacing: 0 !important; }
+        .lobby-tabs-inline { padding: 2px !important; gap: 2px !important; }
+    }
+
+    /* ────────────────────────────────────────────────────────────
+       MOBILE ≤768px — topbar compact, tabs mai mici.
+    ──────────────────────────────────────────────────────────────*/
+    @media (max-width: 768px) {
+        .lb-topbar { height: 54px !important; padding: 0 8px !important; gap: 4px !important; }
+        #screen-lobby::after { top: 54px !important; }
+        .lobby-center { min-height: calc(100dvh - 54px) !important; }
+        .lb-topbar-title { font-size: clamp(.82rem, 2.8vw, 1.05rem) !important; margin-left: 4px !important; }
+        .lb-btn { padding: 5px 8px !important; font-size: .76rem !important; }
+        .lobby-tabs-inline { padding: 2px !important; gap: 2px !important; }
+        .lti-btn { font-size: .63rem !important; padding: 5px 10px !important; letter-spacing: 0 !important; }
+    }
+
+    /* ────────────────────────────────────────────────────────────
+       MOBILE PORTRAIT ≤600px — redesign complet al sectiunii Joc.
+       Problema: stat rows 2-rand + gamemode + room card = 750px+
+       pe un ecran de 600px. Fix: stat rows single-line (-120px),
+       panoul info gamemode ascuns (redundant), padding redus.
+    ──────────────────────────────────────────────────────────────*/
+    @media (max-width: 600px) {
+        /* Lobby inner: respiratie moderata */
+        .lobby-inner {
+            gap: 12px !important;
+            padding: 12px 12px max(16px, calc(env(safe-area-inset-bottom) + 12px)) !important;
+        }
+
+        /* Avatar: mai mic pe telefon */
+        .char-preview-outer { width: 68px !important; height: 68px !important; }
+
+        /* Stat rows → single-line flex.
+           2-row grid: ~65px/rand × 3 = 195px.
+           Single-line: ~38px/rand × 3 = 114px. Economie: 81px. */
+        .loadout-gamemode-row .build-card .stat-row {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+            margin-bottom: 10px !important;
+            grid-template-columns: unset !important;
+            grid-template-rows: unset !important;
+        }
+        .loadout-gamemode-row .build-card .stat-icon {
+            grid-column: unset !important; grid-row: unset !important;
+            font-size: 1rem !important;
+        }
+        .loadout-gamemode-row .build-card .stat-name {
+            grid-column: unset !important; grid-row: unset !important;
+            font-size: .74rem !important; width: 38px !important;
+        }
+        .loadout-gamemode-row .build-card .stat-value {
+            grid-column: unset !important; grid-row: unset !important;
+            font-size: .82rem !important; width: 70px !important;
+            min-width: unset !important; text-align: right !important;
+        }
+        .loadout-gamemode-row .build-card .stat-controls {
+            grid-column: unset !important; grid-row: unset !important;
+            flex: 1 !important; display: flex !important;
+            align-items: center !important; gap: 6px !important;
+        }
+        .loadout-gamemode-row .build-card .stat-bar {
+            height: 7px !important;
+        }
+        .loadout-gamemode-row .build-card .stat-btn {
+            width: 30px !important; height: 30px !important;
+            font-size: 1rem !important; border-radius: 8px !important;
+        }
+
+        /* Gamemode: desc ascuns (salveaza ~14px per card) */
+        .gm-desc { display: none !important; }
+
+        /* Room card: panoul stanga ascuns pe telefon.
+           Info-ul este deja afisat in cardurile de gamemode de deasupra.
+           Economie: ~90px. */
+        #rc-mode-panel { display: none !important; }
+        .rc-actions {
+            padding: 12px 14px !important;
+            gap: 8px !important;
+            border-radius: 10px !important;
+        }
+    }
+
+    /* ────────────────────────────────────────────────────────────
+       TELEFOANE MICI ≤420px — extra compactizare.
+    ──────────────────────────────────────────────────────────────*/
+    @media (max-width: 420px) {
+        .char-preview-outer { width: 58px !important; height: 58px !important; }
+        .lobby-inner {
+            gap: 10px !important;
+            padding: 10px 10px max(14px, calc(env(safe-area-inset-bottom) + 10px)) !important;
+        }
+        .lti-btn { font-size: .58rem !important; padding: 4px 7px !important; }
+        .lb-topbar { height: 52px !important; }
+        #screen-lobby::after { top: 52px !important; }
+        .lobby-center { min-height: calc(100dvh - 52px) !important; }
+        .lb-topbar-back { padding: 5px 8px !important; font-size: .7rem !important; }
+    }
+
+    /* ────────────────────────────────────────────────────────────
+       LANDSCAPE COMPACT (telefon rasturnat, <520px inaltime).
+       Regula existenta deja gestioneaza layout-ul 2 coloane;
+       adaugam doar topbar corect.
+    ──────────────────────────────────────────────────────────────*/
+    @media (max-height: 520px) {
+        .lb-topbar { height: 46px !important; padding: 0 8px !important; }
+        #screen-lobby::after { top: 46px !important; }
+        .lobby-center { min-height: calc(100dvh - 46px) !important; }
+    }
+    /* ══════════════════════════════════════════════════════════════
+       LAYOUT TELEFON — Brawl Stars style
+       Doua variante: portrait (≤768px) si landscape (≤1023px, ≤520px h)
+    ══════════════════════════════════════════════════════════════ */
+
+    /* ── Reguli comune ambelor orientari ─────────────────────── */
+    @media (max-width: 1023px) and (max-height: 680px) {
+        /* Stat rows: un singur rand */
+        .loadout-gamemode-row .build-card .stat-row {
+            display: flex !important;
+            margin-bottom: 7px !important;
+            gap: 5px !important;
+        }
+        .loadout-gamemode-row .build-card .stat-row:last-child { margin-bottom: 0 !important; }
+        .loadout-gamemode-row .build-card .stat-icon   { grid-column: unset !important; grid-row: unset !important; font-size: .9rem !important; }
+        .loadout-gamemode-row .build-card .stat-name   { grid-column: unset !important; grid-row: unset !important; font-size: .66rem !important; width: 30px !important; }
+        .loadout-gamemode-row .build-card .stat-value  { grid-column: unset !important; grid-row: unset !important; font-size: .72rem !important; width: 48px !important; min-width: unset !important; }
+        .loadout-gamemode-row .build-card .stat-controls { grid-column: unset !important; grid-row: unset !important; display: flex !important; flex: 1 !important; }
+        .loadout-gamemode-row .build-card .stat-bar  { height: 6px !important; }
+        .loadout-gamemode-row .build-card .stat-btn  { width: 26px !important; height: 26px !important; font-size: .9rem !important; border-radius: 6px !important; }
+        .build-card { padding: 9px 10px !important; }
+        .bc-header  { margin-bottom: 7px !important; }
+
+        /* Gamemode panel: 2 butoane orizontal, fara descriere */
+        .gamemode-panel { flex-direction: row !important; gap: 7px !important; }
+        .gm-label { display: none !important; }
+        .gm-card  {
+            flex: 1 !important; padding: 8px 5px !important;
+            flex-direction: column !important; align-items: center !important;
+            text-align: center !important; gap: 3px !important; min-height: unset !important;
+        }
+        .gm-icon  { font-size: 1.2rem !important; }
+        .gm-name  { font-size: .6rem !important; text-align: center !important; }
+        .gm-desc  { display: none !important; }
+        .gm-check { display: none !important; }
+        .gm-info  { align-items: center !important; }
+
+        /* Room section: ascunde panoul de info mod (redundant) */
+        .rc-mode-panel { display: none !important; }
+        .rc-actions { padding: 7px 9px !important; gap: 5px !important; }
+        .lobby-online-bar { padding: 2px 6px !important; }
+        .lobby-online-text { font-size: .58rem !important; }
+
+        /* Chest-uri: ascunse */
+        .chest-row { display: none !important; }
+
+        /* Lobby inner: fara max-width limitant, padding redus */
+        .lobby-inner { max-width: 100% !important; padding: 8px 10px 10px !important; gap: 8px !important; }
+
+        /* Loadout + gamemode: orizontal in landscape */
+        .loadout-gamemode-row { display: flex !important; flex-direction: row !important; gap: 8px !important; }
+        .loadout-gamemode-row .build-card { flex: 0 0 52% !important; width: auto !important; }
+        .gamemode-panel { flex: 1 !important; width: auto !important; }
+    }
+
+    /* ── Tablet landscape 521-680px inaltime: avatar redus ─────── */
+    @media (max-width: 1023px) and (min-height: 521px) and (max-height: 680px) {
+        .char-preview-outer { width: 90px !important; height: 90px !important; }
+        .char-name { font-size: 1rem !important; }
+        .char-change-btn { font-size: .62rem !important; padding: 5px 12px !important; }
+    }
+
+    /* ── Portrait portrait ≤768px, ≥680px inaltime ──────────── */
+    @media (max-width: 768px) and (orientation: portrait) and (min-height: 680px) {
+        /* Opreste scroll */
+        .lobby-body { overflow-y: hidden !important; }
+
+        /* Personaj vertical, MARE */
+        .char-section {
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 6px !important;
+        }
+        .char-preview-outer { width: 130px !important; height: 130px !important; }
+        .char-name { font-size: 1.2rem !important; text-align: center !important; }
+        .char-section-text { align-items: center !important; }
+        .char-change-btn { font-size: .62rem !important; padding: 6px 14px !important; }
+
+        /* Stat rows single-line (si pentru portrait ≥680px h) */
+        .loadout-gamemode-row .build-card .stat-row {
+            display: flex !important; margin-bottom: 7px !important; gap: 5px !important;
+        }
+        .loadout-gamemode-row .build-card .stat-row:last-child { margin-bottom: 0 !important; }
+        .loadout-gamemode-row .build-card .stat-icon   { grid-column: unset !important; grid-row: unset !important; font-size: .95rem !important; }
+        .loadout-gamemode-row .build-card .stat-name   { grid-column: unset !important; grid-row: unset !important; font-size: .68rem !important; width: 32px !important; }
+        .loadout-gamemode-row .build-card .stat-value  { grid-column: unset !important; grid-row: unset !important; font-size: .75rem !important; width: 50px !important; min-width: unset !important; }
+        .loadout-gamemode-row .build-card .stat-controls { grid-column: unset !important; grid-row: unset !important; display: flex !important; flex: 1 !important; }
+        .loadout-gamemode-row .build-card .stat-bar  { height: 6px !important; }
+        .loadout-gamemode-row .build-card .stat-btn  { width: 28px !important; height: 28px !important; font-size: .95rem !important; border-radius: 7px !important; }
+
+        /* Gamemode orizontal */
+        .gamemode-panel { flex-direction: row !important; gap: 8px !important; }
+        .gm-label { display: none !important; }
+        .gm-card  { flex: 1 !important; padding: 9px 6px !important; flex-direction: column !important; align-items: center !important; text-align: center !important; gap: 4px !important; min-height: unset !important; }
+        .gm-icon  { font-size: 1.3rem !important; }
+        .gm-name  { font-size: .62rem !important; text-align: center !important; }
+        .gm-desc  { display: none !important; }
+        .gm-check { display: none !important; }
+        .gm-info  { align-items: center !important; }
+
+        .rc-mode-panel { display: none !important; }
+        .rc-actions { padding: 8px 10px !important; gap: 6px !important; }
+        .chest-row { display: none !important; }
+        .lobby-inner { max-width: 100% !important; padding: 10px 12px 12px !important; gap: 10px !important; }
+    }
+    /* ═══════════════════════════════════════════════════════════════ */
     </style>
 </head>
 <body>
+<canvas id="lobby-bg-canvas"></canvas>
 
 <!-- ========== OVERLAY FULLSCREEN ========== -->
 <div id="fs-overlay">
@@ -1138,10 +2042,6 @@
 
 <!-- ========== ECRANUL DE AUTENTIFICARE ========== -->
 <div id="screen-auth">
-    <div class="particles">
-        <span></span><span></span><span></span>
-        <span></span><span></span><span></span>
-    </div>
     <div class="auth-wrap">
 
         <div class="auth-logo">
@@ -1213,12 +2113,10 @@
 
 <!-- ========== LOBBY — Personalizare + Camera (acelasi ecran) ========== -->
 <div id="screen-lobby" style="display:none">
-    <canvas id="lobby-bg-canvas"></canvas>
-
     <!-- Top bar -->
     <div class="lb-topbar" style="position:relative;z-index:1">
         <div class="lb-topbar-left">
-            <button class="lb-topbar-back" onclick="logoutToAuth()">← Iesi</button>
+            <button class="lb-topbar-back" onclick="logoutToAuth()" title="Iesi din cont">⏻</button>
             <span class="lb-topbar-title">ARENA<span>ROYALE</span></span>
         </div>
         <!-- Tab selector (mobile only, hidden on desktop) -->
@@ -1234,6 +2132,7 @@
                 <span id="friends-nav-badge" class="friends-nav-badge" style="display:none"></span>
             </button>
             <a href="#" class="lb-btn" onclick="openLeaderboard(); return false;">🏆 <span class="lb-btn-text">LEADERBOARD</span></a>
+            <button class="lb-btn" id="btn-mute-lobby" title="Muzica on/off">🔊</button>
         </div>
     </div>
 
@@ -1266,10 +2165,26 @@
         <div class="lp-card">
             <div class="lp-card-title">STATISTICI</div>
             <div class="lp-stats-grid">
-                <div class="lp-stat-box"><div class="lp-stat-val" id="lp-wins">0</div><div class="lp-stat-lbl">VICTORII</div></div>
-                <div class="lp-stat-box"><div class="lp-stat-val" id="lp-kills">0</div><div class="lp-stat-lbl">ELIMINARI</div></div>
-                <div class="lp-stat-box"><div class="lp-stat-val" id="lp-games">0</div><div class="lp-stat-lbl">MECIURI</div></div>
-                <div class="lp-stat-box"><div class="lp-stat-val" id="lp-winrate">0%</div><div class="lp-stat-lbl">WIN RATE</div></div>
+                <div class="lp-stat-box lp-stat-wins">
+                    <span class="lp-stat-icon">🏆</span>
+                    <div class="lp-stat-val" id="lp-wins">0</div>
+                    <div class="lp-stat-lbl">VICTORII</div>
+                </div>
+                <div class="lp-stat-box lp-stat-kills">
+                    <span class="lp-stat-icon">💀</span>
+                    <div class="lp-stat-val" id="lp-kills">0</div>
+                    <div class="lp-stat-lbl">ELIMINARI</div>
+                </div>
+                <div class="lp-stat-box lp-stat-games">
+                    <span class="lp-stat-icon">🎮</span>
+                    <div class="lp-stat-val" id="lp-games">0</div>
+                    <div class="lp-stat-lbl">MECIURI</div>
+                </div>
+                <div class="lp-stat-box lp-stat-winrate">
+                    <span class="lp-stat-icon">📈</span>
+                    <div class="lp-stat-val" id="lp-winrate">0%</div>
+                    <div class="lp-stat-lbl">WIN RATE</div>
+                </div>
             </div>
         </div>
     </div>
@@ -1285,78 +2200,144 @@
             </div>
             <div class="char-section-text" style="display:flex;flex-direction:column;align-items:center;gap:6px">
                 <div class="char-name" id="char-name-display">JUCATOR</div>
-                <button class="char-change-btn" onclick="openCharacterShop()">🎭 Schimba Personajul</button>
+                <button class="char-change-btn" onclick="openCharacterShop()">PERSONAJE</button>
             </div>
         </div>
 
-        <!-- BUILD STATS -->
-        <div class="build-card">
-            <div class="bc-header">
-                <span class="bc-title">DISTRIBUIE PUNCTELE</span>
-                <span class="bc-points"><span id="points-display">10</span> / 10</span>
-            </div>
+        <!-- LOADOUT + GAMEMODE ROW -->
+        <div class="loadout-gamemode-row">
 
-            <div class="stat-row">
-                <span class="stat-icon">❤️</span>
-                <span class="stat-name">HEALTH</span>
-                <div class="stat-controls">
-                    <button class="stat-btn minus" onclick="changeStat('hp',-1)">−</button>
-                    <div class="stat-bar"><div class="stat-fill red" id="bar-hp" style="width:10%"></div></div>
-                    <button class="stat-btn plus"  onclick="changeStat('hp', 1)">+</button>
+            <!-- BUILD STATS (stanga, mai ingust) -->
+            <div class="build-card">
+                <div class="bc-header">
+                    <span class="bc-title">LOADOUT</span>
+                    <span class="bc-points"><span id="points-display">10</span> / 10</span>
                 </div>
-                <span class="stat-value" id="val-hp">500 HP</span>
-            </div>
 
-            <div class="stat-row">
-                <span class="stat-icon">💥</span>
-                <span class="stat-name">DAMAGE</span>
-                <div class="stat-controls">
-                    <button class="stat-btn minus" onclick="changeStat('dmg',-1)">−</button>
-                    <div class="stat-bar"><div class="stat-fill orange" id="bar-dmg" style="width:10%"></div></div>
-                    <button class="stat-btn plus"  onclick="changeStat('dmg', 1)">+</button>
+                <div class="stat-row">
+                    <span class="stat-icon">❤️</span>
+                    <span class="stat-name">HP</span>
+                    <div class="stat-controls">
+                        <button class="stat-btn minus" onclick="changeStat('hp',-1)">−</button>
+                        <div class="stat-bar"><div class="stat-fill red" id="bar-hp" style="width:10%"></div></div>
+                        <button class="stat-btn plus"  onclick="changeStat('hp', 1)">+</button>
+                    </div>
+                    <span class="stat-value" id="val-hp">500 HP</span>
                 </div>
-                <span class="stat-value" id="val-dmg">5 DMG</span>
-            </div>
 
-            <div class="stat-row">
-                <span class="stat-icon">⚡</span>
-                <span class="stat-name">SPEED</span>
-                <div class="stat-controls">
-                    <button class="stat-btn minus" onclick="changeStat('spd',-1)">−</button>
-                    <div class="stat-bar"><div class="stat-fill blue" id="bar-spd" style="width:10%"></div></div>
-                    <button class="stat-btn plus"  onclick="changeStat('spd', 1)">+</button>
+                <div class="stat-row">
+                    <span class="stat-icon">💥</span>
+                    <span class="stat-name">DMG</span>
+                    <div class="stat-controls">
+                        <button class="stat-btn minus" onclick="changeStat('dmg',-1)">−</button>
+                        <div class="stat-bar"><div class="stat-fill orange" id="bar-dmg" style="width:10%"></div></div>
+                        <button class="stat-btn plus"  onclick="changeStat('dmg', 1)">+</button>
+                    </div>
+                    <span class="stat-value" id="val-dmg">10 DMG</span>
                 </div>
-                <span class="stat-value" id="val-spd">3.0 SPD</span>
+
+                <div class="stat-row">
+                    <span class="stat-icon">⚡</span>
+                    <span class="stat-name">SPD</span>
+                    <div class="stat-controls">
+                        <button class="stat-btn minus" onclick="changeStat('spd',-1)">−</button>
+                        <div class="stat-bar"><div class="stat-fill blue" id="bar-spd" style="width:10%"></div></div>
+                        <button class="stat-btn plus"  onclick="changeStat('spd', 1)">+</button>
+                    </div>
+                    <span class="stat-value" id="val-spd">2.5 SPD</span>
+                </div>
             </div>
 
-        </div>
-
-        <!-- CAMERA -->
-        <div class="room-card">
-            <p class="rc-title">SELECTEAZA MODUL DE JOC</p>
-
-            <div class="lobby-online-bar">
-                <div class="lobby-online-dot"></div>
-                <span class="lobby-online-text"><strong id="lobby-online-count">--</strong> jucatori online</span>
-            </div>
-            <button class="btn-create" onclick="startCreate()">
-                ＋ &nbsp; CREEAZA CAMERA NOUA
-            </button>
-
-            <div class="or-divider">SAU INTRA CU COD</div>
-
-            <div class="join-row">
-                <input type="text" id="room-code-input" class="join-input"
-                    placeholder="Cod camera (ex: KBNJM)"
-                    maxlength="5" autocomplete="off" autocapitalize="characters"
-                    oninput="this.value=this.value.toUpperCase()">
-                <button class="btn-join" onclick="startJoin()">INTRA →</button>
+            <!-- GAMEMODE SELECTION (dreapta) -->
+            <div class="gamemode-panel">
+                <div class="gm-label">GAMEMODE</div>
+                <button class="gm-card gm-br" id="gm-br" onclick="selectGamemode('br')">
+                    <span class="gm-icon">⚔️</span>
+                    <div class="gm-info">
+                        <div class="gm-name">BATTLE ROYALE</div>
+                        <div class="gm-desc">Ultimul supravietuitor castiga</div>
+                    </div>
+                    <div class="gm-check">✓</div>
+                </button>
+                <button class="gm-card gm-pve" id="gm-pve" onclick="selectGamemode('pve')">
+                    <span class="gm-icon">🧟</span>
+                    <div class="gm-info">
+                        <div class="gm-name">SURVIVAL PvE</div>
+                        <div class="gm-desc">Cooperare contra hoardelor</div>
+                    </div>
+                    <div class="gm-check">✓</div>
+                </button>
             </div>
 
-            <p class="room-err" id="room-error-msg"></p>
+        </div><!-- /loadout-gamemode-row -->
+
+        <!-- CAMERA — mereu vizibila, Play blocat pana la selectia gamemode -->
+        <div class="room-card" id="room-section">
+            <div class="rc-split">
+                <!-- Stanga: info gamemode -->
+                <div class="rc-mode-panel" id="rc-mode-panel">
+                    <div class="rc-no-sel" id="rc-no-sel">
+                        <span class="rc-no-sel-icon">🎮</span>
+                        <span class="rc-no-sel-txt">Selecteaza<br>un gamemode</span>
+                    </div>
+                    <div class="rc-mode-info" id="rc-mode-info" style="display:none">
+                        <span class="rc-big-icon" id="rc-big-icon">⚔️</span>
+                        <div class="rc-mode-big-name" id="rc-mode-big-name">BATTLE ROYALE</div>
+                        <div class="rc-mode-badge" id="rc-mode-badge">PvP</div>
+                        <div class="rc-mode-big-desc" id="rc-mode-big-desc">Ultimul supravietuitor castiga</div>
+                        <div class="rc-mode-features" id="rc-mode-features">
+                            <span class="rc-mode-feat-line" id="rc-mode-feat-1">👥 Max 20 jucatori</span>
+                            <span class="rc-mode-feat-line" id="rc-mode-feat-2">⏱ ~10 min / runda</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Dreapta: actiuni -->
+                <div class="rc-actions">
+                    <div class="lobby-online-bar">
+                        <div class="lobby-online-dot"></div>
+                        <span class="lobby-online-text"><strong id="lobby-online-count">--</strong> jucatori online</span>
+                    </div>
+                    <button class="btn-play" id="btn-play" onclick="startCreate()" disabled>PLAY</button>
+                    <div class="or-divider">SAU INTRA CU COD</div>
+                    <div class="join-row">
+                        <input type="text" id="room-code-input" class="join-input"
+                            placeholder="Cod (ex: KBNJM)"
+                            maxlength="5" autocomplete="off" autocapitalize="characters"
+                            oninput="this.value=this.value.toUpperCase()">
+                        <button class="btn-join" onclick="startJoin()">→</button>
+                    </div>
+                    <p class="room-err" id="room-error-msg"></p>
+                </div>
+            </div>
         </div>
 
         <p class="lobby-err" id="error-msg"></p>
+
+        <!-- CHEST SLOTS -->
+        <div class="chest-row">
+            <div class="chest-row-header">
+                <span class="chest-row-title">CHEST-URI</span>
+                <span class="chest-row-sub">0 / 4 sloturi</span>
+            </div>
+            <div class="chest-slots">
+                <div class="chest-slot">
+                    <span class="chest-slot-icon">📦</span>
+                    <span class="chest-slot-label">Empty</span>
+                </div>
+                <div class="chest-slot">
+                    <span class="chest-slot-icon">📦</span>
+                    <span class="chest-slot-label">Empty</span>
+                </div>
+                <div class="chest-slot">
+                    <span class="chest-slot-icon">📦</span>
+                    <span class="chest-slot-label">Empty</span>
+                </div>
+                <div class="chest-slot">
+                    <span class="chest-slot-icon">📦</span>
+                    <span class="chest-slot-label">Empty</span>
+                </div>
+            </div>
+        </div>
 
     </div>
     </div><!-- lobby-inner / lobby-center -->
@@ -1443,7 +2424,7 @@
 <div id="screen-waiting" style="display:none">
 
     <div class="waiting-topbar">
-        <button class="lb-topbar-back" onclick="leaveWaiting()">← Iesi</button>
+        <button class="lb-topbar-back" onclick="leaveWaiting()" title="Iesi din camera">⏻</button>
         <a href="#" class="lb-btn" onclick="openLeaderboard(); return false;">🏆</a>
     </div>
 
@@ -1462,13 +2443,48 @@
             <span id="waiting-count">0</span> jucatori conectati
         </div>
 
-        <div class="waiting-players-grid" id="waiting-players"></div>
+        <div class="waiting-players-area">
+            <div class="waiting-players-grid" id="waiting-players"></div>
+            <button id="btn-invite-friends" class="waiting-invite-btn"
+                    onclick="openWaitingInvitePanel()" title="Invita prieteni"
+                    style="display:none">+</button>
+        </div>
 
         <button id="btn-start-game" class="btn-start-game" onclick="startGame()" style="display:none">
             ▶ PORNESTE JOCUL
         </button>
         <p class="waiting-sub" id="waiting-sub-msg">Asteapta ca hostul sa porneasca jocul...</p>
     </div>
+    </div>
+</div>
+
+<!-- ========== PANOU INVITA PRIETENI (waiting room) ========== -->
+<div id="waiting-invite-panel" style="display:none">
+    <div class="wip-overlay" onclick="closeWaitingInvitePanel()"></div>
+    <div class="wip-modal">
+        <div class="wip-header">
+            <span class="wip-title">👥 Invita Prieteni</span>
+            <button class="wip-close" onclick="closeWaitingInvitePanel()">✕</button>
+        </div>
+        <div class="wip-body" id="waiting-invite-list">
+            <div class="wip-empty">Niciun prieten online momentan.</div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== POPUP INVITATIE PRIMITA ========== -->
+<div id="room-invite-popup" style="display:none">
+    <div class="rip-card">
+        <div class="rip-badge">⚔️ INVITATIE</div>
+        <div class="rip-body">
+            <strong id="invite-from">—</strong> te invita sa joci impreuna!
+        </div>
+        <div class="rip-code">Cod camera: <span id="invite-room-code">—</span></div>
+        <div class="rip-actions">
+            <button class="rip-decline" onclick="declineRoomInvite()">REFUZA</button>
+            <button class="rip-accept"  onclick="acceptRoomInvite()">ACCEPTA</button>
+        </div>
+        <div class="rip-timer"><div class="rip-timer-bar" id="rip-timer-bar"></div></div>
     </div>
 </div>
 
@@ -1504,8 +2520,15 @@
     <!-- Exit button -->
     <button id="btn-leave-game" onclick="showLeaveConfirm()" title="Iesi din joc">✕ IESI</button>
 
+    <!-- Music mute button -->
+    <button id="btn-mute-game" title="Muzica on/off">🔊</button>
+
+    <!-- Debug toggle button -->
+    <button id="btn-debug-toggle" onclick="window._toggleDbg && window._toggleDbg()" title="Debug overlay">DBG</button>
+
     <div id="leave-confirm">
         <div class="leave-confirm-card">
+            <span class="leave-confirm-icon">🚪</span>
             <div class="leave-confirm-title">IESI DIN MECI?</div>
             <div class="leave-confirm-text">Vei parasi runda curenta si te vei intoarce in lobby.</div>
             <div class="leave-confirm-actions">
@@ -1585,6 +2608,7 @@
 </div>
 
 <!-- ========== SCRIPTURI ========== -->
+<script src="/socket-msgpack-parser.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
 <script src="game.js"></script>
@@ -1621,10 +2645,11 @@
         btnAndroid.addEventListener('click', async () => { await goFullscreen(); overlay.style.display = 'none'; });
     }
 
-    // Ascunde textul "LEADERBOARD" pe ecrane mici
+    // Ascunde textul butoanelor topbar pe ecrane < 1100px (telefoane + tablete)
     function adjustLbText() {
+        const hide = window.innerWidth < 1024;
         document.querySelectorAll('.lb-btn-text').forEach(el => {
-            el.style.display = window.innerWidth < 400 ? 'none' : '';
+            el.style.display = hide ? 'none' : '';
         });
     }
     adjustLbText();

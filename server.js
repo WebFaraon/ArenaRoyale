@@ -1,6 +1,7 @@
 const express = require('express');
 const http    = require('http');
 const { Server } = require('socket.io');
+const msgpackParser = require('socket.io-msgpack-parser');
 const path    = require('path');
 const bcrypt  = require('bcryptjs');
 const crypto  = require('crypto');
@@ -8,7 +9,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server);
+const io     = new Server(server, { parser: msgpackParser, transports: ['websocket'] });
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -34,8 +35,11 @@ app.post('/api/auth/login', async (req, res) => {
     if (!/^[a-zA-Z0-9_]{3,15}$/.test(nickname))
         return res.json({ ok: false, error: 'Nickname: 3-15 caractere (litere, cifre, _)' });
 
-    if (!supabase)
-        return res.json({ ok: true, player: { nickname, avatar: null, kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0 } });
+    if (!supabase) {
+        const token = crypto.randomBytes(32).toString('hex');
+        sessionTokens.set(nickname, token);
+        return res.json({ ok: true, token, player: { nickname, avatar: null, kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0 } });
+    }
 
     try {
         const { data: existing } = await supabase
@@ -265,7 +269,7 @@ app.get('/api/leaderboard', async (req, res) => {
     if (!supabase) return res.json([]);
     try {
         const { data } = await supabase.from('players')
-            .select('nickname, kills_total, wins_total, games_played')
+            .select('nickname, kills_total, wins_total, games_played, xp')
             .order('wins_total',   { ascending: false })
             .order('kills_total',  { ascending: false })
             .limit(50);
@@ -334,57 +338,38 @@ async function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner
     }
 }
 
+let _lbDebounceTimer = null;
 async function broadcastLeaderboard() {
-    if (!supabase) return;
-    try {
-        const { data } = await supabase.from('players')
-            .select('nickname, kills_total, wins_total, games_played')
-            .order('wins_total',  { ascending: false })
-            .order('kills_total', { ascending: false })
-            .limit(50);
-        io.emit('leaderboard-update', data || []);
-    } catch (err) {
-        console.error('[Supabase] broadcastLeaderboard error:', err);
-    }
+    if (!supabase || _lbDebounceTimer) return;
+    _lbDebounceTimer = setTimeout(async () => {
+        _lbDebounceTimer = null;
+        try {
+            const { data } = await supabase.from('players')
+                .select('nickname, kills_total, wins_total, games_played, xp')
+                .order('wins_total',  { ascending: false })
+                .order('kills_total', { ascending: false })
+                .limit(50);
+            io.emit('leaderboard-update', data || []);
+        } catch (err) {
+            console.error('[Supabase] broadcastLeaderboard error:', err);
+        }
+    }, 10000);
 }
 
 // ---------- CONSTANTE ----------
-const ARENA_W             = 2600;
-const ARENA_H             = 2600;
-const TICK_RATE           = 20;          // 20 ticks/sec → 50ms interval
-const BULLET_SPEED        = 1400;        // px/sec
-const BULLET_RADIUS       = 6;
-const PLAYER_SIZE         = 60;
-const ZONE_START_RADIUS   = 1100;
-const ZONE_END_RADIUS     = 80;
-const ZONE_SHRINK_DURATION = 120000;
-const BULLET_LIFE         = 0.428;       // secunde — range = 1400 × 0.428 ≈ 600px
-const SHOOT_CD            = 0.25;        // secunde intre focuri
-const AMMO_MAX            = 10;
-const AMMO_RELOAD_TIME    = 3;           // secunde pentru reincarcarea completa
-const ZOMBIE_COUNT        = 3;
-const ZOMBIE_HP           = 200;
-const ZOMBIE_SPEED        = 70;
-const ZOMBIE_WANDER_SPEED = 36;
-const ZOMBIE_RADIUS       = 24;
-const ZOMBIE_AGGRO_RADIUS = 430;
-const ZOMBIE_ATTACK_RANGE = 48;
-const ZOMBIE_DAMAGE       = 20;
-const ZOMBIE_ATTACK_CD    = 0.85;
-const HEALTH_PICKUP_HEAL  = 200;
-const ZONE_DMG_S          = 48;          // HP/sec in afara zonei (era 0.8/tick × 60)
-const HP_REGEN_RATE       = 25;          // HP/sec dupa 6s fara damage
-const HP_REGEN_DELAY      = 6000;        // ms de asteptat inainte de regen
-const VIEW_DSQ            = 1400 * 1400; // dist² max pentru gloante trimise per jucator
-
-const SPAWN_POINTS = Array.from({ length: 16 }, (_, i) => {
-    const a = -Math.PI / 2 + i * Math.PI * 2 / 16;
-    const r = 930;
-    return {
-        x: Math.round(ARENA_W / 2 + Math.cos(a) * r),
-        y: Math.round(ARENA_H / 2 + Math.sin(a) * r)
-    };
-});
+const ARENA_W          = 2600;
+const ARENA_H          = 2600;
+const TICK_RATE        = 60;
+const BULLET_SPEED     = 1400;
+const BULLET_RADIUS    = 6;
+const BULLET_LIFE      = 0.428;
+const SHOOT_CD         = 0.25;
+const AMMO_MAX         = 10;
+const AMMO_RELOAD_TIME = 3;
+const PLAYER_SIZE      = 60;
+const PLAYER_R         = PLAYER_SIZE / 2;
+const HP_REGEN_RATE    = 25;
+const HP_REGEN_DELAY   = 6000;
 
 // ---------- FRIENDS ----------
 async function getFriendNicknames(nickname) {
@@ -451,16 +436,43 @@ app.post('/api/friends/respond', async (req, res) => {
         if (action === 'accept') {
             await supabase.from('friendships').update({ status: 'accepted' })
                 .eq('requester', requester).eq('target', nickname).eq('status', 'pending');
-            const sid = connectedAccounts.get(requester);
-            if (sid) io.to(sid).emit('friend-accepted', { by: nickname });
-            // Tell both sides current online status
-            const mySid = connectedAccounts.get(nickname);
-            if (sid) io.to(sid).emit('friend-online', { nickname });
-            if (mySid) io.to(mySid).emit('friend-online', { nickname: requester });
+            const sid    = connectedAccounts.get(requester);
+            const mySid  = connectedAccounts.get(nickname);
+            // Fetch XP for both so clients can show correct level immediately
+            const { data: profiles } = await supabase.from('players')
+                .select('nickname, xp').in('nickname', [nickname, requester]);
+            const xpMap = {};
+            (profiles || []).forEach(p => { xpMap[p.nickname] = p.xp || 0; });
+            // Tell requester: friend accepted with full profile snapshot
+            if (sid) io.to(sid).emit('friend-accepted', {
+                by: nickname,
+                xp: xpMap[nickname] || 0,
+                online: !!mySid
+            });
+            // Tell acceptor: new friend added with full profile snapshot
+            if (mySid) io.to(mySid).emit('friend-added', {
+                nickname: requester,
+                xp: xpMap[requester] || 0,
+                online: !!sid
+            });
         } else {
             await supabase.from('friendships').delete()
                 .eq('requester', requester).eq('target', nickname).eq('status', 'pending');
         }
+        res.json({ ok: true });
+    } catch { res.json({ ok: false }); }
+});
+
+app.post('/api/friends/remove', async (req, res) => {
+    const { nickname, token, target } = req.body || {};
+    if (!nickname || !token || !target || !supabase) return res.json({ ok: false });
+    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false });
+    try {
+        await supabase.from('friendships').delete()
+            .or(`and(requester.eq.${nickname},target.eq.${target}),and(requester.eq.${target},target.eq.${nickname})`)
+            .eq('status', 'accepted');
+        const targetSid = connectedAccounts.get(target);
+        if (targetSid) io.to(targetSid).emit('friend-removed', { by: nickname });
         res.json({ ok: true });
     } catch { res.json({ ok: false }); }
 });
@@ -500,79 +512,18 @@ app.post('/api/friends/list', async (req, res) => {
 const rooms = new Map();
 const connectedAccounts = new Map(); // nickname → socketId
 
-function generateObstacles(protectedPoints = []) {
-    const obstacles = [];
-    const count  = 22;
-    const margin = 220;
-    const minGap = 90;
-
-    for (let attempt = 0; attempt < 600 && obstacles.length < count; attempt++) {
-        const isTree = Math.random() < 0.6;
-        const radius = isTree
-            ? 42 + Math.floor(Math.random() * 18)
-            : 28 + Math.floor(Math.random() * 18);
-        const x = margin + radius + Math.random() * (ARENA_W - (margin + radius) * 2);
-        const y = margin + radius + Math.random() * (ARENA_H - (margin + radius) * 2);
-        const clearOfSpawns = protectedPoints.every(p => Math.hypot(x - p.x, y - p.y) >= radius + PLAYER_SIZE + 95);
-        if (clearOfSpawns && obstacles.every(o => Math.hypot(x - o.x, y - o.y) >= radius + o.radius + minGap))
-            obstacles.push({ type: isTree ? 'tree' : 'rock', x, y, radius });
-    }
-    return obstacles;
+function randomSpawnPos() {
+    return {
+        x: 300 + Math.random() * (ARENA_W - 600),
+        y: 300 + Math.random() * (ARENA_H - 600)
+    };
 }
 
-function shuffled(list) {
-    const out = list.map(p => ({ ...p }));
-    for (let i = out.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [out[i], out[j]] = [out[j], out[i]];
-    }
-    return out;
-}
-
-function assignSpawnPoints(players, obstacles) {
-    const points = shuffled(SPAWN_POINTS);
-    players.forEach((p, i) => {
-        const pos = points[i] || spawnPos(obstacles);
+function assignSpawnPositions(players) {
+    players.forEach(p => {
+        const pos = randomSpawnPos();
         p.x = pos.x;
         p.y = pos.y;
-    });
-}
-
-function spawnPos(obstacles) {
-    for (let i = 0; i < 40; i++) {
-        const x = 500 + Math.random() * (ARENA_W - 1000);
-        const y = 500 + Math.random() * (ARENA_H - 1000);
-        if (obstacles.every(o => Math.hypot(x - o.x, y - o.y) > o.radius + PLAYER_SIZE + 20))
-            return { x, y };
-    }
-    return { x: 500 + Math.random() * (ARENA_W - 1000), y: 500 + Math.random() * (ARENA_H - 1000) };
-}
-
-function spawnZombiePos(obstacles) {
-    for (let i = 0; i < 120; i++) {
-        const x = 420 + Math.random() * (ARENA_W - 840);
-        const y = 420 + Math.random() * (ARENA_H - 840);
-        const farFromSpawns = SPAWN_POINTS.every(p => Math.hypot(x - p.x, y - p.y) > 220);
-        const farFromObstacles = obstacles.every(o => Math.hypot(x - o.x, y - o.y) > o.radius + ZOMBIE_RADIUS + 30);
-        if (farFromSpawns && farFromObstacles) return { x, y };
-    }
-    return { x: ARENA_W / 2 + Math.random() * 400 - 200, y: ARENA_H / 2 + Math.random() * 400 - 200 };
-}
-
-function generateZombies(obstacles) {
-    return Array.from({ length: ZOMBIE_COUNT }, (_, i) => {
-        const pos = spawnZombiePos(obstacles);
-        return {
-            id: i,
-            x: pos.x,
-            y: pos.y,
-            hp: ZOMBIE_HP,
-            maxHp: ZOMBIE_HP,
-            angle: 0,
-            wanderAngle: Math.random() * Math.PI * 2,
-            wanderUntil: 0,
-            attackCooldown: 0
-        };
     });
 }
 
@@ -590,27 +541,16 @@ function generateCode() {
 function newRoom(hostId) {
     return {
         hostId,
-        players:      {},
-        bullets:      [],
-        zombies:      [],
-        pickups:      [],
+        players:     {},
+        _playerArr:  [],
+        bullets:     [],
         nextBulletId: 0,
-        nextZombieId: 0,
-        nextPickupId: 0,
-        gameStarted:      false,
-        gameEnded:        false,
-        countdownActive:  false,
+        gameStarted:     false,
+        gameEnded:       false,
+        countdownActive: false,
         rematchVotes: new Set(),
-        obstacles:    [],
-        gameLoop:     null,
-        lastTick:     0,
-        zone: {
-            x:         ARENA_W / 2,
-            y:         ARENA_H / 2,
-            radius:    ZONE_START_RADIUS,
-            shrinking: false,
-            startTime: null
-        }
+        gameLoop:    null,
+        lastTick:    0,
     };
 }
 
@@ -621,6 +561,15 @@ function getPlayerRoom(socketId) {
     return null;
 }
 
+// Cache O(1) — socket._roomCode setat la join/create
+function fastGetRoom(socket) {
+    const code = socket._roomCode;
+    if (!code) return null;
+    const room = rooms.get(code);
+    if (!room || !room.players[socket.id]) return null;
+    return { code, room };
+}
+
 function addPlayer(code, room, socket, data) {
     const s   = data.stats || {};
     const hp  = Math.min(10, Math.max(0, Math.floor(+s.hp  || 0)));
@@ -629,9 +578,9 @@ function addPlayer(code, room, socket, data) {
     const total = hp + dmg + spd;
     const scale = total > 10 ? 10 / total : 1;
 
-    const maxHp  = 500 + Math.round(hp  * scale) * 40;
-    const damage = 10  + Math.round(dmg * scale) * 4;
-    const speed  = (2.5 + Math.round(spd * scale) * 0.3) * 60; // px/sec
+    const maxHp  = 400 + Math.round(hp  * scale) * 40;
+    const damage = 10  + Math.round(dmg * scale) * 2;
+    const speed  = (2.5 + Math.round(spd * scale) * 0.2) * 60; // px/sec
 
     room.players[socket.id] = {
         id: socket.id, name: data.name, image: data.image, xp: data.xp || 0,
@@ -643,8 +592,11 @@ function addPlayer(code, room, socket, data) {
         shootDir: { x: 0, y: 0 },
         shooting: false, shootCooldown: 0,
         ammo: AMMO_MAX, reloading: false, reloadTimer: 0,
-        alive: true, kills: 0, lastDamageTime: 0
+        alive: true, kills: 0, lastDamageTime: 0,
+        lastAckSeq: 0,
+        pendingAckSeq: 0
     };
+    room._playerArr.push(room.players[socket.id]);
 
     io.to(code).emit('player-image', { id: socket.id, image: data.image });
     Object.values(room.players).forEach(p => {
@@ -670,19 +622,25 @@ function broadcastWaiting(code, room) {
 }
 
 function startRoomLoop(code, room) {
+    const INTERVAL_MS = Math.round(1000 / TICK_RATE);
     room.lastTick = Date.now();
-    room.gameLoop = setInterval(() => {
+
+    const _pScratch       = [];
+    const _bScratch       = [];
+    const _aliveScratch   = [];
+    const _expiredBullets = [];
+    let _tpsCount = 0, _tpsWindowStart = Date.now();
+    let expected = Date.now() + INTERVAL_MS;
+
+    function tick() {
+        const tickStart = Date.now();
         try {
             if (!room.gameStarted || !rooms.has(code)) return;
-            const now = Date.now();
-            const dt  = Math.min((now - room.lastTick) / 1000, 0.1); // sec, max 100ms cap
+            const now = tickStart;
+            const dt  = INTERVAL_MS / 1000;
             room.lastTick = now;
 
-            // Cache o singura data per tick — evita Object.values() repetat
-            const allPlayers = Object.values(room.players);
-            let zombieDied   = false;
-            room.zombieTickCount = (room.zombieTickCount || 0) + 1;
-            const doZombiePathfinding = (room.zombieTickCount % 2 === 0);
+            const allPlayers = room._playerArr;
 
             allPlayers.forEach(player => {
                 if (!player.alive || room.gameEnded || room.countdownActive) return;
@@ -690,14 +648,7 @@ function startRoomLoop(code, room) {
                 player.x = Math.max(20, Math.min(ARENA_W - 20, player.x + player.moveDir.x * player.speed * dt));
                 player.y = Math.max(20, Math.min(ARENA_H - 20, player.y + player.moveDir.y * player.speed * dt));
 
-                const zd = Math.hypot(player.x - room.zone.x, player.y - room.zone.y);
-                if (zd > room.zone.radius - PLAYER_SIZE / 2) {
-                    player.hp -= ZONE_DMG_S * dt;
-                    player.lastDamageTime = now;
-                    if (player.hp <= 0) eliminatePlayer(code, room, player, null);
-                }
-
-                if (player.hp < player.maxHp && (now - (player.lastDamageTime ?? 0)) > HP_REGEN_DELAY) {
+                if (player.hp < player.maxHp && (now - (player.lastDamageTime || 0)) > HP_REGEN_DELAY) {
                     player.hp = Math.min(player.maxHp, player.hp + HP_REGEN_RATE * dt);
                 }
 
@@ -705,67 +656,46 @@ function startRoomLoop(code, room) {
                 if (player.reloading) {
                     player.reloadTimer -= dt;
                     if (player.reloadTimer <= 0) {
-                        player.reloading   = false;
-                        player.reloadTimer = 0;
-                        player.ammo        = AMMO_MAX;
+                        player.reloading = false; player.reloadTimer = 0; player.ammo = AMMO_MAX;
                     }
                 }
                 if (player.ammo <= 0 && !player.reloading) {
-                    player.reloading   = true;
-                    player.reloadTimer = AMMO_RELOAD_TIME;
-                    player.shooting    = false;
+                    player.reloading = true; player.reloadTimer = AMMO_RELOAD_TIME; player.shooting = false;
                 }
                 if (player.shooting && !player.reloading && player.shootCooldown <= 0 && player.ammo > 0) {
-                    const dirLen = Math.hypot(player.shootDir.x || 0, player.shootDir.y || 0);
-                    if (dirLen >= 0.1) {
-                        const dirX = player.shootDir.x / dirLen;
-                        const dirY = player.shootDir.y / dirLen;
-                        const SPAWN_OFFSET = 25;
+                    const dl = Math.hypot(player.shootDir.x || 0, player.shootDir.y || 0);
+                    if (dl >= 0.1) {
+                        const dx = player.shootDir.x / dl, dy = player.shootDir.y / dl;
                         room.bullets.push({
-                            id:       room.nextBulletId++,
-                            ownerId:  player.id,
-                            x:        player.x + dirX * SPAWN_OFFSET,
-                            y:        player.y + dirY * SPAWN_OFFSET,
-                            dx:       dirX * BULLET_SPEED,
-                            dy:       dirY * BULLET_SPEED,
-                            damage:   player.damage,
-                            radius:   BULLET_RADIUS,
-                            lifetime: BULLET_LIFE
+                            id: room.nextBulletId++, ownerId: player.id,
+                            x: player.x + dx * 25, y: player.y + dy * 25,
+                            dx: dx * BULLET_SPEED, dy: dy * BULLET_SPEED,
+                            damage: player.damage, radius: BULLET_RADIUS, lifetime: BULLET_LIFE
                         });
                         player.ammo--;
                         player.shootCooldown = SHOOT_CD;
                         if (player.ammo <= 0) {
-                            player.reloading   = true;
-                            player.reloadTimer = AMMO_RELOAD_TIME;
-                            player.shooting    = false;
+                            player.reloading = true; player.reloadTimer = AMMO_RELOAD_TIME; player.shooting = false;
                         }
                     }
                 }
 
-                for (const obs of room.obstacles) {
-                    const ox = player.x - obs.x, oy = player.y - obs.y;
-                    const od = Math.hypot(ox, oy);
-                    const minD = PLAYER_SIZE / 2 + obs.radius;
-                    if (od < minD && od > 0) {
-                        player.x = obs.x + (ox / od) * minD;
-                        player.y = obs.y + (oy / od) * minD;
-                    }
-                }
-
+                if (player.pendingAckSeq > player.lastAckSeq) player.lastAckSeq = player.pendingAckSeq;
             });
 
-            // Coliziune player-player: impinge jucatorii vii departe unii de altii
-            const PLAYER_R = PLAYER_SIZE / 2;
-            const aliveMov = allPlayers.filter(p => p.alive);
-            for (let i = 0; i < aliveMov.length; i++) {
-                for (let j = i + 1; j < aliveMov.length; j++) {
-                    const a = aliveMov[i], b = aliveMov[j];
+            // Coliziune jucator-jucator
+            _aliveScratch.length = 0;
+            for (const p of allPlayers) { if (p.alive) _aliveScratch.push(p); }
+            const alivePlayers = _aliveScratch;
+            const _minD = PLAYER_R * 2, _minDSq = _minD * _minD;
+            for (let i = 0; i < alivePlayers.length; i++) {
+                for (let j = i + 1; j < alivePlayers.length; j++) {
+                    const a = alivePlayers[i], b = alivePlayers[j];
                     const dx = a.x - b.x, dy = a.y - b.y;
-                    const dist = Math.hypot(dx, dy);
-                    const minD = PLAYER_R * 2;
-                    if (dist < minD && dist > 0) {
-                        const push = (minD - dist) * 0.5;
-                        const nx = dx / dist, ny = dy / dist;
+                    if (Math.abs(dx) >= PLAYER_SIZE || Math.abs(dy) >= PLAYER_SIZE) continue;
+                    const dSq = dx * dx + dy * dy;
+                    if (dSq < _minDSq && dSq > 0) {
+                        const d = Math.sqrt(dSq), push = (_minD - d) * 0.5, nx = dx / d, ny = dy / d;
                         a.x = Math.max(20, Math.min(ARENA_W - 20, a.x + nx * push));
                         a.y = Math.max(20, Math.min(ARENA_H - 20, a.y + ny * push));
                         b.x = Math.max(20, Math.min(ARENA_W - 20, b.x - nx * push));
@@ -774,301 +704,119 @@ function startRoomLoop(code, room) {
                 }
             }
 
-            // alivePlayers calculat o data dupa primul loop (unii pot fi eliminati de zona)
-            const alivePlayers = allPlayers.filter(p => p.alive);
-
-            room.zombies.forEach(z => {
-                if (room.gameEnded || room.countdownActive || z.hp <= 0) return;
-                if (z.attackCooldown > 0) z.attackCooldown -= dt;
-
-                let target = null;
-                let bestD = Infinity;
-                alivePlayers.forEach(p => {
-                    const d = Math.hypot(p.x - z.x, p.y - z.y);
-                    if (d < bestD) { bestD = d; target = p; }
-                });
-
-                let dx = 0, dy = 0, speed = ZOMBIE_WANDER_SPEED;
-                if (target && bestD <= ZOMBIE_AGGRO_RADIUS) {
-                    dx = target.x - z.x;
-                    dy = target.y - z.y;
-                    speed = ZOMBIE_SPEED;
-                    if (bestD <= ZOMBIE_ATTACK_RANGE && z.attackCooldown <= 0) {
-                        target.hp -= ZOMBIE_DAMAGE;
-                        target.lastDamageTime = now;
-                        z.attackCooldown = ZOMBIE_ATTACK_CD;
-                        io.to(target.id).emit('zombie-hit', { amount: ZOMBIE_DAMAGE, x: target.x, y: target.y });
-                        if (target.hp <= 0) eliminatePlayer(code, room, target, null, 'Zombie');
-                    }
-                } else {
-                    if (now > z.wanderUntil) {
-                        z.wanderAngle = Math.random() * Math.PI * 2;
-                        z.wanderUntil = now + 1200 + Math.random() * 1800;
-                    }
-                    dx = Math.cos(z.wanderAngle);
-                    dy = Math.sin(z.wanderAngle);
-                }
-
-                // Angle-sweep pathfinding: ruleaza o data la 2 tick-uri (10Hz) — directia se cacheza
-                const rawLen = Math.hypot(dx, dy);
-                if (rawLen > 0) { dx /= rawLen; dy /= rawLen; }
-
-                const baseAngle = Math.atan2(dy, dx);
-                let finalAngle;
-
-                if (doZombiePathfinding) {
-                    finalAngle = baseAngle;
-                    const CHECK_DIST = 58;
-                    const MARGIN     = ZOMBIE_RADIUS + 10;
-                    function isClear(angle) {
-                        const cdx = Math.cos(angle), cdy = Math.sin(angle);
-                        for (const obs of room.obstacles) {
-                            const ox = obs.x - z.x, oy = obs.y - z.y;
-                            const proj = ox * cdx + oy * cdy;
-                            if (proj < 0 || proj > CHECK_DIST + obs.radius) continue;
-                            const lx = ox - proj * cdx, ly = oy - proj * cdy;
-                            if (Math.hypot(lx, ly) < obs.radius + MARGIN) return false;
-                        }
-                        return true;
-                    }
-                    if (!isClear(baseAngle)) {
-                        let found = false;
-                        for (let deg = 15; deg <= 105; deg += 15) {
-                            const rad = deg * Math.PI / 180;
-                            const L = isClear(baseAngle - rad);
-                            const R = isClear(baseAngle + rad);
-                            if (L || R) {
-                                if (L && R) {
-                                    const dL = Math.abs(baseAngle - rad - z.angle);
-                                    const dR = Math.abs(baseAngle + rad - z.angle);
-                                    finalAngle = dL < dR ? baseAngle - rad : baseAngle + rad;
-                                } else {
-                                    finalAngle = L ? baseAngle - rad : baseAngle + rad;
-                                }
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            z.wanderAngle = (z.wanderAngle + Math.PI * 0.75) % (Math.PI * 2);
-                            z.wanderUntil = now + 600;
-                            finalAngle = z.wanderAngle;
-                        }
-                    }
-                    z._cachedFinalAngle = finalAngle;
-                } else {
-                    finalAngle = z._cachedFinalAngle !== undefined ? z._cachedFinalAngle : baseAngle;
-                }
-
-                dx = Math.cos(finalAngle);
-                dy = Math.sin(finalAngle);
-
-                if (z.hp > 0) {
-                    z.angle = finalAngle;
-                    z.x = Math.max(35, Math.min(ARENA_W - 35, z.x + dx * speed * dt));
-                    z.y = Math.max(35, Math.min(ARENA_H - 35, z.y + dy * speed * dt));
-                }
-
-                for (const obs of room.obstacles) {
-                    const ox = z.x - obs.x, oy = z.y - obs.y;
-                    const od = Math.hypot(ox, oy);
-                    const minD = ZOMBIE_RADIUS + obs.radius;
-                    if (od < minD && od > 0) {
-                        z.x = obs.x + (ox / od) * minD;
-                        z.y = obs.y + (oy / od) * minD;
-                    }
-                }
-            });
-
-            alivePlayers.forEach(player => {
-                for (let i = room.pickups.length - 1; i >= 0; i--) {
-                    const item = room.pickups[i];
-                    if (player.hp >= player.maxHp) continue;
-                    if (Math.hypot(player.x - item.x, player.y - item.y) > 48) continue;
-                    const before = player.hp;
-                    player.hp = Math.min(player.maxHp, player.hp + HEALTH_PICKUP_HEAL);
-                    room.pickups.splice(i, 1);
-                    io.to(code).emit('pickup-collected', {
-                        id: item.id,
-                        x: item.x,
-                        y: item.y,
-                        playerId: player.id,
-                        heal: Math.round(player.hp - before)
-                    });
-                }
-            });
-
-            const expiredBullets = [];
-            room.bullets = room.bullets.filter(b => {
+            // Gloante: miscare + coliziune cu jucatori
+            _expiredBullets.length = 0;
+            let _bKeep = 0;
+            for (let bi = 0; bi < room.bullets.length; bi++) {
+                const b = room.bullets[bi];
                 const prevX = b.x, prevY = b.y;
-                b.x += b.dx * dt;
-                b.y += b.dy * dt;
-                b.lifetime -= dt;
-
-                if (b.lifetime <= 0) {
-                    if (b.x >= 0 && b.x <= ARENA_W && b.y >= 0 && b.y <= ARENA_H)
-                        expiredBullets.push(b);
-                    return false;
-                }
-                if (b.x < 0 || b.x > ARENA_W || b.y < 0 || b.y > ARENA_H)
-                    return false;
-
-                // Swept collision pentru obstacole SI jucatori — un pas de 20px
-                const moveLen = Math.hypot(b.x - prevX, b.y - prevY);
-                const steps   = Math.max(1, Math.ceil(moveLen / 20));
-                const hitR    = PLAYER_SIZE / 2 + b.radius;
-
-                // Obstacole: swept (bullet poate traversa roca daca jucatorul e lipit de ea)
-                let hitObsIdx = -1;
-                for (let s = 1; s <= steps; s++) {
-                    const bx = prevX + (b.x - prevX) * s / steps;
-                    const by = prevY + (b.y - prevY) * s / steps;
-                    const idx = room.obstacles.findIndex(o => Math.hypot(bx - o.x, by - o.y) < o.radius + b.radius);
-                    if (idx >= 0) { hitObsIdx = idx; break; }
-                }
-                if (hitObsIdx >= 0) {
-                    io.to(code).emit('obstacle-hit', { idx: hitObsIdx });
-                    return false;
-                }
-
-                for (const z of room.zombies) {
-                    if (z.hp <= 0) continue;
-
-                    let hitZombie = false;
-                    for (let s = 1; s <= steps; s++) {
-                        const bx = prevX + (b.x - prevX) * s / steps;
-                        const by = prevY + (b.y - prevY) * s / steps;
-                        if (Math.hypot(bx - z.x, by - z.y) < ZOMBIE_RADIUS + b.radius) {
-                            hitZombie = true;
-                            break;
+                b.x += b.dx * dt; b.y += b.dy * dt; b.lifetime -= dt;
+                let keep = true;
+                if (b.lifetime <= 0 || b.x < 0 || b.x > ARENA_W || b.y < 0 || b.y > ARENA_H) {
+                    if (b.lifetime <= 0 && b.x >= 0 && b.x <= ARENA_W && b.y >= 0 && b.y <= ARENA_H)
+                        _expiredBullets.push(b);
+                    keep = false;
+                } else {
+                    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - prevX, b.y - prevY) / 20));
+                    const hitR  = PLAYER_R + b.radius;
+                    for (const p of alivePlayers) {
+                        if (p.id === b.ownerId) continue;
+                        let hit = false;
+                        for (let s = 1; s <= steps; s++) {
+                            const bx = prevX + (b.x - prevX) * s / steps;
+                            const by = prevY + (b.y - prevY) * s / steps;
+                            if (Math.hypot(bx - p.x, by - p.y) < hitR) { hit = true; break; }
+                        }
+                        if (hit) {
+                            p.hp -= b.damage; p.lastDamageTime = now;
+                            if (p.hp <= 0) eliminatePlayer(code, room, p, b.ownerId);
+                            keep = false; break;
                         }
                     }
-
-                    if (hitZombie) {
-                        z.hp -= b.damage;
-                        io.to(b.ownerId).emit('damage-dealt', { amount: Math.round(b.damage), x: z.x, y: z.y });
-                        if (z.hp <= 0) {
-                            zombieDied = true;
-                            const item = { id: room.nextPickupId++, x: z.x, y: z.y, spawnedAt: now };
-                            room.pickups.push(item);
-                        } else {
-                            io.to(code).emit('bullet-hit', { x: b.x, y: b.y });
-                        }
-                        return false;
-                    }
                 }
+                if (keep) room.bullets[_bKeep++] = b;
+            }
+            room.bullets.length = _bKeep;
 
-                for (const p of alivePlayers) {
-                    if (p.id === b.ownerId) continue;
-
-                    let hit = false;
-                    for (let s = 1; s <= steps; s++) {
-                        const bx = prevX + (b.x - prevX) * s / steps;
-                        const by = prevY + (b.y - prevY) * s / steps;
-                        if (Math.hypot(bx - p.x, by - p.y) < hitR) { hit = true; break; }
-                    }
-
-                    if (hit) {
-                        p.hp -= b.damage;
-                        p.lastDamageTime = now;
-                        io.to(b.ownerId).emit('damage-dealt', { amount: Math.round(b.damage), x: p.x, y: p.y });
-                        if (p.hp <= 0) eliminatePlayer(code, room, p, b.ownerId);
-                        else io.to(code).emit('bullet-hit', { x: b.x, y: b.y });
-                        return false;
-                    }
-                }
-                return true;
-            });
-            if (zombieDied) room.zombies = room.zombies.filter(z => z.hp > 0);
-
-            if (room.zone.shrinking && room.zone.startTime) {
-                const progress = Math.min((now - room.zone.startTime) / ZONE_SHRINK_DURATION, 1);
-                room.zone.radius = ZONE_START_RADIUS - (ZONE_START_RADIUS - ZONE_END_RADIUS) * progress;
+            _tpsCount++;
+            if (now - _tpsWindowStart >= 2000) {
+                const tps = Math.round(_tpsCount * 1000 / (now - _tpsWindowStart));
+                _tpsCount = 0; _tpsWindowStart = now;
+                io.to(code).emit('srv-stats', { tps, ents: allPlayers.length + room.bullets.length });
             }
 
-            // Compact per-socket broadcast cu proximity filtering pentru gloante
-            const z = room.zone;
-            const zArr = [Math.round(z.x), Math.round(z.y), Math.round(z.radius), z.shrinking ? 1 : 0];
-
-            // pArr: [id, x, y, angle, hp, alive, kills]  — name/maxHp trimise o data la start
-            const pArr = allPlayers.map(p => [
-                p.id,
-                Math.round(p.x), Math.round(p.y),
-                +p.angle.toFixed(3),
-                Math.round(p.hp),
-                p.alive ? 1 : 0,
-                p.kills
-            ]);
-            const zmbArr = room.zombies.map(z => [
-                z.id,
-                Math.round(z.x), Math.round(z.y),
-                Math.round(z.hp),
-                z.maxHp,
-                +z.angle.toFixed(3)
-            ]);
-            const itemArr = room.pickups.map(item => [
-                item.id,
-                Math.round(item.x), Math.round(item.y)
-            ]);
+            _pScratch.length = 0;
+            for (const p of allPlayers) {
+                _pScratch.push([p.id, Math.round(p.x), Math.round(p.y), +p.angle.toFixed(3), Math.round(p.hp), p.alive ? 1 : 0, p.kills]);
+            }
+            _bScratch.length = 0;
+            for (const b of room.bullets) {
+                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), +(b.dx / BULLET_SPEED).toFixed(3), +(b.dy / BULLET_SPEED).toFixed(3), b.ownerId]);
+            }
+            for (const b of _expiredBullets) {
+                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), +(b.dx / BULLET_SPEED).toFixed(3), +(b.dy / BULLET_SPEED).toFixed(3), b.ownerId]);
+            }
 
             allPlayers.forEach(recv => {
-                // bArr: [id, x, y, dirX, dirY] — doar gloantele din raza vizuala
-                const bArr = [...room.bullets, ...expiredBullets]
-                    .filter(b => (b.x - recv.x) ** 2 + (b.y - recv.y) ** 2 < VIEW_DSQ)
-                    .map(b => [
-                        b.id,
-                        Math.round(b.x), Math.round(b.y),
-                        +(b.dx / BULLET_SPEED).toFixed(3),
-                        +(b.dy / BULLET_SPEED).toFixed(3),
-                        b.ownerId
-                    ]);
-                const reloadProgress = recv.reloading
-                    ? Math.max(0, Math.min(1, 1 - recv.reloadTimer / AMMO_RELOAD_TIME))
-                    : 1;
-                const ammoArr = [recv.ammo, AMMO_MAX, recv.reloading ? 1 : 0, +reloadProgress.toFixed(3)];
-                io.to(recv.id).emit('gs', [pArr, bArr, zArr, ammoArr, zmbArr, itemArr]);
+                const reloadProgress = recv.reloading ? Math.max(0, Math.min(1, 1 - recv.reloadTimer / AMMO_RELOAD_TIME)) : 1;
+                const ammoArr = [recv.ammo, AMMO_MAX, recv.reloading ? 1 : 0, +reloadProgress.toFixed(3), recv.lastAckSeq];
+                io.to(recv.id).emit('gs', [_pScratch, _bScratch, ammoArr, tickStart]);
             });
 
         } catch (err) {
             console.error(`[${code}] Game loop error:`, err.stack || err);
+        } finally {
+            if (room.gameStarted && rooms.has(code) && !room.gameEnded) {
+                expected += INTERVAL_MS;
+                const remaining = expected - Date.now();
+                // Hybrid: sleep with setTimeout until ~4ms before target, then
+                // spin with setImmediate for sub-ms precision. Eliminates the
+                // ~15ms Windows timer quantisation that causes visible stutter.
+                if (remaining > 4) {
+                    room.gameLoop = setTimeout(tick, remaining - 4);
+                } else {
+                    room.gameLoop = setImmediate(tick);
+                }
+            }
         }
-    }, 1000 / TICK_RATE);
+    }
+
+    expected = Date.now() + INTERVAL_MS;
+    room.gameLoop = setImmediate(tick);
 }
 
-function eliminatePlayer(code, room, player, killerId, causeName = 'zona') {
+function eliminatePlayer(code, room, player, killerId) {
     player.alive = false;
     player.hp    = 0;
 
     const killerPlayer = killerId ? room.players[killerId] : null;
     if (killerPlayer) killerPlayer.kills++;
 
-    const alive        = Object.values(room.players).filter(p => p.alive);
-    const totalPlayers = Object.keys(room.players).length;
-    const placement    = alive.length + 1;
+    // Use _playerArr cache — avoids Object.values()+filter() allocations
+    let _aliveN = 0;
+    for (const p of room._playerArr) { if (p.alive) _aliveN++; }
+    const totalPlayers = room._playerArr.length;
+    const placement    = _aliveN + 1;
 
     io.to(player.id).emit('eliminated', {
-        placement,
-        totalPlayers,
-        killedBy: killerPlayer ? killerPlayer.name : (causeName === 'zona' ? null : causeName),
+        placement, totalPlayers,
+        killedBy: killerPlayer ? killerPlayer.name : null,
         kills:    player.kills
     });
 
     if (killerPlayer) {
-        io.to(code).emit('kill-event', { killerName: killerPlayer.name, victimName: player.name, byZone: false });
-    } else if (causeName !== 'zona') {
-        io.to(code).emit('kill-event', { killerName: causeName, victimName: player.name, byZone: false });
-    } else {
-        io.to(code).emit('kill-event', { victimName: player.name, byZone: true });
+        io.to(code).emit('kill-event', { killerName: killerPlayer.name, victimName: player.name, byZone: false, victimId: player.id });
     }
 
-    console.log(`[${code}] ${player.name} eliminat de ${killerPlayer ? killerPlayer.name : 'zona'} (loc ${placement}/${totalPlayers})`);
+    console.log(`[${code}] ${player.name} eliminat de ${killerPlayer ? killerPlayer.name : '?'} (loc ${placement}/${totalPlayers})`);
 
-    if (alive.length === 1 && totalPlayers > 1) {
-        const winner = alive[0];
+    if (_aliveN === 1 && totalPlayers > 1) {
+        let winner = null;
+        for (const p of room._playerArr) { if (p.alive) { winner = p; break; } }
         io.to(winner.id).emit('winner', { kills: winner.kills });
         io.to(code).emit('game-ended', { winnerName: winner.name });
         room.gameEnded = true;
-        if (room.gameLoop) { clearInterval(room.gameLoop); room.gameLoop = null; }
+        if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
 
         updatePlayerRoundEnd(player.id, player.name, player.kills, false);
         updatePlayerRoundEnd(winner.id, winner.name, winner.kills, true);
@@ -1076,45 +824,40 @@ function eliminatePlayer(code, room, player, killerId, causeName = 'zona') {
         updatePlayerRoundEnd(player.id, player.name, player.kills, false);
     }
 
-    if (alive.length === 0) {
+    if (_aliveN === 0) {
         io.to(code).emit('game-ended', { winnerName: null });
         room.gameEnded = true;
-        if (room.gameLoop) { clearInterval(room.gameLoop); room.gameLoop = null; }
+        if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
         setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
     }
 }
 
 function triggerRematch(code, room) {
-    if (room.gameLoop) { clearInterval(room.gameLoop); room.gameLoop = null; }
+    if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
     room.gameStarted  = false;
     room.gameEnded    = false;
     room.rematchVotes.clear();
     room.bullets      = [];
     room.nextBulletId = 0;
-    room.pickups      = [];
-    room.nextPickupId = 0;
-    room.zone = { x: ARENA_W / 2, y: ARENA_H / 2, radius: ZONE_START_RADIUS, shrinking: false, startTime: null };
-    room.obstacles = generateObstacles(SPAWN_POINTS);
-    room.zombies = generateZombies(room.obstacles);
-    assignSpawnPoints(Object.values(room.players), room.obstacles);
-    Object.values(room.players).forEach(p => {
+    assignSpawnPositions(room._playerArr);
+    room._playerArr.forEach(p => {
         p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0;
         p.moveDir = { x: 0, y: 0 }; p.shootDir = { x: 0, y: 0 };
         p.shooting = false; p.shootCooldown = 0;
         p.ammo = AMMO_MAX; p.reloading = false; p.reloadTimer = 0;
-        p.lastDamageTime = 0;
+        p.lastDamageTime = 0; p.lastAckSeq = 0; p.pendingAckSeq = 0;
     });
     const rematchMeta = {};
-    Object.values(room.players).forEach(p => { rematchMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name }; });
+    room._playerArr.forEach(p => { rematchMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name }; });
     Object.keys(room.players).forEach(pid => {
-        io.to(pid).emit('game-rematch', { isHost: room.hostId === pid, obstacles: room.obstacles, playersMeta: rematchMeta });
+        io.to(pid).emit('game-rematch', { isHost: room.hostId === pid, playersMeta: rematchMeta });
     });
     broadcastWaiting(code, room);
     console.log(`[${code}] Rematch pornit`);
 }
 
 function closeRoom(code, room) {
-    if (room.gameLoop) clearInterval(room.gameLoop);
+    if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); }
     io.to(code).emit('game-reset');
     rooms.delete(code);
     console.log(`[${code}] Camera inchisa`);
@@ -1147,6 +890,27 @@ io.on('connection', (socket) => {
         }).catch(() => {});
     });
 
+    socket.on('invite-friend', ({ targetNickname, roomCode } = {}) => {
+        if (!socket._nickname || !targetNickname || !roomCode) return;
+        const room = rooms.get(roomCode);
+        if (!room) { socket.emit('invite-result', { ok: false, msg: 'Camera nu mai exista.' }); return; }
+        if (room.gameStarted) { socket.emit('invite-result', { ok: false, msg: 'Jocul a inceput deja.' }); return; }
+        const targetSid = connectedAccounts.get(targetNickname);
+        if (!targetSid) { socket.emit('invite-result', { ok: false, msg: `${targetNickname} nu este online.` }); return; }
+        const targetSocket = io.sockets.sockets.get(targetSid);
+        if (!targetSocket) { socket.emit('invite-result', { ok: false, msg: `${targetNickname} nu este disponibil.` }); return; }
+        targetSocket.emit('room-invite', { from: socket._nickname, roomCode });
+        socket.emit('invite-result', { ok: true, msg: `Invitatie trimisa lui ${targetNickname}!` });
+    });
+
+    socket.on('decline-invite', ({ from } = {}) => {
+        if (!socket._nickname || !from) return;
+        const fromSid = connectedAccounts.get(from);
+        if (!fromSid) return;
+        const fromSocket = io.sockets.sockets.get(fromSid);
+        if (fromSocket) fromSocket.emit('invite-declined', { by: socket._nickname });
+    });
+
     socket.on('create-room', (data) => {
         if (!socket._nickname) { socket.emit('room-error', 'Neautentificat.'); return; }
         data = { ...data, name: socket._nickname };
@@ -1154,6 +918,7 @@ io.on('connection', (socket) => {
         const room = newRoom(socket.id);
         rooms.set(code, room);
         socket.join(code);
+        socket._roomCode = code;
         addPlayer(code, room, socket, data);
         socket.emit('room-created', { code });
         broadcastWaiting(code, room);
@@ -1175,6 +940,7 @@ io.on('connection', (socket) => {
             return;
         }
         socket.join(code);
+        socket._roomCode = code;
         addPlayer(code, room, socket, data);
         socket.emit('room-joined', { code, isHost: false });
         broadcastWaiting(code, room);
@@ -1182,81 +948,68 @@ io.on('connection', (socket) => {
     });
 
     socket.on('start-game', () => {
-        const result = getPlayerRoom(socket.id);
+        const result = fastGetRoom(socket);
         if (!result) return;
         const { code, room } = result;
         if (room.hostId !== socket.id || room.gameStarted) return;
 
         room.gameStarted     = true;
         room.countdownActive = true;
-        room.obstacles       = generateObstacles(SPAWN_POINTS);
-        room.zombies         = generateZombies(room.obstacles);
-        room.pickups         = [];
-        room.nextPickupId    = 0;
+        room.bullets         = [];
+        room.nextBulletId    = 0;
 
-        assignSpawnPoints(Object.values(room.players), room.obstacles);
-        Object.values(room.players).forEach(p => {
+        assignSpawnPositions(room._playerArr);
+        room._playerArr.forEach(p => {
             p.ammo = AMMO_MAX; p.reloading = false; p.reloadTimer = 0;
             p.shooting = false; p.shootCooldown = 0;
+            p.lastAckSeq = 0; p.pendingAckSeq = 0;
         });
 
-        const zoneStartsAt = Date.now() + 33000; // 3s countdown + 30s real play time
         const playersMeta = {};
-        Object.values(room.players).forEach(p => { playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name }; });
-        io.to(code).emit('game-start', { obstacles: room.obstacles, zoneStartsAt, playersMeta });
-        console.log(`[${code}] Joc pornit cu ${Object.keys(room.players).length} jucatori`);
+        room._playerArr.forEach(p => { playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name }; });
+        io.to(code).emit('game-start', { playersMeta });
+        console.log(`[${code}] Joc pornit cu ${room._playerArr.length} jucatori`);
 
         setTimeout(() => {
             if (rooms.has(code)) room.countdownActive = false;
         }, 3000);
 
-        setTimeout(() => {
-            if (rooms.has(code)) {
-                room.zone.shrinking = true;
-                room.zone.startTime = Date.now();
-            }
-        }, 30000);
-
         startRoomLoop(code, room);
     });
 
-    socket.on('move', (dir) => {
-        const r = getPlayerRoom(socket.id);
-        if (r && r.room.gameStarted && r.room.players[socket.id])
-            r.room.players[socket.id].moveDir = dir;
-    });
-
-    socket.on('rotate', (angle) => {
-        const r = getPlayerRoom(socket.id);
-        if (r && r.room.players[socket.id])
-            r.room.players[socket.id].angle = angle;
-    });
-
-    socket.on('shoot', (dir) => {
-        const r = getPlayerRoom(socket.id);
-        if (r && r.room.gameStarted && r.room.players[socket.id]) {
-            r.room.players[socket.id].shootDir = dir;
-            r.room.players[socket.id].shooting = true;
+    socket.on('input', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !r.room.gameStarted || !r.room.players[socket.id]) return;
+        const p = r.room.players[socket.id];
+        if (!p.alive || r.room.gameEnded || r.room.countdownActive) return;
+        if (data.dx !== undefined) {
+            p.moveDir.x = Math.max(-1, Math.min(1, +data.dx || 0));
+            p.moveDir.y = Math.max(-1, Math.min(1, +data.dy || 0));
         }
-    });
-
-    socket.on('stop-shoot', () => {
-        const r = getPlayerRoom(socket.id);
-        if (r && r.room.players[socket.id])
-            r.room.players[socket.id].shooting = false;
+        if (data.angle !== undefined) p.angle = +data.angle || 0;
+        if (data.shooting !== undefined) {
+            p.shooting = !!data.shooting;
+            if (data.shooting && data.sdx !== undefined) {
+                p.shootDir.x = +data.sdx || 0;
+                p.shootDir.y = +data.sdy || 0;
+            }
+        }
+        if (data.seq !== undefined) p.pendingAckSeq = +data.seq;
     });
 
     socket.on('rematch', () => {
-        const result = getPlayerRoom(socket.id);
+        const result = fastGetRoom(socket);
         if (!result) return;
         const { code, room } = result;
         if (!room.gameEnded) return;
         room.rematchVotes.add(socket.id);
-        const total = Object.keys(room.players).length;
+        const total = room._playerArr.length;
         const count = room.rematchVotes.size;
         io.to(code).emit('rematch-vote', { count, total });
         if (count >= total) triggerRematch(code, room);
     });
+
+    socket.on('c-ping', (t) => socket.emit('c-pong', t));
 
     socket.on('disconnect', () => {
         if (socket._nickname && connectedAccounts.get(socket._nickname) === socket.id) {
@@ -1264,26 +1017,34 @@ io.on('connection', (socket) => {
             notifyFriendsPresence(socket._nickname, 'friend-offline');
         }
 
-        const result = getPlayerRoom(socket.id);
+        const result = socket._roomCode
+            ? fastGetRoom(socket)
+            : getPlayerRoom(socket.id);
+        socket._roomCode = null;
         if (!result) return;
         const { code, room } = result;
         room.rematchVotes.delete(socket.id);
+        const _leavingP = room.players[socket.id];
+        if (_leavingP) {
+            const _pidx = room._playerArr.indexOf(_leavingP);
+            if (_pidx !== -1) room._playerArr.splice(_pidx, 1);
+        }
         delete room.players[socket.id];
 
-        if (Object.keys(room.players).length === 0) {
+        if (room._playerArr.length === 0) {
             closeRoom(code, room);
             return;
         }
 
         if (room.hostId === socket.id) {
-            room.hostId = Object.keys(room.players)[0];
+            room.hostId = room._playerArr[0].id;
             io.to(room.hostId).emit('host-transferred');
         }
 
         if (!room.gameStarted) broadcastWaiting(code, room);
 
         if (room.gameEnded) {
-            const remaining = Object.keys(room.players).length;
+            const remaining = room._playerArr.length;
             const votes     = room.rematchVotes.size;
             io.to(code).emit('rematch-vote', { count: votes, total: remaining });
             if (votes >= remaining && remaining > 0) triggerRematch(code, room);
