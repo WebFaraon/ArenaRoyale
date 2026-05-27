@@ -203,7 +203,7 @@ const ARENA_W = 2600;
 const ARENA_H = 2600;
 const VIEW_W  = 1300;
 const VIEW_H  =  730;
-const MAX_DPR = 1.5; // cap pixelRatio - reduce costul de randare pe mobile/high-DPI
+const MAX_DPR = 2;   // cap pixelRatio - 2x acopera toate telefoanele moderne fara cost excesiv
 
 // ---------- SISTEM PERSONAJE ----------
 const CHARACTERS = [
@@ -1443,9 +1443,9 @@ function updateStatsUI() {
     const barHp  = document.getElementById('bar-hp');
     const barDmg = document.getElementById('bar-dmg');
     const barSpd = document.getElementById('bar-spd');
-    if (valHp)  valHp.textContent  = (400 + stats.hp  * 40) + ' HP';
+    if (valHp)  valHp.textContent  = (350 + stats.hp  * 40) + ' HP';
     if (valDmg) valDmg.textContent = (10  + stats.dmg *  2) + ' DMG';
-    if (valSpd) valSpd.textContent = (2.5 + stats.spd * 0.2).toFixed(1) + ' SPD';
+    if (valSpd) valSpd.textContent = (2.0 + stats.spd * 0.2).toFixed(1) + ' SPD';
     if (barHp)  barHp.style.width  = (stats.hp  / 10 * 100) + '%';
     if (barDmg) barDmg.style.width = (stats.dmg / 10 * 100) + '%';
     if (barSpd) barSpd.style.width = (stats.spd / 10 * 100) + '%';
@@ -1711,13 +1711,15 @@ function initGame(playerName, playerImage, playerStats, roomAction) {
                 setTimeout(() => {
                     overlay.classList.remove('active');
                     numEl.style.color = '#fff';
+                    gameControl.countdownEndTime = performance.now();
                 }, 700);
             }
         }, 1000);
     }
 
     socket.on('game-start', (data) => {
-        if (data && data.playersMeta) gameControl.pendingMeta = data.playersMeta;
+        if (data && data.playersMeta)  gameControl.pendingMeta      = data.playersMeta;
+        if (data && data.obstacles)    gameControl.pendingObstacles = data.obstacles;
         stopLobbyBackground();
         document.getElementById('screen-waiting').style.display = 'none';
         document.getElementById('screen-game').style.display    = 'block';
@@ -1799,8 +1801,24 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const stateBuffer  = []; // [{t, players:{id:{x,y,angle,hp,maxHp,alive,kills,name}}, bullets:[], zone:{}}]
     const playerMeta   = {}; // {id: {speed, maxHp, name}} — static per runda, trimis o data
     // Aplica metadata trimisa de server inainte ca startGameLoop sa fie apelat
-    if (gameControl.pendingMeta) { Object.assign(playerMeta, gameControl.pendingMeta); delete gameControl.pendingMeta; }
-    const hitEffects   = [];
+    if (gameControl.pendingMeta)      { Object.assign(playerMeta, gameControl.pendingMeta); delete gameControl.pendingMeta; }
+    let _obstacles = gameControl.pendingObstacles || []; delete gameControl.pendingObstacles;
+    let _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
+    let _zoneTimerAlpha = 0;
+    const _zombies        = [];
+    const _zombieDeathFx  = [];
+    const _playerDeathFx  = [];  // { x, y, startTime, shards }
+    const _prevPlayerAlive = {};
+    const _healthKits   = new Map(); // id → {x, y, timeLeft}
+    const _kitPickupFx  = [];        // { x, y, amount, startTime }
+    const _kitDropAnim  = new Map(); // id → dropStartTime (animatie de cadere la spawn)
+    const _obsShake     = {};   // obstacle index → shake start ms
+    const hitEffects    = [];
+    const _footsteps    = []; // { x, y, angle, t }
+    const _footTimers   = {}; // pid → sec since last step
+    const _footSide     = {}; // pid → 0|1
+    const _prevPlayerPos = {};
+    const _srvBulletSeen = new Map(); // bullet id → first-seen timestamp
     const prevHp         = {};
     const latestHp       = {}; // hp instantaneu din gs, fara delay de interpolatie
     const damageNumbers  = [];
@@ -2065,6 +2083,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (overlay && overlay.style.display !== 'none') renderLeaderboardOverlay(data);
     });
 
+    socket.on('kit-pickup', ({ amount, x, y }) => {
+        _kitPickupFx.push({ x, y, amount: Math.round(amount), startTime: performance.now() });
+    });
+
+    socket.on('hit', ({ amount, x, y }) => {
+        damageNumbers.push({ x, y: y - 20, amount, startTime: performance.now(), dir: Math.random() < 0.5 ? -1 : 1 });
+    });
+
     // Server performance stats — emitted every 2 s; used by debug overlay
     socket.on('srv-stats', ({ tps, ents, pickups }) => {
         _dbgSrvTps     = tps;
@@ -2072,7 +2098,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _dbgSrvPickups = pickups || 0;
     });
 
-    socket.on('gs', ([pArr, bArr, ammoArr, serverTime = 0]) => {
+    socket.on('gs', ([pArr, bArr, ammoArr, serverTime = 0, zoneArr, zArr, kArr]) => {
 
         _dbgGsCount++;
         const now = performance.now();
@@ -2081,6 +2107,42 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ammoState.max  = Math.max(1, ammoArr[1] || 10);
             ammoState.reloading      = !!ammoArr[2];
             ammoState.reloadProgress = Math.max(0, Math.min(1, ammoArr[3] ?? 1));
+        }
+        if (zoneArr) {
+            _zone.cx = zoneArr[0]; _zone.cy = zoneArr[1];
+            _zone.r  = zoneArr[2]; _zone.waitTimer = zoneArr[3];
+        }
+        if (zArr) {
+            for (let _zi = 0; _zi < zArr.length; _zi += 4) {
+                const _zid = _zi / 4;
+                if (!_zombies[_zid]) _zombies[_zid] = { hp: -1 };
+                const _zPrevHp = _zombies[_zid].hp;
+                _zombies[_zid].x = zArr[_zi]; _zombies[_zid].y = zArr[_zi+1];
+                _zombies[_zid].angle = zArr[_zi+2]; _zombies[_zid].hp = zArr[_zi+3];
+                // Death + damage feedback
+                if (_zPrevHp > 0 && _zombies[_zid].hp <= 0) {
+                    const _shards = [];
+                    for (let _si = 0; _si < 7; _si++) {
+                        _shards.push({ angle: (_si / 7) * Math.PI * 2 + Math.random() * 0.4, speed: 35 + Math.random() * 45, rot: Math.random() * Math.PI, rotSpeed: (Math.random() - 0.5) * 8 });
+                    }
+                    _zombieDeathFx.push({ x: _zombies[_zid].x, y: _zombies[_zid].y, startTime: performance.now(), shards: _shards });
+                }
+                if (_zPrevHp > 0 && _zombies[_zid].hp >= 0 && _zPrevHp - _zombies[_zid].hp > 0.5) {
+                    hitEffects.push({ x: _zombies[_zid].x, y: _zombies[_zid].y, life: 2.0 });
+                }
+            }
+        }
+        if (kArr) {
+            const _kSeen = new Set();
+            for (let _ki = 0; _ki < kArr.length; _ki += 4) {
+                const _kid = kArr[_ki];
+                _kSeen.add(_kid);
+                if (!_healthKits.has(_kid)) _kitDropAnim.set(_kid, performance.now());
+                _healthKits.set(_kid, { x: kArr[_ki+1], y: kArr[_ki+2], timeLeft: kArr[_ki+3] });
+            }
+            for (const [_kid] of _healthKits) {
+                if (!_kSeen.has(_kid)) { _healthKits.delete(_kid); _kitDropAnim.delete(_kid); }
+            }
         }
         const entry = {
             t:       now,
@@ -2091,7 +2153,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         pArr.forEach(([id, x, y, angle, hp, alive, kills]) => {
             const meta = playerMeta[id] || {};
-            if (!alive) _hiddenPlayers.delete(id); // server confirmed dead — no longer need preemptive hide
+            if (!alive) _hiddenPlayers.delete(id);
+            // Detectie moarte jucator → efect vizual
+            if (!alive && _prevPlayerAlive[id] === true && id !== socket.id) {
+                const _dshards = [];
+                for (let _si = 0; _si < 8; _si++) {
+                    _dshards.push({ angle: (_si / 8) * Math.PI * 2 + Math.random() * 0.5, speed: 45 + Math.random() * 55, rot: Math.random() * Math.PI, rotSpeed: (Math.random() - 0.5) * 9 });
+                }
+                _playerDeathFx.push({ x, y, startTime: performance.now(), shards: _dshards });
+            }
+            _prevPlayerAlive[id] = !!alive;
             entry.players[id] = { id, x, y, angle, hp, maxHp: meta.maxHp || 500, alive: !!alive, kills, name: meta.name || '' };
         });
 
@@ -2170,6 +2241,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (prevHp[pid] !== undefined && prevHp[pid] - p.hp > 1) {
                 hitEffects.push({ x: p.x, y: p.y, life: 2.0 });
                 flashTimers[pid] = performance.now();
+                // Expira cel mai apropiat client bullet la confirmarea hitului
+                if (_clientBullets.length > 0) {
+                    const _bn = performance.now();
+                    let _nearIdx = 0, _nearDist = Infinity;
+                    for (let _bi = 0; _bi < _clientBullets.length; _bi++) {
+                        const cb = _clientBullets[_bi];
+                        const _cAge = Math.min((_bn - cb.spawnTime) / 1000, 0.60);
+                        const _d = Math.hypot(cb.x + cb.dx * _cAge - p.x, cb.y + cb.dy * _cAge - p.y);
+                        if (_d < _nearDist) { _nearDist = _d; _nearIdx = _bi; }
+                    }
+                    if (_nearDist < 300) _clientBullets.splice(_nearIdx, 1);
+                }
             }
             prevHp[pid]    = p.hp;
             latestHp[pid]  = p.hp;
@@ -2324,6 +2407,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         exitSpectating();
         myElimData = null;
         _ammoBarCache.key = '';
+        if (gameControl.pendingObstacles) { _obstacles = gameControl.pendingObstacles; delete gameControl.pendingObstacles; }
+        _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
+        _zoneTimerAlpha = 0;
+        _zombies.length = 0;
+        _zombieDeathFx.length = 0;
+        _playerDeathFx.length = 0;
+        for (const k in _prevPlayerAlive) delete _prevPlayerAlive[k];
+        _healthKits.clear();
+        _kitPickupFx.length = 0;
+        _kitDropAnim.clear();
+        for (const k in _obsShake) delete _obsShake[k];
+        gameControl.countdownEndTime = null;
+        _footsteps.length = 0;
+        for (const k in _footTimers) delete _footTimers[k];
+        for (const k in _footSide)   delete _footSide[k];
+        for (const k in _prevPlayerPos) delete _prevPlayerPos[k];
+        _srvBulletSeen.clear();
     }
     gameControl.reset = resetForNewGame;
 
@@ -2345,58 +2445,24 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         document.getElementById('waiting-sub-msg').style.display = isHost ? 'none'  : 'block';
     });
 
-    function _renderAmmoBarToOC(width, height, state) {
-        const maxAmmo = Math.max(1, state.max || 10);
-        const gap = 2;
-        const segW = (width - gap * (maxAmmo - 1)) / maxAmmo;
+    function drawAmmoBar(ctx, x, y, width, height, state) {
+        const maxAmmo     = Math.max(1, state.max || 10);
         const progressUnits = state.reloading
             ? Math.max(0, Math.min(maxAmmo, state.reloadProgress * maxAmmo))
             : Math.max(0, Math.min(maxAmmo, state.ammo));
-
-        let oc = _ammoBarCache.oc;
-        if (!oc || oc.width !== width || oc.height !== height) {
-            try { oc = new OffscreenCanvas(width, height); } catch (_) { return null; }
-            _ammoBarCache.oc = oc;
-        }
-        const oc2d = oc.getContext('2d');
-        oc2d.clearRect(0, 0, width, height);
-
-        oc2d.fillStyle = '#00000070';
-        oc2d.beginPath();
-        oc2d.roundRect(0, 0, width, height, 2);
-        oc2d.fill();
+        const gap  = 2;
+        const segW = (width - gap * (maxAmmo - 1)) / maxAmmo;
+        const fillColor = state.reloading ? '#ffd95a' : '#ffcc22';
 
         for (let i = 0; i < maxAmmo; i++) {
-            const sx = i * (segW + gap);
+            const sx       = x + i * (segW + gap);
             const fillPart = Math.max(0, Math.min(1, progressUnits - i));
-            oc2d.fillStyle = '#5a4a14';
-            oc2d.beginPath();
-            oc2d.roundRect(sx, 0, segW, height, 1.5);
-            oc2d.fill();
+            ctx.fillStyle = '#00000070';
+            ctx.beginPath(); ctx.roundRect(sx, y, segW, height, 1.5); ctx.fill();
             if (fillPart > 0) {
-                oc2d.fillStyle = state.reloading ? '#ffd95a' : '#ffcc22';
-                oc2d.beginPath();
-                oc2d.roundRect(sx, 0, segW * fillPart, height, 1.5);
-                oc2d.fill();
+                ctx.fillStyle = fillColor;
+                ctx.beginPath(); ctx.roundRect(sx, y, segW * fillPart, height, 1.5); ctx.fill();
             }
-        }
-        oc2d.strokeStyle = state.reloading ? '#fff2a0cc' : '#ffcc2266';
-        oc2d.lineWidth = 1;
-        oc2d.beginPath();
-        oc2d.roundRect(0, 0, width, height, 2);
-        oc2d.stroke();
-        return oc;
-    }
-
-    function drawAmmoBar(ctx, x, y, width, height, state) {
-        const reloadKey = state.reloading ? Math.round(state.reloadProgress * 100) : -1;
-        const key = `${state.ammo}/${state.max}/${reloadKey}`;
-        if (key !== _ammoBarCache.key) {
-            _ammoBarCache.key = key;
-            _renderAmmoBarToOC(width, height, state);
-        }
-        if (_ammoBarCache.oc) {
-            ctx.drawImage(_ammoBarCache.oc, x, y, width, height);
         }
     }
 
@@ -2528,18 +2594,38 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // ── Client bullet spawn — instant visual feedback, always uses current myAngle ──
         _clientShootCd -= dtSec;
         if (isShooting && !_selfDead && !gameControl.countdownActive &&
-            _clientShootCd <= 0 && !ammoState.reloading && ammoState.ammo > 0 && predX !== null) {
+            _clientShootCd <= 0 && !ammoState.reloading && ammoState.ammo > 0 && predX !== null &&
+            aimStartTime !== null && performance.now() - aimStartTime >= 300) {
             const _bcdx = -Math.sin(myAngle), _bcdy = Math.cos(myAngle);
             _clientBullets.push({
                 x: predX + _bcdx * 25, y: predY + _bcdy * 25,
-                dx: _bcdx * 1400,      dy: _bcdy * 1400,
+                dx: _bcdx * 1000,      dy: _bcdy * 1000,
                 spawnTime: performance.now()
             });
             _clientShootCd = 0.25; // SHOOT_CD
         }
-        // Expire client bullets older than bullet lifetime (0.428s) + small buffer
+        // Expire client bullets: lifetime + obstacle collision
+        const _cbNow = performance.now();
         for (let _ci = _clientBullets.length - 1; _ci >= 0; _ci--) {
-            if (performance.now() - _clientBullets[_ci].spawnTime > 550) _clientBullets.splice(_ci, 1);
+            const _cb = _clientBullets[_ci];
+            if (_cbNow - _cb.spawnTime > 650) { _clientBullets.splice(_ci, 1); continue; }
+            const _cbA = Math.min((_cbNow - _cb.spawnTime) / 1000, 0.60);
+            const _cbPx = _cb.x + _cb.dx * _cbA, _cbPy = _cb.y + _cb.dy * _cbA;
+            let _cbHit = false;
+            for (let _oi = 0; _oi < _obstacles.length; _oi++) {
+                const _o = _obstacles[_oi];
+                if (Math.hypot(_cbPx - _o.x, _cbPy - _o.y) < _o.r + 6) {
+                    _cbHit = true;
+                    _obsShake[_oi] = performance.now();
+                    break;
+                }
+            }
+            if (!_cbHit) {
+                for (const _zb of _zombies) {
+                    if (_zb && _zb.hp >= 0 && Math.hypot(_cbPx - _zb.x, _cbPy - _zb.y) < 26) { _cbHit = true; break; }
+                }
+            }
+            if (_cbHit) _clientBullets.splice(_ci, 1);
         }
 
         // ── Unified 60Hz input send ───────────────────────────────────────────
@@ -2632,12 +2718,75 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ctx.lineWidth   = 8 / ZOOM;
         ctx.strokeRect(0, 0, ARENA_W, ARENA_H);
 
+        // --- OBSTACOLE ---
+        const _obsNow = performance.now();
+        for (let _oi = 0; _oi < _obstacles.length; _oi++) {
+            const obs = _obstacles[_oi];
+            if (obs.x + obs.r < visLeft || obs.x - obs.r > visRight ||
+                obs.y + obs.r < visTop  || obs.y - obs.r > visBottom) continue;
+            // Shake offset
+            let _sox = 0, _soy = 0;
+            if (_obsShake[_oi] !== undefined) {
+                const _sa = (_obsNow - _obsShake[_oi]) / 1000;
+                if (_sa > 0.35) { delete _obsShake[_oi]; }
+                else {
+                    const _samp = 1.2 * (1 - _sa / 0.35);
+                    _sox = Math.sin(_sa * 28 * Math.PI * 2) * _samp;
+                }
+            }
+            const _ox = obs.x + _sox, _oy = obs.y + _soy;
+            if (obs.type === 'tree') {
+                const vr = obs.r * 1.15;
+                ctx.fillStyle = '#1e5c0a';
+                _drawConcavePoly(ctx, _ox, _oy, vr, 7, 0.68, obs.rot || 0);
+                ctx.fill();
+                ctx.strokeStyle = '#163d06';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.fillStyle = '#2e8a14';
+                _drawConcavePoly(ctx, _ox, _oy, vr * 0.55, 7, 0.68, obs.rot || 0);
+                ctx.fill();
+                ctx.fillStyle = '#3db31a';
+                _drawConcavePoly(ctx, _ox, _oy, vr * 0.3, 7, 0.68, obs.rot || 0);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = '#4a4a58';
+                _drawHex(ctx, _ox, _oy, obs.r * 0.88, obs.rot || 0);
+                ctx.fill();
+                ctx.strokeStyle = '#2e2e3a';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.fillStyle = '#686875';
+                _drawHex(ctx, _ox, _oy, obs.r * 0.58, obs.rot || 0);
+                ctx.fill();
+                ctx.fillStyle = '#82828f';
+                _drawHex(ctx, _ox, _oy, obs.r * 0.32, obs.rot || 0);
+                ctx.fill();
+            }
+        }
+
+        // --- ZONA --- (intotdeauna vizibila)
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(visLeft, visTop, visRight - visLeft, visBottom - visTop);
+        if (_zone.r > 0) ctx.arc(_zone.cx, _zone.cy, _zone.r, 0, Math.PI * 2, true);
+        ctx.fillStyle = 'rgba(200,0,0,0.28)';
+        ctx.fill();
+        if (_zone.r > 0) {
+            ctx.beginPath();
+            ctx.arc(_zone.cx, _zone.cy, _zone.r, 0, Math.PI * 2);
+            ctx.strokeStyle = '#ff3333';
+            ctx.lineWidth = 4 / ZOOM;
+            ctx.stroke();
+        }
+        ctx.restore();
+
         // --- INDICATOR TRAIECTORIE ---
         if ((isShooting || mouseActive) && me && me.alive && !gameEnded) {
             const dirX       = -Math.sin(myAngle);
             const dirY       =  Math.cos(myAngle);
             const TRAJ_START = 25;   // coincide cu spawn offset server-side
-            const TRAJ_END   = 625;  // 25 + 600px (1800 px/s × 0.333s)
+            const TRAJ_END   = 625;  // 25 + 600px (1000 px/s × 0.60s)
             ctx.save();
             ctx.strokeStyle = 'rgba(255,255,255,0.45)';
             ctx.lineWidth   = 2.5 / ZOOM;
@@ -2658,19 +2807,344 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // Own bullets (socket.id) are skipped — _clientBullets handles them with no delay.
         const _bulletNow = performance.now();
         const _bulletAge = Math.min((_bulletNow - lastGameStateTime) / 1000, 0.05);
+        // Enemy bullets (server state) — cu imaginea personajului care a tras
         ctx.fillStyle = '#ffffff';
+        // Curata id-uri vechi din _srvBulletSeen
+        if (_srvBulletSeen.size > 0) {
+            const _curIds = new Set(rState.bullets.map(b => b.id));
+            for (const _sid of _srvBulletSeen.keys()) { if (!_curIds.has(_sid)) _srvBulletSeen.delete(_sid); }
+        }
         for (const b of rState.bullets) {
             if (b.ownerId === socket.id) continue;
+            if (!_srvBulletSeen.has(b.id)) _srvBulletSeen.set(b.id, _bulletNow);
+            const _bx = b.x + b.dx * _bulletAge;
+            const _by = b.y + b.dy * _bulletAge;
+            // Trail
+            const _bAge  = (_bulletNow - _srvBulletSeen.get(b.id)) / 1000;
+            const _bTrPx = Math.min(_bAge * 480, 110);
+            if (_bTrPx > 4) {
+                const _bSpd = Math.hypot(b.dx, b.dy) || 1;
+                const _bNx = b.dx / _bSpd, _bNy = b.dy / _bSpd;
+                const _bPx = -_bNy, _bPy = _bNx;
+                const _bTailX = _bx - _bNx * _bTrPx, _bTailY = _by - _bNy * _bTrPx;
+                const _bGrad = ctx.createLinearGradient(_bTailX, _bTailY, _bx, _by);
+                _bGrad.addColorStop(0, 'rgba(255,140,0,0)');
+                _bGrad.addColorStop(0.55, 'rgba(255,195,50,0.12)');
+                _bGrad.addColorStop(1, 'rgba(255,225,90,0.32)');
+                ctx.beginPath();
+                ctx.moveTo(_bTailX, _bTailY);
+                ctx.lineTo(_bx + _bPx * 3.5, _by + _bPy * 3.5);
+                ctx.lineTo(_bx - _bPx * 3.5, _by - _bPy * 3.5);
+                ctx.closePath();
+                ctx.fillStyle = _bGrad;
+                ctx.fill();
+                // bright core line
+                ctx.globalAlpha = 0.55;
+                ctx.strokeStyle = 'rgba(255,240,160,0.7)';
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(_bTailX + _bNx * 6, _bTailY + _bNy * 6);
+                ctx.lineTo(_bx, _by);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+            const _bEntry = playerImages[b.ownerId];
+            const _bImg   = _bEntry?.bulletImg;
+            const _bSz    = 38;
+            if (_bImg && _bImg.complete && _bImg.naturalWidth) {
+                ctx.save();
+                ctx.translate(_bx, _by);
+                ctx.rotate(Math.atan2(b.dy, b.dx));
+                ctx.drawImage(_bImg, -_bSz / 2, -_bSz / 2, _bSz, _bSz);
+                ctx.restore();
+            } else {
+                ctx.beginPath();
+                ctx.arc(_bx, _by, b.radius || 6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        // Client bullets (ale mele, predicted) — cu imaginea mea; fade-out spre finalul traiectoriei
+        const _myBEntry = playerImages[socket.id];
+        for (const cb of _clientBullets) {
+            const _cAgeFull = (_bulletNow - cb.spawnTime) / 1000;
+            const _cAge     = Math.min(_cAgeFull, 0.60);
+            const _cbx      = cb.x + cb.dx * _cAge;
+            const _cby      = cb.y + cb.dy * _cAge;
+            // fade-out intre 0.45s si 0.60s ca sa dispara lin, fara inghetare vizuala
+            const _cAlpha   = _cAgeFull < 0.45 ? 1.0 : Math.max(0, 1 - (_cAgeFull - 0.45) / 0.15);
+            // Trail
+            const _cTrPx = Math.min(_cAgeFull * 480, 110);
+            if (_cTrPx > 4) {
+                const _cSpd = Math.hypot(cb.dx, cb.dy) || 1;
+                const _cNx = cb.dx / _cSpd, _cNy = cb.dy / _cSpd;
+                const _cPerpX = -_cNy, _cPerpY = _cNx;
+                const _cTailX = _cbx - _cNx * _cTrPx, _cTailY = _cby - _cNy * _cTrPx;
+                const _cGrad = ctx.createLinearGradient(_cTailX, _cTailY, _cbx, _cby);
+                _cGrad.addColorStop(0, 'rgba(255,140,0,0)');
+                _cGrad.addColorStop(0.55, `rgba(255,195,50,${0.12 * _cAlpha})`);
+                _cGrad.addColorStop(1, `rgba(255,225,90,${0.32 * _cAlpha})`);
+                ctx.beginPath();
+                ctx.moveTo(_cTailX, _cTailY);
+                ctx.lineTo(_cbx + _cPerpX * 3.5, _cby + _cPerpY * 3.5);
+                ctx.lineTo(_cbx - _cPerpX * 3.5, _cby - _cPerpY * 3.5);
+                ctx.closePath();
+                ctx.fillStyle = _cGrad;
+                ctx.fill();
+                // bright core line
+                ctx.globalAlpha = 0.55 * _cAlpha;
+                ctx.strokeStyle = 'rgba(255,240,160,0.7)';
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(_cTailX + _cNx * 6, _cTailY + _cNy * 6);
+                ctx.lineTo(_cbx, _cby);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+            const _cbImg    = _myBEntry?.bulletImg;
+            const _cbSz     = 38;
+            ctx.globalAlpha = _cAlpha;
+            if (_cbImg && _cbImg.complete && _cbImg.naturalWidth) {
+                ctx.save();
+                ctx.translate(_cbx, _cby);
+                ctx.rotate(Math.atan2(cb.dy, cb.dx));
+                ctx.drawImage(_cbImg, -_cbSz / 2, -_cbSz / 2, _cbSz, _cbSz);
+                ctx.restore();
+            } else {
+                ctx.beginPath();
+                ctx.arc(_cbx, _cby, 6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // --- PASI ---
+        const _fpNow = performance.now();
+        for (let _fi = _footsteps.length - 1; _fi >= 0; _fi--) {
+            const _f = _footsteps[_fi];
+            const _fAge = (_fpNow - _f.t) / 2500;
+            if (_fAge >= 1) { _footsteps.splice(_fi, 1); continue; }
+            ctx.globalAlpha = (1 - _fAge) * 0.22;
+            ctx.fillStyle = '#1a1008';
             ctx.beginPath();
-            ctx.arc(b.x + b.dx * _bulletAge, b.y + b.dy * _bulletAge, b.radius || 6, 0, Math.PI * 2);
+            ctx.arc(_f.x, _f.y, 4, 0, Math.PI * 2);
             ctx.fill();
         }
-        // Client bullets — instant local prediction, no server delay, no dedup needed.
-        for (const cb of _clientBullets) {
-            const _cAge = Math.min((_bulletNow - cb.spawnTime) / 1000, 0.55);
+        ctx.globalAlpha = 1;
+
+        // --- HEALTH KITS ---
+        const _kitNow = performance.now();
+        for (const [_kid, _kit] of _healthKits) {
+            if (_kit.x + 35 < visLeft || _kit.x - 35 > visRight || _kit.y + 35 < visTop || _kit.y - 35 > visBottom) continue;
+            // Animatie de drop la spawn
+            let _kitYOff = 0;
+            const _kdropStart = _kitDropAnim.get(_kid);
+            if (_kdropStart !== undefined) {
+                const _kdropAge = (_kitNow - _kdropStart) / 1000;
+                if (_kdropAge < 0.45) {
+                    _kitYOff = -28 * Math.pow(1 - _kdropAge / 0.45, 2);
+                } else {
+                    _kitDropAnim.delete(_kid);
+                }
+            }
+            const _kPulse = 0.92 + 0.08 * Math.sin(_kitNow / 280);
+            const _kHalf = 13 * _kPulse;
+            ctx.save();
+            ctx.translate(_kit.x, _kit.y + _kitYOff);
+            ctx.beginPath(); ctx.roundRect(-_kHalf, -_kHalf, _kHalf * 2, _kHalf * 2, 4);
+            ctx.fillStyle = '#cc1a1a'; ctx.fill();
+            ctx.strokeStyle = '#7a0000'; ctx.lineWidth = 2; ctx.stroke();
+            const _kArmL = _kHalf * 0.62, _kArmW = _kHalf * 0.28;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.roundRect(-_kArmW, -_kArmL, _kArmW * 2, _kArmL * 2, 1); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(-_kArmL, -_kArmW, _kArmL * 2, _kArmW * 2, 1); ctx.fill();
+            ctx.restore();
+        }
+
+        // --- KIT PICKUP FX ---
+        for (let _kfi = _kitPickupFx.length - 1; _kfi >= 0; _kfi--) {
+            const _kf = _kitPickupFx[_kfi];
+            const _kfAge = (performance.now() - _kf.startTime) / 1000;
+            if (_kfAge > 0.7) { _kitPickupFx.splice(_kfi, 1); continue; }
+            const _kfT = _kfAge / 0.7;
+            // Kit se estompeaza si urca
+            const _kfHalf = 13 * (1 - _kfT * 0.4);
+            const _kfY = _kf.y - _kfT * 22;
+            ctx.globalAlpha = 1 - _kfT;
+            ctx.save();
+            ctx.translate(_kf.x, _kfY);
+            ctx.beginPath(); ctx.roundRect(-_kfHalf, -_kfHalf, _kfHalf * 2, _kfHalf * 2, 4);
+            ctx.fillStyle = '#cc1a1a'; ctx.fill();
+            const _kfArmL = _kfHalf * 0.62, _kfArmW = _kfHalf * 0.28;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.roundRect(-_kfArmW, -_kfArmL, _kfArmW * 2, _kfArmL * 2, 1); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(-_kfArmL, -_kfArmW, _kfArmL * 2, _kfArmW * 2, 1); ctx.fill();
+            ctx.restore();
+            // "+200" verde in world space (la fel ca damage numbers)
+            ctx.globalAlpha = _kfT < 0.4 ? 1 : Math.max(0, 1 - (_kfT - 0.4) / 0.6);
+            ctx.font = `bold ${Math.round(22 / ZOOM)}px Lexend, Arial`;
+            ctx.textAlign = 'center';
+            ctx.strokeStyle = '#000000bb';
+            ctx.lineWidth = 3 / ZOOM;
+            ctx.fillStyle = '#44ee55';
+            const _kfTxtY = _kf.y - 28 - _kfT * 40;
+            ctx.strokeText(`+${_kf.amount}`, _kf.x, _kfTxtY);
+            ctx.fillText(`+${_kf.amount}`, _kf.x, _kfTxtY);
+        }
+        ctx.globalAlpha = 1;
+
+        // --- PLAYER DEATH FX ---
+        const _pdfNow = performance.now();
+        for (let _pdfi = _playerDeathFx.length - 1; _pdfi >= 0; _pdfi--) {
+            const _pdf = _playerDeathFx[_pdfi];
+            const _pdfAge = (_pdfNow - _pdf.startTime) / 1000;
+            if (_pdfAge > 0.8) { _playerDeathFx.splice(_pdfi, 1); continue; }
+            const _pdfT = _pdfAge / 0.8;
+            // Flash
+            if (_pdfAge < 0.12) {
+                ctx.globalAlpha = (1 - _pdfAge / 0.12) * 0.6;
+                ctx.beginPath(); ctx.arc(_pdf.x, _pdf.y, 32, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffcc44'; ctx.fill();
+            }
+            // Inel principal
+            ctx.globalAlpha = (1 - _pdfT) * 0.85;
+            ctx.strokeStyle = '#ff8800';
+            ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.arc(_pdf.x, _pdf.y, 8 + _pdfT * 72, 0, Math.PI * 2); ctx.stroke();
+            // Inel secundar
+            ctx.globalAlpha = (1 - _pdfT) * 0.4;
+            ctx.strokeStyle = '#ffcc44';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(_pdf.x, _pdf.y, 8 + _pdfT * 52, 0, Math.PI * 2); ctx.stroke();
+            // Cioburi
+            ctx.globalAlpha = Math.pow(1 - _pdfT, 1.4);
+            for (const _sh of _pdf.shards) {
+                const _sr = _sh.speed * _pdfAge;
+                const _sx = _pdf.x + Math.cos(_sh.angle) * _sr;
+                const _sy = _pdf.y + Math.sin(_sh.angle) * _sr;
+                const _sSz = 8 * (1 - _pdfT);
+                ctx.save();
+                ctx.translate(_sx, _sy); ctx.rotate(_sh.rot + _sh.rotSpeed * _pdfAge);
+                ctx.beginPath();
+                ctx.moveTo(0, -_sSz * 1.2); ctx.lineTo(_sSz * 0.8, _sSz * 0.8); ctx.lineTo(-_sSz * 0.8, _sSz * 0.8);
+                ctx.closePath();
+                ctx.fillStyle = '#ffaa22'; ctx.fill();
+                ctx.strokeStyle = '#cc6600'; ctx.lineWidth = 1; ctx.stroke();
+                ctx.restore();
+            }
+        }
+        ctx.globalAlpha = 1;
+
+        // --- ZOMBIE DEATH FX ---
+        const _dfNow = performance.now();
+        for (let _dfi = _zombieDeathFx.length - 1; _dfi >= 0; _dfi--) {
+            const _df = _zombieDeathFx[_dfi];
+            const _dfAge = (_dfNow - _df.startTime) / 1000;
+            if (_dfAge > 0.75) { _zombieDeathFx.splice(_dfi, 1); continue; }
+            const _dfT = _dfAge / 0.75;
+            // Flash initial (prima 0.1s)
+            if (_dfAge < 0.1) {
+                ctx.globalAlpha = (1 - _dfAge / 0.1) * 0.55;
+                ctx.beginPath(); ctx.arc(_df.x, _df.y, 28, 0, Math.PI * 2);
+                ctx.fillStyle = '#5dff6a'; ctx.fill();
+            }
+            // Inel expandat (gros, vizibil)
+            ctx.globalAlpha = (1 - _dfT) * 0.85;
+            ctx.strokeStyle = '#3ddd44';
+            ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.arc(_df.x, _df.y, 8 + _dfT * 70, 0, Math.PI * 2); ctx.stroke();
+            // Al doilea inel mai subtire
+            ctx.globalAlpha = (1 - _dfT) * 0.45;
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(_df.x, _df.y, 8 + _dfT * 55, 0, Math.PI * 2); ctx.stroke();
+            // Cioburi mari
+            ctx.globalAlpha = Math.pow(1 - _dfT, 1.5);
+            for (const _sh of _df.shards) {
+                const _sr = _sh.speed * _dfAge;
+                const _sx = _df.x + Math.cos(_sh.angle) * _sr;
+                const _sy = _df.y + Math.sin(_sh.angle) * _sr;
+                const _sRot = _sh.rot + _sh.rotSpeed * _dfAge;
+                const _sSz = 9 * (1 - _dfT);
+                ctx.save();
+                ctx.translate(_sx, _sy); ctx.rotate(_sRot);
+                ctx.beginPath();
+                ctx.moveTo(0, -_sSz * 1.2);
+                ctx.lineTo(_sSz * 0.8, _sSz * 0.8);
+                ctx.lineTo(-_sSz * 0.8, _sSz * 0.8);
+                ctx.closePath();
+                ctx.fillStyle = '#2d9e35';
+                ctx.fill();
+                ctx.strokeStyle = '#1a5c20';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+        ctx.globalAlpha = 1;
+
+        // --- ZOMBI ---
+        const _zbR = 16, _zbHP = 100;
+        for (const _zb of _zombies) {
+            if (!_zb || _zb.hp < 0) continue;
+            const _zbx = _zb.x, _zby = _zb.y;
+            if (_zbx + 70 < visLeft || _zbx - 70 > visRight || _zby + 70 < visTop || _zby - 70 > visBottom) continue;
+            ctx.save();
+            ctx.translate(_zbx, _zby);
+
+            // Cerc rosu (ring) — in spatiu mondial, inainte de rotatie
             ctx.beginPath();
-            ctx.arc(cb.x + cb.dx * _cAge, cb.y + cb.dy * _cAge, 6, 0, Math.PI * 2);
+            ctx.arc(0, 0, _zbR + 6, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(233,69,96,0.10)';
             ctx.fill();
+            ctx.strokeStyle = '#e94560';
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.45;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+
+            ctx.rotate(_zb.angle);
+
+            // Brate subțiri, scurte, apropiate
+            ctx.fillStyle = '#1a5220';
+            ctx.strokeStyle = '#0d3010';
+            ctx.lineWidth = 0.8;
+            ctx.beginPath(); ctx.roundRect(_zbR - 3, -8, 11, 4, 1); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.roundRect(_zbR - 3, 4, 11, 4, 1); ctx.fill(); ctx.stroke();
+
+            // Corp exterior: octagon, verde inchis
+            ctx.beginPath();
+            for (let _oi = 0; _oi < 8; _oi++) {
+                const _oa = (_oi / 8) * Math.PI * 2 - Math.PI / 8;
+                _oi === 0 ? ctx.moveTo(Math.cos(_oa) * _zbR, Math.sin(_oa) * _zbR)
+                          : ctx.lineTo(Math.cos(_oa) * _zbR, Math.sin(_oa) * _zbR);
+            }
+            ctx.closePath();
+            ctx.fillStyle = '#1e6b22';
+            ctx.fill();
+            ctx.strokeStyle = '#123d14';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Corp interior: hexagon rutat, putin mai deschis
+            const _zbIR = _zbR * 0.52;
+            ctx.beginPath();
+            for (let _ii = 0; _ii < 6; _ii++) {
+                const _ia = (_ii / 6) * Math.PI * 2 + Math.PI / 6;
+                _ii === 0 ? ctx.moveTo(Math.cos(_ia) * _zbIR, Math.sin(_ia) * _zbIR)
+                          : ctx.lineTo(Math.cos(_ia) * _zbIR, Math.sin(_ia) * _zbIR);
+            }
+            ctx.closePath();
+            ctx.fillStyle = '#27832e';
+            ctx.fill();
+
+            ctx.restore();
+
+            // Bara de viata
+            const _zhpRatio = Math.max(0, _zb.hp / _zbHP);
+            const _zbW = 36, _zbH = 3;
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.beginPath(); ctx.roundRect(_zbx - _zbW / 2, _zby - _zbR - 14, _zbW, _zbH, 2); ctx.fill();
+            ctx.fillStyle = _zhpRatio > 0.5 ? '#44dd44' : _zhpRatio > 0.25 ? '#dddd22' : '#dd3333';
+            ctx.beginPath(); ctx.roundRect(_zbx - _zbW / 2, _zby - _zbR - 14, _zbW * _zhpRatio, _zbH, 2); ctx.fill();
         }
 
         // --- JUCATORI ---
@@ -2686,25 +3160,52 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             } else {
                 px = player.x; py = player.y; pangle = player.angle || 0;
             }
-            if (!isMe && (px + 80 < visLeft || px - 80 > visRight || py + 80 < visTop || py - 80 > visBottom)) continue;
-            const ringColor = isMe ? '#00ff88' : '#e94560';
-            const sqSize = isMe ? 48 : 40;
-            const ringR = sqSize / 2;
+            // Footstep spawning
+            const _pprev = _prevPlayerPos[pid];
+            const _pDist = _pprev ? Math.hypot(px - _pprev.x, py - _pprev.y) : 0;
+            _prevPlayerPos[pid] = { x: px, y: py };
+            _footTimers[pid] = (_footTimers[pid] || 0) + _pDist;
+            if (_footTimers[pid] >= 35 && _footsteps.length < 80) {
+                _footTimers[pid] = 0;
+                _footsteps.push({ x: px, y: py, t: performance.now() });
+            }
 
-            // Patrat simplu (temporar) — verde pt mine, rosu pt inamici
+            if (!isMe && (px + 80 < visLeft || px - 80 > visRight || py + 80 < visTop || py - 80 > visBottom)) continue;
+            const sqSize = 90;
+            const ringR  = sqSize / 2 + 8;
+            const ringColor = isMe ? '#00ff88' : '#e94560';
+            const ringFill  = isMe ? 'rgba(0,255,136,0.13)' : 'rgba(233,69,96,0.13)';
+
+            // Ring: filled + stroked, drawn BEFORE the character so it appears behind
             ctx.save();
             ctx.translate(px, py);
-            ctx.rotate(pangle + Math.PI);
-            ctx.fillStyle = ringColor;
-            ctx.fillRect(-sqSize / 2, -sqSize / 2, sqSize, sqSize);
-            // Directional nose — shows which edge is the "front" (shoot direction)
-            ctx.fillStyle = 'rgba(0,0,0,0.45)';
             ctx.beginPath();
-            ctx.moveTo(-sqSize / 4, -sqSize / 2);
-            ctx.lineTo( sqSize / 4, -sqSize / 2);
-            ctx.lineTo(0, -sqSize / 2 - 10);
-            ctx.closePath();
+            ctx.arc(0, 0, ringR, 0, Math.PI * 2);
+            ctx.fillStyle = ringFill;
             ctx.fill();
+            ctx.strokeStyle = ringColor;
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = 0.55;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(px, py);
+            ctx.rotate(pangle);
+            const _entry = playerImages[player.id];
+            if (_entry && (_entry.circleOC || (_entry.img && _entry.img.complete && _entry.img.naturalWidth))) {
+                if (_entry.circleOC) {
+                    ctx.drawImage(_entry.circleOC, -sqSize / 2, -sqSize / 2, sqSize, sqSize);
+                } else {
+                    drawCircularCoverImage(ctx, _entry.img, sqSize, _entry.scale || 1);
+                }
+            } else {
+                ctx.fillStyle = ringColor;
+                ctx.globalAlpha = 0.85;
+                ctx.fillRect(-sqSize / 2, -sqSize / 2, sqSize, sqSize);
+                ctx.globalAlpha = 1;
+            }
             ctx.restore();
 
             // Flash + Nume: un singur save/restore
@@ -2804,6 +3305,50 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
 
         ctx.restore();
+
+        // --- TIMER ZONA (screen space, proportional) ---
+        if (!gameEnded) {
+            if (gameControl.countdownEndTime) {
+                _zoneTimerAlpha = Math.min(1, (performance.now() - gameControl.countdownEndTime) / 500);
+            }
+            if (_zoneTimerAlpha > 0) {
+                ctx.save();
+                ctx.scale(dpr, dpr);
+                ctx.globalAlpha = _zoneTimerAlpha;
+                ctx.textAlign = 'center';
+                const _zFontSz = Math.round(Math.min(W, H) * 0.028);
+                ctx.font = `bold ${_zFontSz}px Lexend, Arial`;
+                const _zt = _zone.waitTimer;
+                const _zLabel = _zt > 0
+                    ? `Zona se restrange in ${Math.ceil(_zt)}s`
+                    : (_zone.r > 0 ? 'Zona se restrange!' : 'Zona inchisa!');
+                const _zColor = _zt > 0 ? '#ff8080' : '#ff2222';
+                const _ztW = ctx.measureText(_zLabel).width + 24;
+                const _ztH = _zFontSz + 12;
+                const _ztX = W / 2, _ztY = Math.round(H * 0.07) + _zFontSz;
+                ctx.fillStyle = 'rgba(0,0,0,0.58)';
+                ctx.beginPath(); ctx.roundRect(_ztX - _ztW / 2, _ztY - _zFontSz, _ztW, _ztH, 7); ctx.fill();
+                ctx.fillStyle = _zColor;
+                ctx.fillText(_zLabel, _ztX, _ztY);
+                ctx.restore();
+            }
+        }
+
+        // --- VIGNETA ZONA (screen space, cand esti in afara) ---
+        if (!gameEnded && _zone.r >= 0 && predX !== null) {
+            const _distZ = Math.hypot(predX - _zone.cx, predY - _zone.cy);
+            if (_zone.r === 0 || _distZ > _zone.r) {
+                ctx.save();
+                ctx.scale(dpr, dpr);
+                const _pulse = 0.25 + 0.15 * Math.sin(performance.now() / 160);
+                const _vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.75);
+                _vg.addColorStop(0, 'rgba(220,0,0,0)');
+                _vg.addColorStop(1, `rgba(220,0,0,${_pulse.toFixed(2)})`);
+                ctx.fillStyle = _vg;
+                ctx.fillRect(0, 0, W, H);
+                ctx.restore();
+            }
+        }
 
         // --- WATCHDOG ---
         if (lastGameStateTime > 0 && (performance.now() - lastGameStateTime) > 5000) {

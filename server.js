@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http    = require('http');
 const { Server } = require('socket.io');
@@ -360,16 +361,36 @@ async function broadcastLeaderboard() {
 const ARENA_W          = 2600;
 const ARENA_H          = 2600;
 const TICK_RATE        = 60;
-const BULLET_SPEED     = 1400;
+const BULLET_SPEED     = 1000;
 const BULLET_RADIUS    = 6;
-const BULLET_LIFE      = 0.428;
+const BULLET_LIFE      = 0.60;
+const AIM_DELAY        = 0.3;
 const SHOOT_CD         = 0.25;
 const AMMO_MAX         = 10;
 const AMMO_RELOAD_TIME = 3;
 const PLAYER_SIZE      = 60;
+const ZONE_INITIAL_R   = 1650;
+const ZONE_WAIT        = 30;
+const ZONE_SHRINK_RATE = 14;   // px/s → fully closed in ~125s
+const ZONE_DMG         = 20;   // HP/s outside zone
 const PLAYER_R         = PLAYER_SIZE / 2;
 const HP_REGEN_RATE    = 25;
 const HP_REGEN_DELAY   = 6000;
+const ZOMBIE_COUNT      = 8;
+const ZOMBIE_HP         = 100;
+const ZOMBIE_R          = 20;
+const ZOMBIE_PATROL_SPD = 30;
+const ZOMBIE_CHASE_SPD  = 62;
+const ZOMBIE_DETECT_R   = 320;
+const ZOMBIE_ATTACK_R   = 55;
+const ZOMBIE_ATTACK_DMG = 20;
+const ZOMBIE_ATTACK_CD  = 1.0;
+const ZOMBIE_PATROL_T   = 3.5;
+
+const SPAWN_POINTS = Array.from({ length: 15 }, (_, i) => {
+    const a = (i / 15) * Math.PI * 2;
+    return { x: Math.round(ARENA_W / 2 + 900 * Math.cos(a)), y: Math.round(ARENA_H / 2 + 900 * Math.sin(a)) };
+});
 
 // ---------- FRIENDS ----------
 async function getFriendNicknames(nickname) {
@@ -519,9 +540,14 @@ function randomSpawnPos() {
     };
 }
 
-function assignSpawnPositions(players) {
+function assignSpawnPositions(players, obstacles) {
     players.forEach(p => {
-        const pos = randomSpawnPos();
+        let pos, attempts = 0;
+        do {
+            pos = randomSpawnPos();
+            attempts++;
+        } while (attempts < 60 && obstacles &&
+            obstacles.some(o => Math.hypot(pos.x - o.x, pos.y - o.y) < o.r + PLAYER_R + 25));
         p.x = pos.x;
         p.y = pos.y;
     });
@@ -538,19 +564,76 @@ function generateCode() {
     return code;
 }
 
+function generateObstacles() {
+    const obs = [];
+    const MIN_GAP = 130;
+    function place(type, count, rMin, rMax) {
+        let attempts = 0, placed = 0;
+        while (placed < count && attempts < count * 30) {
+            attempts++;
+            const r = Math.round(rMin + Math.random() * (rMax - rMin));
+            const x = Math.round(220 + Math.random() * (ARENA_W - 440));
+            const y = Math.round(220 + Math.random() * (ARENA_H - 440));
+            let ok = true;
+            for (const o of obs) {
+                if (Math.hypot(x - o.x, y - o.y) < MIN_GAP + r + o.r) { ok = false; break; }
+            }
+            const rot = +(Math.random() * Math.PI * 2).toFixed(3);
+            if (ok) { obs.push({ type, x, y, r, rot }); placed++; }
+        }
+    }
+    place('tree', 26, 42, 62);
+    place('rock', 16, 26, 42);
+    return obs;
+}
+
+function generateZombies(obstacles) {
+    const zombies = [];
+    const margin = 200;
+    let attempts = 0;
+    while (zombies.length < ZOMBIE_COUNT && attempts < 600) {
+        attempts++;
+        const x = margin + Math.random() * (ARENA_W - margin * 2);
+        const y = margin + Math.random() * (ARENA_H - margin * 2);
+        const tooClose = obstacles.some(o => Math.hypot(x - o.x, y - o.y) < o.r + ZOMBIE_R + 40)
+            || zombies.some(z => Math.hypot(x - z.x, y - z.y) < ZOMBIE_R * 4);
+        if (tooClose) continue;
+        zombies.push({
+            id: zombies.length,
+            x, y,
+            angle: Math.random() * Math.PI * 2,
+            hp: ZOMBIE_HP,
+            alive: true,
+            state: 'patrol',
+            patrolTargetX: x,
+            patrolTargetY: y,
+            patrolTimer: Math.random() * ZOMBIE_PATROL_T,
+            attackCooldown: 0
+        });
+    }
+    return zombies;
+}
+
 function newRoom(hostId) {
+    const _obs = generateObstacles();
     return {
         hostId,
         players:     {},
         _playerArr:  [],
         bullets:     [],
         nextBulletId: 0,
+        obstacles:   _obs,
+        zombies:     generateZombies(_obs),
+        healthKits:  [],
+        nextKitId:   0,
+        zone: { cx: ARENA_W/2, cy: ARENA_H/2, r: ZONE_INITIAL_R, waitTimer: ZONE_WAIT, startDelay: 4 },
         gameStarted:     false,
         gameEnded:       false,
         countdownActive: false,
         rematchVotes: new Set(),
         gameLoop:    null,
         lastTick:    0,
+        spawnIndex:  0,
     };
 }
 
@@ -578,19 +661,19 @@ function addPlayer(code, room, socket, data) {
     const total = hp + dmg + spd;
     const scale = total > 10 ? 10 / total : 1;
 
-    const maxHp  = 400 + Math.round(hp  * scale) * 40;
+    const maxHp  = 350 + Math.round(hp  * scale) * 40;
     const damage = 10  + Math.round(dmg * scale) * 2;
-    const speed  = (2.5 + Math.round(spd * scale) * 0.2) * 60; // px/sec
+    const speed  = (2.0 + Math.round(spd * scale) * 0.2) * 60; // px/sec
 
     room.players[socket.id] = {
         id: socket.id, name: data.name, image: data.image, xp: data.xp || 0,
-        x: 500 + Math.random() * (ARENA_W - 1000),
-        y: 500 + Math.random() * (ARENA_H - 1000),
+        x: SPAWN_POINTS[room.spawnIndex % SPAWN_POINTS.length].x,
+        y: SPAWN_POINTS[(room.spawnIndex++) % SPAWN_POINTS.length].y,
         angle: 0, size: PLAYER_SIZE,
         hp: maxHp, maxHp, damage, speed,
         moveDir:  { x: 0, y: 0 },
         shootDir: { x: 0, y: 0 },
-        shooting: false, shootCooldown: 0,
+        shooting: false, shootCooldown: 0, aimTimer: 0,
         ammo: AMMO_MAX, reloading: false, reloadTimer: 0,
         alive: true, kills: 0, lastDamageTime: 0,
         lastAckSeq: 0,
@@ -647,12 +730,21 @@ function startRoomLoop(code, room) {
 
                 player.x = Math.max(20, Math.min(ARENA_W - 20, player.x + player.moveDir.x * player.speed * dt));
                 player.y = Math.max(20, Math.min(ARENA_H - 20, player.y + player.moveDir.y * player.speed * dt));
+                for (const obs of room.obstacles) {
+                    const _od = Math.hypot(player.x - obs.x, player.y - obs.y);
+                    const _om = obs.r + PLAYER_R;
+                    if (_od < _om && _od > 0) {
+                        player.x = obs.x + (player.x - obs.x) / _od * _om;
+                        player.y = obs.y + (player.y - obs.y) / _od * _om;
+                    }
+                }
 
                 if (player.hp < player.maxHp && (now - (player.lastDamageTime || 0)) > HP_REGEN_DELAY) {
                     player.hp = Math.min(player.maxHp, player.hp + HP_REGEN_RATE * dt);
                 }
 
                 if (player.shootCooldown > 0) player.shootCooldown -= dt;
+                if (player.aimTimer > 0) player.aimTimer -= dt;
                 if (player.reloading) {
                     player.reloadTimer -= dt;
                     if (player.reloadTimer <= 0) {
@@ -662,7 +754,7 @@ function startRoomLoop(code, room) {
                 if (player.ammo <= 0 && !player.reloading) {
                     player.reloading = true; player.reloadTimer = AMMO_RELOAD_TIME; player.shooting = false;
                 }
-                if (player.shooting && !player.reloading && player.shootCooldown <= 0 && player.ammo > 0) {
+                if (player.shooting && !player.reloading && player.shootCooldown <= 0 && player.ammo > 0 && player.aimTimer <= 0) {
                     const dl = Math.hypot(player.shootDir.x || 0, player.shootDir.y || 0);
                     if (dl >= 0.1) {
                         const dx = player.shootDir.x / dl, dy = player.shootDir.y / dl;
@@ -704,6 +796,124 @@ function startRoomLoop(code, room) {
                 }
             }
 
+            // Zona
+            const zone = room.zone;
+            if (zone.startDelay > 0) {
+                zone.startDelay = Math.max(0, zone.startDelay - dt);
+            } else if (zone.waitTimer > 0) {
+                zone.waitTimer = Math.max(0, zone.waitTimer - dt);
+            } else if (zone.r > 0) {
+                zone.r = Math.max(0, zone.r - ZONE_SHRINK_RATE * dt);
+            }
+            for (const player of allPlayers) {
+                if (!player.alive) continue;
+                const _dz = Math.hypot(player.x - zone.cx, player.y - zone.cy);
+                if (zone.r === 0 || _dz > zone.r) {
+                    player.hp -= ZONE_DMG * dt;
+                    player.lastDamageTime = now;
+                    if (player.hp <= 0) eliminatePlayer(code, room, player, null);
+                }
+            }
+
+            // Zombi AI
+            for (const zombie of room.zombies) {
+                if (!zombie.alive || room.countdownActive) continue;
+                zombie.attackCooldown = Math.max(0, zombie.attackCooldown - dt);
+
+                // Gaseste cel mai aproape jucator viu
+                let nearestPlayer = null, nearestDist = Infinity;
+                for (const p of alivePlayers) {
+                    const d = Math.hypot(p.x - zombie.x, p.y - zombie.y);
+                    if (d < nearestDist) { nearestDist = d; nearestPlayer = p; }
+                }
+
+                // Tranzitii de stare
+                if (nearestPlayer && nearestDist < ZOMBIE_DETECT_R) {
+                    zombie.state = 'chase';
+                } else if (nearestDist > ZOMBIE_DETECT_R * 1.4) {
+                    zombie.state = 'patrol';
+                }
+
+                // Target de miscare
+                let targetX, targetY;
+                const speed = zombie.state === 'chase' ? ZOMBIE_CHASE_SPD : ZOMBIE_PATROL_SPD;
+                if (zombie.state === 'chase' && nearestPlayer) {
+                    targetX = nearestPlayer.x;
+                    targetY = nearestPlayer.y;
+                } else {
+                    zombie.patrolTimer -= dt;
+                    const distToTarget = Math.hypot(zombie.patrolTargetX - zombie.x, zombie.patrolTargetY - zombie.y);
+                    if (zombie.patrolTimer <= 0 || distToTarget < 25) {
+                        zombie.patrolTargetX = 200 + Math.random() * (ARENA_W - 400);
+                        zombie.patrolTargetY = 200 + Math.random() * (ARENA_H - 400);
+                        zombie.patrolTimer = ZOMBIE_PATROL_T + Math.random() * 2;
+                    }
+                    targetX = zombie.patrolTargetX;
+                    targetY = zombie.patrolTargetY;
+                }
+
+                // Directie dorita
+                let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
+                const dLen = Math.hypot(ddx, ddy);
+                if (dLen > 0) { ddx /= dLen; ddy /= dLen; }
+
+                // Repulsie obstacole (steering)
+                for (const obs of room.obstacles) {
+                    const od = Math.hypot(zombie.x - obs.x, zombie.y - obs.y);
+                    const influence = obs.r + ZOMBIE_R + 55;
+                    if (od < influence && od > 0) {
+                        const str = (influence - od) / influence;
+                        ddx += (zombie.x - obs.x) / od * str * 2.8;
+                        ddy += (zombie.y - obs.y) / od * str * 2.8;
+                    }
+                }
+
+                // Misca zombiul
+                const moveLen = Math.hypot(ddx, ddy);
+                if (moveLen > 0) {
+                    zombie.x += (ddx / moveLen) * speed * dt;
+                    zombie.y += (ddy / moveLen) * speed * dt;
+                    zombie.angle = Math.atan2(ddy / moveLen, ddx / moveLen);
+                }
+
+                // Clamp arena
+                zombie.x = Math.max(ZOMBIE_R, Math.min(ARENA_W - ZOMBIE_R, zombie.x));
+                zombie.y = Math.max(ZOMBIE_R, Math.min(ARENA_H - ZOMBIE_R, zombie.y));
+
+                // Push-out din obstacole
+                for (const obs of room.obstacles) {
+                    const od = Math.hypot(zombie.x - obs.x, zombie.y - obs.y);
+                    const minD = obs.r + ZOMBIE_R;
+                    if (od < minD && od > 0) {
+                        zombie.x += (zombie.x - obs.x) / od * (minD - od);
+                        zombie.y += (zombie.y - obs.y) / od * (minD - od);
+                    }
+                }
+
+                // Separator zombi-jucator (zombiul nu intra in jucator)
+                for (const p of alivePlayers) {
+                    const pd = Math.hypot(zombie.x - p.x, zombie.y - p.y);
+                    const minPD = ZOMBIE_R + PLAYER_R;
+                    if (pd < minPD && pd > 0) {
+                        zombie.x += (zombie.x - p.x) / pd * (minPD - pd);
+                        zombie.y += (zombie.y - p.y) / pd * (minPD - pd);
+                    }
+                }
+
+                // Atac jucatori in raza
+                if (zombie.attackCooldown <= 0) {
+                    for (const p of alivePlayers) {
+                        if (Math.hypot(p.x - zombie.x, p.y - zombie.y) < ZOMBIE_ATTACK_R) {
+                            p.hp -= ZOMBIE_ATTACK_DMG;
+                            p.lastDamageTime = now;
+                            zombie.attackCooldown = ZOMBIE_ATTACK_CD;
+                            if (p.hp <= 0) eliminatePlayer(code, room, p, null);
+                            break;
+                        }
+                    }
+                }
+            }
+
             // Gloante: miscare + coliziune cu jucatori
             _expiredBullets.length = 0;
             let _bKeep = 0;
@@ -716,7 +926,25 @@ function startRoomLoop(code, room) {
                     if (b.lifetime <= 0 && b.x >= 0 && b.x <= ARENA_W && b.y >= 0 && b.y <= ARENA_H)
                         _expiredBullets.push(b);
                     keep = false;
+                } else if (room.obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.r + b.radius)) {
+                    keep = false;
                 } else {
+                    // Coliziune glont-zombie
+                    for (const zombie of room.zombies) {
+                        if (!zombie.alive) continue;
+                        if (Math.hypot(b.x - zombie.x, b.y - zombie.y) < ZOMBIE_R + b.radius) {
+                            const _zPrevHp = zombie.hp;
+                            zombie.hp -= b.damage;
+                            io.to(b.ownerId).emit('hit', { amount: Math.round(Math.min(b.damage, _zPrevHp)), x: zombie.x, y: zombie.y });
+                            if (zombie.hp <= 0) {
+                                zombie.hp = 0; zombie.alive = false;
+                                room.healthKits.push({ id: room.nextKitId++, x: zombie.x, y: zombie.y, spawnTime: now });
+                            }
+                            keep = false; break;
+                        }
+                    }
+                }
+                if (keep) {
                     const steps = Math.max(1, Math.ceil(Math.hypot(b.x - prevX, b.y - prevY) / 20));
                     const hitR  = PLAYER_R + b.radius;
                     for (const p of alivePlayers) {
@@ -728,7 +956,9 @@ function startRoomLoop(code, room) {
                             if (Math.hypot(bx - p.x, by - p.y) < hitR) { hit = true; break; }
                         }
                         if (hit) {
+                            const _pPrevHp = p.hp;
                             p.hp -= b.damage; p.lastDamageTime = now;
+                            io.to(b.ownerId).emit('hit', { amount: Math.round(Math.min(b.damage, _pPrevHp)), x: p.x, y: p.y });
                             if (p.hp <= 0) eliminatePlayer(code, room, p, b.ownerId);
                             keep = false; break;
                         }
@@ -745,6 +975,20 @@ function startRoomLoop(code, room) {
                 io.to(code).emit('srv-stats', { tps, ents: allPlayers.length + room.bullets.length });
             }
 
+            // Health kits: pickup + expiry
+            room.healthKits = room.healthKits.filter(kit => {
+                if (now - kit.spawnTime > 30000) return false;
+                for (const p of alivePlayers) {
+                    if (p.hp < p.maxHp && Math.hypot(p.x - kit.x, p.y - kit.y) < PLAYER_R + 22) {
+                        const actualHeal = Math.min(200, p.maxHp - p.hp);
+                        p.hp += actualHeal;
+                        io.to(p.id).emit('kit-pickup', { amount: actualHeal, x: kit.x, y: kit.y });
+                        return false;
+                    }
+                }
+                return true;
+            });
+
             _pScratch.length = 0;
             for (const p of allPlayers) {
                 _pScratch.push([p.id, Math.round(p.x), Math.round(p.y), +p.angle.toFixed(3), Math.round(p.hp), p.alive ? 1 : 0, p.kills]);
@@ -757,10 +1001,20 @@ function startRoomLoop(code, room) {
                 _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), +(b.dx / BULLET_SPEED).toFixed(3), +(b.dy / BULLET_SPEED).toFixed(3), b.ownerId]);
             }
 
+            const _zScratch = [];
+            for (const z of room.zombies) {
+                _zScratch.push(Math.round(z.x), Math.round(z.y), +z.angle.toFixed(2), z.alive ? Math.round(z.hp) : -1);
+            }
+            const _kScratch = [];
+            for (const k of room.healthKits) {
+                _kScratch.push(k.id, Math.round(k.x), Math.round(k.y), Math.round((30000 - (now - k.spawnTime)) / 1000));
+            }
+
             allPlayers.forEach(recv => {
                 const reloadProgress = recv.reloading ? Math.max(0, Math.min(1, 1 - recv.reloadTimer / AMMO_RELOAD_TIME)) : 1;
                 const ammoArr = [recv.ammo, AMMO_MAX, recv.reloading ? 1 : 0, +reloadProgress.toFixed(3), recv.lastAckSeq];
-                io.to(recv.id).emit('gs', [_pScratch, _bScratch, ammoArr, tickStart]);
+                const zoneArr = [Math.round(zone.cx), Math.round(zone.cy), Math.round(zone.r), +zone.waitTimer.toFixed(1)];
+                io.to(recv.id).emit('gs', [_pScratch, _bScratch, ammoArr, tickStart, zoneArr, _zScratch, _kScratch]);
             });
 
         } catch (err) {
@@ -839,11 +1093,17 @@ function triggerRematch(code, room) {
     room.rematchVotes.clear();
     room.bullets      = [];
     room.nextBulletId = 0;
-    assignSpawnPositions(room._playerArr);
+    room.zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: ZONE_INITIAL_R, waitTimer: ZONE_WAIT, startDelay: 4 };
+    room.zombies = generateZombies(room.obstacles);
+    room.healthKits = [];
+    room.nextKitId  = 0;
+    room.countdownActive = true;
+    setTimeout(() => { if (rooms.has(code)) room.countdownActive = false; }, 3000);
+    assignSpawnPositions(room._playerArr, room.obstacles);
     room._playerArr.forEach(p => {
         p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0;
         p.moveDir = { x: 0, y: 0 }; p.shootDir = { x: 0, y: 0 };
-        p.shooting = false; p.shootCooldown = 0;
+        p.shooting = false; p.shootCooldown = 0; p.aimTimer = 0;
         p.ammo = AMMO_MAX; p.reloading = false; p.reloadTimer = 0;
         p.lastDamageTime = 0; p.lastAckSeq = 0; p.pendingAckSeq = 0;
     });
@@ -958,7 +1218,7 @@ io.on('connection', (socket) => {
         room.bullets         = [];
         room.nextBulletId    = 0;
 
-        assignSpawnPositions(room._playerArr);
+        assignSpawnPositions(room._playerArr, room.obstacles);
         room._playerArr.forEach(p => {
             p.ammo = AMMO_MAX; p.reloading = false; p.reloadTimer = 0;
             p.shooting = false; p.shootCooldown = 0;
@@ -967,7 +1227,7 @@ io.on('connection', (socket) => {
 
         const playersMeta = {};
         room._playerArr.forEach(p => { playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name }; });
-        io.to(code).emit('game-start', { playersMeta });
+        io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles });
         console.log(`[${code}] Joc pornit cu ${room._playerArr.length} jucatori`);
 
         setTimeout(() => {
@@ -988,7 +1248,10 @@ io.on('connection', (socket) => {
         }
         if (data.angle !== undefined) p.angle = +data.angle || 0;
         if (data.shooting !== undefined) {
+            const _wasShooting = p.shooting;
             p.shooting = !!data.shooting;
+            if (p.shooting && !_wasShooting) p.aimTimer = AIM_DELAY;
+            if (!p.shooting) p.aimTimer = 0;
             if (data.shooting && data.sdx !== undefined) {
                 p.shootDir.x = +data.sdx || 0;
                 p.shootDir.y = +data.sdy || 0;
