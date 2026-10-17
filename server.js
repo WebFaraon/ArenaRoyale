@@ -10,6 +10,7 @@ const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
 const Missions = require('./missions');
+const ARShared = require('./public/combat-shared');
 
 const app    = express();
 const server = http.createServer(app);
@@ -438,6 +439,19 @@ const WEAPON_STATS = {
     burst:   { bulletLife: 0.518, bulletSpeed: 1100, shootCd: 0.60, ammoMax:  3, reloadRate:  1/2.0, burst: 3, burstDelay: 0.10 },
     smg:     { bulletLife: 0.50, bulletSpeed: 1000, shootCd: 0.12, ammoMax: 20, reloadRate: 20/4.0 },
 };
+// Where each gun's bullets start and how long they live (public/data/weapons.json "muzzle",
+// public/combat-shared.js): the same numbers the client predicts with. The range from the player
+// centre stays what it was when bullets started 25 units out.
+const WEAPON_ART = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'data', 'weapons.json'), 'utf8')).weapons;
+const SERVER_DT = Math.round(1000 / TICK_RATE) / 1000; // = INTERVAL_MS / 1000 in startRoomLoop
+if (Math.abs(SERVER_DT - ARShared.TICK_S) > 1e-9) console.warn('[Weapons] tick differs from combat-shared TICK_S; client bullet lifetimes will drift');
+const GUN_FIRE = {};
+for (const [id, ws] of Object.entries(WEAPON_STATS)) {
+    const art = WEAPON_ART[id];
+    if (!art) throw new Error('public/data/weapons.json has no "' + id + '"');
+    const muzzle = ARShared.muzzleDistance(art);
+    GUN_FIRE[id] = { muzzle, life: ARShared.bulletLife(ws.bulletLife, ws.bulletSpeed, muzzle, SERVER_DT) };
+}
 // Valorile de baza ale loadout-ului per arma (HP/DMG/SPD minim + crestere per punct)
 const WEAPON_LOADOUT = {
     pistol:  { baseHp: 350, baseDmg: 25, baseSpd: 2.0, hpPer: 40, dmgPer: 3, spdPer: 0.2 },
@@ -1031,13 +1045,16 @@ function startRoomLoop(code, room) {
                     player.burstTimer -= dt;
                     if (player.burstTimer <= 0) {
                         const _bwsCur = WEAPON_STATS[player.weapon] || WEAPON_STATS.pistol;
+                        const _bfire  = GUN_FIRE[player.weapon] || GUN_FIRE.pistol;
+                        // from the muzzle where the player is now; the hit test starts at the centre (sx, sy)
                         room.bullets.push({
                             id: room.nextBulletId++, ownerId: player.id,
-                            x: player.x + player.burstDx * 25, y: player.y + player.burstDy * 25,
+                            x: player.x + player.burstDx * _bfire.muzzle, y: player.y + player.burstDy * _bfire.muzzle,
+                            sx: player.x, sy: player.y,
                             dx: player.burstDx * (player.bulletSpeed || BULLET_SPEED),
                             dy: player.burstDy * (player.bulletSpeed || BULLET_SPEED),
                             damage: player.damage, radius: BULLET_RADIUS,
-                            lifetime: _bwsCur.bulletLife, speed: player.bulletSpeed || BULLET_SPEED
+                            lifetime: _bfire.life, speed: player.bulletSpeed || BULLET_SPEED
                         });
                         player.burstRemaining--;
                         if (player.burstRemaining > 0) {
@@ -1059,7 +1076,9 @@ function startRoomLoop(code, room) {
                         const dx = player.shootDir.x / dl, dy = player.shootDir.y / dl;
                         const _bspd = player.bulletSpeed || BULLET_SPEED;
                         const _wsCur = WEAPON_STATS[player.weapon] || WEAPON_STATS.pistol;
-                        const _blife = _wsCur.bulletLife;
+                        const _fire  = GUN_FIRE[player.weapon] || GUN_FIRE.pistol;
+                        const _blife = _fire.life;
+                        const _mx = player.x + dx * _fire.muzzle, _my = player.y + dy * _fire.muzzle;
                         const _pellets = _wsCur.pellets || 1;
                         const _spread = _wsCur.spread || 0;
                         for (let _pi = 0; _pi < _pellets; _pi++) {
@@ -1069,7 +1088,7 @@ function startRoomLoop(code, room) {
                             const _pdy = dx * _sin + dy * _cos;
                             room.bullets.push({
                                 id: room.nextBulletId++, ownerId: player.id,
-                                x: player.x + dx * 25, y: player.y + dy * 25,
+                                x: _mx, y: _my, sx: player.x, sy: player.y,
                                 dx: _pdx * _bspd, dy: _pdy * _bspd,
                                 damage: player.damage, radius: BULLET_RADIUS, lifetime: _blife,
                                 speed: _bspd
@@ -1397,10 +1416,13 @@ function startRoomLoop(code, room) {
             let _bKeep = 0;
             for (let bi = 0; bi < room.bullets.length; bi++) {
                 const b = room.bullets[bi];
-                const x1 = b.x + b.dx * dt, y1 = b.y + b.dy * dt;
+                const _step = b.lifetime < dt ? Math.max(0, b.lifetime) : dt;
+                const x1 = b.x + b.dx * _step, y1 = b.y + b.dy * _step;
                 b.lifetime -= dt;
                 _hitTargets.ownerId = b.ownerId;
-                const hit = firstBulletHit(b.x, b.y, x1, y1, b.radius, _hitTargets, _hitOut);
+                // first tick: from the shooter's centre, so a bullet cannot start past a wall or an enemy
+                // pressed against the shooter (the muzzle is up to 107 units out)
+                const hit = firstBulletHit(b.sx, b.sy, x1, y1, b.radius, _hitTargets, _hitOut);
                 let keep = true;
                 if (hit.kind === 1) {
                     keep = false;
@@ -1442,6 +1464,7 @@ function startRoomLoop(code, room) {
                     keep = false;
                 } else {
                     b.x = x1; b.y = y1;
+                    b.sx = x1; b.sy = y1;
                     const inside = b.x >= 0 && b.x <= ARENA_W && b.y >= 0 && b.y <= ARENA_H;
                     if (b.lifetime <= 0 || !inside) {
                         if (b.lifetime <= 0 && inside) _expiredBullets.push(b);

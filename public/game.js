@@ -895,7 +895,7 @@ async function doLogin() {
             btnText.textContent = 'INTRU IN JOC';
             return;
         }
-        await SKINS_READY;
+        await Promise.all([SKINS_READY, WEAPONS_ART_READY]);
         authSuccess(nickname, password, data.player, data.token);
     } catch {
         errorEl.textContent = 'Eroare de retea. Incearca din nou.';
@@ -933,7 +933,7 @@ async function doRegister() {
             btnText.textContent = 'CREEAZA CONT';
             return;
         }
-        await SKINS_READY;
+        await Promise.all([SKINS_READY, WEAPONS_ART_READY]);
         authSuccess(nickname, password, data.player, data.token);
     } catch {
         errorEl.textContent = 'Eroare de retea. Incearca din nou.';
@@ -1761,17 +1761,6 @@ function _setRotated(ctx, m, x, y, dx, dy) {
 }
 
 // ---------- ASSETS ----------
-const _bulletImgCache = {};
-function _getBulletImg(src) {
-    if (!_bulletImgCache[src]) {
-        const img = new Image();
-        img.src = src;
-        _bulletImgCache[src] = img;
-    }
-    return _bulletImgCache[src];
-}
-// One bullet for every skin (weapon skins will set the tracer colour later)
-const defaultBulletImg = _getBulletImg('/assets/bullets/ninja_bullet.png');
 
 const _charImgCache = {};
 function _getCharImg(src) {
@@ -1788,10 +1777,11 @@ function _getCharImg(src) {
 // (skins.json "pivot", 128,118 px) on the player position. Hitbox stays PLAYER_HIT_R (30).
 // The art faces down, and player.angle is already measured from "down" (atan2(-dx, dy)), so the
 // sprite and the hands rotate by player.angle; +y in that frame is the aim direction.
-// How big a player looks in the match, relative to the art (body radius 36, frame 100 units).
-// Reglabil intre 0.8 si 0.9. It scales the sprite, the hands, the highlight, the hit flash, the ring
-// and the label positions together; the hitbox (PLAYER_HIT_R, server PLAYER_SIZE) does not change.
-const PLAYER_VISUAL_SCALE = 0.85;
+// How big a player looks in the match: set in public/combat-shared.js (PLAYER_VISUAL_SCALE, reglabil
+// intre 0.8 si 0.9), because the server needs it too: it scales the muzzle, where bullets start.
+// It scales the sprite, hands, highlight, hit flash, ring, label positions and guns together;
+// the hitbox (PLAYER_HIT_R, server PLAYER_SIZE) does not change.
+const PLAYER_VISUAL_SCALE = ARShared.PLAYER_VISUAL_SCALE;
 const SKIN_FRAME_UNITS = 100;
 const SKIN_BODY_R      = 36;
 const SKIN_OUTLINE     = '#0B0F1A';
@@ -1916,11 +1906,17 @@ const WEAPONS_ART_READY = fetch('/data/weapons.json')
         for (const [id, w] of Object.entries(data.weapons || {})) {
             const img = new Image();
             img.src = w.sprite;
+            const stats = _WEAPON_DATA[id];
+            const muzzleDist = ARShared.muzzleDistance(w);
             WEAPON_ART.byId[id] = {
                 id, name: w.name, img, accent: w.accent,
                 hands:  w.hands.map(p => [p[0] * S, p[1] * S]),
                 muzzle: [w.muzzle[0] * S, w.muzzle[1] * S],
                 hands0: w.hands, muzzle0: w.muzzle, // unscaled, for the dev view readout
+                // where bullets start and how long they live (server.js GUN_FIRE uses the same functions)
+                muzzleDist,
+                bulletLife: stats ? ARShared.bulletLife(stats.bulletLife, stats.bulletSpeed, muzzleDist, ARShared.TICK_S) : 0.5,
+                bulletSprite: null,
             };
         }
         WEAPON_ART.ready = true;
@@ -1933,7 +1929,6 @@ function _makeSkinEntry(skinId) {
     return {
         img: _getCharImg(charDef ? charDef.png : ''), sprite: null, hand: null,
         base: charDef ? charDef.base : '#E7ECF3', dark: charDef ? charDef.dark : '#AEB8C8',
-        bulletImg: defaultBulletImg, bulletScale: 1.0,
     };
 }
 
@@ -1980,6 +1975,39 @@ function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStr
     }
     ctx.setTransform(wm);
     _drawSkinHighlight(ctx, x, y, scale);
+}
+
+// Bullets: a capsule along +x (the direction of travel) in the gun's accent, ink outline and a small
+// white glint, painted once per gun at the on-screen scale and rotated per bullet. Visual only: the
+// hit radius stays the server's BULLET_RADIUS (6).
+const BULLET_LOOK = { len: 14, wid: 5 };
+const PELLET_LOOK = { len: 8, wid: 4 };   // shotgun
+function _bulletSprite(weaponId, scale) {
+    const gun = WEAPON_ART.byId[weaponId] || WEAPON_ART.byId.pistol;
+    if (!gun) return null;
+    const look = weaponId === 'shotgun' ? PELLET_LOOK : BULLET_LOOK;
+    const box = look.len / 2 + 1.5;
+    const s = _unitSprite(gun, 'bulletSprite', scale, box, g => {
+        const hl = look.len / 2, r = look.wid / 2;
+        g.beginPath();
+        g.moveTo(-hl + r, -r);
+        g.lineTo(hl - r, -r);
+        g.arc(hl - r, 0, r, -Math.PI / 2, Math.PI / 2);
+        g.lineTo(-hl + r, r);
+        g.arc(-hl + r, 0, r, Math.PI / 2, Math.PI * 1.5);
+        g.closePath();
+        g.fillStyle = gun.accent || '#FFC53D';
+        g.fill();
+        g.lineWidth = 1.4;
+        g.strokeStyle = SKIN_OUTLINE;
+        g.stroke();
+        g.beginPath();
+        g.arc(hl - r - 0.6, -r * 0.35, Math.max(0.7, r * 0.38), 0, Math.PI * 2);
+        g.fillStyle = 'rgba(255,255,255,.85)';
+        g.fill();
+    });
+    s.box = box;
+    return s;
 }
 
 // Developer view of a player with each gun: open the game with ?dev=weapons (public/dev-weapons.js).
@@ -2366,9 +2394,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 if (_bDiag.lagMax !== undefined) { const lg = now - best.spawnTime; _bDiag.lagSum += lg; if (lg > _bDiag.lagMax) _bDiag.lagMax = lg; if (_bDiag.lagList.length < 200) _bDiag.lagList.push(Math.round(lg)); }
             } else {
                 // The server fired a shot this client did not predict: show it from server data
-                const wd = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA.pistol;
                 const age = Math.min(0.3, _rttMs() / 2000 + _GHOST_GRACE_MS / 1000);
-                const g = { x: b.x, y: b.y, dx: b.dx, dy: b.dy, life: Math.max(0.05, (wd.bulletLife || 0.5) - age),
+                const g = { x: b.x, y: b.y, dx: b.dx, dy: b.dy, life: Math.max(0.05, _myGunFire().bulletLife - age),
                             spawnTime: now, sid: b.id, seenGen: _ownSeenGen, px: b.x, py: b.y, hiddenAt: 0, dead: false, ghost: true };
                 _clientBullets.push(g);
                 _ownLinked.set(b.id, g);
@@ -2411,10 +2438,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         best.sid = bid; best.dead = true;  // dead + linked: removed without a tombstone or phantom count
         _bDiag.hitLinked++;
     }
-    function _newClientBullet(x, y, dx, dy, life, now) {
+    // x, y: the muzzle; ox, oy: the shooter's centre, where the first swept hit test starts (server.js sx, sy)
+    function _newClientBullet(x, y, dx, dy, life, now, ox, oy) {
         _bDiag.predicted++;
-        if (_bDiag.spawnLog && _bDiag.spawnLog.length < 300) _bDiag.spawnLog.push(Math.round(now));
-        return { x, y, dx, dy, life, spawnTime: now, sid: null, seenGen: 0, px: x, py: y, hiddenAt: 0, dead: false, noPredict: false };
+        if (_bDiag.spawnLog && _bDiag.spawnLog.length < 300) { _bDiag.spawnLog.push(Math.round(now)); _bDiag.spawnPos.push([+x.toFixed(2), +y.toFixed(2), +ox.toFixed(2), +oy.toFixed(2), +(dx / Math.hypot(dx, dy)).toFixed(4), +(dy / Math.hypot(dx, dy)).toFixed(4)]); }
+        return { x, y, dx, dy, life, spawnTime: now, sid: null, seenGen: 0, px: ox, py: oy, hiddenAt: 0, dead: false, noPredict: false };
+    }
+    // The equipped gun's muzzle distance and bullet lifetime (WEAPON_ART, same formula as server.js)
+    function _myGunFire() {
+        const g = WEAPON_ART.byId[selectedWeapon] || WEAPON_ART.byId.pistol;
+        return g ? g : { muzzleDist: ARShared.LEGACY_MUZZLE, bulletLife: (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA.pistol).bulletLife };
     }
     function _removeClientBullet(i) {
         const c = _clientBullets[i];
@@ -2497,7 +2530,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // Opt-in diagnostics for automated tests (localStorage.ar_diag = '1'); no effect otherwise
     try {
         if (localStorage.getItem('ar_diag') === '1') {
-            _bDiag.lagSum = 0; _bDiag.lagMax = 0; _bDiag.lagList = []; _bDiag.spawnLog = []; _bDiag.srvLog = []; _bDiag.csp = []; _bDiag.track = []; _bDiag.phantomLog = []; _bDiag.ammoLog = []; _bDiag.ghostLog = []; _bDiag.frames = [];
+            _bDiag.lagSum = 0; _bDiag.lagMax = 0; _bDiag.lagList = []; _bDiag.spawnLog = []; _bDiag.srvLog = []; _bDiag.csp = []; _bDiag.track = []; _bDiag.phantomLog = []; _bDiag.ammoLog = []; _bDiag.ghostLog = []; _bDiag.frames = []; _bDiag.spawnPos = [];
             window.__arDiag = () => ({ ..._bDiag, active: _clientBullets.length, linkedNow: _ownLinked.size, rtt: _pingRtt, pktPs: _dbgPktPs, fps: _dbgFps, st: { isShooting, mustRelease: _shootMustRelease, ammo: ammoState.ammo, reloading: ammoState.reloading, aim: aimStartTime, cd: gameControl.countdownActive, dead: _selfDead, predX, next: _clientNextShotAt, now: performance.now(), ended: gameEnded } });
             window.__arZombies = () => _zombies.filter(z => z && z.hp > 0).map(z => [z.x, z.y]);
             window.__arMe = () => [predX, predY];
@@ -3600,16 +3633,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             aimStartTime !== null && _shotNow - aimStartTime >= _AIM_MS) {
             const _myWdSpawn = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA.pistol;
             const _cbspd  = _myWdSpawn.bulletSpeed || 1000;
-            const _cblife = _myWdSpawn.bulletLife  || 0.60;
+            const _fire   = _myGunFire();
+            const _cblife = _fire.bulletLife;
             const _cbPellets = _myWdSpawn.pellets || 1;
             const _cbSpread  = _myWdSpawn.spread  || 0;
             const _bcdx = -Math.sin(myAngle), _bcdy = Math.cos(myAngle);
+            const _mx = predX + _bcdx * _fire.muzzleDist, _my = predY + _bcdy * _fire.muzzleDist;
             for (let _pi = 0; _pi < _cbPellets; _pi++) {
                 const _ang = _cbPellets === 1 ? 0 : -_cbSpread / 2 + _pi * _cbSpread / (_cbPellets - 1);
                 const _cos = Math.cos(_ang), _sin = Math.sin(_ang);
                 const _pdx = _bcdx * _cos - _bcdy * _sin;
                 const _pdy = _bcdx * _sin + _bcdy * _cos;
-                _clientBullets.push(_newClientBullet(predX + _bcdx * 25, predY + _bcdy * 25, _pdx * _cbspd, _pdy * _cbspd, _cblife, _shotNow));
+                _clientBullets.push(_newClientBullet(_mx, _my, _pdx * _cbspd, _pdy * _cbspd, _cblife, _shotNow, predX, predY));
             }
             const _burstCount = _myWdSpawn.burst || 1;
             const _burstDelay = _myWdSpawn.burstDelay || 0.08;
@@ -3638,7 +3673,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         while (_pendingBurstShots.length > 0 && _pendingBurstShots[0].spawnAt <= _cbNow) {
             const _pbs = _pendingBurstShots.shift();
             if (predX !== null && !_selfDead) {
-                _clientBullets.push(_newClientBullet(predX + _pbs.odx * 25, predY + _pbs.ody * 25, _pbs.dx, _pbs.dy, _pbs.life, _cbNow));
+                const _bm = _myGunFire().muzzleDist;
+                _clientBullets.push(_newClientBullet(predX + _pbs.odx * _bm, predY + _pbs.ody * _bm, _pbs.dx, _pbs.dy, _pbs.life, _cbNow, predX, predY));
             }
         }
 
@@ -3889,7 +3925,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const _bulletNow = performance.now();
         const _bulletAge = Math.min((_bulletNow - lastGameStateTime) / 1000, 0.05);
         const _trailSprite = _getTrailSprite();
-        const _projSz = 38;
         ctx.fillStyle = '#ffffff';
         for (const b of rState.bullets) {
             if (b.ownerId === socket.id) continue;
@@ -3901,17 +3936,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _seen = _srvBulletSeen.get(b.id);
             const _bAge = _seen ? (_bulletNow - _seen.t) / 1000 : 0;
             const _trail = Math.min(_bAge * 480, 110);
-            const _bImg = playerImages[b.ownerId]?.bulletImg;
-            const _imgOk = _bImg && _bImg.complete && _bImg.naturalWidth;
+            const _bs = _bulletSprite(_playerWeapons.get(b.ownerId) || 'pistol', _lblScale);
             _setRotated(ctx, _wm, _bx, _by, b.dx, b.dy);
             if (_trail > 4) ctx.drawImage(_trailSprite, -_trail, -4, _trail, 8);
-            if (_imgOk) ctx.drawImage(_bImg, -_projSz / 2, -_projSz / 2, _projSz, _projSz);
+            if (_bs) ctx.drawImage(_bs.c, -_bs.box, -_bs.box, _bs.box * 2, _bs.box * 2);
             else { ctx.beginPath(); ctx.arc(0, 0, b.radius || 6, 0, Math.PI * 2); ctx.fill(); }
         }
         ctx.setTransform(_wm);
         // Own bullets — fade-out in the last 20% of their lifetime; hidden ones hit something
-        const _myBImg = playerImages[socket.id]?.bulletImg;
-        const _myImgOk = _myBImg && _myBImg.complete && _myBImg.naturalWidth;
+        const _myBs = _bulletSprite(selectedWeapon, _lblScale);
         for (const cb of _clientBullets) {
             if (cb.hiddenAt || cb.dead) continue;
             const _cAgeFull = (_bulletNow - cb.spawnTime) / 1000;
@@ -3926,7 +3959,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.globalAlpha = _cAlpha;
             _setRotated(ctx, _wm, _cbx, _cby, cb.dx, cb.dy);
             if (_trail > 4) ctx.drawImage(_trailSprite, -_trail, -4, _trail, 8);
-            if (_myImgOk) ctx.drawImage(_myBImg, -_projSz / 2, -_projSz / 2, _projSz, _projSz);
+            if (_myBs) ctx.drawImage(_myBs.c, -_myBs.box, -_myBs.box, _myBs.box * 2, _myBs.box * 2);
             else { ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill(); }
         }
         ctx.setTransform(_wm);
@@ -4383,30 +4416,19 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
         }
 
-        // --- BULLET SLOT + WEAPON TYPE BADGE (jos-centru, screen space, alaturi) ---
+        // --- WEAPON BLOCK (jos-centru, screen space) ---
         if (!gameEnded && !isSpectating) {
-            const _bSlotE = playerImages[socket.id];
             const _myWid  = _playerWeapons.get(socket.id) || selectedWeapon;
             const _myWd   = _WEAPON_DATA[_myWid] || _WEAPON_DATA.pistol;
             ctx.save();
             ctx.scale(dpr, dpr);
             const _bSz  = Math.round(H < 520 ? Math.min(44, Math.max(30, H * 0.105)) : Math.min(86, Math.max(40, Math.min(W * 0.056, H * 0.095))));
             const _wSz  = _bSz;
-            const _gap  = Math.round(_bSz * 0.14);
-            const _totalW = _bSz + _gap + _wSz;
-            const _bX   = Math.round(W / 2 - _totalW / 2);
-            const _wX   = _bX + _bSz + _gap;
-            const _bY   = H - _bSz - 20 - (window.innerHeight < 520 ? 0 : 4);
-            const _wY   = _bY;
+            const _wX   = Math.round(W / 2 - _wSz / 2);
+            const _wY   = H - _bSz - 20 - (window.innerHeight < 520 ? 0 : 4);
             const _sol  = _bSz < 50 ? 2.5 : 3;
             const _slip = Math.round(_bSz * 0.1);
-            // Bullet slot (left): slate block with the projectile sprite
-            _drawBlock(ctx, _bX, _bY, _bSz, _bSz, Math.round(_bSz * 0.24), '#2A3A45', '#18232A', _sol, _slip, 5);
-            if (_bSlotE?.bulletImg?.complete && _bSlotE.bulletImg.naturalWidth > 0) {
-                const _bPad = Math.round(_bSz * 0.16);
-                ctx.drawImage(_bSlotE.bulletImg, _bX + _bPad, _bY + _bPad - _slip / 2, _bSz - _bPad * 2, _bSz - _bPad * 2);
-            }
-            // Weapon block (right): orange, white pictogram with an ink drop
+            // Weapon block: orange, white pictogram with an ink drop
             _drawBlock(ctx, _wX, _wY, _wSz, _wSz, Math.round(_wSz * 0.24), TOY.orange[0], TOY.orange[1], _sol, _slip, 5);
             ARIcons.drawWeapon(ctx, _myWd.id, _wX + _wSz / 2, _wY + _wSz / 2 - _slip / 2 + 1.5, _wSz * 0.62, INK);
             ARIcons.drawWeapon(ctx, _myWd.id, _wX + _wSz / 2, _wY + _wSz / 2 - _slip / 2, _wSz * 0.62, '#FFFFFF');
