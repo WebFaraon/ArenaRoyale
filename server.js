@@ -7,10 +7,18 @@ const path    = require('path');
 const bcrypt  = require('bcryptjs');
 const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const { firstBulletHit } = require('./game-physics');
+const Missions = require('./missions');
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, { parser: msgpackParser, transports: ['websocket'] });
+const io     = new Server(server, {
+    parser: msgpackParser,
+    transports: ['websocket'],
+    pingInterval: 10000,   // ping la fiecare 10s (default 25s)
+    pingTimeout:  60000,   // asteapta pong 60s (default 20s) — tolereaza iOS throttling
+    connectTimeout: 45000,
+});
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -28,6 +36,49 @@ const sessionTokens = new Map();
 
 if (!supabase) console.warn('[Supabase] Nu e configurat — statisticile nu se salveaza.');
 
+// ---------- DAILY MISSIONS (missions.js) ----------
+// Stored as JSON in players.missions_state. Until that column exists (run
+// supabase-migration-missions.sql once) or without Supabase, missions live in memory only.
+const missionStore = new Map(); // nickname -> state
+let missionsColumn = true;
+function _missingColumn(error) { return error && /missions_state/.test(error.message || ''); }
+function _noColumn() {
+    if (!missionsColumn) return;
+    missionsColumn = false;
+    console.warn('[Missions] Coloana players.missions_state lipseste: misiunile se pastreaza doar in memorie. Ruleaza supabase-migration-missions.sql in Supabase.');
+}
+async function loadMissions(nickname) {
+    if (supabase && missionsColumn) {
+        const { data, error } = await supabase.from('players').select('missions_state').eq('nickname', nickname).maybeSingle();
+        if (error) { if (_missingColumn(error)) _noColumn(); else throw error; }
+        else {
+            const s = Missions.normalize(data && data.missions_state, nickname);
+            missionStore.set(nickname, s);
+            return s;
+        }
+    }
+    const s = Missions.normalize(missionStore.get(nickname), nickname);
+    missionStore.set(nickname, s);
+    return s;
+}
+async function saveMissions(nickname, state) {
+    missionStore.set(nickname, state);
+    if (supabase && missionsColumn) {
+        const { error } = await supabase.from('players').update({ missions_state: JSON.stringify(state) }).eq('nickname', nickname);
+        if (_missingColumn(error)) _noColumn();
+    }
+}
+async function missionsForLogin(nickname) {
+    try {
+        const s = await loadMissions(nickname);
+        await saveMissions(nickname, s);
+        return Missions.toClient(s);
+    } catch (err) {
+        console.error('[Missions] load error:', err);
+        return Missions.toClient(Missions.freshState(nickname));
+    }
+}
+
 // ---------- AUTH ----------
 app.post('/api/auth/login', async (req, res) => {
     const { nickname, password } = req.body || {};
@@ -39,7 +90,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!supabase) {
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(nickname, token);
-        return res.json({ ok: true, token, player: { nickname, avatar: null, kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0 } });
+        return res.json({ ok: true, token, player: { nickname, avatar: null, kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname) } });
     }
 
     try {
@@ -55,22 +106,8 @@ app.post('/api/auth/login', async (req, res) => {
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(existing.nickname, token);
 
-        // Reset misiuni zilnice daca e zi noua
-        const today = new Date().toISOString().slice(0, 10);
-        let missions;
-        if (existing.mission_date !== today) {
-            await supabase.from('players').update({
-                mission_date: today,
-                mission_kills: 0, mission_games: 0, mission_wins: 0,
-                mission_kills_claimed: false, mission_games_claimed: false, mission_wins_claimed: false
-            }).eq('nickname', nickname);
-            missions = { kills: 0, games: 0, wins: 0, killsClaimed: false, gamesClaimed: false, winsClaimed: false };
-        } else {
-            missions = {
-                kills: existing.mission_kills || 0, games: existing.mission_games || 0, wins: existing.mission_wins || 0,
-                killsClaimed: !!existing.mission_kills_claimed, gamesClaimed: !!existing.mission_games_claimed, winsClaimed: !!existing.mission_wins_claimed
-            };
-        }
+        // Misiuni zilnice: sase din pool, alese pe zi (missions.js)
+        const missions = await missionsForLogin(existing.nickname);
 
         let unlockedChars;
         try { unlockedChars = JSON.parse(existing.unlocked_characters || '["ninja"]'); }
@@ -114,7 +151,7 @@ app.post('/api/auth/register', async (req, res) => {
         return res.json({ ok: false, error: 'Parola trebuie sa contina litere si cifre' });
 
     if (!supabase)
-        return res.json({ ok: true, player: { nickname, avatar: null, kills_total: 0, wins_total: 0, games_played: 0 } });
+        return res.json({ ok: true, player: { nickname, avatar: null, kills_total: 0, wins_total: 0, games_played: 0, missions: await missionsForLogin(nickname) } });
 
     try {
         const { data: existing } = await supabase
@@ -133,8 +170,7 @@ app.post('/api/auth/register', async (req, res) => {
         }
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(nickname, token);
-        const today = new Date().toISOString().slice(0, 10);
-        const missions = { kills: 0, games: 0, wins: 0, killsClaimed: false, gamesClaimed: false, winsClaimed: false };
+        const missions = await missionsForLogin(nickname);
         return res.json({ ok: true, token, player: { nickname, avatar: null, kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, missions } });
     } catch (err) {
         console.error('[Auth/Register] Error:', err);
@@ -235,31 +271,25 @@ app.post('/api/profile/stats', async (req, res) => {
     } catch { res.json({ ok: false }); }
 });
 
-const MISSION_DEFS = {
-    kills: { goal: 5,  coins: 50,  diamonds: 0, col: 'mission_kills', claimedCol: 'mission_kills_claimed' },
-    games: { goal: 3,  coins: 30,  diamonds: 0, col: 'mission_games', claimedCol: 'mission_games_claimed' },
-    wins:  { goal: 1,  coins: 100, diamonds: 1, col: 'mission_wins',  claimedCol: 'mission_wins_claimed'  },
-};
-
 app.post('/api/missions/claim', async (req, res) => {
     const { nickname, token, missionId } = req.body || {};
-    if (!nickname || !token || !missionId || !supabase) return res.json({ ok: false, error: 'Date invalide' });
+    if (!nickname || !token || !missionId) return res.json({ ok: false, error: 'Date invalide' });
     if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Sesiune invalida' });
-    const def = MISSION_DEFS[missionId];
-    if (!def) return res.json({ ok: false, error: 'Misiune inexistenta' });
     try {
-        const { data } = await supabase.from('players')
-            .select(`coins, diamonds, ${def.col}, ${def.claimedCol}, mission_date`)
-            .eq('nickname', nickname).single();
+        const state = await loadMissions(nickname);
+        const r = Missions.claim(state, missionId);
+        if (!r.ok) return res.json(r);
+        if (!supabase) {
+            await saveMissions(nickname, state);
+            return res.json({ ok: true, coins: null, diamonds: null, rewardCoins: r.coins, rewardDiamonds: r.diamonds, missions: Missions.toClient(state) });
+        }
+        const { data } = await supabase.from('players').select('coins, diamonds').eq('nickname', nickname).single();
         if (!data) return res.json({ ok: false, error: 'Cont negasit' });
-        const today = new Date().toISOString().slice(0, 10);
-        if (data.mission_date !== today) return res.json({ ok: false, error: 'Misiunile s-au resetat' });
-        if (data[def.claimedCol]) return res.json({ ok: false, error: 'Deja revendicat' });
-        if ((data[def.col] || 0) < def.goal) return res.json({ ok: false, error: 'Misiune nefinalizata' });
-        const newCoins    = (data.coins    ?? 1000) + def.coins;
-        const newDiamonds = (data.diamonds || 0)    + def.diamonds;
-        await supabase.from('players').update({ coins: newCoins, diamonds: newDiamonds, [def.claimedCol]: true }).eq('nickname', nickname);
-        res.json({ ok: true, coins: newCoins, diamonds: newDiamonds });
+        const newCoins    = (data.coins    ?? 1000) + r.coins;
+        const newDiamonds = (data.diamonds || 0)    + r.diamonds;
+        await supabase.from('players').update({ coins: newCoins, diamonds: newDiamonds }).eq('nickname', nickname);
+        await saveMissions(nickname, state);
+        res.json({ ok: true, coins: newCoins, diamonds: newDiamonds, rewardCoins: r.coins, rewardDiamonds: r.diamonds, missions: Missions.toClient(state) });
     } catch (err) {
         console.error('[Missions/Claim] Error:', err);
         res.json({ ok: false, error: 'Eroare server' });
@@ -279,8 +309,15 @@ app.get('/api/leaderboard', async (req, res) => {
 });
 
 // ---------- STAT HELPERS ----------
-async function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner) {
+// info: { mode: 'br' | 'pve', rs: per-round stats (missions.newRoundStats), wave: PvE wave reached }
+async function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner, info = {}) {
     const k = killsThisRound || 0;
+    let missions;
+    try {
+        const ms = Missions.applyRound(await loadMissions(nickname), { mode: info.mode || 'br', rs: info.rs, wave: info.wave, isWinner });
+        await saveMissions(nickname, ms);
+        missions = Missions.toClient(ms);
+    } catch (err) { console.error('[Missions] round update error:', err); }
     const earnedXP       = k * 10 + (isWinner ? 50 : 0);
     const earnedCoins    = k * 10 + (isWinner ? 50 : 0);
     const earnedDiamonds = isWinner ? 1 : 0;
@@ -289,12 +326,12 @@ async function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner
         killsThisRound: k, killsTotal: k, winsTotal: isWinner ? 1 : 0,
         gamesPlayed: 1, killRate: k.toFixed(1), isWinner,
         earnedXP, earnedCoins, earnedDiamonds,
-        xp: earnedXP, coins: 1000 + earnedCoins, diamonds: earnedDiamonds
+        xp: earnedXP, coins: 1000 + earnedCoins, diamonds: earnedDiamonds, missions
     };
     if (!supabase) { io.to(socketId).emit('round-stats', basic); return; }
     try {
         const { data } = await supabase.from('players')
-            .select('kills_total, wins_total, games_played, xp, coins, diamonds, mission_date, mission_kills, mission_games, mission_wins, mission_kills_claimed, mission_games_claimed, mission_wins_claimed')
+            .select('kills_total, wins_total, games_played, xp, coins, diamonds')
             .eq('nickname', nickname).maybeSingle();
         if (!data) { io.to(socketId).emit('round-stats', basic); return; }
 
@@ -305,26 +342,12 @@ async function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner
         const newCoins    = (data.coins        ?? 1000) + earnedCoins;
         const newDiamonds = (data.diamonds     || 0) + earnedDiamonds;
 
-        // Misiuni zilnice — reset daca e zi noua
-        const today = new Date().toISOString().slice(0, 10);
-        const isNewDay = data.mission_date !== today;
-        const mKills = (isNewDay ? 0 : (data.mission_kills || 0)) + k;
-        const mGames = (isNewDay ? 0 : (data.mission_games || 0)) + 1;
-        const mWins  = (isNewDay ? 0 : (data.mission_wins  || 0)) + (isWinner ? 1 : 0);
-        const mKillsClaimed = isNewDay ? false : !!data.mission_kills_claimed;
-        const mGamesClaimed = isNewDay ? false : !!data.mission_games_claimed;
-        const mWinsClaimed  = isNewDay ? false : !!data.mission_wins_claimed;
-
         await supabase.from('players').update({
             kills_total:  newKills, wins_total: newWins, games_played: newGames,
             xp: newXP, coins: newCoins, diamonds: newDiamonds,
-            mission_date: today,
-            mission_kills: mKills, mission_games: mGames, mission_wins: mWins,
-            mission_kills_claimed: mKillsClaimed, mission_games_claimed: mGamesClaimed, mission_wins_claimed: mWinsClaimed,
             updated_at: new Date().toISOString()
         }).eq('nickname', nickname);
 
-        const missions = { kills: mKills, games: mGames, wins: mWins, killsClaimed: mKillsClaimed, gamesClaimed: mGamesClaimed, winsClaimed: mWinsClaimed };
         io.to(socketId).emit('round-stats', {
             killsThisRound: k, killsTotal: newKills, winsTotal: newWins,
             gamesPlayed: newGames,
@@ -363,19 +386,39 @@ const ARENA_H          = 2600;
 const TICK_RATE        = 60;
 const BULLET_SPEED     = 1000;
 const BULLET_RADIUS    = 6;
-const BULLET_LIFE      = 0.60;
+const BULLET_LIFE      = 0.60; // default (Pistol)
 const AIM_DELAY        = 0.3;
 const SHOOT_CD         = 0.25;
-const AMMO_MAX         = 10;
-const AMMO_RELOAD_TIME = 3;
+const AMMO_MAX          = 10;
+const AMMO_RELOAD_DELAY = 0.5;
+const AMMO_RELOAD_RATE  = AMMO_MAX / 5.0;
+
+// Statistici per tip de arma
+const WEAPON_STATS = {
+    pistol:  { bulletLife: 0.38, bulletSpeed: 1000, shootCd: 0.50, ammoMax:  8, reloadRate:  8/4.0 },
+    assault: { bulletLife: 0.50, bulletSpeed: 1100, shootCd: 0.25, ammoMax: 10, reloadRate: 10/5.0 },
+    sniper:  { bulletLife: 0.50, bulletSpeed: 1500, shootCd: 1.00, ammoMax:  3, reloadRate:  1/3.0 },
+    shotgun: { bulletLife: 0.244, bulletSpeed:  900, shootCd: 0.85, ammoMax:  6, reloadRate:  1/2.0, pellets: 5, spread: 0.85 },
+    burst:   { bulletLife: 0.518, bulletSpeed: 1100, shootCd: 0.60, ammoMax:  3, reloadRate:  1/2.0, burst: 3, burstDelay: 0.10 },
+    smg:     { bulletLife: 0.50, bulletSpeed: 1000, shootCd: 0.12, ammoMax: 20, reloadRate: 20/4.0 },
+};
+// Valorile de baza ale loadout-ului per arma (HP/DMG/SPD minim + crestere per punct)
+const WEAPON_LOADOUT = {
+    pistol:  { baseHp: 350, baseDmg: 25, baseSpd: 2.0, hpPer: 40, dmgPer: 3, spdPer: 0.2 },
+    assault: { baseHp: 350, baseDmg: 10, baseSpd: 2.0, hpPer: 40, dmgPer: 2, spdPer: 0.2 },
+    sniper:  { baseHp: 250, baseDmg: 50, baseSpd: 1.7, hpPer: 30, dmgPer: 5, spdPer: 0.2 },
+    shotgun: { baseHp: 400, baseDmg: 13, baseSpd: 1.9, hpPer: 40, dmgPer: 2, spdPer: 0.2 },
+    burst:   { baseHp: 350, baseDmg: 18, baseSpd: 2.0, hpPer: 40, dmgPer: 2, spdPer: 0.2 },
+    smg:     { baseHp: 350, baseDmg:  7, baseSpd: 2.1, hpPer: 40, dmgPer: 1, spdPer: 0.2 },
+};
 const PLAYER_SIZE      = 60;
 const ZONE_INITIAL_R   = 1650;
 const ZONE_WAIT        = 30;
 const ZONE_SHRINK_RATE = 14;   // px/s → fully closed in ~125s
-const ZONE_DMG         = 20;   // HP/s outside zone
+const ZONE_DMG         = 30;   // HP/s outside zone
 const PLAYER_R         = PLAYER_SIZE / 2;
-const HP_REGEN_RATE    = 25;
-const HP_REGEN_DELAY   = 6000;
+const HP_REGEN_RATE    = 8;
+const HP_REGEN_DELAY   = 8000;
 const ZOMBIE_COUNT      = 8;
 const ZOMBIE_HP         = 100;
 const ZOMBIE_R          = 20;
@@ -386,6 +429,45 @@ const ZOMBIE_ATTACK_R   = 55;
 const ZOMBIE_ATTACK_DMG = 20;
 const ZOMBIE_ATTACK_CD  = 1.0;
 const ZOMBIE_PATROL_T   = 3.5;
+
+// ---------- PvE ----------
+const PVE_BASE_X         = Math.round(ARENA_W / 2);
+const PVE_BASE_Y         = Math.round(ARENA_H / 2);
+const PVE_BASE_HP        = 1000;
+const PVE_BASE_R         = 85;
+const PVE_BASE_ATTACK_R  = 95;
+const PVE_BREAK_DURATION = 15;
+const PVE_TOTAL_WAVES    = 10;
+// [normal, runner, tank] per wave
+const PVE_WAVES = [
+    [8,  0, 0],
+    [10, 2, 0],
+    [12, 4, 0],
+    [10, 4, 2],
+    [12, 6, 2],
+    [14, 6, 3],
+    [14, 8, 4],
+    [16, 8, 5],
+    [16,10, 5],
+    [20,12, 6],
+];
+const PVE_ZOMBIE_DEFS = {
+    normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 1, coinsMax: 3, baseDmg: 15, r: 20 },
+    runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 2, coinsMax: 3, baseDmg: 8,  r: 16 },
+    tank:   { hp: 400, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28 },
+};
+const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2 };
+// Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
+const PVE_UPGRADE_DEFS = {
+    dmg:  { baseCost: 6,  costInc: 4, maxUses: 5, apply: (p, n) => { p.damage  = Math.round(p.baseDamage  * (1 + n * 0.05)); } },
+    spd:  { baseCost: 5,  costInc: 3, maxUses: 4, apply: (p, n) => { p.speed   = Math.round(p.baseSpeed   * (1 + n * 0.04)); } },
+    hp:   { baseCost: 7,  costInc: 4, maxUses: 5, apply: (p, n) => { p.maxHp   = p.baseMaxHp + n * 15; p.hp = Math.min(p.hp + 15, p.maxHp); } },
+    ammo: { baseCost: 4,  costInc: 2, maxUses: 4, apply: (p, n) => { p.ammoMax = Math.round(p.baseAmmoMax * (1 + n * 0.12)); } },
+};
+function pveUpgradeCost(type, count) {
+    const d = PVE_UPGRADE_DEFS[type];
+    return d ? d.baseCost + count * d.costInc : 999;
+}
 
 const SPAWN_POINTS = Array.from({ length: 15 }, (_, i) => {
     const a = (i / 15) * Math.PI * 2;
@@ -564,9 +646,10 @@ function generateCode() {
     return code;
 }
 
-function generateObstacles() {
+function generateObstacles(mode = 'br') {
     const obs = [];
     const MIN_GAP = 130;
+    const PVE_CLEAR_R = 290; // raza libera in jurul bazei in PvE
     function place(type, count, rMin, rMax) {
         let attempts = 0, placed = 0;
         while (placed < count && attempts < count * 30) {
@@ -578,6 +661,7 @@ function generateObstacles() {
             for (const o of obs) {
                 if (Math.hypot(x - o.x, y - o.y) < MIN_GAP + r + o.r) { ok = false; break; }
             }
+            if (ok && mode === 'pve' && Math.hypot(x - PVE_BASE_X, y - PVE_BASE_Y) < PVE_CLEAR_R + r) ok = false;
             const rot = +(Math.random() * Math.PI * 2).toFixed(3);
             if (ok) { obs.push({ type, x, y, r, rot }); placed++; }
         }
@@ -587,16 +671,18 @@ function generateObstacles() {
     return obs;
 }
 
-function generateZombies(obstacles) {
+function generateZombies(obstacles, playerPositions = []) {
     const zombies = [];
     const margin = 200;
+    const MIN_PLAYER_DIST = 350;
     let attempts = 0;
-    while (zombies.length < ZOMBIE_COUNT && attempts < 600) {
+    while (zombies.length < ZOMBIE_COUNT && attempts < 800) {
         attempts++;
         const x = margin + Math.random() * (ARENA_W - margin * 2);
         const y = margin + Math.random() * (ARENA_H - margin * 2);
         const tooClose = obstacles.some(o => Math.hypot(x - o.x, y - o.y) < o.r + ZOMBIE_R + 40)
-            || zombies.some(z => Math.hypot(x - z.x, y - z.y) < ZOMBIE_R * 4);
+            || zombies.some(z => Math.hypot(x - z.x, y - z.y) < ZOMBIE_R * 4)
+            || playerPositions.some(p => Math.hypot(x - p.x, y - p.y) < MIN_PLAYER_DIST);
         if (tooClose) continue;
         zombies.push({
             id: zombies.length,
@@ -614,19 +700,117 @@ function generateZombies(obstacles) {
     return zombies;
 }
 
-function newRoom(hostId) {
-    const _obs = generateObstacles();
+// Creeaza un singur zombi la marginea mapei
+function createPveZombie(type, id) {
+    const def = PVE_ZOMBIE_DEFS[type];
+    const angle    = Math.random() * Math.PI * 2;
+    const spawnDist = 1050 + Math.random() * 150; // 1050-1200px de centru, langa margine
+    const x = Math.max(def.r + 20, Math.min(ARENA_W - def.r - 20, PVE_BASE_X + Math.cos(angle) * spawnDist));
+    const y = Math.max(def.r + 20, Math.min(ARENA_H - def.r - 20, PVE_BASE_Y + Math.sin(angle) * spawnDist));
     return {
-        hostId,
+        id, x, y,
+        angle: Math.atan2(PVE_BASE_Y - y, PVE_BASE_X - x),
+        hp: def.hp, maxHp: def.hp,
+        alive: true, type,
+        state: 'chase',
+        patrolTargetX: PVE_BASE_X, patrolTargetY: PVE_BASE_Y,
+        patrolTimer: 0, attackCooldown: Math.random() * 0.5,
+    };
+}
+
+// Returneaza primul batch de zombi si populeaza room.pveSpawnQueue cu restul
+const PVE_BATCH_SIZE   = 10; // zombi per mini-wave
+const PVE_BATCH_DELAY  = 8;  // secunde intre mini-wave-uri
+
+function prepareAndSpawnWave(room, waveIndex) {
+    const wc = PVE_WAVES[waveIndex] || [8, 0, 0];
+    const types = [
+        ...Array(wc[0]).fill('normal'),
+        ...Array(wc[1]).fill('runner'),
+        ...Array(wc[2]).fill('tank'),
+    ];
+    // Shuffle
+    for (let i = types.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [types[i], types[j]] = [types[j], types[i]];
+    }
+    // Split in batch-uri de maxim PVE_BATCH_SIZE
+    const batches = [];
+    for (let i = 0; i < types.length; i += PVE_BATCH_SIZE) {
+        batches.push(types.slice(i, i + PVE_BATCH_SIZE));
+    }
+    const firstBatch = batches[0] || [];
+    room.pveSpawnQueue = batches.slice(1);
+    room.pveSpawnTimer = PVE_BATCH_DELAY;
+    return firstBatch.map((type, i) => createPveZombie(type, i));
+}
+
+function assignPveSpawnPositions(players) {
+    players.forEach((p, i) => {
+        const angle = (i / Math.max(players.length, 1)) * Math.PI * 2 + Math.PI / 4;
+        p.x = Math.round(PVE_BASE_X + Math.cos(angle) * 240);
+        p.y = Math.round(PVE_BASE_Y + Math.sin(angle) * 240);
+    });
+}
+
+function startPveWave(code, room) {
+    if (!rooms.has(code) || room.gameEnded || room.pveWaveActive) return;
+    room.pveWave++;
+    room.pveWaveActive = true;
+    room.pveWaveBreak  = false;
+    room.pveBreakTimer = 0;
+    room.pveSkipVotes.clear();
+    // Respawn jucatori langa baza cu ammo plin
+    room._playerArr.forEach((p, i) => {
+        const angle = (i / Math.max(room._playerArr.length, 1)) * Math.PI * 2 + Math.PI / 4;
+        p.x = Math.round(PVE_BASE_X + Math.cos(angle) * 240);
+        p.y = Math.round(PVE_BASE_Y + Math.sin(angle) * 240);
+        p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
+        p.hp = p.maxHp; p.alive = true;
+        p.shooting = false; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = true;
+        p.shootCooldown = 0; p.aimTimer = 0; p.burstRemaining = 0; p.burstTimer = 0;
+        p.moveDir.x = 0; p.moveDir.y = 0;
+    });
+    room.zombies = prepareAndSpawnWave(room, room.pveWave - 1);
+    io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, batches: room.pveSpawnQueue.length + 1 });
+}
+
+function pveVictory(code, room) {
+    if (room.gameEnded) return;
+    room.gameEnded = true;
+    if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
+    io.to(code).emit('pve-end', { result: 'victory', wavesCleared: room.pveWave });
+    room._playerArr.forEach(p => updatePlayerRoundEnd(p.id, p.name, p.kills, true, { mode: 'pve', rs: p.rs, wave: room.pveWave }));
+    setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
+    console.log(`[${code}] PvE Victorie!`);
+}
+
+function pveDefeat(code, room) {
+    if (room.gameEnded) return;
+    room.gameEnded = true;
+    if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
+    io.to(code).emit('pve-end', { result: 'defeat', wavesCleared: room.pveWave > 0 ? room.pveWave - 1 : 0 });
+    room._playerArr.forEach(p => updatePlayerRoundEnd(p.id, p.name, p.kills, false, { mode: 'pve', rs: p.rs, wave: room.pveWave }));
+    setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
+    console.log(`[${code}] PvE Infrangere (baza distrusa la wave ${room.pveWave})`);
+}
+
+function newRoom(hostId, mode = 'br') {
+    const _obs = generateObstacles(mode);
+    return {
+        hostId, mode,
         players:     {},
         _playerArr:  [],
         bullets:     [],
         nextBulletId: 0,
         obstacles:   _obs,
-        zombies:     generateZombies(_obs),
+        zombies:     mode === 'pve' ? [] : generateZombies(_obs),
         healthKits:  [],
         nextKitId:   0,
         zone: { cx: ARENA_W/2, cy: ARENA_H/2, r: ZONE_INITIAL_R, waitTimer: ZONE_WAIT, startDelay: 4 },
+        base: mode === 'pve' ? { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R } : null,
+        pveWave: 0, pveWaveActive: false, pveWaveBreak: false, pveBreakTimer: 0, pveSkipVotes: new Set(),
+        pveSpawnQueue: [], pveSpawnTimer: 0,
         gameStarted:     false,
         gameEnded:       false,
         countdownActive: false,
@@ -661,29 +845,39 @@ function addPlayer(code, room, socket, data) {
     const total = hp + dmg + spd;
     const scale = total > 10 ? 10 / total : 1;
 
-    const maxHp  = 350 + Math.round(hp  * scale) * 40;
-    const damage = 10  + Math.round(dmg * scale) * 2;
-    const speed  = (2.0 + Math.round(spd * scale) * 0.2) * 60; // px/sec
+    const _allowedWeapons = ['pistol','assault','sniper','shotgun','burst','smg'];
+    const weapon = _allowedWeapons.includes(data.weapon) ? data.weapon : 'pistol';
+    const _wl = WEAPON_LOADOUT[weapon] || WEAPON_LOADOUT.pistol;
+    const _ws = WEAPON_STATS[weapon]   || WEAPON_STATS.pistol;
+
+    const maxHp  = _wl.baseHp  + Math.round(hp  * scale) * _wl.hpPer;
+    const damage = _wl.baseDmg + Math.round(dmg * scale) * _wl.dmgPer;
+    const speed  = (_wl.baseSpd + Math.round(spd * scale) * _wl.spdPer) * 60;
 
     room.players[socket.id] = {
-        id: socket.id, name: data.name, image: data.image, xp: data.xp || 0,
+        id: socket.id, name: data.name, image: data.image, xp: data.xp || 0, weapon,
         x: SPAWN_POINTS[room.spawnIndex % SPAWN_POINTS.length].x,
         y: SPAWN_POINTS[(room.spawnIndex++) % SPAWN_POINTS.length].y,
         angle: 0, size: PLAYER_SIZE,
         hp: maxHp, maxHp, damage, speed,
         moveDir:  { x: 0, y: 0 },
         shootDir: { x: 0, y: 0 },
-        shooting: false, shootCooldown: 0, aimTimer: 0,
-        ammo: AMMO_MAX, reloading: false, reloadTimer: 0,
-        alive: true, kills: 0, lastDamageTime: 0,
-        lastAckSeq: 0,
-        pendingAckSeq: 0
+        shooting: false, shootCooldown: 0, aimTimer: 0, needsReleaseToShoot: false, hasReleasedSinceEmpty: false,
+        burstRemaining: 0, burstTimer: 0, burstDx: 0, burstDy: 0,
+        ammo: _ws.ammoMax, ammoMax: _ws.ammoMax,
+        reloading: false, reloadProgress: 0, lastShotTime: 0,
+        weaponReloadRate: _ws.reloadRate, bulletSpeed: _ws.bulletSpeed,
+        alive: true, kills: 0, lastDamageTime: 0, rs: Missions.newRoundStats(),
+        lastAckSeq: 0, pendingAckSeq: 0,
+        coins: 0,
+        baseMaxHp: maxHp, baseDamage: damage, baseSpeed: speed, baseAmmoMax: _ws.ammoMax,
+        pveUpgrades: { dmg: 0, spd: 0, hp: 0, ammo: 0 },
     };
     room._playerArr.push(room.players[socket.id]);
 
-    io.to(code).emit('player-image', { id: socket.id, image: data.image });
+    io.to(code).emit('player-image', { id: socket.id, image: data.image, weapon });
     Object.values(room.players).forEach(p => {
-        if (p.id !== socket.id) socket.emit('player-image', { id: p.id, image: p.image });
+        if (p.id !== socket.id) socket.emit('player-image', { id: p.id, image: p.image, weapon: p.weapon || 'pistol' });
     });
 }
 
@@ -704,6 +898,12 @@ function broadcastWaiting(code, room) {
     });
 }
 
+const _pveZombieRadius = (z) => (PVE_ZOMBIE_DEFS[z.type] || PVE_ZOMBIE_DEFS.normal).r;
+const _brZombieRadius  = () => ZOMBIE_R;
+const _r3 = (v) => Math.round(v * 1000) / 1000; // 3 decimals without toFixed string allocation
+const _r2 = (v) => Math.round(v * 100) / 100;
+const _r1 = (v) => Math.round(v * 10) / 10;
+
 function startRoomLoop(code, room) {
     const INTERVAL_MS = Math.round(1000 / TICK_RATE);
     room.lastTick = Date.now();
@@ -712,6 +912,12 @@ function startRoomLoop(code, room) {
     const _bScratch       = [];
     const _aliveScratch   = [];
     const _expiredBullets = [];
+    const _zScratch       = [];
+    const _kScratch       = [];
+    const _privScratch    = [];
+    // Reused per tick by the bullet sweep (no allocation per bullet)
+    const _hitTargets = { obstacles: null, zombies: null, zombieRadius: null, players: null, playerRadius: PLAYER_R, ownerId: null, hitPlayers: true };
+    const _hitOut     = { kind: 0, target: null, t: -1 };
     let _tpsCount = 0, _tpsWindowStart = Date.now();
     let expected = Date.now() + INTERVAL_MS;
 
@@ -727,15 +933,27 @@ function startRoomLoop(code, room) {
 
             allPlayers.forEach(player => {
                 if (!player.alive || room.gameEnded || room.countdownActive) return;
+                if (room.pveWaveBreak) { player.moveDir.x = 0; player.moveDir.y = 0; player.shooting = false; return; }
 
                 player.x = Math.max(20, Math.min(ARENA_W - 20, player.x + player.moveDir.x * player.speed * dt));
                 player.y = Math.max(20, Math.min(ARENA_H - 20, player.y + player.moveDir.y * player.speed * dt));
-                for (const obs of room.obstacles) {
-                    const _od = Math.hypot(player.x - obs.x, player.y - obs.y);
+                const _obsList = room.obstacles;
+                for (let oi = 0; oi < _obsList.length; oi++) {
+                    const obs = _obsList[oi];
+                    const _ox = player.x - obs.x, _oy = player.y - obs.y;
                     const _om = obs.r + PLAYER_R;
-                    if (_od < _om && _od > 0) {
-                        player.x = obs.x + (player.x - obs.x) / _od * _om;
-                        player.y = obs.y + (player.y - obs.y) / _od * _om;
+                    const _odSq = _ox * _ox + _oy * _oy;
+                    if (_odSq >= _om * _om || _odSq === 0) continue; // cheap reject, no sqrt
+                    const _od = Math.sqrt(_odSq);
+                    player.x = obs.x + _ox / _od * _om;
+                    player.y = obs.y + _oy / _od * _om;
+                }
+                if (room.base) {
+                    const _bd = Math.hypot(player.x - room.base.x, player.y - room.base.y);
+                    const _bm = room.base.r + PLAYER_R;
+                    if (_bd < _bm && _bd > 0) {
+                        player.x = room.base.x + (player.x - room.base.x) / _bd * _bm;
+                        player.y = room.base.y + (player.y - room.base.y) / _bd * _bm;
                     }
                 }
 
@@ -745,29 +963,92 @@ function startRoomLoop(code, room) {
 
                 if (player.shootCooldown > 0) player.shootCooldown -= dt;
                 if (player.aimTimer > 0) player.aimTimer -= dt;
-                if (player.reloading) {
-                    player.reloadTimer -= dt;
-                    if (player.reloadTimer <= 0) {
-                        player.reloading = false; player.reloadTimer = 0; player.ammo = AMMO_MAX;
+
+                // Reload progresiv per-weapon
+                const _pAmmoMax = player.ammoMax || AMMO_MAX;
+                if (player.ammo < _pAmmoMax && (!player.shooting || player.ammo === 0)) {
+                    const idleSec = (now - player.lastShotTime) / 1000;
+                    if (idleSec >= AMMO_RELOAD_DELAY) {
+                        player.reloading = true;
+                        player.reloadProgress += (player.weaponReloadRate || AMMO_RELOAD_RATE) * dt;
+                        while (player.reloadProgress >= 1.0 && player.ammo < _pAmmoMax) {
+                            player.reloadProgress -= 1.0;
+                            player.ammo++;
+                        }
+                        if (player.ammo >= _pAmmoMax) {
+                            player.reloadProgress = 0; player.reloading = false;
+                            player.needsReleaseToShoot = false; player.hasReleasedSinceEmpty = true;
+                        }
+                    }
+                } else if (player.ammo >= _pAmmoMax) {
+                    player.reloading = false; player.reloadProgress = 0;
+                } else {
+                    player.reloading = false; // trage activ — pauza reload, progresul se pastreaza
+                }
+
+                // Burst continuation — glonturile 2+3 dintr-o rafala
+                if (player.burstRemaining > 0) {
+                    player.burstTimer -= dt;
+                    if (player.burstTimer <= 0) {
+                        const _bwsCur = WEAPON_STATS[player.weapon] || WEAPON_STATS.pistol;
+                        room.bullets.push({
+                            id: room.nextBulletId++, ownerId: player.id,
+                            x: player.x + player.burstDx * 25, y: player.y + player.burstDy * 25,
+                            dx: player.burstDx * (player.bulletSpeed || BULLET_SPEED),
+                            dy: player.burstDy * (player.bulletSpeed || BULLET_SPEED),
+                            damage: player.damage, radius: BULLET_RADIUS,
+                            lifetime: _bwsCur.bulletLife, speed: player.bulletSpeed || BULLET_SPEED
+                        });
+                        player.burstRemaining--;
+                        if (player.burstRemaining > 0) {
+                            player.burstTimer += _bwsCur.burstDelay || 0.08; // keep the sub-tick remainder
+                        } else {
+                            player.burstRemaining = 0;
+                            player.shootCooldown = _bwsCur.shootCd + Math.min(0, player.burstTimer);
+                            player.lastShotTime  = now;
+                            if (_bwsCur.semiAuto) { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
+                            if (player.ammo === 0) { player.shooting = false; player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
+                        }
                     }
                 }
-                if (player.ammo <= 0 && !player.reloading) {
-                    player.reloading = true; player.reloadTimer = AMMO_RELOAD_TIME; player.shooting = false;
-                }
-                if (player.shooting && !player.reloading && player.shootCooldown <= 0 && player.ammo > 0 && player.aimTimer <= 0) {
+
+                // Tragere — intrerupe reload-ul dar pastreaza progresul partial
+                if (player.shooting && player.shootCooldown <= 0 && player.ammo > 0 && player.aimTimer <= 0 && player.burstRemaining === 0) {
                     const dl = Math.hypot(player.shootDir.x || 0, player.shootDir.y || 0);
                     if (dl >= 0.1) {
                         const dx = player.shootDir.x / dl, dy = player.shootDir.y / dl;
-                        room.bullets.push({
-                            id: room.nextBulletId++, ownerId: player.id,
-                            x: player.x + dx * 25, y: player.y + dy * 25,
-                            dx: dx * BULLET_SPEED, dy: dy * BULLET_SPEED,
-                            damage: player.damage, radius: BULLET_RADIUS, lifetime: BULLET_LIFE
-                        });
+                        const _bspd = player.bulletSpeed || BULLET_SPEED;
+                        const _wsCur = WEAPON_STATS[player.weapon] || WEAPON_STATS.pistol;
+                        const _blife = _wsCur.bulletLife;
+                        const _pellets = _wsCur.pellets || 1;
+                        const _spread = _wsCur.spread || 0;
+                        for (let _pi = 0; _pi < _pellets; _pi++) {
+                            const _ang = _pellets === 1 ? 0 : -_spread / 2 + _pi * _spread / (_pellets - 1);
+                            const _cos = Math.cos(_ang), _sin = Math.sin(_ang);
+                            const _pdx = dx * _cos - dy * _sin;
+                            const _pdy = dx * _sin + dy * _cos;
+                            room.bullets.push({
+                                id: room.nextBulletId++, ownerId: player.id,
+                                x: player.x + dx * 25, y: player.y + dy * 25,
+                                dx: _pdx * _bspd, dy: _pdy * _bspd,
+                                damage: player.damage, radius: BULLET_RADIUS, lifetime: _blife,
+                                speed: _bspd
+                            });
+                        }
                         player.ammo--;
-                        player.shootCooldown = SHOOT_CD;
-                        if (player.ammo <= 0) {
-                            player.reloading = true; player.reloadTimer = AMMO_RELOAD_TIME; player.shooting = false;
+                        player.reloading = false;
+                        player.lastShotTime = now;
+                        if (_wsCur.burst && _wsCur.burst > 1) {
+                            player.burstRemaining = _wsCur.burst - 1;
+                            player.burstTimer     = (_wsCur.burstDelay || 0.08) + Math.min(0, player.shootCooldown);
+                            player.burstDx = dx; player.burstDy = dy;
+                        } else {
+                            // += keeps the part of a tick the timer overshot (it is <= 0 here), so the
+                            // average rate is exactly shootCd instead of being rounded up to whole
+                            // 17 ms ticks (SMG fired every 136 ms instead of 120).
+                            player.shootCooldown = Math.min(0, player.shootCooldown) + _wsCur.shootCd;
+                            if (_wsCur.semiAuto) { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
+                            if (player.ammo === 0) { player.shooting = false; player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
                         }
                     }
                 }
@@ -796,172 +1077,335 @@ function startRoomLoop(code, room) {
                 }
             }
 
-            // Zona
+            // Zona (BR only)
             const zone = room.zone;
-            if (zone.startDelay > 0) {
-                zone.startDelay = Math.max(0, zone.startDelay - dt);
-            } else if (zone.waitTimer > 0) {
-                zone.waitTimer = Math.max(0, zone.waitTimer - dt);
-            } else if (zone.r > 0) {
-                zone.r = Math.max(0, zone.r - ZONE_SHRINK_RATE * dt);
+            if (room.mode !== 'pve') {
+                if (zone.startDelay > 0) {
+                    zone.startDelay = Math.max(0, zone.startDelay - dt);
+                } else if (zone.waitTimer > 0) {
+                    zone.waitTimer = Math.max(0, zone.waitTimer - dt);
+                } else if (zone.r > 0) {
+                    zone.r = Math.max(0, zone.r - ZONE_SHRINK_RATE * dt);
+                }
+                for (const player of allPlayers) {
+                    if (!player.alive) continue;
+                    const _dz = Math.hypot(player.x - zone.cx, player.y - zone.cy);
+                    if (zone.r === 0 || _dz > zone.r) {
+                        player.hp -= ZONE_DMG * dt;
+                        player.lastDamageTime = now;
+                        if (player.hp <= 0) eliminatePlayer(code, room, player, null);
+                    }
+                }
             }
-            for (const player of allPlayers) {
-                if (!player.alive) continue;
-                const _dz = Math.hypot(player.x - zone.cx, player.y - zone.cy);
-                if (zone.r === 0 || _dz > zone.r) {
-                    player.hp -= ZONE_DMG * dt;
-                    player.lastDamageTime = now;
-                    if (player.hp <= 0) eliminatePlayer(code, room, player, null);
-                }
-            }
 
-            // Zombi AI
-            for (const zombie of room.zombies) {
-                if (!zombie.alive || room.countdownActive) continue;
-                zombie.attackCooldown = Math.max(0, zombie.attackCooldown - dt);
+            // Zombi AI — BR
+            if (room.mode !== 'pve') {
+                for (const zombie of room.zombies) {
+                    if (!zombie.alive || room.countdownActive) continue;
+                    zombie.attackCooldown = Math.max(0, zombie.attackCooldown - dt);
 
-                // Gaseste cel mai aproape jucator viu
-                let nearestPlayer = null, nearestDist = Infinity;
-                for (const p of alivePlayers) {
-                    const d = Math.hypot(p.x - zombie.x, p.y - zombie.y);
-                    if (d < nearestDist) { nearestDist = d; nearestPlayer = p; }
-                }
-
-                // Tranzitii de stare
-                if (nearestPlayer && nearestDist < ZOMBIE_DETECT_R) {
-                    zombie.state = 'chase';
-                } else if (nearestDist > ZOMBIE_DETECT_R * 1.4) {
-                    zombie.state = 'patrol';
-                }
-
-                // Target de miscare
-                let targetX, targetY;
-                const speed = zombie.state === 'chase' ? ZOMBIE_CHASE_SPD : ZOMBIE_PATROL_SPD;
-                if (zombie.state === 'chase' && nearestPlayer) {
-                    targetX = nearestPlayer.x;
-                    targetY = nearestPlayer.y;
-                } else {
-                    zombie.patrolTimer -= dt;
-                    const distToTarget = Math.hypot(zombie.patrolTargetX - zombie.x, zombie.patrolTargetY - zombie.y);
-                    if (zombie.patrolTimer <= 0 || distToTarget < 25) {
-                        zombie.patrolTargetX = 200 + Math.random() * (ARENA_W - 400);
-                        zombie.patrolTargetY = 200 + Math.random() * (ARENA_H - 400);
-                        zombie.patrolTimer = ZOMBIE_PATROL_T + Math.random() * 2;
-                    }
-                    targetX = zombie.patrolTargetX;
-                    targetY = zombie.patrolTargetY;
-                }
-
-                // Directie dorita
-                let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
-                const dLen = Math.hypot(ddx, ddy);
-                if (dLen > 0) { ddx /= dLen; ddy /= dLen; }
-
-                // Repulsie obstacole (steering)
-                for (const obs of room.obstacles) {
-                    const od = Math.hypot(zombie.x - obs.x, zombie.y - obs.y);
-                    const influence = obs.r + ZOMBIE_R + 55;
-                    if (od < influence && od > 0) {
-                        const str = (influence - od) / influence;
-                        ddx += (zombie.x - obs.x) / od * str * 2.8;
-                        ddy += (zombie.y - obs.y) / od * str * 2.8;
-                    }
-                }
-
-                // Misca zombiul
-                const moveLen = Math.hypot(ddx, ddy);
-                if (moveLen > 0) {
-                    zombie.x += (ddx / moveLen) * speed * dt;
-                    zombie.y += (ddy / moveLen) * speed * dt;
-                    zombie.angle = Math.atan2(ddy / moveLen, ddx / moveLen);
-                }
-
-                // Clamp arena
-                zombie.x = Math.max(ZOMBIE_R, Math.min(ARENA_W - ZOMBIE_R, zombie.x));
-                zombie.y = Math.max(ZOMBIE_R, Math.min(ARENA_H - ZOMBIE_R, zombie.y));
-
-                // Push-out din obstacole
-                for (const obs of room.obstacles) {
-                    const od = Math.hypot(zombie.x - obs.x, zombie.y - obs.y);
-                    const minD = obs.r + ZOMBIE_R;
-                    if (od < minD && od > 0) {
-                        zombie.x += (zombie.x - obs.x) / od * (minD - od);
-                        zombie.y += (zombie.y - obs.y) / od * (minD - od);
-                    }
-                }
-
-                // Separator zombi-jucator (zombiul nu intra in jucator)
-                for (const p of alivePlayers) {
-                    const pd = Math.hypot(zombie.x - p.x, zombie.y - p.y);
-                    const minPD = ZOMBIE_R + PLAYER_R;
-                    if (pd < minPD && pd > 0) {
-                        zombie.x += (zombie.x - p.x) / pd * (minPD - pd);
-                        zombie.y += (zombie.y - p.y) / pd * (minPD - pd);
-                    }
-                }
-
-                // Atac jucatori in raza
-                if (zombie.attackCooldown <= 0) {
+                    let nearestPlayer = null, nearestDist = Infinity;
                     for (const p of alivePlayers) {
-                        if (Math.hypot(p.x - zombie.x, p.y - zombie.y) < ZOMBIE_ATTACK_R) {
-                            p.hp -= ZOMBIE_ATTACK_DMG;
-                            p.lastDamageTime = now;
-                            zombie.attackCooldown = ZOMBIE_ATTACK_CD;
-                            if (p.hp <= 0) eliminatePlayer(code, room, p, null);
-                            break;
+                        const d = Math.hypot(p.x - zombie.x, p.y - zombie.y);
+                        if (d < nearestDist) { nearestDist = d; nearestPlayer = p; }
+                    }
+
+                    if (nearestPlayer && nearestDist < ZOMBIE_DETECT_R) {
+                        zombie.state = 'chase';
+                    } else if (nearestDist > ZOMBIE_DETECT_R * 1.4) {
+                        zombie.state = 'patrol';
+                    }
+
+                    let targetX, targetY;
+                    const speed = zombie.state === 'chase' ? ZOMBIE_CHASE_SPD : ZOMBIE_PATROL_SPD;
+                    if (zombie.state === 'chase' && nearestPlayer) {
+                        targetX = nearestPlayer.x; targetY = nearestPlayer.y;
+                    } else {
+                        zombie.patrolTimer -= dt;
+                        const distToTarget = Math.hypot(zombie.patrolTargetX - zombie.x, zombie.patrolTargetY - zombie.y);
+                        if (zombie.patrolTimer <= 0 || distToTarget < 25) {
+                            zombie.patrolTargetX = 200 + Math.random() * (ARENA_W - 400);
+                            zombie.patrolTargetY = 200 + Math.random() * (ARENA_H - 400);
+                            zombie.patrolTimer = ZOMBIE_PATROL_T + Math.random() * 2;
+                        }
+                        targetX = zombie.patrolTargetX; targetY = zombie.patrolTargetY;
+                    }
+
+                    let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
+                    const dLen = Math.hypot(ddx, ddy);
+                    if (dLen > 0) { ddx /= dLen; ddy /= dLen; }
+
+                    for (const obs of room.obstacles) {
+                        const od = Math.hypot(zombie.x - obs.x, zombie.y - obs.y);
+                        const influence = obs.r + ZOMBIE_R + 55;
+                        if (od < influence && od > 0) {
+                            const str = (influence - od) / influence;
+                            ddx += (zombie.x - obs.x) / od * str * 2.8;
+                            ddy += (zombie.y - obs.y) / od * str * 2.8;
+                        }
+                    }
+
+                    const moveLen = Math.hypot(ddx, ddy);
+                    if (moveLen > 0) {
+                        zombie.x += (ddx / moveLen) * speed * dt;
+                        zombie.y += (ddy / moveLen) * speed * dt;
+                        zombie.angle = Math.atan2(ddy / moveLen, ddx / moveLen);
+                    }
+
+                    zombie.x = Math.max(ZOMBIE_R, Math.min(ARENA_W - ZOMBIE_R, zombie.x));
+                    zombie.y = Math.max(ZOMBIE_R, Math.min(ARENA_H - ZOMBIE_R, zombie.y));
+
+                    for (const obs of room.obstacles) {
+                        const od = Math.hypot(zombie.x - obs.x, zombie.y - obs.y);
+                        const minD = obs.r + ZOMBIE_R;
+                        if (od < minD && od > 0) {
+                            zombie.x += (zombie.x - obs.x) / od * (minD - od);
+                            zombie.y += (zombie.y - obs.y) / od * (minD - od);
+                        }
+                    }
+
+                    for (const p of alivePlayers) {
+                        const pd = Math.hypot(zombie.x - p.x, zombie.y - p.y);
+                        const minPD = ZOMBIE_R + PLAYER_R;
+                        if (pd < minPD && pd > 0) {
+                            zombie.x += (zombie.x - p.x) / pd * (minPD - pd);
+                            zombie.y += (zombie.y - p.y) / pd * (minPD - pd);
+                        }
+                    }
+
+                    // Separare zombi-zombi (BR)
+                    for (const z2 of room.zombies) {
+                        if (!z2.alive || z2 === zombie) continue;
+                        const sd = Math.hypot(zombie.x - z2.x, zombie.y - z2.y);
+                        const minSD = ZOMBIE_R * 1.6;
+                        if (sd < minSD && sd > 0) {
+                            const push = (minSD - sd) * 0.25;
+                            zombie.x += (zombie.x - z2.x) / sd * push;
+                            zombie.y += (zombie.y - z2.y) / sd * push;
+                        }
+                    }
+
+                    if (zombie.attackCooldown <= 0) {
+                        for (const p of alivePlayers) {
+                            if (Math.hypot(p.x - zombie.x, p.y - zombie.y) < ZOMBIE_ATTACK_R) {
+                                p.hp -= ZOMBIE_ATTACK_DMG;
+                                p.lastDamageTime = now;
+                                zombie.attackCooldown = ZOMBIE_ATTACK_CD;
+                                if (p.hp <= 0) eliminatePlayer(code, room, p, 'zombie');
+                                break;
+                            }
                         }
                     }
                 }
             }
 
-            // Gloante: miscare + coliziune cu jucatori
+            // Zombi AI — PvE
+            if (room.mode === 'pve' && !room.countdownActive) {
+                for (const zombie of room.zombies) {
+                    if (!zombie.alive) continue;
+                    zombie.attackCooldown = Math.max(0, zombie.attackCooldown - dt);
+                    const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
+
+                    let nearestPlayer = null, nearestDist = Infinity;
+                    for (const p of alivePlayers) {
+                        const d = Math.hypot(p.x - zombie.x, p.y - zombie.y);
+                        if (d < nearestDist) { nearestDist = d; nearestPlayer = p; }
+                    }
+
+                    const chasingPlayer = nearestPlayer && nearestDist < ZOMBIE_DETECT_R;
+                    zombie.targetingBase = !chasingPlayer;
+                    const targetX = chasingPlayer ? nearestPlayer.x : PVE_BASE_X;
+                    const targetY = chasingPlayer ? nearestPlayer.y : PVE_BASE_Y;
+                    const speed   = def.chaseSpd;
+
+                    let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
+                    const dLen = Math.hypot(ddx, ddy);
+                    if (dLen > 0) { ddx /= dLen; ddy /= dLen; }
+
+                    for (const obs of room.obstacles) {
+                        const _ox = zombie.x - obs.x, _oy = zombie.y - obs.y;
+                        const influence = obs.r + def.r + 55;
+                        const _oSq = _ox*_ox + _oy*_oy;
+                        if (_oSq >= influence*influence) continue;
+                        const od = Math.sqrt(_oSq);
+                        if (od > 0) {
+                            const str = (influence - od) / influence;
+                            ddx += _ox / od * str * 2.8;
+                            ddy += _oy / od * str * 2.8;
+                        }
+                    }
+
+                    const moveLen = Math.hypot(ddx, ddy);
+                    if (moveLen > 0) {
+                        zombie.x += (ddx / moveLen) * speed * dt;
+                        zombie.y += (ddy / moveLen) * speed * dt;
+                        zombie.angle = Math.atan2(ddy / moveLen, ddx / moveLen);
+                    }
+
+                    zombie.x = Math.max(def.r, Math.min(ARENA_W - def.r, zombie.x));
+                    zombie.y = Math.max(def.r, Math.min(ARENA_H - def.r, zombie.y));
+
+                    for (const obs of room.obstacles) {
+                        const _ox2 = zombie.x - obs.x, _oy2 = zombie.y - obs.y;
+                        const minD = obs.r + def.r;
+                        const _oSq2 = _ox2*_ox2 + _oy2*_oy2;
+                        if (_oSq2 >= minD*minD) continue;
+                        const od2 = Math.sqrt(_oSq2);
+                        if (od2 > 0) { zombie.x += _ox2 / od2 * (minD - od2); zombie.y += _oy2 / od2 * (minD - od2); }
+                    }
+
+                    for (const p of alivePlayers) {
+                        const _px = zombie.x - p.x, _py = zombie.y - p.y;
+                        const minPD = def.r + PLAYER_R;
+                        const _pSq = _px*_px + _py*_py;
+                        if (_pSq >= minPD*minPD) continue;
+                        const pd = Math.sqrt(_pSq);
+                        if (pd > 0) { zombie.x += _px / pd * (minPD - pd); zombie.y += _py / pd * (minPD - pd); }
+                    }
+
+                    // Coliziune rigida cu baza (PvE)
+                    if (room.base) {
+                        const _bbd = Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y);
+                        const _bbm = room.base.r + def.r;
+                        if (_bbd < _bbm && _bbd > 0) {
+                            zombie.x = room.base.x + (zombie.x - room.base.x) / _bbd * _bbm;
+                            zombie.y = room.base.y + (zombie.y - room.base.y) / _bbd * _bbm;
+                        }
+                    }
+
+                    // Separare zombi-zombi (PvE) — broad phase cu squared dist
+                    for (const z2 of room.zombies) {
+                        if (!z2.alive || z2 === zombie) continue;
+                        const def2 = PVE_ZOMBIE_DEFS[z2.type] || PVE_ZOMBIE_DEFS.normal;
+                        const _sdx = zombie.x - z2.x, _sdy = zombie.y - z2.y;
+                        const minSD = (def.r + def2.r) * 0.9;
+                        if (_sdx*_sdx + _sdy*_sdy >= minSD*minSD) continue;
+                        const sd = Math.sqrt(_sdx*_sdx + _sdy*_sdy);
+                        if (sd > 0) {
+                            const push = (minSD - sd) * 0.25;
+                            zombie.x += _sdx / sd * push;
+                            zombie.y += _sdy / sd * push;
+                        }
+                    }
+
+                    if (zombie.attackCooldown <= 0) {
+                        let attacked = false;
+                        for (const p of alivePlayers) {
+                            if (Math.hypot(p.x - zombie.x, p.y - zombie.y) < def.attackR) {
+                                p.hp -= def.dmg; p.lastDamageTime = now;
+                                zombie.attackCooldown = def.attackCd;
+                                if (p.hp <= 0) eliminatePlayer(code, room, p, 'zombie');
+                                attacked = true; break;
+                            }
+                        }
+                        if (!attacked && zombie.targetingBase && room.base && Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) < room.base.r + def.r + 8) {
+                            room.base.hp = Math.max(0, room.base.hp - def.baseDmg);
+                            zombie.attackCooldown = def.attackCd;
+                            if (room.base.hp <= 0) { pveDefeat(code, room); return; }
+                        }
+                    }
+                }
+
+                // Wave break countdown
+                if (room.pveWaveBreak) {
+                    room.pveBreakTimer -= dt;
+                    if (room.pveBreakTimer <= 0 && room.pveWave < PVE_TOTAL_WAVES) {
+                        startPveWave(code, room);
+                    }
+                }
+
+                // Sub-wave spawning (urmatoarele batch-uri)
+                if (room.pveWaveActive && !room.pveWaveBreak && room.pveSpawnQueue.length > 0) {
+                    room.pveSpawnTimer -= dt;
+                    if (room.pveSpawnTimer <= 0) {
+                        const nextBatch = room.pveSpawnQueue.shift();
+                        const startId   = room.zombies.length;
+                        nextBatch.forEach((type, i) => room.zombies.push(createPveZombie(type, startId + i)));
+                        room.pveSpawnTimer = PVE_BATCH_DELAY;
+                        io.to(code).emit('pve-subwave', { remaining: room.pveSpawnQueue.length });
+                    }
+                }
+
+                // Wave completion check — toate batch-urile spawnate SI toti morti
+                if (room.pveWaveActive && !room.pveWaveBreak && room.pveSpawnQueue.length === 0 && room.zombies.length > 0) {
+                    let aliveZ = 0;
+                    for (const z of room.zombies) if (z.alive) aliveZ++;
+                    if (aliveZ === 0) {
+                        room.pveWaveActive = false;
+                        if (room.pveWave >= PVE_TOTAL_WAVES) {
+                            pveVictory(code, room); return;
+                        }
+                        room.pveWaveBreak  = true;
+                        room.pveBreakTimer = PVE_BREAK_DURATION;
+                        room.pveSkipVotes.clear();
+                        room._playerArr.forEach(p => { p.moveDir.x = 0; p.moveDir.y = 0; p.shooting = false; });
+                        io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION });
+                    }
+                }
+            }
+
+            // Gloante: miscare + coliziune continua (swept). Pe segmentul parcurs in acest tick
+            // se cauta PRIMUL lucru atins (obstacol, zombi sau jucator); glontul se opreste acolo.
+            // Asa un glont rapid nu mai poate sari peste un zombi mic sau trece printr-un obstacol,
+            // iar un glont care a ucis pe cineva nu mai continua spre cel din spate.
             _expiredBullets.length = 0;
+            _hitTargets.obstacles = room.obstacles;
+            _hitTargets.zombies   = room.zombies;
+            _hitTargets.zombieRadius = room.mode === 'pve' ? _pveZombieRadius : _brZombieRadius;
+            _hitTargets.players   = alivePlayers;
+            _hitTargets.hitPlayers = room.mode !== 'pve'; // no friendly fire in PvE
             let _bKeep = 0;
             for (let bi = 0; bi < room.bullets.length; bi++) {
                 const b = room.bullets[bi];
-                const prevX = b.x, prevY = b.y;
-                b.x += b.dx * dt; b.y += b.dy * dt; b.lifetime -= dt;
+                const x1 = b.x + b.dx * dt, y1 = b.y + b.dy * dt;
+                b.lifetime -= dt;
+                _hitTargets.ownerId = b.ownerId;
+                const hit = firstBulletHit(b.x, b.y, x1, y1, b.radius, _hitTargets, _hitOut);
                 let keep = true;
-                if (b.lifetime <= 0 || b.x < 0 || b.x > ARENA_W || b.y < 0 || b.y > ARENA_H) {
-                    if (b.lifetime <= 0 && b.x >= 0 && b.x <= ARENA_W && b.y >= 0 && b.y <= ARENA_H)
-                        _expiredBullets.push(b);
+                if (hit.kind === 1) {
                     keep = false;
-                } else if (room.obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.r + b.radius)) {
-                    keep = false;
-                } else {
-                    // Coliziune glont-zombie
-                    for (const zombie of room.zombies) {
-                        if (!zombie.alive) continue;
-                        if (Math.hypot(b.x - zombie.x, b.y - zombie.y) < ZOMBIE_R + b.radius) {
-                            const _zPrevHp = zombie.hp;
-                            zombie.hp -= b.damage;
-                            io.to(b.ownerId).emit('hit', { amount: Math.round(Math.min(b.damage, _zPrevHp)), x: zombie.x, y: zombie.y });
-                            if (zombie.hp <= 0) {
-                                zombie.hp = 0; zombie.alive = false;
-                                room.healthKits.push({ id: room.nextKitId++, x: zombie.x, y: zombie.y, spawnTime: now });
+                } else if (hit.kind === 2) {
+                    const zombie = hit.target;
+                    const _zPrevHp = zombie.hp;
+                    zombie.hp -= b.damage;
+                    const _zOwner = room.players[b.ownerId];
+                    if (_zOwner && _zOwner.rs) _zOwner.rs.dmg += Math.min(b.damage, _zPrevHp);
+                    io.to(b.ownerId).emit('hit', { amount: Math.round(Math.min(b.damage, _zPrevHp)), x: zombie.x, y: zombie.y, bid: b.id });
+                    if (zombie.hp <= 0) {
+                        zombie.hp = 0; zombie.alive = false;
+                        if (_zOwner && _zOwner.rs) {
+                            const rs = _zOwner.rs, w = _zOwner.weapon || 'pistol';
+                            rs.zKills++;
+                            if (room.mode === 'pve') { rs.pveKills++; rs.wk[w] = (rs.wk[w] || 0) + 1; rs.pwk[w] = (rs.pwk[w] || 0) + 1; }
+                        }
+                        if (room.mode === 'pve') {
+                            const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
+                            const killer = room.players[b.ownerId];
+                            if (killer) {
+                                const earned = def.coinsMin + Math.floor(Math.random() * (def.coinsMax - def.coinsMin + 1));
+                                killer.coins += earned;
+                                io.to(killer.id).emit('pve-coins', { coins: killer.coins, earned, x: zombie.x, y: zombie.y });
                             }
-                            keep = false; break;
+                        } else {
+                            room.healthKits.push({ id: room.nextKitId++, x: zombie.x, y: zombie.y, spawnTime: now });
                         }
                     }
-                }
-                if (keep) {
-                    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - prevX, b.y - prevY) / 20));
-                    const hitR  = PLAYER_R + b.radius;
-                    for (const p of alivePlayers) {
-                        if (p.id === b.ownerId) continue;
-                        let hit = false;
-                        for (let s = 1; s <= steps; s++) {
-                            const bx = prevX + (b.x - prevX) * s / steps;
-                            const by = prevY + (b.y - prevY) * s / steps;
-                            if (Math.hypot(bx - p.x, by - p.y) < hitR) { hit = true; break; }
-                        }
-                        if (hit) {
-                            const _pPrevHp = p.hp;
-                            p.hp -= b.damage; p.lastDamageTime = now;
-                            io.to(b.ownerId).emit('hit', { amount: Math.round(Math.min(b.damage, _pPrevHp)), x: p.x, y: p.y });
-                            if (p.hp <= 0) eliminatePlayer(code, room, p, b.ownerId);
-                            keep = false; break;
-                        }
+                    keep = false;
+                } else if (hit.kind === 3) {
+                    const p = hit.target;
+                    const _pPrevHp = p.hp;
+                    p.hp -= b.damage; p.lastDamageTime = now;
+                    const _pOwner = room.players[b.ownerId];
+                    if (_pOwner && _pOwner.rs) _pOwner.rs.dmg += Math.min(b.damage, _pPrevHp);
+                    io.to(b.ownerId).emit('hit', { amount: Math.round(Math.min(b.damage, _pPrevHp)), x: p.x, y: p.y, bid: b.id });
+                    if (p.hp <= 0) eliminatePlayer(code, room, p, b.ownerId);
+                    keep = false;
+                } else {
+                    b.x = x1; b.y = y1;
+                    const inside = b.x >= 0 && b.x <= ARENA_W && b.y >= 0 && b.y <= ARENA_H;
+                    if (b.lifetime <= 0 || !inside) {
+                        if (b.lifetime <= 0 && inside) _expiredBullets.push(b);
+                        keep = false;
                     }
                 }
                 if (keep) room.bullets[_bKeep++] = b;
@@ -975,47 +1419,64 @@ function startRoomLoop(code, room) {
                 io.to(code).emit('srv-stats', { tps, ents: allPlayers.length + room.bullets.length });
             }
 
-            // Health kits: pickup + expiry
-            room.healthKits = room.healthKits.filter(kit => {
-                if (now - kit.spawnTime > 30000) return false;
-                for (const p of alivePlayers) {
-                    if (p.hp < p.maxHp && Math.hypot(p.x - kit.x, p.y - kit.y) < PLAYER_R + 22) {
-                        const actualHeal = Math.min(200, p.maxHp - p.hp);
-                        p.hp += actualHeal;
-                        io.to(p.id).emit('kit-pickup', { amount: actualHeal, x: kit.x, y: kit.y });
-                        return false;
+            // Health kits: pickup + expiry (in place, no new array per tick)
+            {
+                const kits = room.healthKits;
+                const pickR = PLAYER_R + 22, pickRSq = pickR * pickR;
+                let kKeep = 0;
+                for (let ki = 0; ki < kits.length; ki++) {
+                    const kit = kits[ki];
+                    let gone = now - kit.spawnTime > 30000;
+                    if (!gone) {
+                        for (const p of alivePlayers) {
+                            const kx = p.x - kit.x, ky = p.y - kit.y;
+                            if (p.hp < p.maxHp && kx * kx + ky * ky < pickRSq) {
+                                const actualHeal = Math.min(200, p.maxHp - p.hp);
+                                p.hp += actualHeal;
+                                if (p.rs) p.rs.kits++;
+                                io.to(p.id).emit('kit-pickup', { amount: actualHeal, x: kit.x, y: kit.y });
+                                gone = true;
+                                break;
+                            }
+                        }
                     }
+                    if (!gone) kits[kKeep++] = kit;
                 }
-                return true;
-            });
+                kits.length = kKeep;
+            }
 
+            // ── State packet: built and encoded ONCE per tick for the whole room ──
+            // Per-player private values (ammo, reload, ack seq, coins) travel together in a flat
+            // array [id, ammo, ammoMax, reloading, reloadProgress, ackSeq, coins, ...]; each client
+            // picks its own row. Before, the shared arrays were re-encoded once per player per tick.
             _pScratch.length = 0;
             for (const p of allPlayers) {
-                _pScratch.push([p.id, Math.round(p.x), Math.round(p.y), +p.angle.toFixed(3), Math.round(p.hp), p.alive ? 1 : 0, p.kills]);
+                _pScratch.push([p.id, Math.round(p.x), Math.round(p.y), _r3(p.angle), Math.round(p.hp), p.alive ? 1 : 0, p.kills]);
             }
             _bScratch.length = 0;
             for (const b of room.bullets) {
-                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), +(b.dx / BULLET_SPEED).toFixed(3), +(b.dy / BULLET_SPEED).toFixed(3), b.ownerId]);
+                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), _r3(b.dx / BULLET_SPEED), _r3(b.dy / BULLET_SPEED), b.ownerId]);
             }
             for (const b of _expiredBullets) {
-                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), +(b.dx / BULLET_SPEED).toFixed(3), +(b.dy / BULLET_SPEED).toFixed(3), b.ownerId]);
+                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), _r3(b.dx / BULLET_SPEED), _r3(b.dy / BULLET_SPEED), b.ownerId]);
             }
-
-            const _zScratch = [];
+            _zScratch.length = 0;
             for (const z of room.zombies) {
-                _zScratch.push(Math.round(z.x), Math.round(z.y), +z.angle.toFixed(2), z.alive ? Math.round(z.hp) : -1);
+                _zScratch.push(Math.round(z.x), Math.round(z.y), _r2(z.angle), z.alive ? Math.round(z.hp) : -1, PVE_TYPE_IDX[z.type] || 0);
             }
-            const _kScratch = [];
+            _kScratch.length = 0;
             for (const k of room.healthKits) {
                 _kScratch.push(k.id, Math.round(k.x), Math.round(k.y), Math.round((30000 - (now - k.spawnTime)) / 1000));
             }
-
-            allPlayers.forEach(recv => {
-                const reloadProgress = recv.reloading ? Math.max(0, Math.min(1, 1 - recv.reloadTimer / AMMO_RELOAD_TIME)) : 1;
-                const ammoArr = [recv.ammo, AMMO_MAX, recv.reloading ? 1 : 0, +reloadProgress.toFixed(3), recv.lastAckSeq];
-                const zoneArr = [Math.round(zone.cx), Math.round(zone.cy), Math.round(zone.r), +zone.waitTimer.toFixed(1)];
-                io.to(recv.id).emit('gs', [_pScratch, _bScratch, ammoArr, tickStart, zoneArr, _zScratch, _kScratch]);
-            });
+            _privScratch.length = 0;
+            for (const p of allPlayers) {
+                _privScratch.push(p.id, p.ammo, p.ammoMax || AMMO_MAX, p.reloading ? 1 : 0, _r3(Math.min(1, p.reloadProgress || 0)), p.lastAckSeq, p.coins || 0);
+            }
+            const zoneArr = [Math.round(zone.cx), Math.round(zone.cy), Math.round(zone.r), _r1(zone.waitTimer)];
+            const pveArr  = room.mode === 'pve' && room.base
+                ? [Math.round(room.base.hp), room.base.maxHp, room.pveWave, room.pveWaveBreak ? 1 : 0, _r1(room.pveBreakTimer)]
+                : null;
+            io.to(code).emit('gs', [_pScratch, _bScratch, _privScratch, tickStart, zoneArr, _zScratch, _kScratch, pveArr]);
 
         } catch (err) {
             console.error(`[${code}] Game loop error:`, err.stack || err);
@@ -1043,8 +1504,15 @@ function eliminatePlayer(code, room, player, killerId) {
     player.alive = false;
     player.hp    = 0;
 
-    const killerPlayer = killerId ? room.players[killerId] : null;
-    if (killerPlayer) killerPlayer.kills++;
+    const isZombieKill  = killerId === 'zombie';
+    const killerPlayer  = (killerId && !isZombieKill) ? room.players[killerId] : null;
+    if (killerPlayer) {
+        killerPlayer.kills++;
+        if (killerPlayer.rs && room.mode === 'br') {
+            const rs = killerPlayer.rs, w = killerPlayer.weapon || 'pistol';
+            rs.brKills++; rs.wk[w] = (rs.wk[w] || 0) + 1; rs.bwk[w] = (rs.bwk[w] || 0) + 1;
+        }
+    }
 
     // Use _playerArr cache — avoids Object.values()+filter() allocations
     let _aliveN = 0;
@@ -1054,15 +1522,20 @@ function eliminatePlayer(code, room, player, killerId) {
 
     io.to(player.id).emit('eliminated', {
         placement, totalPlayers,
-        killedBy: killerPlayer ? killerPlayer.name : null,
+        killedBy: killerPlayer ? killerPlayer.name : (isZombieKill ? 'zombie' : null),
         kills:    player.kills
     });
 
     if (killerPlayer) {
         io.to(code).emit('kill-event', { killerName: killerPlayer.name, victimName: player.name, byZone: false, victimId: player.id });
+    } else if (isZombieKill) {
+        io.to(code).emit('kill-event', { killerName: 'Zombi', victimName: player.name, byZone: false, victimId: player.id });
     }
 
-    console.log(`[${code}] ${player.name} eliminat de ${killerPlayer ? killerPlayer.name : '?'} (loc ${placement}/${totalPlayers})`);
+    const killerLabel = killerPlayer ? killerPlayer.name : (isZombieKill ? 'zombi' : 'zona');
+    console.log(`[${code}] ${player.name} eliminat de ${killerLabel} (loc ${placement}/${totalPlayers})`);
+
+    if (room.mode === 'pve') return; // respawns next wave; stats are saved once, at pveVictory / pveDefeat
 
     if (_aliveN === 1 && totalPlayers > 1) {
         let winner = null;
@@ -1072,10 +1545,10 @@ function eliminatePlayer(code, room, player, killerId) {
         room.gameEnded = true;
         if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
 
-        updatePlayerRoundEnd(player.id, player.name, player.kills, false);
-        updatePlayerRoundEnd(winner.id, winner.name, winner.kills, true);
+        updatePlayerRoundEnd(player.id, player.name, player.kills, false, { mode: 'br', rs: player.rs });
+        updatePlayerRoundEnd(winner.id, winner.name, winner.kills, true, { mode: 'br', rs: winner.rs });
     } else {
-        updatePlayerRoundEnd(player.id, player.name, player.kills, false);
+        updatePlayerRoundEnd(player.id, player.name, player.kills, false, { mode: 'br', rs: player.rs });
     }
 
     if (_aliveN === 0) {
@@ -1098,17 +1571,29 @@ function triggerRematch(code, room) {
     room.healthKits = [];
     room.nextKitId  = 0;
     room.countdownActive = true;
-    setTimeout(() => { if (rooms.has(code)) room.countdownActive = false; }, 3000);
+    room.pveSkipVotes.clear();
+    room.pveSpawnQueue = []; room.pveSpawnTimer = 0;
+    room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0;
+    setTimeout(() => { if (rooms.has(code)) room.countdownActive = false; }, 3700);
     assignSpawnPositions(room._playerArr, room.obstacles);
+    room.zombies = generateZombies(room.obstacles, room._playerArr);
     room._playerArr.forEach(p => {
-        p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0;
+        // Reset PvE upgrades si stats la valorile de baza
+        p.damage  = p.baseDamage  || p.damage;
+        p.speed   = p.baseSpeed   || p.speed;
+        p.maxHp   = p.baseMaxHp   || p.maxHp;
+        p.ammoMax = p.baseAmmoMax || p.ammoMax;
+        p.pveUpgrades = { dmg: 0, spd: 0, hp: 0, ammo: 0 };
+        p.coins = 0;
+        p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0; p.rs = Missions.newRoundStats();
         p.moveDir = { x: 0, y: 0 }; p.shootDir = { x: 0, y: 0 };
-        p.shooting = false; p.shootCooldown = 0; p.aimTimer = 0;
-        p.ammo = AMMO_MAX; p.reloading = false; p.reloadTimer = 0;
+        p.shooting = false; p.shootCooldown = 0; p.aimTimer = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
+        p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
+        p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
         p.lastDamageTime = 0; p.lastAckSeq = 0; p.pendingAckSeq = 0;
     });
     const rematchMeta = {};
-    room._playerArr.forEach(p => { rematchMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name }; });
+    room._playerArr.forEach(p => { rematchMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || 'pistol' }; });
     Object.keys(room.players).forEach(pid => {
         io.to(pid).emit('game-rematch', { isHost: room.hostId === pid, playersMeta: rematchMeta });
     });
@@ -1174,8 +1659,9 @@ io.on('connection', (socket) => {
     socket.on('create-room', (data) => {
         if (!socket._nickname) { socket.emit('room-error', 'Neautentificat.'); return; }
         data = { ...data, name: socket._nickname };
+        const mode = data.mode === 'pve' ? 'pve' : 'br';
         const code = generateCode();
-        const room = newRoom(socket.id);
+        const room = newRoom(socket.id, mode);
         rooms.set(code, room);
         socket.join(code);
         socket._roomCode = code;
@@ -1218,21 +1704,31 @@ io.on('connection', (socket) => {
         room.bullets         = [];
         room.nextBulletId    = 0;
 
-        assignSpawnPositions(room._playerArr, room.obstacles);
+        if (room.mode === 'pve') {
+            assignPveSpawnPositions(room._playerArr);
+            room.zombies = [];
+            room.base = { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R };
+            room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0;
+        } else {
+            assignSpawnPositions(room._playerArr, room.obstacles);
+            room.zombies = generateZombies(room.obstacles, room._playerArr);
+        }
         room._playerArr.forEach(p => {
-            p.ammo = AMMO_MAX; p.reloading = false; p.reloadTimer = 0;
-            p.shooting = false; p.shootCooldown = 0;
-            p.lastAckSeq = 0; p.pendingAckSeq = 0;
+            p.ammo = p.ammoMax || AMMO_MAX; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
+            p.shooting = false; p.shootCooldown = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
+            p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
+            p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0;
         });
 
         const playersMeta = {};
-        room._playerArr.forEach(p => { playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name }; });
-        io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles });
-        console.log(`[${code}] Joc pornit cu ${room._playerArr.length} jucatori`);
+        room._playerArr.forEach(p => { playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || 'pistol' }; });
+        io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles, mode: room.mode });
+        console.log(`[${code}] Joc pornit cu ${room._playerArr.length} jucatori (${room.mode})`);
 
         setTimeout(() => {
             if (rooms.has(code)) room.countdownActive = false;
-        }, 3000);
+            if (rooms.has(code) && room.mode === 'pve') startPveWave(code, room);
+        }, 3700);
 
         startRoomLoop(code, room);
     });
@@ -1242,6 +1738,7 @@ io.on('connection', (socket) => {
         if (!r || !r.room.gameStarted || !r.room.players[socket.id]) return;
         const p = r.room.players[socket.id];
         if (!p.alive || r.room.gameEnded || r.room.countdownActive) return;
+        if (r.room.pveWaveBreak) return;
         if (data.dx !== undefined) {
             p.moveDir.x = Math.max(-1, Math.min(1, +data.dx || 0));
             p.moveDir.y = Math.max(-1, Math.min(1, +data.dy || 0));
@@ -1249,7 +1746,12 @@ io.on('connection', (socket) => {
         if (data.angle !== undefined) p.angle = +data.angle || 0;
         if (data.shooting !== undefined) {
             const _wasShooting = p.shooting;
-            p.shooting = !!data.shooting;
+            if (!data.shooting) p.hasReleasedSinceEmpty = true;
+            if (p.needsReleaseToShoot && p.hasReleasedSinceEmpty && !!data.shooting && p.ammo > 0) {
+                p.needsReleaseToShoot = false;
+                p.hasReleasedSinceEmpty = false;
+            }
+            p.shooting = p.needsReleaseToShoot ? false : !!data.shooting;
             if (p.shooting && !_wasShooting) p.aimTimer = AIM_DELAY;
             if (!p.shooting) p.aimTimer = 0;
             if (data.shooting && data.sdx !== undefined) {
@@ -1273,6 +1775,34 @@ io.on('connection', (socket) => {
     });
 
     socket.on('c-ping', (t) => socket.emit('c-pong', t));
+
+    socket.on('pve-skip', () => {
+        const r = fastGetRoom(socket);
+        if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
+        const { code, room } = r;
+        room.pveSkipVotes.add(socket.id);
+        const total = room._playerArr.length;
+        const votes = room.pveSkipVotes.size;
+        io.to(code).emit('pve-skip-status', { votes, total });
+        if (votes >= total) startPveWave(code, room);
+    });
+
+    socket.on('buy-upgrade', ({ type } = {}) => {
+        const r = fastGetRoom(socket);
+        if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
+        const p = r.room.players[socket.id];
+        if (!p) return;
+        const def = PVE_UPGRADE_DEFS[type];
+        if (!def) { socket.emit('upgrade-result', { ok: false }); return; }
+        const count = p.pveUpgrades[type] || 0;
+        if (count >= def.maxUses) { socket.emit('upgrade-result', { ok: false, reason: 'max' }); return; }
+        const cost = pveUpgradeCost(type, count);
+        if (p.coins < cost) { socket.emit('upgrade-result', { ok: false }); return; }
+        p.coins -= cost;
+        p.pveUpgrades[type] = count + 1;
+        def.apply(p, count + 1);
+        socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
+    });
 
     socket.on('disconnect', () => {
         if (socket._nickname && connectedAccounts.get(socket._nickname) === socket.id) {

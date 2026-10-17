@@ -2,2055 +2,147 @@
 <html lang="ro" translate="no">
 <head>
     <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M1 1h17l5 5v17H1z' fill='%23FF6A1A'/%3E%3Cpath d='M5.5 19 12 5.5 18.5 19M8.2 14.6h7.6' fill='none' stroke='%230B1417' stroke-width='2.6' stroke-linecap='square'/%3E%3C/svg%3E">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
     <meta name="apple-mobile-web-app-title" content="Arena Royale">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0B1417">
     <meta name="google" content="notranslate">
     <title>Arena Royale</title>
-    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sen:wght@400..800&display=swap" rel="stylesheet">
     <link rel="preload" href="/images/characters/ninja.png" as="image">
     <link rel="stylesheet" href="style.css">
-
-    <style>
-    /* ======================================================
-       VARIABILE & RESET
-    ====================================================== */
-    :root {
-        --bg:      #0c1118;
-        --card:    #131c28;
-        --card2:   #1b2638;
-        --accent:  #e8a020;
-        --green:   #34d39a;
-        --orange:  #f0944d;
-        --blue:    #5bb8f5;
-        --gold:    #ffd700;
-        --dim:     #8888aa;
-        --border:  rgba(255,255,255,0.08);
-        --ft:      'Lexend', sans-serif;
-        --fb:      'Lexend', sans-serif;
-    }
-
-    button, input, select, textarea {
-        font-family: inherit;
-    }
-
-    /* ======================================================
-       ECRAN AUTH
-    ====================================================== */
-    #screen-auth {
-        position: fixed; inset: 0;
-        display: flex; flex-direction: column; align-items: center;
-        justify-content: flex-start;
-        background: transparent; overflow-y: auto;
-        scrollbar-width: none; -ms-overflow-style: none;
-    }
-    #screen-auth::-webkit-scrollbar { display: none; }
-    .auth-wrap {
-        display: flex; flex-direction: column; align-items: center;
-        gap: 14px; width: 100%; max-width: 420px;
-        padding: 20px 16px 28px; position: relative; z-index: 1;
-        margin: auto;
-    }
-    .auth-logo { text-align: center; }
-    .auth-logo-icon { font-size: 2.6rem; }
-    .auth-logo-title {
-        font-family: var(--ft); font-size: clamp(1.6rem, 5vw, 2.2rem);
-        font-weight: 900; color: #fff; letter-spacing: 3px; margin: 4px 0 0;
-    }
-    .auth-logo-title span { color: var(--accent); }
-
-    .auth-card {
-        background: rgba(14,30,14,0.82); border: 1.5px solid rgba(232,160,32,0.35);
-        border-radius: 16px; width: 100%; overflow: hidden;
-        box-shadow: 0 8px 40px rgba(0,0,0,.6), 0 0 0 1px rgba(80,140,60,.12);
-    }
-    /* Tabs */
-    .auth-tabs { display: flex; border-bottom: 1px solid rgba(80,140,60,0.25); }
-    .auth-tab {
-        flex: 1; background: none; border: none; color: rgba(180,210,160,.5);
-        font-family: var(--ft); font-size: 0.68rem; font-weight: 700;
-        letter-spacing: .5px; padding: 13px 8px; cursor: pointer;
-        line-height: 1.15;
-        border-bottom: 2px solid transparent; margin-bottom: -1px;
-        transition: all 0.2s;
-    }
-    .auth-tab.active { color: #e8a020; border-bottom-color: #e8a020; }
-    .auth-tab:hover:not(.active) { color: #e8f5e0; }
-
-    /* Forms */
-    .auth-form {
-        display: flex; flex-direction: column; gap: 12px;
-        padding: 16px 20px 20px;
-    }
-    .auth-form .input-group { margin-bottom: 0; }
-    .auth-hint {
-        font-size: 0.6rem; color: rgba(180,210,160,.5);
-        font-weight: 400; text-transform: none; letter-spacing: normal;
-    }
-    .auth-error {
-        color: #f87171; font-size: 0.82rem;
-        font-family: var(--fb); text-align: center; min-height: 18px;
-    }
-    .auth-btn {
-        display: flex; align-items: center; justify-content: center; gap: 10px;
-        background: linear-gradient(135deg, #e8a020, #b07010);
-        color: #fff; border: none; border-radius: 12px;
-        padding: 14px 20px; font-family: var(--ft); font-size: 0.82rem;
-        font-weight: 700; cursor: pointer; transition: all 0.2s; margin-top: 2px;
-        line-height: 1.15; white-space: normal; text-align: center;
-    }
-    .auth-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(232,160,32,.4); }
-    .auth-btn:disabled { opacity: .6; cursor: not-allowed; }
-    .auth-note { text-align: center; color: rgba(180,210,160,.45); font-size: 0.72rem; font-family: var(--fb); margin: 0; }
-    .auth-note strong { color: rgba(232,240,220,.55); }
-
-    .auth-bottom { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-    .lb-pill {
-        color: var(--gold); text-decoration: none; font-family: var(--ft);
-        font-size: 0.7rem; font-weight: 700; letter-spacing: 1px;
-        padding: 9px 18px; border: 1px solid rgba(255,215,0,.3); border-radius: 30px;
-        transition: all 0.2s;
-    }
-    .lb-pill:hover { background: rgba(255,215,0,.08); border-color: rgba(255,215,0,.5); }
-
-    /* ======================================================
-       ECRAN LOBBY — redesign complet
-    ====================================================== */
-    #screen-lobby {
-        position: fixed; inset: 0; top: 0;
-        display: flex; flex-direction: column;
-        justify-content: flex-start; align-items: stretch;
-        overflow: hidden;
-        background: transparent;
-    }
-    #screen-lobby::after {
-        content: '';
-        position: absolute;
-        top: 68px; left: 0; right: 0; bottom: 0;
-        background: rgba(8,18,8,0.28);
-        z-index: -1;
-        pointer-events: none;
-    }
-    #lobby-bg-canvas {
-        position: fixed; inset: 0; width: 100%; height: 100%;
-        z-index: 0; pointer-events: none;
-        filter: blur(4px) brightness(0.85);
-        transform: scale(1.04);
-    }
-
-    /* Top bar */
-    .lb-topbar {
-        display: flex; align-items: center; justify-content: space-between;
-        height: 68px; padding: 0 20px; flex-shrink: 0; gap: 10px;
-        width: 100%;
-        background: linear-gradient(180deg, #141f14 0%, #0a120a 100%);
-        border-bottom: 2px solid rgba(232,160,32,0.6);
-        box-shadow:
-            0 6px 28px rgba(0,0,0,0.7),
-            inset 0 1px 0 rgba(255,255,255,0.07),
-            inset 0 -1px 0 rgba(232,160,32,0.18);
-    }
-    .lb-topbar-left {
-        display: flex; align-items: center; gap: 12px;
-    }
-    .lb-topbar-back {
-        display: flex; align-items: center; gap: 5px;
-        background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-        color: rgba(200,215,200,0.7); border-radius: 8px; padding: 8px 14px;
-        font-family: var(--fb); font-size: 0.8rem; cursor: pointer;
-        transition: all .2s; white-space: nowrap;
-    }
-    .lb-topbar-back:hover { color: #fff; background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,.22); }
-    .lb-topbar-title {
-        font-family: var(--ft); font-size: clamp(1.15rem, 3.5vw, 1.6rem);
-        font-weight: 900; color: #fff; letter-spacing: 2px; white-space: nowrap;
-        text-shadow: 0 0 24px rgba(232,160,32,0.4);
-        margin-left: 20px; margin-right: 4px;
-    }
-    .lb-topbar-title span { color: var(--accent); }
-    .lb-topbar-left { gap: 8px; }
-    .lb-topbar-right { display: flex; align-items: center; gap: 10px; }
-
-    /* Scrollable content */
-    .lobby-body {
-        flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
-        width: 100%; display: flex; flex-direction: column;
-        scrollbar-width: none; -ms-overflow-style: none;
-    }
-    .lobby-body::-webkit-scrollbar { display: none; }
-    .lobby-inner {
-        display: flex; flex-direction: column; align-items: center;
-        gap: 14px;
-        padding: 16px 14px max(40px, calc(env(safe-area-inset-bottom) + 16px));
-        max-width: 560px; margin: auto; width: 100%;
-        box-sizing: border-box;
-    }
-
-    /* ── Character section ── */
-    .char-section {
-        display: flex; flex-direction: column; align-items: center;
-        gap: 10px; width: 100%;
-    }
-    @keyframes char-float {
-        0%, 100% { transform: translateY(0) scale(1); }
-        50%       { transform: translateY(-7px) scale(1.02); }
-    }
-    @keyframes char-ring-pulse {
-        0%, 100% { box-shadow: 0 0 0 3px var(--rc, #9ca3af), 0 0 18px color-mix(in srgb, var(--rc, #9ca3af) 40%, transparent), 0 0 32px rgba(232,160,32,0.1); }
-        50%       { box-shadow: 0 0 0 4px var(--rc, #9ca3af), 0 0 30px color-mix(in srgb, var(--rc, #9ca3af) 65%, transparent), 0 0 52px rgba(232,160,32,0.25); }
-    }
-    .char-preview-outer {
-        width: clamp(130px, 32vw, 170px); height: clamp(130px, 32vw, 170px);
-        border-radius: 50%; overflow: hidden; cursor: pointer;
-        background: rgba(0,0,0,.4);
-        --rc: #9ca3af;
-        transition: transform .2s;
-        flex-shrink: 0;
-        animation: char-ring-pulse 3s ease-in-out infinite;
-    }
-    .char-preview-outer:hover { transform: scale(1.06); }
-    .char-preview-img {
-        width: 100%; height: 100%; object-fit: cover; display: block;
-        animation: char-float 3s ease-in-out infinite;
-    }
-    .char-change-btn {
-        background: linear-gradient(135deg, rgba(232,160,32,0.15), rgba(192,57,43,0.12));
-        border: 1px solid rgba(232,160,32,0.45);
-        color: #e8c070; font-family: var(--ft); font-size: .75rem; font-weight: 700;
-        letter-spacing: 1.2px; padding: 8px 22px; border-radius: 22px; cursor: pointer;
-        transition: all .2s;
-        box-shadow: 0 2px 12px rgba(232,160,32,0.15);
-        display: inline-flex; align-items: center;
-    }
-    .char-change-btn:hover {
-        background: linear-gradient(135deg, rgba(232,160,32,0.32), rgba(192,57,43,0.25));
-        border-color: rgba(232,160,32,0.8);
-        box-shadow: 0 4px 20px rgba(232,160,32,0.4);
-        transform: translateY(-1px);
-        color: #fff;
-    }
-    .char-name {
-        font-family: var(--ft); font-size: clamp(1.5rem, 5vw, 2.2rem);
-        font-weight: 900; color: var(--green); letter-spacing: 2px;
-        text-align: center; max-width: 100%; overflow-wrap: anywhere;
-        text-shadow: 0 0 18px rgba(80,220,100,0.55), 0 2px 6px rgba(0,0,0,0.5);
-        line-height: 1.1;
-    }
-
-    /* ── Friends Modal ── */
-    #friends-overlay {
-        position: fixed; inset: 0; background: rgba(0,0,0,.88);
-        z-index: 9000; display: flex; align-items: flex-start; justify-content: center;
-        padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    }
-    .friends-modal {
-        background: #0d1a0d; border: 1px solid rgba(80,140,60,.3);
-        border-radius: 18px; width: 100%; max-width: 480px;
-        overflow: hidden; margin: auto; box-shadow: 0 24px 80px rgba(0,0,0,.7);
-    }
-    .friends-header {
-        display: flex; align-items: center; padding: 16px 20px;
-        background: linear-gradient(180deg,#141f14,#0a120a);
-        border-bottom: 1px solid rgba(80,140,60,.25);
-    }
-    .friends-title { font-family: var(--ft); font-size: 1rem; font-weight: 800; color: #fff; letter-spacing: 1px; flex: 1; }
-    .friends-close {
-        background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
-        color: #fff; font-size: 1rem; width: 34px; height: 34px; border-radius: 50%;
-        cursor: pointer; display: flex; align-items: center; justify-content: center;
-    }
-    .friends-close:hover { background: rgba(255,80,80,.25); }
-    .friends-search-wrap {
-        display: flex; gap: 8px; padding: 14px 16px;
-        border-bottom: 1px solid rgba(80,140,60,.15);
-    }
-    .friends-search-input {
-        flex: 1; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
-        border-radius: 10px; padding: 8px 12px; color: #fff; font-family: var(--ft);
-        font-size: .8rem; outline: none;
-    }
-    .friends-search-input:focus { border-color: rgba(232,160,32,.5); }
-    .friends-search-btn {
-        background: rgba(232,160,32,.18); border: 1px solid rgba(232,160,32,.4);
-        color: #e8a020; font-family: var(--ft); font-size: .7rem; font-weight: 700;
-        padding: 8px 14px; border-radius: 10px; cursor: pointer; white-space: nowrap;
-    }
-    .friends-search-btn:hover { background: rgba(232,160,32,.3); }
-    .friends-search-results { padding: 0 16px; }
-    .friends-search-result {
-        display: flex; align-items: center; gap: 10px; padding: 10px 0;
-        border-bottom: 1px solid rgba(255,255,255,.06);
-    }
-    .friends-search-result:last-child { border-bottom: none; }
-    .fsr-nick { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: #fff; flex: 1; }
-    .fsr-lv { font-family: var(--ft); font-size: .65rem; color: rgba(255,255,255,.4); }
-    .fsr-btn {
-        font-family: var(--ft); font-size: .65rem; font-weight: 700;
-        padding: 5px 10px; border-radius: 8px; cursor: pointer; border: none;
-        background: rgba(80,200,120,.18); color: #5ddb8a; border: 1px solid rgba(80,200,120,.35);
-    }
-    .fsr-btn:hover { background: rgba(80,200,120,.3); }
-    .fsr-btn:disabled { opacity: .45; cursor: default; }
-    .friends-section-title {
-        font-family: var(--ft); font-size: .65rem; font-weight: 800; color: rgba(255,255,255,.35);
-        letter-spacing: 1.5px; padding: 12px 16px 6px; display: flex; align-items: center; gap: 6px;
-    }
-    .fpcount {
-        background: rgba(232,160,32,.25); color: #e8a020; border-radius: 10px;
-        font-size: .6rem; padding: 1px 6px; font-weight: 700;
-    }
-    .friends-list { padding: 0 16px 16px; max-height: 300px; overflow-y: auto; }
-    .friends-empty { color: rgba(255,255,255,.3); font-size: .75rem; text-align: center; padding: 20px 0; }
-    .friend-row {
-        display: flex; align-items: center; gap: 10px; padding: 10px 0;
-        border-bottom: 1px solid rgba(255,255,255,.05);
-    }
-    .friend-row:last-child { border-bottom: none; }
-    .friend-online-dot {
-        width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
-        background: #6b7280;
-    }
-    .friend-online-dot.online { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
-    .friend-info { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
-    .friend-nick { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: #fff; }
-    .friend-rank-txt { font-family: var(--ft); font-size: .62rem; font-weight: 600; letter-spacing: .5px; }
-    .friend-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
-    .friend-lv-badge {
-        font-family: var(--ft); font-size: .62rem; font-weight: 800;
-        border: 1px solid; border-radius: 6px; padding: 1px 7px; letter-spacing: .5px;
-        background: rgba(0,0,0,.25);
-    }
-    .friend-status { font-family: var(--ft); font-size: .58rem; color: rgba(255,255,255,.3); }
-    .friend-status.online { color: #22c55e; }
-    .friend-remove-btn {
-        background: none; border: none; cursor: pointer;
-        color: rgba(255,255,255,.18); font-size: .9rem; line-height: 1;
-        padding: 2px 4px; border-radius: 4px; transition: color .15s, background .15s;
-        flex-shrink: 0; align-self: center;
-    }
-    .friend-remove-btn:hover { color: #f87171; background: rgba(239,68,68,.12); }
-    .pending-row {
-        display: flex; align-items: center; gap: 8px; padding: 10px 16px;
-        border-bottom: 1px solid rgba(255,255,255,.05);
-    }
-    .pending-nick { font-family: var(--ft); font-size: .82rem; font-weight: 700; color: #fff; flex: 1; }
-    .pending-actions { display: flex; gap: 6px; }
-    .pending-accept {
-        background: rgba(34,197,94,.2); color: #22c55e; border: 1px solid rgba(34,197,94,.4);
-        font-family: var(--ft); font-size: .65rem; font-weight: 700;
-        padding: 4px 10px; border-radius: 8px; cursor: pointer;
-    }
-    .pending-accept:hover { background: rgba(34,197,94,.35); }
-    .pending-reject {
-        background: rgba(239,68,68,.12); color: #f87171; border: 1px solid rgba(239,68,68,.3);
-        font-family: var(--ft); font-size: .65rem; font-weight: 700;
-        padding: 4px 10px; border-radius: 8px; cursor: pointer;
-    }
-    .pending-reject:hover { background: rgba(239,68,68,.25); }
-    .search-already-friend { color: rgba(255,255,255,.4); font-size: .7rem; font-style: italic; }
-    .friends-nav-btn { position: relative; }
-    @media (max-width: 1023px) { #friends-nav-btn { display: none !important; } }
-    .friends-nav-badge, .friends-tab-badge {
-        position: absolute; top: -4px; right: -4px; background: #ef4444;
-        color: #fff; font-size: .55rem; font-weight: 800; min-width: 16px; height: 16px;
-        border-radius: 8px; display: flex; align-items: center; justify-content: center;
-        padding: 0 3px;
-    }
-    .friends-tab-badge { position: relative; top: auto; right: auto; display: inline-flex; margin-left: 2px; }
-
-    /* ── Character Shop Modal ── */
-    #char-shop-overlay {
-        position: fixed; inset: 0; background: rgba(0,0,0,.88);
-        z-index: 9000; align-items: flex-start; justify-content: center;
-        padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    }
-    .char-shop-modal {
-        background: #0d1a0d; border: 1px solid rgba(80,140,60,.3);
-        border-radius: 18px; width: 100%; max-width: 720px;
-        overflow: hidden; margin: auto; box-shadow: 0 24px 80px rgba(0,0,0,.7);
-    }
-    .char-shop-header {
-        display: flex; align-items: center; gap: 12px; padding: 16px 20px;
-        background: linear-gradient(180deg,#141f14,#0a120a);
-        border-bottom: 1px solid rgba(80,140,60,.25);
-    }
-    .char-shop-title {
-        font-family: var(--ft); font-size: 1rem; font-weight: 800;
-        color: #fff; letter-spacing: 1px; flex: 1;
-    }
-    .char-shop-currency { display: flex; gap: 10px; }
-    .csc-box {
-        background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
-        border-radius: 20px; padding: 4px 12px; font-family: var(--ft);
-        font-size: .78rem; font-weight: 700; color: #fff;
-    }
-    .char-shop-close {
-        background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
-        color: #fff; font-size: 1rem; width: 34px; height: 34px;
-        border-radius: 50%; cursor: pointer; display: flex; align-items: center;
-        justify-content: center; transition: background .2s;
-    }
-    .char-shop-close:hover { background: rgba(255,80,80,.25); }
-    .char-shop-filters {
-        display: flex; gap: 6px; padding: 12px 16px; flex-wrap: wrap;
-        border-bottom: 1px solid rgba(80,140,60,.18);
-    }
-    .csf-btn {
-        background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
-        color: rgba(255,255,255,.5); font-family: var(--ft); font-size: .65rem;
-        font-weight: 700; letter-spacing: .5px; padding: 5px 12px;
-        border-radius: 20px; cursor: pointer; transition: all .2s;
-    }
-    /* TOATE */
-    .csf-btn[data-filter="all"].active,
-    .csf-btn[data-filter="all"]:hover { background: rgba(232,160,32,.2); border-color: rgba(232,160,32,.6); color: #e8a020; }
-    /* COMMON */
-    .csf-btn[data-filter="common"]         { border-color: rgba(156,163,175,.25); color: rgba(156,163,175,.7); }
-    .csf-btn[data-filter="common"].active,
-    .csf-btn[data-filter="common"]:hover   { background: rgba(156,163,175,.18); border-color: rgba(156,163,175,.7); color: #c0c7d0; }
-    /* RARE */
-    .csf-btn[data-filter="rare"]           { border-color: rgba(59,130,246,.3); color: rgba(59,130,246,.7); }
-    .csf-btn[data-filter="rare"].active,
-    .csf-btn[data-filter="rare"]:hover     { background: rgba(59,130,246,.18); border-color: rgba(59,130,246,.8); color: #6ba8ff; }
-    /* EPIC */
-    .csf-btn[data-filter="epic"]           { border-color: rgba(168,85,247,.3); color: rgba(168,85,247,.7); }
-    .csf-btn[data-filter="epic"].active,
-    .csf-btn[data-filter="epic"]:hover     { background: rgba(168,85,247,.18); border-color: rgba(168,85,247,.8); color: #c084fc; }
-    /* LEGENDARY */
-    .csf-btn[data-filter="legendary"]         { border-color: rgba(245,158,11,.3); color: rgba(245,158,11,.7); }
-    .csf-btn[data-filter="legendary"].active,
-    .csf-btn[data-filter="legendary"]:hover   { background: rgba(245,158,11,.18); border-color: rgba(245,158,11,.8); color: #f59e0b; }
-    .char-shop-grid {
-        display: grid; grid-template-columns: repeat(3, 1fr);
-        gap: 14px; padding: 18px; max-height: 60vh; overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(232,160,32,0.55) rgba(255,255,255,0.04);
-    }
-    .char-shop-grid::-webkit-scrollbar { width: 6px; }
-    .char-shop-grid::-webkit-scrollbar-track {
-        background: rgba(255,255,255,0.03);
-        border-radius: 3px;
-    }
-    .char-shop-grid::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, #e8a020, #c06010);
-        border-radius: 3px;
-        border: 1px solid rgba(232,160,32,0.2);
-    }
-    .char-shop-grid::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(180deg, #ffd060, #e8a020);
-    }
-    @media (max-width: 420px) { .char-shop-grid { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 600px) {
-        #char-shop-overlay { padding: 6px; }
-        .char-shop-header { padding: 8px 12px; gap: 8px; }
-        .char-shop-title { font-size: .82rem; }
-        .csc-box { padding: 3px 9px; font-size: .7rem; }
-        .char-shop-close { width: 28px; height: 28px; font-size: .85rem; }
-        .char-shop-filters { padding: 6px 10px; gap: 4px; }
-        .csf-btn { padding: 4px 9px; font-size: .58rem; }
-    }
-    .char-shop-card {
-        background: rgba(255,255,255,.04); border: 1.5px solid rgba(255,255,255,.08);
-        border-radius: 12px; padding: 10px 8px 10px;
-        display: flex; flex-direction: column; align-items: center; gap: 5px;
-        cursor: pointer; transition: transform .15s, border-color .2s, background .2s;
-    }
-    /* Fundal colorat per raritate */
-    .cs-r-common    { background: rgba(156,163,175,.10); border-color: rgba(156,163,175,.2); }
-    .cs-r-rare      { background: rgba(59,130,246,.12);  border-color: rgba(59,130,246,.25); }
-    .cs-r-epic      { background: rgba(168,85,247,.12);  border-color: rgba(168,85,247,.25); }
-    .cs-r-legendary { background: rgba(245,158,11,.13);  border-color: rgba(245,158,11,.28); }
-    .cs-r-common:hover    { background: rgba(156,163,175,.18); }
-    .cs-r-rare:hover      { background: rgba(59,130,246,.20);  }
-    .cs-r-epic:hover      { background: rgba(168,85,247,.20);  }
-    .cs-r-legendary:hover { background: rgba(245,158,11,.22);  }
-    .cs-r-common.cs-card-selected    { background: rgba(156,163,175,.22); }
-    .cs-r-rare.cs-card-selected      { background: rgba(59,130,246,.24);  }
-    .cs-r-epic.cs-card-selected      { background: rgba(168,85,247,.24);  }
-    .cs-r-legendary.cs-card-selected { background: rgba(245,158,11,.25);  }
-    .char-shop-card:hover { transform: translateY(-2px); border-color: var(--rc); }
-    .char-shop-card.cs-card-selected { border-color: var(--rc); background: rgba(255,255,255,.08); box-shadow: 0 0 12px var(--rc)44; }
-    .char-shop-card.cs-card-locked { opacity: .75; }
-    .cs-img-outer {
-        position: relative; width: 88px; height: 88px; flex-shrink: 0;
-    }
-    .cs-img-wrap {
-        width: 88px; height: 88px;
-        border-radius: 50%; overflow: hidden;
-        box-shadow: 0 0 0 2.5px var(--rc, #9ca3af);
-    }
-    .cs-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .cs-lock-overlay {
-        position: absolute; inset: 0; background: rgba(0,0,0,.6);
-        display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
-    }
-    .cs-selected-badge {
-        position: absolute; top: -2px; right: -2px; background: #22c55e;
-        color: #fff; font-size: .65rem; font-weight: 800; width: 20px; height: 20px;
-        border-radius: 50%; display: flex; align-items: center; justify-content: center;
-        border: 2px solid #0e1a0e; box-shadow: 0 1px 4px rgba(0,0,0,.5);
-    }
-    .cs-new-badge {
-        position: absolute; top: -4px; left: -4px; background: #f59e0b;
-        color: #000; font-size: .48rem; font-weight: 900; letter-spacing: .5px;
-        padding: 2px 5px; border-radius: 6px;
-        border: 1.5px solid #92400e; box-shadow: 0 1px 6px rgba(245,158,11,.6);
-        animation: cs-new-pulse 1.6s ease-in-out infinite;
-    }
-    @keyframes cs-new-pulse {
-        0%, 100% { box-shadow: 0 1px 6px rgba(245,158,11,.6); }
-        50%       { box-shadow: 0 1px 12px rgba(245,158,11,1); }
-    }
-    .cs-rarity-label { font-family: var(--ft); font-size: .55rem; font-weight: 800; letter-spacing: .5px; }
-    .cs-char-name { font-family: var(--ft); font-size: .6rem; font-weight: 700; color: #fff; text-align: center; letter-spacing: .3px; }
-    .cs-action-btn {
-        font-family: var(--ft); font-size: .58rem; font-weight: 700; letter-spacing: .3px;
-        padding: 4px 8px; border-radius: 8px; border: none; cursor: pointer;
-        transition: opacity .2s, transform .1s; width: 100%; text-align: center;
-    }
-    .cs-action-btn:active { transform: scale(.93); }
-    .cs-select-btn   { background: transparent; color: #e8a020; border: 1.5px solid #e8a020; }
-    .cs-select-btn:hover { background: rgba(232,160,32,.15); }
-    .cs-selected-btn { background: #22c55e; color: #fff; border: 1.5px solid #22c55e; cursor: default; font-weight: 800; }
-    .cs-unlock-btn   { background: rgba(232,160,32,.2); color: #e8a020; border: 1px solid rgba(232,160,32,.4); }
-    .cs-unlock-btn:hover { background: rgba(232,160,32,.32); }
-    .cs-locked-btn   { background: rgba(255,255,255,.05); color: rgba(255,255,255,.3); border: 1px solid rgba(255,255,255,.1); cursor: not-allowed; }
-
-    /* ── Loadout + Gamemode row — CSS Grid pentru inaltime egala garantata ── */
-    .loadout-gamemode-row {
-        display: grid;
-        grid-template-columns: calc(52% - 6px) 1fr;
-        gap: 12px; width: 100%;
-    }
-    @media (max-width: 900px) {
-        .loadout-gamemode-row { grid-template-columns: 1fr; }
-    }
-
-    /* ── Build card ── */
-    .build-card {
-        background: var(--card); border: 1px solid var(--border);
-        border-radius: 14px; padding: 16px 14px; width: 100%;
-    }
-    .bc-header {
-        display: flex; justify-content: space-between; align-items: center;
-        margin-bottom: 16px; gap: 6px;
-    }
-    .bc-title {
-        font-family: var(--ft); font-size: 1rem; font-weight: 900;
-        color: #fff; letter-spacing: 1.5px;
-    }
-    .bc-points {
-        font-family: var(--ft); font-size: 1rem; font-weight: 900; color: var(--green);
-        background: rgba(52,211,154,0.1); border: 1px solid rgba(52,211,154,0.25);
-        border-radius: 8px; padding: 2px 10px; white-space: nowrap;
-    }
-    /* ── LOADOUT stat rows — 2-line grid, bara mereu vizibila ── */
-    .loadout-gamemode-row .build-card .stat-row {
-        display: grid;
-        grid-template-columns: 22px 1fr 74px;
-        grid-template-rows: auto auto;
-        column-gap: 8px; row-gap: 5px;
-        align-items: center;
-        margin-bottom: 14px;
-    }
-    .loadout-gamemode-row .build-card .stat-row:last-child { margin-bottom: 0; }
-    .loadout-gamemode-row .build-card .stat-icon   { grid-column: 1; grid-row: 1; font-size: 1.1rem; }
-    .loadout-gamemode-row .build-card .stat-name   { grid-column: 2; grid-row: 1; font-size: .75rem; width: auto; white-space: nowrap; }
-    .loadout-gamemode-row .build-card .stat-value  { grid-column: 3; grid-row: 1; font-size: .9rem; width: auto; min-width: unset; text-align: right; }
-    .loadout-gamemode-row .build-card .stat-controls {
-        grid-column: 1 / 4; grid-row: 2;
-        display: flex !important; align-items: center; gap: 8px;
-    }
-    .loadout-gamemode-row .build-card .stat-bar  { flex: 1; height: 10px; border-radius: 5px; }
-    .loadout-gamemode-row .build-card .stat-btn  { width: 32px; height: 32px; font-size: 1.1rem; border-radius: 9px; flex-shrink: 0; }
-
-    /* ── Gamemode panel ── */
-    .gamemode-panel {
-        flex: 1; min-width: 0;
-        display: flex; flex-direction: column; gap: 8px;
-    }
-    .gm-label {
-        font-family: var(--ft); font-size: .68rem; font-weight: 700;
-        color: var(--dim); letter-spacing: 2px; text-align: center; padding: 2px 0;
-        flex-shrink: 0;
-    }
-    .gm-card {
-        width: 100%; flex: 1;
-        background: rgba(14,30,14,0.72);
-        border: 1.5px solid rgba(255,255,255,0.08);
-        border-radius: 12px; padding: 14px 13px;
-        display: flex; align-items: center; gap: 10px;
-        cursor: pointer; transition: all 0.22s ease; text-align: left;
-        min-height: 0;
-    }
-    .gm-card:hover { border-color: rgba(255,255,255,0.2); transform: translateY(-1px); }
-    .gm-icon { font-size: 1.6rem; flex-shrink: 0; line-height: 1; }
-    .gm-info { flex: 1; min-width: 0; }
-    .gm-name { font-family: var(--ft); font-size: .8rem; font-weight: 900; color: #fff; letter-spacing: .8px; line-height: 1.2; }
-    .gm-desc { font-family: var(--fb); font-size: .6rem; color: var(--dim); margin-top: 4px; line-height: 1.35; }
-    .gm-check {
-        width: 20px; height: 20px; border-radius: 50%;
-        border: 2px solid rgba(255,255,255,.2); flex-shrink: 0;
-        display: flex; align-items: center; justify-content: center;
-        font-size: .65rem; color: transparent; transition: all .22s;
-    }
-    /* Battle Royale */
-    .gm-br { border-color: rgba(232,160,32,0.2); }
-    .gm-br:hover { border-color: rgba(232,160,32,0.5); background: rgba(232,160,32,0.04); }
-    .gm-br.gm-selected {
-        border-color: #e8a020; background: rgba(232,160,32,0.1);
-        box-shadow: 0 0 18px rgba(232,160,32,0.2), inset 0 0 14px rgba(232,160,32,0.04);
-    }
-    .gm-br.gm-selected .gm-check { border-color: #e8a020; background: #e8a020; color: #000; }
-    .gm-br.gm-selected .gm-name  { color: #e8c060; }
-    .gm-br.gm-deselected { opacity: 0.4; transform: scale(0.96); }
-    /* Survival PvE */
-    .gm-pve { border-color: rgba(52,211,154,0.2); }
-    .gm-pve:hover { border-color: rgba(52,211,154,0.5); background: rgba(52,211,154,0.04); }
-    .gm-pve.gm-selected {
-        border-color: #34d39a; background: rgba(52,211,154,0.1);
-        box-shadow: 0 0 18px rgba(52,211,154,0.2), inset 0 0 14px rgba(52,211,154,0.04);
-    }
-    .gm-pve.gm-selected .gm-check { border-color: #34d39a; background: #34d39a; color: #000; }
-    .gm-pve.gm-selected .gm-name  { color: #34d39a; }
-    .gm-pve.gm-deselected { opacity: 0.4; transform: scale(0.96); }
-
-    /* ── Ambient color transitions per gamemode ── */
-    .lobby-orb { transition: background 0.7s ease, opacity 0.7s ease; }
-    #screen-lobby.mode-pve .lobby-orb.o1 { background: #34d39a; opacity: 0.07; }
-    #screen-lobby.mode-pve .lobby-orb.o2 { background: #5bb8f5; opacity: 0.07; }
-    #screen-lobby.mode-pve .lobby-orb.o3 { background: #34d39a; opacity: 0.05; }
-    #screen-lobby.mode-br  .lobby-orb.o1 { background: #e8a020; opacity: 0.07; }
-    #screen-lobby.mode-br  .lobby-orb.o2 { background: #e94560; opacity: 0.07; }
-    #screen-lobby.mode-br  .lobby-orb.o3 { background: #e8a020; opacity: 0.05; }
-    #screen-lobby.mode-pve .lb-topbar {
-        border-bottom-color: rgba(52,211,154,0.6);
-        box-shadow: 0 6px 28px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(52,211,154,0.18);
-        transition: border-bottom-color 0.5s, box-shadow 0.5s;
-    }
-    .lb-topbar { transition: border-bottom-color 0.5s, box-shadow 0.5s; }
-
-    .stat-row {
-        display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
-    }
-    .stat-icon { font-size: 1.2rem; flex-shrink: 0; }
-    .stat-name { font-family: var(--ft); font-size: .8rem; font-weight: 700; color: var(--dim); width: 38px; flex-shrink: 0; }
-    .stat-value { font-family: var(--fb); font-size: .95rem; font-weight: 700; color: #fff; width: 76px; text-align: right; flex-shrink: 0; }
-    .stat-controls { display: flex; align-items: center; gap: 8px; flex: 1; }
-    .stat-btn {
-        width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.14);
-        background: rgba(255,255,255,.06); color: #fff; font-size: 1.2rem;
-        cursor: pointer; display: flex; align-items: center; justify-content: center;
-        flex-shrink: 0; transition: all .15s; touch-action: manipulation;
-    }
-    .stat-btn:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.28); }
-    .stat-btn:active { transform: scale(.88); }
-    .stat-bar { flex: 1; height: 8px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; }
-    .stat-fill { height: 100%; border-radius: 4px; transition: width .2s; }
-    .stat-fill.red    { background: linear-gradient(90deg, #e8a020, #f0c050); }
-    .stat-fill.orange { background: linear-gradient(90deg, #ff6b00, #ffa500); }
-    .stat-fill.blue   { background: linear-gradient(90deg, #00aaff, #00d4ff); }
-
-    .build-type {
-        text-align: center; font-family: var(--fb); font-size: .82rem;
-        color: var(--dim); padding: 8px; background: rgba(255,255,255,.03);
-        border-radius: 8px; margin-top: 4px;
-    }
-
-    /* ── Room card — split layout ── */
-    .room-card {
-        background: var(--card); border: 1px solid var(--border);
-        border-radius: 14px; width: 100%;
-        overflow: hidden; padding: 0;
-    }
-    .rc-split {
-        display: flex; width: 100%; min-height: 170px;
-    }
-    /* Left: mode info panel */
-    .rc-mode-panel {
-        flex: 0 0 42%; display: flex; flex-direction: column;
-        align-items: center; justify-content: center; gap: 8px;
-        padding: 16px 12px; text-align: center;
-        background: rgba(255,255,255,0.02);
-        border-radius: 10px; margin: 8px 0 8px 8px;
-        transition: background 0.5s;
-        position: relative; overflow: hidden;
-    }
-    .rc-mode-panel::before {
-        content: '';
-        position: absolute; inset: 0;
-        background: radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.05), transparent 70%);
-        pointer-events: none;
-    }
-    #screen-lobby.mode-br  .rc-mode-panel {
-        background: linear-gradient(160deg, rgba(232,160,32,0.18), rgba(233,69,96,0.09));
-    }
-    #screen-lobby.mode-pve .rc-mode-panel {
-        background: linear-gradient(160deg, rgba(52,211,154,0.18), rgba(91,184,245,0.09));
-    }
-    .rc-no-sel {
-        display: flex; flex-direction: column; align-items: center; gap: 8px;
-        opacity: 0.45;
-    }
-    .rc-no-sel-icon { font-size: 2rem; line-height: 1; }
-    .rc-no-sel-txt { font-family: var(--ft); font-size: .65rem; font-weight: 700; color: var(--dim); letter-spacing: .5px; line-height: 1.4; }
-    .rc-mode-info { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-    .rc-big-icon { font-size: 2.4rem; line-height: 1; }
-    .rc-mode-big-name {
-        font-family: var(--ft); font-size: .82rem; font-weight: 900;
-        color: #fff; letter-spacing: 1px; line-height: 1.2;
-    }
-    .rc-mode-badge {
-        font-family: var(--ft); font-size: .55rem; font-weight: 800;
-        letter-spacing: 1.5px; padding: 2px 9px; border-radius: 20px;
-        background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);
-        text-transform: uppercase;
-    }
-    #screen-lobby.mode-br  .rc-mode-badge { background: rgba(232,160,32,0.22); color: #e8c060; }
-    #screen-lobby.mode-pve .rc-mode-badge { background: rgba(52,211,154,0.22); color: #34d39a; }
-    .rc-mode-big-desc { font-family: var(--fb); font-size: .59rem; color: var(--dim); line-height: 1.35; }
-    .rc-mode-features {
-        display: flex; flex-direction: column; align-items: center; gap: 3px;
-        margin-top: 2px;
-    }
-    .rc-mode-feat-line {
-        font-family: var(--fb); font-size: .57rem; color: rgba(255,255,255,0.45);
-        line-height: 1.3;
-    }
-    #screen-lobby.mode-br  .rc-mode-big-name { color: #e8c060; }
-    #screen-lobby.mode-pve .rc-mode-big-name { color: #34d39a; }
-
-    /* Right: actions panel */
-    .rc-actions {
-        flex: 1; min-width: 0;
-        display: flex; flex-direction: column; gap: 8px;
-        padding: 14px 14px;
-    }
-
-    /* ── PLAY button ── */
-    .btn-play {
-        width: 100%; border: none; border-radius: 10px;
-        padding: 10px 16px; font-family: var(--ft);
-        font-size: clamp(.78rem, 2.2vw, .88rem); font-weight: 900;
-        cursor: pointer; transition: all .2s; letter-spacing: 2.5px;
-        text-align: center; touch-action: manipulation; color: #fff;
-        background: linear-gradient(135deg, #e8a020, #b07010);
-    }
-    .btn-play:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 18px rgba(232,160,32,.4); }
-    .btn-play:disabled {
-        opacity: 0.35; cursor: not-allowed;
-        background: linear-gradient(135deg, rgba(130,130,130,0.5), rgba(80,80,80,0.5));
-    }
-    #screen-lobby.mode-pve .btn-play:not(:disabled) {
-        background: linear-gradient(135deg, #34d39a, #1a9e6e);
-    }
-    #screen-lobby.mode-pve .btn-play:hover:not(:disabled) { box-shadow: 0 5px 18px rgba(52,211,154,.4); }
-
-    /* ── Mobile / tablet layout (≤768px) ── */
-    @media (max-width: 768px) {
-        /* Topbar compact — icon-only right buttons */
-        .lb-topbar { height: 60px; padding: 0 8px; gap: 4px; }
-        #screen-lobby::after { top: 60px; }
-        .lb-topbar-title { font-size: clamp(.88rem, 2.8vw, 1.15rem); letter-spacing: 1px; }
-        .lb-topbar-back { padding: 6px 10px; font-size: .7rem; }
-        .lb-btn-text { display: none; }
-        .lb-btn { padding: 6px 9px; font-size: .78rem; }
-        .lti-btn { font-size: .58rem; padding: 5px 7px; letter-spacing: 0; }
-
-        /* Character section horizontal */
-        .char-section { flex-direction: row !important; align-items: center; gap: 14px; }
-        .char-preview-outer { width: 80px !important; height: 80px !important; flex-shrink: 0; }
-        .char-name { font-size: clamp(1.1rem, 6vw, 1.6rem) !important; text-align: left !important; }
-        .char-section-text { align-items: flex-start !important; }
-
-        /* Room card — stack mode panel and actions vertically */
-        .rc-split { flex-direction: column; min-height: unset; }
-        .rc-mode-panel {
-            flex: none; border-radius: 10px; margin: 8px 8px 0 8px;
-            padding: 10px 14px; min-height: unset;
-            flex-direction: row; align-items: center; gap: 10px;
-        }
-        .rc-no-sel { flex-direction: row; gap: 8px; }
-        .rc-no-sel-icon { font-size: 1.5rem; }
-        .rc-no-sel-txt { text-align: left; }
-        .rc-mode-info {
-            flex-direction: row; flex-wrap: wrap;
-            align-items: center; gap: 4px 8px; width: 100%;
-        }
-        .rc-big-icon { font-size: 1.8rem; flex-shrink: 0; }
-        .rc-mode-big-name { font-size: .76rem; }
-        .rc-mode-badge { font-size: .52rem; padding: 2px 7px; }
-        .rc-mode-big-desc { width: 100%; text-align: left; font-size: .56rem; }
-        .rc-mode-features { width: 100%; flex-direction: row; gap: 10px; margin-top: 0; flex-wrap: wrap; }
-        .rc-mode-feat-line { font-size: .54rem; }
-        .rc-actions { padding: 10px 12px; gap: 7px; }
-        .btn-play { padding: 10px 14px; font-size: .82rem; }
-        .join-input { padding: 10px 12px; font-size: .82rem; }
-        .btn-join { padding: 10px 12px; }
-        .or-divider { font-size: .66rem; }
-
-        /* Gamemode cards compact */
-        .gm-card { padding: 10px 12px; }
-        .gm-name { font-size: .76rem; }
-        .gm-icon { font-size: 1.4rem; }
-
-        /* Chest slots tighter */
-        .chest-slot { min-height: 64px; }
-        .chest-slot-icon { font-size: 1.2rem; }
-    }
-
-    /* Very small phones (≤420px) — extra refinements */
-    @media (max-width: 420px) {
-        .rc-big-icon { font-size: 1.5rem; }
-        .lti-btn { font-size: .52rem; padding: 4px 5px; }
-        .lb-topbar-title { font-size: .85rem; }
-        .char-preview-outer { width: 68px !important; height: 68px !important; }
-    }
-
-    /* keep old btn-create stub */
-    .btn-create { display: none; }
-
-    .or-divider {
-        display: flex; align-items: center; gap: 10px;
-        color: var(--dim); font-size: .72rem; font-family: var(--fb);
-    }
-    .or-divider::before, .or-divider::after {
-        content: ''; flex: 1; height: 1px; background: var(--border);
-    }
-
-    .join-row { display: flex; gap: 8px; }
-    .join-input {
-        flex: 1; background: rgba(255,255,255,.04); border: 1px solid var(--border);
-        border-radius: 10px; padding: 12px 12px; color: #fff;
-        font-family: var(--ft); font-size: .88rem; font-weight: 700;
-        letter-spacing: 3px; text-transform: uppercase; min-width: 0;
-        touch-action: manipulation;
-    }
-    .join-input:focus { outline: none; border-color: var(--accent); }
-    .join-input::placeholder { font-family: var(--fb); font-size: .78rem; letter-spacing: normal; color: var(--dim); font-weight: 400; text-transform: none; }
-    .btn-join {
-        background: rgba(255,255,255,.06); border: 1px solid var(--border);
-        color: #fff; border-radius: 10px; padding: 12px 14px;
-        font-family: var(--ft); font-size: .75rem; font-weight: 700;
-        cursor: pointer; transition: all .2s; white-space: nowrap;
-        line-height: 1.15;
-        touch-action: manipulation;
-    }
-    .btn-join:hover { background: rgba(255,255,255,.12); }
-
-    .room-err { color: var(--accent); font-size: .78rem; text-align: center; min-height: 16px; font-family: var(--fb); }
-    .lobby-err { color: var(--accent); font-size: .78rem; text-align: center; min-height: 16px; font-family: var(--fb); }
-
-    /* ======================================================
-       ECRAN WAITING — responsive
-    ====================================================== */
-    #screen-waiting {
-        position: fixed; inset: 0; display: none;
-        flex-direction: column; align-items: stretch; justify-content: flex-start;
-        background: transparent; overflow: hidden;
-    }
-    .waiting-topbar {
-        position: relative; z-index: 1; flex-shrink: 0;
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 10px 14px; border-bottom: 2px solid rgba(232,160,32,0.5);
-        background: linear-gradient(180deg, #141f14 0%, #0a120a 100%);
-    }
-    .waiting-scroll {
-        flex: 1; overflow-y: auto; display: flex; flex-direction: column;
-        align-items: center; justify-content: flex-start;
-        scrollbar-width: none; -ms-overflow-style: none;
-        background: rgba(3,8,3,0.48);
-    }
-    .waiting-scroll::-webkit-scrollbar { display: none; }
-
-    /* ======================================================
-       EXIT BUTTON (in-game)
-    ====================================================== */
-    #btn-leave-game {
-        position: absolute;
-        top: 12px;
-        right: 12px;
-        z-index: 20;
-        background: rgba(0,0,0,0.45);
-        border: 1px solid rgba(255,255,255,0.10);
-        color: rgba(255,255,255,0.30);
-        border-radius: 8px;
-        padding: 5px 12px;
-        font-size: 11px;
-        font-family: var(--ft);
-        letter-spacing: 1px;
-        cursor: pointer;
-        transition: background 0.15s, color 0.15s, border-color 0.15s;
-    }
-    #btn-leave-game:hover {
-        background: rgba(180,30,30,0.65);
-        color: rgba(255,255,255,0.85);
-        border-color: rgba(255,80,80,0.35);
-    }
-
-    #btn-mute-game {
-        position: absolute;
-        top: 12px;
-        right: 90px;
-        z-index: 20;
-        background: rgba(0,0,0,0.45);
-        border: 1px solid rgba(255,255,255,0.10);
-        color: rgba(255,255,255,0.55);
-        border-radius: 8px;
-        padding: 5px 10px;
-        font-size: 14px;
-        cursor: pointer;
-        transition: background 0.15s, color 0.15s;
-    }
-    #btn-mute-game:hover {
-        background: rgba(60,60,60,0.7);
-        color: rgba(255,255,255,0.9);
-    }
-
-    #btn-debug-toggle {
-        position: absolute;
-        top: 12px;
-        right: 160px;
-        z-index: 20;
-        background: rgba(0,0,0,0.45);
-        border: 1px solid rgba(255,255,255,0.10);
-        color: rgba(255,255,255,0.55);
-        border-radius: 8px;
-        padding: 5px 10px;
-        font-size: 12px;
-        font-family: monospace;
-        cursor: pointer;
-        transition: background 0.15s, color 0.15s;
-    }
-    #btn-debug-toggle:hover, #btn-debug-toggle.active {
-        background: rgba(0,255,136,0.15);
-        color: #00ff88;
-        border-color: rgba(0,255,136,0.3);
-    }
-
-    /* ── Buton + invita (stânga gridului de jucători) ── */
-    .waiting-invite-btn {
-        width: 42px; height: 42px;
-        border-radius: 50%;
-        background: #e8a020;
-        color: #000;
-        border: none;
-        font-size: 26px; font-weight: 900;
-        line-height: 1;
-        cursor: pointer;
-        flex-shrink: 0;
-        display: flex; align-items: center; justify-content: center;
-        transition: background 0.15s, transform 0.15s;
-        padding: 0;
-        box-shadow: 0 2px 10px rgba(232,160,32,0.45);
-        align-self: center;
-    }
-    .waiting-invite-btn:hover {
-        background: #ffd060;
-        transform: scale(1.12);
-    }
-
-    /* ── Panou Invita Prieteni ── */
-    #waiting-invite-panel {
-        position: fixed; inset: 0; z-index: 500;
-        display: flex; align-items: center; justify-content: center;
-    }
-    .wip-overlay {
-        position: absolute; inset: 0;
-        background: rgba(0,0,0,0.55);
-        backdrop-filter: blur(4px);
-    }
-    .wip-modal {
-        position: relative; z-index: 1;
-        background: #131c28;
-        border: 1.5px solid rgba(232,160,32,0.35);
-        border-radius: 16px;
-        width: min(340px, 90vw);
-        max-height: 70vh;
-        display: flex; flex-direction: column;
-        box-shadow: 0 12px 48px rgba(0,0,0,0.7);
-        overflow: hidden;
-    }
-    .wip-header {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 14px 18px;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
-    }
-    .wip-title {
-        font-family: var(--ft); font-weight: 800; font-size: 0.9rem;
-        letter-spacing: 1px; color: #fff;
-    }
-    .wip-close {
-        background: none; border: none; color: rgba(255,255,255,0.5);
-        font-size: 1rem; cursor: pointer; padding: 2px 6px;
-        transition: color 0.15s;
-    }
-    .wip-close:hover { color: #fff; }
-    .wip-body {
-        overflow-y: auto; padding: 12px 14px;
-        display: flex; flex-direction: column; gap: 8px;
-    }
-    .wip-body::-webkit-scrollbar { width: 4px; }
-    .wip-body::-webkit-scrollbar-track { background: transparent; }
-    .wip-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
-    .wip-empty {
-        color: rgba(255,255,255,0.35); font-size: 0.8rem;
-        text-align: center; padding: 20px 0;
-        font-family: var(--ft);
-    }
-    .wip-friend-row {
-        display: flex; align-items: center; gap: 10px;
-        background: rgba(255,255,255,0.04);
-        border-radius: 10px; padding: 10px 12px;
-    }
-    .wip-dot {
-        width: 8px; height: 8px; border-radius: 50%;
-        background: #34d39a; flex-shrink: 0;
-    }
-    .wip-nick {
-        flex: 1; font-family: var(--ft); font-size: 0.85rem;
-        color: #fff; font-weight: 600;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .wip-invite-btn {
-        background: linear-gradient(135deg,#e8a020,#b07010);
-        color: #fff; border: none; border-radius: 8px;
-        padding: 5px 14px; font-size: 0.72rem; font-weight: 800;
-        font-family: var(--ft); letter-spacing: 0.5px;
-        cursor: pointer; transition: opacity 0.15s;
-        white-space: nowrap;
-    }
-    .wip-invite-btn:hover { opacity: 0.85; }
-    .wip-invite-btn:disabled { opacity: 0.4; cursor: default; }
-    .wip-in-room {
-        font-family: var(--ft); font-size: 0.72rem; font-weight: 700;
-        color: #34d39a; white-space: nowrap;
-    }
-
-    /* ── Popup invitatie primita ── */
-    #room-invite-popup {
-        position: fixed;
-        top: 20px; left: 50%; transform: translateX(-50%);
-        z-index: 9999;
-        animation: rip-slide-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both;
-    }
-    @keyframes rip-slide-in {
-        from { opacity: 0; transform: translateX(-50%) translateY(-28px); }
-        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-    }
-    .rip-card {
-        background: #131c28;
-        border: 1.5px solid rgba(232,160,32,0.5);
-        border-radius: 16px;
-        padding: 16px 20px;
-        width: min(320px, 90vw);
-        box-shadow: 0 8px 36px rgba(0,0,0,0.7), 0 0 0 1px rgba(232,160,32,0.1);
-        display: flex; flex-direction: column; gap: 10px;
-    }
-    .rip-badge {
-        font-family: var(--ft); font-size: 0.7rem; font-weight: 800;
-        letter-spacing: 1.5px; color: #e8a020; text-transform: uppercase;
-    }
-    .rip-body {
-        font-family: var(--ft); font-size: 0.9rem; color: #fff; line-height: 1.4;
-    }
-    .rip-body strong { color: #e8a020; }
-    .rip-code {
-        font-family: var(--ft); font-size: 0.78rem;
-        color: rgba(255,255,255,0.5);
-    }
-    .rip-code span {
-        color: #5bb8f5; font-weight: 700; letter-spacing: 2px;
-    }
-    .rip-actions {
-        display: flex; gap: 10px;
-    }
-    .rip-decline {
-        flex: 1; background: rgba(255,255,255,0.07);
-        border: 1px solid rgba(255,255,255,0.12);
-        color: rgba(255,255,255,0.6); border-radius: 10px;
-        padding: 9px; font-family: var(--ft); font-size: 0.78rem;
-        font-weight: 700; cursor: pointer; transition: background 0.15s;
-    }
-    .rip-decline:hover { background: rgba(255,255,255,0.12); }
-    .rip-accept {
-        flex: 1; background: linear-gradient(135deg,#34d39a,#1fa870);
-        border: none; color: #000; border-radius: 10px;
-        padding: 9px; font-family: var(--ft); font-size: 0.78rem;
-        font-weight: 800; cursor: pointer; transition: opacity 0.15s;
-        letter-spacing: 0.5px;
-    }
-    .rip-accept:hover { opacity: 0.88; }
-    .rip-timer {
-        height: 3px; background: rgba(255,255,255,0.1);
-        border-radius: 2px; overflow: hidden;
-    }
-    .rip-timer-bar {
-        height: 100%; background: #e8a020; border-radius: 2px;
-        width: 100%;
-        transition: width linear;
-    }
-
-    #leave-confirm {
-        position: absolute; inset: 0; z-index: 80;
-        display: none; align-items: center; justify-content: center;
-        background: rgba(2,8,2,.72); backdrop-filter: blur(6px);
-        padding: 18px;
-    }
-    .leave-confirm-card {
-        width: min(340px, 92vw);
-        background: rgba(10,20,10,0.98);
-        border: 1.5px solid rgba(232,160,32,0.45);
-        border-radius: 16px; padding: 22px 20px 18px;
-        box-shadow: 0 20px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(80,140,60,.12), inset 0 1px 0 rgba(255,255,255,.05);
-        text-align: center;
-    }
-    .leave-confirm-icon {
-        font-size: 2rem; margin-bottom: 6px; display: block;
-        filter: drop-shadow(0 0 10px rgba(232,160,32,.5));
-    }
-    .leave-confirm-title {
-        font-family: var(--ft); font-size: 1rem; font-weight: 900;
-        color: #e8a020; letter-spacing: 1.5px; margin-bottom: 6px;
-        text-shadow: 0 0 16px rgba(232,160,32,.4);
-    }
-    .leave-confirm-text {
-        font-size: .8rem; color: rgba(180,210,160,.6); line-height: 1.5;
-        margin-bottom: 18px;
-    }
-    .leave-confirm-actions {
-        display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-    }
-    .leave-confirm-actions button {
-        border-radius: 10px; padding: 12px 10px;
-        font-family: var(--ft); font-size: .72rem; font-weight: 800;
-        cursor: pointer; line-height: 1.15; transition: all .2s;
-    }
-    .leave-confirm-cancel {
-        background: rgba(80,140,60,.15); border: 1px solid rgba(80,140,60,.35);
-        color: rgba(180,210,160,.85);
-    }
-    .leave-confirm-cancel:hover { background: rgba(80,140,60,.28); border-color: rgba(80,140,60,.6); }
-    .leave-confirm-exit {
-        background: linear-gradient(135deg, #b91c1c, #ef4444);
-        border: 1px solid rgba(239,68,68,.5);
-        color: #fff; box-shadow: 0 4px 14px rgba(185,28,28,.4);
-    }
-    .leave-confirm-exit:hover { box-shadow: 0 6px 20px rgba(239,68,68,.55); transform: translateY(-1px); }
-
-    /* ======================================================
-       KILL NOTIFICATION
-    ====================================================== */
-    #kill-notif {
-        position: absolute;
-        top: min(105px, 14vh);
-        left: 50%;
-        transform: translateX(-50%) scale(1);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        pointer-events: none;
-        z-index: 30;
-        opacity: 0;
-    }
-    #kill-notif.active { animation: killPop 2.4s ease forwards; }
-    #kill-notif-skull {
-        font-size: 40px;
-        line-height: 1;
-        filter: drop-shadow(0 0 12px #e8a020) drop-shadow(0 0 4px #000);
-    }
-    #kill-notif-count {
-        font-family: var(--ft);
-        font-size: 15px;
-        font-weight: 900;
-        color: #e8a020;
-        text-shadow: 0 0 10px #e8a020, 0 0 3px #000;
-        letter-spacing: 4px;
-        margin-top: 2px;
-    }
-    @keyframes killPop {
-        0%   { opacity: 0; transform: translateX(-50%) scale(0.3); }
-        12%  { opacity: 1; transform: translateX(-50%) scale(1.28); }
-        22%  { opacity: 1; transform: translateX(-50%) scale(0.96); }
-        60%  { opacity: 1; transform: translateX(-50%) scale(1);    }
-        100% { opacity: 0; transform: translateX(-50%) scale(1);    }
-    }
-
-    /* ======================================================
-       COUNTDOWN OVERLAY
-    ====================================================== */
-    #countdown-overlay {
-        position: absolute; inset: 0;
-        background: rgba(0,0,0,0.72);
-        display: none; align-items: center; justify-content: center;
-        z-index: 60; user-select: none;
-    }
-    #countdown-overlay.active { display: flex; }
-    #countdown-number {
-        font-family: var(--ft); font-weight: 900;
-        font-size: clamp(80px, 20vw, 160px);
-        color: #fff;
-        text-shadow: 0 0 60px rgba(232,160,32,0.9), 0 0 20px rgba(232,160,32,0.5);
-        animation: countPop 0.3s cubic-bezier(0.22,1,0.36,1);
-    }
-    @keyframes countPop {
-        from { transform: scale(1.6); opacity: 0; }
-        to   { transform: scale(1);   opacity: 1; }
-    }
-
-    /* ======================================================
-       GAMEOVER — responsive
-    ====================================================== */
-    #screen-gameover {
-        position: absolute; inset: 0; display: none;
-        flex-direction: column; align-items: center; justify-content: flex-start;
-        background: rgba(3,10,3,.88); backdrop-filter: blur(8px);
-        overflow-y: auto; padding: 16px;
-        scrollbar-width: none; -ms-overflow-style: none;
-    }
-    #screen-gameover::-webkit-scrollbar { display: none; }
-    .gameover-content {
-        display: flex; flex-direction: column; align-items: center;
-        gap: 14px; width: 100%; max-width: 340px;
-        text-align: center; margin: auto;
-    }
-
-    /* Stats runda */
-    .round-stats {
-        background: rgba(80,140,60,.1); border: 1px solid rgba(80,140,60,.3);
-        border-radius: 14px; padding: 18px 16px;
-        width: 100%;
-    }
-    .stats-kills-big {
-        display: flex; flex-direction: column; align-items: center; gap: 6px;
-    }
-    .stats-kills-num {
-        font-family: var(--ft); font-size: 3.5rem; font-weight: 900;
-        color: var(--accent); line-height: 1;
-        text-shadow: 0 0 24px rgba(232,160,32,.5);
-    }
-    .stats-kills-lbl {
-        font-family: var(--ft); font-size: .6rem; font-weight: 700;
-        color: rgba(180,210,160,.6); letter-spacing: 2px;
-    }
-
-    /* ======================================================
-       LEADERBOARD PILL — reutilizabil
-    ====================================================== */
-    .lb-btn {
-        color: var(--accent); text-decoration: none; font-family: var(--ft);
-        font-size: .68rem; font-weight: 700; letter-spacing: 1px;
-        padding: 7px 13px; border: 1px solid rgba(232,160,32,0.45); border-radius: 18px;
-        background: rgba(232,160,32,0.11);
-        transition: all .2s; white-space: nowrap; display: inline-flex;
-        align-items: center; gap: 5px;
-        box-shadow: 0 2px 8px rgba(232,160,32,0.1);
-    }
-    .lb-btn:hover { background: rgba(232,160,32,0.22); border-color: rgba(232,160,32,0.7); box-shadow: 0 4px 16px rgba(232,160,32,0.25); }
-
-    /* ======================================================
-       RESPONSIVE — ajustari tablet & phone
-    ====================================================== */
-    @media (max-width: 380px) {
-        .auth-wrap { padding: 16px 12px 32px; gap: 14px; }
-        .auth-form { padding: 18px 14px; gap: 14px; }
-        .lobby-inner { padding: 12px 10px max(32px, calc(env(safe-area-inset-bottom) + 12px)); gap: 12px; }
-        .build-card, .room-card { padding: 12px; }
-        .stat-btn { width: 32px; height: 32px; }
-    }
-    @media (min-width: 600px) {
-        .char-section { flex-direction: row; align-items: center; gap: 20px; }
-        .char-section-text { text-align: left; }
-        .char-name { font-size: 2rem; }
-        .lobby-inner { gap: 18px; padding: 20px 20px max(50px, calc(env(safe-area-inset-bottom) + 24px)); }
-    }
-    @media (min-width: 900px) {
-        .lobby-inner { max-width: 640px; }
-        .build-card, .room-card { padding: 18px 20px; }
-    }
-
-    /* ======================================================
-       LEADERBOARD OVERLAY
-    ====================================================== */
-    #lb-overlay {
-        position: fixed; inset: 0; z-index: 2000;
-        display: flex; align-items: center; justify-content: center;
-        padding: 16px;
-    }
-    .lbo-backdrop {
-        position: absolute; inset: 0;
-        background: rgba(0,0,0,.78); backdrop-filter: blur(5px);
-        cursor: pointer;
-    }
-    .lbo-card {
-        position: relative; z-index: 1;
-        background: #0e1a0e; border: 1.5px solid rgba(232,160,32,0.45);
-        border-radius: 16px; width: 100%; max-width: 640px;
-        max-height: 85vh; display: flex; flex-direction: column;
-        overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,.7), 0 0 0 1px rgba(80,140,60,.15);
-    }
-    .lbo-header {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 14px 18px; border-bottom: 1.5px solid rgba(232,160,32,0.35);
-        flex-shrink: 0; background: linear-gradient(180deg, #141f14 0%, #0a120a 100%);
-    }
-    .lbo-title {
-        font-family: var(--ft); font-size: 1rem; font-weight: 900;
-        color: #e8a020; letter-spacing: 1px;
-        text-shadow: 0 0 18px rgba(232,160,32,0.4);
-    }
-    .lbo-close {
-        background: none; border: 1px solid rgba(255,255,255,.15); color: rgba(200,215,200,.7);
-        border-radius: 8px; padding: 5px 10px; font-size: .85rem;
-        cursor: pointer; transition: all .2s; font-family: var(--fb);
-        line-height: 1.15; white-space: normal; text-align: center;
-    }
-    .lbo-close:hover { color: #fff; border-color: rgba(232,160,32,.5); background: rgba(232,160,32,.1); }
-    .lbo-table-wrap { overflow-y: auto; flex: 1; }
-    .lbo-table-wrap table { width: 100%; border-collapse: collapse; min-width: 380px; }
-    .lbo-table-wrap thead th {
-        background: rgba(14,26,14,0.97); color: rgba(180,210,160,.6);
-        font-family: var(--ft); font-size: .58rem; font-weight: 700;
-        letter-spacing: 1.5px; text-transform: uppercase;
-        padding: 10px 12px; text-align: left;
-        border-bottom: 1px solid rgba(80,140,60,.25);
-        position: sticky; top: 0; z-index: 1;
-    }
-    .lbo-table-wrap thead th.center { text-align: center; }
-    .lbo-table-wrap tbody tr { border-bottom: 1px solid rgba(80,140,60,.18); transition: background .15s; }
-    .lbo-table-wrap tbody tr:last-child { border-bottom: none; }
-    .lbo-table-wrap tbody tr:hover { background: rgba(80,140,60,.07); }
-    .lbo-table-wrap tbody tr.top-1 { background: rgba(232,160,32,.08); }
-    .lbo-table-wrap tbody tr.top-2 { background: rgba(192,192,192,.05); }
-    .lbo-table-wrap tbody tr.top-3 { background: rgba(205,127,50,.05); }
-    .lbo-table-wrap td { padding: 10px 12px; font-size: .9rem; }
-    .lbo-table-wrap td.rank { font-size: 1rem; width: 44px; text-align: center; }
-    .lbo-table-wrap td.name { font-family: var(--ft); font-size: .72rem; font-weight: 700; color: #e8f5e0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lbo-table-wrap td.wins  { color: #e8a020; font-weight: 700; text-align: center; }
-    .lbo-table-wrap td.kills { color: #f87171; font-weight: 700; text-align: center; }
-    .lbo-table-wrap td.games { color: rgba(180,210,160,.55); text-align: center; }
-    .lbo-table-wrap td.krate { color: #4ade80; font-weight: 700; text-align: center; }
-    .lbo-status { text-align: center; padding: 32px; color: rgba(180,210,160,.5); font-size: .85rem; }
-
-    /* ======================================================
-       ECRAN ROTIRE DISPOZITIV
-    ====================================================== */
-    #rotate-overlay {
-        display: none; position: fixed; inset: 0; z-index: 99999;
-        background: var(--bg); flex-direction: column;
-        align-items: center; justify-content: center;
-        gap: 16px; text-align: center; padding: 24px;
-        pointer-events: all;
-    }
-    .rotate-phone {
-        font-size: 3.5rem;
-        animation: rotateTip 2s ease-in-out infinite;
-        display: block;
-    }
-    @keyframes rotateTip {
-        0%, 25%  { transform: rotate(0deg); }
-        60%, 85% { transform: rotate(90deg); }
-        100%     { transform: rotate(0deg); }
-    }
-    .rotate-title {
-        font-family: var(--ft); font-size: 1.1rem; font-weight: 900;
-        color: #fff; letter-spacing: 1px;
-    }
-    .rotate-sub { color: var(--dim); font-size: .78rem; font-family: var(--fb); }
-
-    /* ======================================================
-       LANDSCAPE COMPACT — max-height: 520px
-       (telefoane in landscape, ~360-480px inaltime)
-    ====================================================== */
-    /* Compact pentru ecrane cu inaltime mica (portret telefon / landscape mic) */
-    @media (max-height: 680px) {
-        /* Auth */
-        .auth-wrap { gap: 10px; padding: 14px 16px 18px; }
-        .auth-logo-icon { font-size: 2rem; }
-        .auth-logo-title { font-size: clamp(1.3rem, 5vw, 1.7rem); }
-        .auth-tab { padding: 10px 8px; }
-        .auth-form { padding: 12px 18px 16px; gap: 10px; }
-        .auth-btn { padding: 12px 20px; }
-        /* Gameover */
-        #gameover-title { font-size: clamp(0.9rem, 4vw, 1.8rem) !important; margin-bottom: 2px !important; }
-        #gameover-msg   { margin-bottom: 6px !important; font-size: .88rem; }
-        .gameover-content { gap: 10px; }
-        .gameover-content button { padding: 11px 28px; font-size: .82rem; }
-        .round-stats { padding: 10px 12px; }
-        .stats-kills-num { font-size: 2.2rem; }
-    }
-
-    @media (max-height: 520px) {
-
-        /* Lobby — 2 coloane */
-        .lobby-inner {
-            display: grid;
-            grid-template-columns: 110px 1fr;
-            grid-template-rows: auto auto auto;
-            align-items: start;
-            padding: 6px 10px 10px;
-            gap: 6px;
-        }
-        .char-section {
-            grid-column: 1; grid-row: 1 / 4;
-            flex-direction: column; align-items: center;
-            gap: 6px; padding-top: 4px; width: auto;
-        }
-        .loadout-gamemode-row { grid-column: 2; grid-row: 1; }
-        #room-section { grid-column: 2; grid-row: 2; padding: 8px 10px; gap: 5px; }
-        .lobby-err  { grid-column: 2; grid-row: 3; }
-        .char-preview-outer { width: 80px !important; height: 80px !important; }
-        .char-name  { font-size: .95rem !important; letter-spacing: 1px; }
-        .char-change-btn { font-size: .6rem; padding: 5px 10px; }
-        .char-section-text { gap: 2px !important; }
-        .bc-header  { margin-bottom: 4px; }
-        .stat-row   { margin-bottom: 4px; }
-        .stat-btn   { width: 28px; height: 28px; font-size: .95rem; }
-        .stat-bar   { height: 5px; }
-        .btn-play   { padding: 9px; font-size: .75rem; }
-        .join-input { padding: 8px 10px; font-size: .78rem; }
-        .btn-join   { padding: 8px 10px; font-size: .68rem; }
-        .or-divider { font-size: .62rem; }
-        .rc-title   { font-size: .6rem; }
-
-        /* Lobby topbar compact */
-        .lb-topbar  { height: 54px; padding: 0 10px; }
-        .lb-topbar-title { font-size: .8rem; letter-spacing: 1px; }
-        .lb-topbar-back  { padding: 5px 10px; font-size: .72rem; }
-        .lobby-body  { min-height: 0 !important; }
-        .lobby-center { height: auto; min-height: calc(100dvh - 54px); }
-        #screen-lobby::after { top: 54px; }
-
-        /* Waiting room compact */
-        .waiting-topbar { padding: 6px 10px; }
-        .waiting-logo   { display: none; }
-        .waiting-title  { font-size: 1.1rem !important; letter-spacing: 1px; }
-        .waiting-content { padding: 8px 16px 12px; gap: 8px; }
-        .waiting-code-box   { padding: 5px 14px; }
-        .waiting-code-value { font-size: 1.3rem !important; letter-spacing: 5px !important; }
-        .waiting-code-label { font-size: .55rem; }
-        .waiting-stats  { padding: 5px 14px; font-size: .82rem; }
-        .waiting-players-grid { gap: 8px; }
-        .btn-start-game { padding: 10px 28px !important; font-size: .85rem !important; }
-        .waiting-sub    { font-size: .78rem; }
-    }
-
-    /* ======================================================
-       LOBBY — 3-column desktop enhancement (≥1100px)
-    ====================================================== */
-
-    /* Ambient orbs */
-    .lobby-orb {
-        position: fixed; border-radius: 50%;
-        filter: blur(100px); opacity: 0.05;
-        pointer-events: none; z-index: 0;
-    }
-    .lobby-orb.o1 { width: 420px; height: 420px; background: var(--accent); top: -120px; left: -80px; animation: orb-drift 18s ease-in-out infinite; }
-    .lobby-orb.o2 { width: 360px; height: 360px; background: var(--blue);   bottom: -100px; right: -60px; animation: orb-drift 22s ease-in-out infinite; animation-delay: -8s; }
-    .lobby-orb.o3 { width: 300px; height: 300px; background: var(--green);  top: 45%; left: 42%; animation: orb-drift 20s ease-in-out infinite; animation-delay: -5s; }
-    @keyframes orb-drift {
-        0%, 100% { transform: translate(0,0) scale(1); }
-        33%       { transform: translate(28px,-18px) scale(1.06); }
-        66%       { transform: translate(-18px,14px) scale(0.94); }
-    }
-
-    /* Panel containers — hidden on mobile, shown on desktop */
-    .lobby-panel-left, .lobby-panel-right {
-        display: none;
-        width: clamp(290px, 23vw, 460px); flex-shrink: 0;
-        overflow-y: auto; overflow-x: hidden;
-        scrollbar-width: none; -ms-overflow-style: none;
-        padding: 20px 16px 40px;
-        flex-direction: column; gap: 14px;
-    }
-    .lobby-panel-left::-webkit-scrollbar,
-    .lobby-panel-right::-webkit-scrollbar { display: none; }
-    .lobby-panel-left  { border-right: 1px solid rgba(80,140,60,0.2); background: rgba(8,18,8,0.55); }
-    .lobby-panel-right { border-left:  1px solid rgba(80,140,60,0.2); background: rgba(8,18,8,0.55); }
-
-    /* Center col — wraps existing lobby-inner */
-    .lobby-center {
-        flex: 1; overflow-y: auto; overflow-x: hidden;
-        scrollbar-width: none; -ms-overflow-style: none;
-        display: flex; flex-direction: column; align-items: center;
-        background: rgba(8,18,8,0.38);
-    }
-    .lobby-center::-webkit-scrollbar { display: none; }
-
-    /* Activate 3-column at 1024px (covers iPad 9 landscape 1080px) */
-    @media (min-width: 1024px) {
-        .lobby-body { flex-direction: row !important; }
-        .lobby-panel-left, .lobby-panel-right { display: flex; }
-        .lobby-inner { max-width: clamp(460px, 42vw, 780px); }
-    }
-
-    /* iPad range 1024-1199px: panels mai subtiri, spatiu mai mult centrului */
-    @media (min-width: 1024px) and (max-width: 1199px) {
-        .lobby-panel-left,
-        .lobby-panel-right { width: 240px !important; min-width: 240px !important; }
-        .lobby-panel-left  { padding: 14px 12px 32px !important; }
-        .lobby-panel-right { padding: 14px 12px 32px !important; }
-    }
-
-    /* ── Panel card ── */
-    .lp-card {
-        background: rgba(14,30,14,0.72); border: 1px solid rgba(80,140,60,0.2);
-        border-radius: 16px; padding: 20px;
-        display: flex; flex-direction: column; gap: 14px;
-    }
-    .lp-card-title {
-        font-family: var(--ft); font-size: .72rem; font-weight: 700;
-        color: var(--dim); letter-spacing: 2px; text-transform: uppercase;
-        padding-bottom: 10px; border-bottom: 1px solid rgba(80,140,60,0.2);
-    }
-    /* Build/room cards in lobby center also get the green theme */
-    #screen-lobby .build-card, #screen-lobby .room-card {
-        background: rgba(14,30,14,0.72);
-        border-color: rgba(80,140,60,0.2);
-    }
-
-    /* ── Profile section ── */
-    .lp-profile { display: flex; flex-direction: column; align-items: center; gap: 11px; }
-    .lp-avatar-ring { position: relative; width: 115px; height: 115px; }
-    .lp-avatar-ring img, .lp-av-placeholder {
-        width: 115px; height: 115px; border-radius: 50%; object-fit: cover;
-        border: 3px solid var(--accent); box-shadow: 0 0 22px rgba(232,160,32,.5);
-    }
-    .lp-av-placeholder {
-        background: var(--card2);
-        display: flex; align-items: center; justify-content: center; font-size: 2.8rem;
-    }
-    .lp-level-badge {
-        position: absolute; bottom: -6px; right: -10px;
-        background: linear-gradient(135deg, var(--gold), var(--orange));
-        color: #000; font-family: var(--ft); font-size: .95rem; font-weight: 900;
-        padding: 4px 12px; border-radius: 12px;
-        box-shadow: 0 2px 10px rgba(255,215,0,.55); white-space: nowrap;
-        letter-spacing: .5px;
-    }
-    .lp-nick {
-        font-family: var(--ft); font-size: 1.35rem; font-weight: 900;
-        color: #fff; text-align: center; letter-spacing: .5px;
-        max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .lp-rank { font-family: var(--ft); font-size: 1.02rem; font-weight: 700; color: var(--dim); letter-spacing: 1px; }
-
-    /* ── XP bar ── */
-    .lp-xp-wrap { width: 100%; }
-    .lp-xp-label { display: flex; justify-content: space-between; font-family: var(--fb); font-size: .7rem; color: var(--dim); margin-bottom: 5px; }
-    .lp-xp-bar { width: 100%; height: 8px; background: rgba(255,255,255,.07); border-radius: 4px; overflow: hidden; }
-    .lp-xp-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--orange)); border-radius: 4px; transition: width .6s ease; }
-
-    /* ── Coins row ── */
-    .lp-coins-row { display: flex; gap: 8px; }
-    .lp-coin-box {
-        flex: 1; background: rgba(255,255,255,.03); border: 1px solid var(--border);
-        border-radius: 10px; padding: 10px; display: flex; align-items: center; gap: 7px;
-    }
-    .lp-coin-icon { font-size: 1rem; }
-    .lp-coin-val { font-family: var(--ft); font-size: .92rem; font-weight: 700; color: #fff; }
-
-    /* ── Stats grid ── */
-    .lp-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .lp-stat-box {
-        border-radius: 12px; padding: 14px 8px 10px; text-align: center;
-        transition: transform .2s, box-shadow .2s;
-        border-top: 2px solid transparent; border-bottom: 1px solid transparent;
-        border-left: 1px solid transparent; border-right: 1px solid transparent;
-        position: relative;
-    }
-    .lp-stat-box:hover { transform: translateY(-2px); }
-    .lp-stat-icon { font-size: 1.15rem; display: block; margin-bottom: 5px; }
-    .lp-stat-val { font-family: var(--ft); font-size: 1.6rem; font-weight: 900; line-height: 1; }
-    .lp-stat-lbl { font-family: var(--fb); font-size: .58rem; color: rgba(200,220,190,.5); margin-top: 5px; letter-spacing: 1px; text-transform: uppercase; }
-    /* Per-stat theming */
-    .lp-stat-wins  { background: rgba(255,215,0,.08);  border-top-color: #ffd700; border-color: rgba(255,215,0,.18); }
-    .lp-stat-wins  .lp-stat-val { color: #ffd700; text-shadow: 0 0 12px rgba(255,215,0,.45); }
-    .lp-stat-wins:hover  { box-shadow: 0 4px 16px rgba(255,215,0,.2); }
-    .lp-stat-kills { background: rgba(240,148,77,.08); border-top-color: #f0944d; border-color: rgba(240,148,77,.18); }
-    .lp-stat-kills .lp-stat-val { color: #f0944d; text-shadow: 0 0 12px rgba(240,148,77,.45); }
-    .lp-stat-kills:hover { box-shadow: 0 4px 16px rgba(240,148,77,.2); }
-    .lp-stat-games { background: rgba(91,184,245,.08); border-top-color: #5bb8f5; border-color: rgba(91,184,245,.18); }
-    .lp-stat-games .lp-stat-val { color: #5bb8f5; text-shadow: 0 0 12px rgba(91,184,245,.45); }
-    .lp-stat-games:hover { box-shadow: 0 4px 16px rgba(91,184,245,.2); }
-    .lp-stat-winrate { background: rgba(52,211,154,.08); border-top-color: #34d39a; border-color: rgba(52,211,154,.18); }
-    .lp-stat-winrate .lp-stat-val { color: #34d39a; text-shadow: 0 0 12px rgba(52,211,154,.45); }
-    .lp-stat-winrate:hover { box-shadow: 0 4px 16px rgba(52,211,154,.2); }
-
-    /* ── Daily missions ── */
-    .lp-mission { display: flex; flex-direction: column; gap: 6px; padding: 3px 0; }
-    .lp-mission + .lp-mission { border-top: 1px solid var(--border); padding-top: 11px; margin-top: 3px; }
-    .lp-mission-name { display: flex; justify-content: space-between; align-items: center; font-family: var(--fb); font-size: .84rem; color: #fff; gap: 4px; }
-    .lp-mission-reward { font-family: var(--ft); font-size: .7rem; color: var(--gold); flex-shrink: 0; }
-    .lp-mission-bar { width: 100%; height: 6px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
-    .lp-mission-fill { height: 100%; background: linear-gradient(90deg, var(--green), var(--blue)); border-radius: 3px; transition: width .5s ease; }
-    .lp-mission-done .lp-mission-fill { background: linear-gradient(90deg, var(--gold), var(--orange)); }
-    .lp-mission-prog { font-family: var(--fb); font-size: .68rem; color: var(--dim); text-align: right; }
-    .mission-claim-btn { margin-top: 7px; width: 100%; padding: 7px 10px; border: none; border-radius: 8px; background: linear-gradient(90deg, #27ae60, #2ecc71); color: #fff; font-family: var(--fb); font-size: .8rem; cursor: pointer; letter-spacing: .5px; box-shadow: 0 0 14px rgba(46,204,113,.45); transition: opacity .2s, transform .1s; }
-    .mission-claim-btn:hover:not(:disabled) { opacity: .85; transform: translateY(-1px); }
-    .mission-claim-btn:disabled { opacity: .5; cursor: default; }
-    .lp-mission-claimed .lp-mission-fill { background: linear-gradient(90deg, #27ae60, #2ecc71) !important; }
-    .mission-claimed-txt { margin-top: 6px; font-family: var(--fb); font-size: .75rem; color: #2ecc71; text-align: center; opacity: .7; }
-
-    /* ── Mini leaderboard ── */
-    .lp-lb-row { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-bottom: 1px solid var(--border); border-radius: 8px; margin: 0 -4px; }
-    .lp-lb-row:last-child { border-bottom: none; }
-    .lp-lb-row.r1 { background: linear-gradient(90deg, rgba(255,215,0,0.09), transparent); }
-    .lp-lb-row.r2 { background: linear-gradient(90deg, rgba(192,192,192,0.06), transparent); }
-    .lp-lb-row.r3 { background: linear-gradient(90deg, rgba(205,127,50,0.08), transparent); }
-    .lp-lb-rank { font-family: var(--ft); font-size: .88rem; font-weight: 900; width: 24px; text-align: center; flex-shrink: 0; }
-    .lp-lb-rank.r1 { color: var(--gold); }
-    .lp-lb-rank.r2 { color: #c0c0c0; }
-    .lp-lb-rank.r3 { color: #cd7f32; }
-    .lp-lb-info { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-    .lp-lb-nick { font-family: var(--fb); font-size: .84rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lp-lb-nick.r1 { color: #ffd700; text-shadow: 0 0 10px rgba(255,215,0,0.45); }
-    .lp-lb-nick.r2 { color: #d4d4d4; text-shadow: 0 0 8px rgba(192,192,192,0.35); }
-    .lp-lb-nick.r3 { color: #d4956a; text-shadow: 0 0 8px rgba(205,127,50,0.35); }
-    .lp-lb-lv { font-family: var(--ft); font-size: .58rem; font-weight: 700; }
-    .lp-lb-wins { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
-    .lp-lb-val { font-family: var(--ft); font-size: .9rem; font-weight: 900; color: var(--green); line-height: 1.1; }
-    .lp-lb-wins-label { font-family: var(--fb); font-size: .52rem; color: var(--dim); }
-
-    /* ── Live event card ── */
-    .lp-event {
-        background: linear-gradient(135deg, rgba(232,160,32,.10), rgba(91,184,245,.07));
-        border: 1px solid rgba(232,160,32,.25);
-        border-radius: 13px; padding: 16px; position: relative; overflow: hidden;
-    }
-    .lp-event-glow {
-        position: absolute; inset: 0;
-        background: radial-gradient(ellipse at 20% 20%, rgba(232,160,32,.08), transparent 60%);
-        animation: ev-glow 4s ease-in-out infinite alternate; pointer-events: none;
-    }
-    @keyframes ev-glow { from { opacity: .5; } to { opacity: 1; } }
-    .lp-event-label { font-family: var(--ft); font-size: .68rem; font-weight: 700; color: var(--accent); letter-spacing: 2px; margin-bottom: 6px; }
-    .lp-event-name  { font-family: var(--ft); font-size: 1.05rem; font-weight: 900; color: #fff; margin-bottom: 10px; }
-    .lp-event-timer-label { font-family: var(--fb); font-size: .68rem; color: var(--dim); margin-bottom: 3px; }
-    .lp-event-timer {
-        font-family: var(--ft); font-size: 1.4rem; font-weight: 900;
-        color: var(--gold); letter-spacing: 2px; text-shadow: 0 0 12px rgba(255,215,0,.4);
-    }
-
-    /* ── Inline tab selector (inside topbar, mobile only) ── */
-    .lobby-tabs-inline {
-        display: flex; gap: 2px;
-        background: rgba(255,255,255,.06);
-        border: 1px solid var(--border);
-        border-radius: 20px; padding: 3px;
-        flex-shrink: 0;
-    }
-    .lti-btn {
-        background: none; border: none; color: var(--dim);
-        font-family: var(--ft); font-size: .68rem; font-weight: 700;
-        letter-spacing: .4px; cursor: pointer;
-        padding: 6px 12px; border-radius: 16px;
-        transition: all .18s; white-space: nowrap; touch-action: manipulation;
-    }
-    .lti-btn.active {
-        background: var(--accent); color: #fff;
-        box-shadow: 0 2px 10px rgba(232,160,32,.45);
-    }
-    @media (min-width: 1024px) { .lobby-tabs-inline { display: none; } }
-
-    /* Side panels when shown as mobile tab */
-    @media (max-width: 1023px) {
-        /* Topbar e mereu vizibil; lobby-body scrolleaza independent */
-        #screen-lobby { overflow: hidden !important; }
-        .lobby-body {
-            overflow-y: auto !important; overflow-x: hidden !important;
-            -webkit-overflow-scrolling: touch;
-            min-height: 0 !important;
-            background: rgba(8,18,8,0.38);
-        }
-        .lobby-center {
-            height: auto;
-            min-height: calc(100dvh - 68px);
-            overflow-y: visible; overflow-x: visible;
-            flex: none;
-        }
-        .lobby-panel-left.tab-active,
-        .lobby-panel-right.tab-active {
-            display: flex !important;
-            width: 100%; max-width: 560px;
-            margin: 0 auto; border: none;
-            padding: 16px 14px max(40px, calc(env(safe-area-inset-bottom) + 16px)); flex: none;
-            overflow: visible; min-height: unset;
-        }
-        .lobby-center.tab-hidden { display: none !important; }
-    }
-
-    /* ── Online counter (in room card) ── */
-    .lobby-online-bar { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 4px 0; }
-    .lobby-online-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pdot 1.5s ease-in-out infinite; }
-    @keyframes pdot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(.75); } }
-    .lobby-online-text { font-family: var(--fb); font-size: .78rem; color: var(--dim); }
-    .lobby-online-text strong { color: var(--green); font-family: var(--ft); }
-
-    /* ── Chest slots ── */
-    .chest-row { width: 100%; }
-    .chest-row-header {
-        display: flex; align-items: center; justify-content: space-between;
-        margin-bottom: 8px; padding: 0 2px;
-    }
-    .chest-row-title {
-        font-family: var(--ft); font-size: .68rem; font-weight: 700;
-        color: var(--dim); letter-spacing: 2px;
-    }
-    .chest-row-sub {
-        font-family: var(--fb); font-size: .58rem; color: rgba(255,255,255,.2);
-    }
-    .chest-slots {
-        display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
-    }
-    .chest-slot {
-        background: rgba(14,30,14,0.65);
-        border: 1.5px dashed rgba(255,255,255,0.1);
-        border-radius: 12px; min-height: 76px;
-        display: flex; flex-direction: column;
-        align-items: center; justify-content: center; gap: 5px;
-        transition: border-color 0.2s, background 0.2s;
-        position: relative; overflow: hidden;
-    }
-    .chest-slot::before {
-        content: '';
-        position: absolute; inset: 0;
-        background: radial-gradient(ellipse at 50% 0%, rgba(232,160,32,0.04), transparent 70%);
-        pointer-events: none;
-    }
-    .chest-slot:hover { border-color: rgba(232,160,32,0.25); background: rgba(14,30,14,0.85); }
-    .chest-slot-icon { font-size: 1.5rem; opacity: 0.18; filter: grayscale(1); line-height: 1; }
-    .chest-slot-label {
-        font-family: var(--ft); font-size: .55rem; font-weight: 700;
-        color: rgba(255,255,255,.2); letter-spacing: 1.5px; text-transform: uppercase;
-    }
-
-    /* ── Responsive: landscape compact ── */
-    @media (max-height: 520px) {
-        .loadout-gamemode-row { display: flex !important; flex-direction: row !important; gap: 8px !important; }
-        .loadout-gamemode-row .build-card { flex: 0 0 calc(55% - 6px) !important; width: auto !important; }
-        .gamemode-panel { flex: 1 !important; width: auto !important; }
-        .gm-icon { font-size: 1.1rem; }
-        .gm-name { font-size: .68rem; }
-        .gm-desc { display: none; }
-        .gm-card { padding: 8px 10px; }
-        .chest-row { display: none; }
-    }
-
-    /* ═══════════════════════════════════════════════════════════════
-       LOBBY RESPONSIVE — Refactorizat corect
-       Principiu: fix CHIRURGICAL per breakpoint, nu comprimare globala.
-       Desktop: proportii naturale, spatiu inteligent.
-       Mobile: single-line stats, ascundere redundante, fara overflow.
-    ═══════════════════════════════════════════════════════════════ */
-
-    /* ────────────────────────────────────────────────────────────
-       DESKTOP ≥1024px — 3 coloane: chest ascuns (120px economisiti),
-       padding usor mai mic, side panels la inaltimea content-ului.
-       Elementele raman la dimensiunile originale (nu se comprima).
-    ──────────────────────────────────────────────────────────────*/
-    @media (min-width: 1024px) {
-        .chest-row { display: none !important; }
-        .lobby-inner {
-            padding: 16px 20px max(20px, calc(env(safe-area-inset-bottom) + 16px)) !important;
-            gap: 16px !important;
-        }
-        .lobby-panel-left,
-        .lobby-panel-right {
-            padding: 16px 14px max(28px, calc(env(safe-area-inset-bottom) + 16px)) !important;
-            gap: 14px !important;
-        }
-    }
-
-    /* ────────────────────────────────────────────────────────────
-       CHARACTER SECTION — orizontal de la 500px in sus.
-       Originalul il face orizontal la ≥600px; extindem la ≥500px.
-    ──────────────────────────────────────────────────────────────*/
-    @media (min-width: 500px) {
-        .char-section {
-            flex-direction: row !important;
-            align-items: center !important;
-            gap: 16px !important;
-        }
-        .char-section-text { align-items: flex-start !important; }
-        .char-name { text-align: left !important; }
-    }
-
-    /* ────────────────────────────────────────────────────────────
-       TABLET <1024px — topbar usor mai mic, tab panels corect.
-    ──────────────────────────────────────────────────────────────*/
-    @media (max-width: 1023px) {
-        .lb-topbar { height: 58px !important; padding: 0 12px !important; gap: 6px !important; }
-        #screen-lobby::after { top: 58px !important; }
-        .lobby-center { min-height: calc(100dvh - 58px) !important; }
-        .lobby-panel-left.tab-active,
-        .lobby-panel-right.tab-active {
-            padding: 14px 14px max(24px, calc(env(safe-area-inset-bottom) + 14px)) !important;
-            gap: 12px !important;
-        }
-        /* Topbar — icon-only buttons pe telefoane si tablete */
-        .lb-btn-text { display: none !important; }
-        .lb-btn { padding: 6px 10px !important; font-size: .82rem !important; }
-        .lb-topbar-back { padding: 5px 9px !important; font-size: .8rem !important; }
-        .lb-topbar-title {
-            font-size: clamp(.9rem, 2.2vw, 1.25rem) !important;
-            margin-left: 8px !important;
-        }
-        .lti-btn { font-size: .62rem !important; padding: 4px 9px !important; letter-spacing: 0 !important; }
-        .lobby-tabs-inline { padding: 2px !important; gap: 2px !important; }
-    }
-
-    /* ────────────────────────────────────────────────────────────
-       MOBILE ≤768px — topbar compact, tabs mai mici.
-    ──────────────────────────────────────────────────────────────*/
-    @media (max-width: 768px) {
-        .lb-topbar { height: 54px !important; padding: 0 8px !important; gap: 4px !important; }
-        #screen-lobby::after { top: 54px !important; }
-        .lobby-center { min-height: calc(100dvh - 54px) !important; }
-        .lb-topbar-title { font-size: clamp(.82rem, 2.8vw, 1.05rem) !important; margin-left: 4px !important; }
-        .lb-btn { padding: 5px 8px !important; font-size: .76rem !important; }
-        .lobby-tabs-inline { padding: 2px !important; gap: 2px !important; }
-        .lti-btn { font-size: .63rem !important; padding: 5px 10px !important; letter-spacing: 0 !important; }
-    }
-
-    /* ────────────────────────────────────────────────────────────
-       MOBILE PORTRAIT ≤600px — redesign complet al sectiunii Joc.
-       Problema: stat rows 2-rand + gamemode + room card = 750px+
-       pe un ecran de 600px. Fix: stat rows single-line (-120px),
-       panoul info gamemode ascuns (redundant), padding redus.
-    ──────────────────────────────────────────────────────────────*/
-    @media (max-width: 600px) {
-        /* Lobby inner: respiratie moderata */
-        .lobby-inner {
-            gap: 12px !important;
-            padding: 12px 12px max(16px, calc(env(safe-area-inset-bottom) + 12px)) !important;
-        }
-
-        /* Avatar: mai mic pe telefon */
-        .char-preview-outer { width: 68px !important; height: 68px !important; }
-
-        /* Stat rows → single-line flex.
-           2-row grid: ~65px/rand × 3 = 195px.
-           Single-line: ~38px/rand × 3 = 114px. Economie: 81px. */
-        .loadout-gamemode-row .build-card .stat-row {
-            display: flex !important;
-            align-items: center !important;
-            gap: 8px !important;
-            margin-bottom: 10px !important;
-            grid-template-columns: unset !important;
-            grid-template-rows: unset !important;
-        }
-        .loadout-gamemode-row .build-card .stat-icon {
-            grid-column: unset !important; grid-row: unset !important;
-            font-size: 1rem !important;
-        }
-        .loadout-gamemode-row .build-card .stat-name {
-            grid-column: unset !important; grid-row: unset !important;
-            font-size: .74rem !important; width: 38px !important;
-        }
-        .loadout-gamemode-row .build-card .stat-value {
-            grid-column: unset !important; grid-row: unset !important;
-            font-size: .82rem !important; width: 70px !important;
-            min-width: unset !important; text-align: right !important;
-        }
-        .loadout-gamemode-row .build-card .stat-controls {
-            grid-column: unset !important; grid-row: unset !important;
-            flex: 1 !important; display: flex !important;
-            align-items: center !important; gap: 6px !important;
-        }
-        .loadout-gamemode-row .build-card .stat-bar {
-            height: 7px !important;
-        }
-        .loadout-gamemode-row .build-card .stat-btn {
-            width: 30px !important; height: 30px !important;
-            font-size: 1rem !important; border-radius: 8px !important;
-        }
-
-        /* Gamemode: desc ascuns (salveaza ~14px per card) */
-        .gm-desc { display: none !important; }
-
-        /* Room card: panoul stanga ascuns pe telefon.
-           Info-ul este deja afisat in cardurile de gamemode de deasupra.
-           Economie: ~90px. */
-        #rc-mode-panel { display: none !important; }
-        .rc-actions {
-            padding: 12px 14px !important;
-            gap: 8px !important;
-            border-radius: 10px !important;
-        }
-    }
-
-    /* ────────────────────────────────────────────────────────────
-       TELEFOANE MICI ≤420px — extra compactizare.
-    ──────────────────────────────────────────────────────────────*/
-    @media (max-width: 420px) {
-        .char-preview-outer { width: 58px !important; height: 58px !important; }
-        .lobby-inner {
-            gap: 10px !important;
-            padding: 10px 10px max(14px, calc(env(safe-area-inset-bottom) + 10px)) !important;
-        }
-        .lti-btn { font-size: .58rem !important; padding: 4px 7px !important; }
-        .lb-topbar { height: 52px !important; }
-        #screen-lobby::after { top: 52px !important; }
-        .lobby-center { min-height: calc(100dvh - 52px) !important; }
-        .lb-topbar-back { padding: 5px 8px !important; font-size: .7rem !important; }
-    }
-
-    /* ────────────────────────────────────────────────────────────
-       LANDSCAPE COMPACT (telefon rasturnat, <520px inaltime).
-       Regula existenta deja gestioneaza layout-ul 2 coloane;
-       adaugam doar topbar corect.
-    ──────────────────────────────────────────────────────────────*/
-    @media (max-height: 520px) {
-        .lb-topbar { height: 46px !important; padding: 0 8px !important; }
-        #screen-lobby::after { top: 46px !important; }
-        .lobby-center { min-height: calc(100dvh - 46px) !important; }
-    }
-    /* ══════════════════════════════════════════════════════════════
-       LAYOUT TELEFON — Brawl Stars style
-       Doua variante: portrait (≤768px) si landscape (≤1023px, ≤520px h)
-    ══════════════════════════════════════════════════════════════ */
-
-    /* ── Reguli comune ambelor orientari ─────────────────────── */
-    @media (max-width: 1023px) and (max-height: 680px) {
-        /* Stat rows: un singur rand */
-        .loadout-gamemode-row .build-card .stat-row {
-            display: flex !important;
-            margin-bottom: 7px !important;
-            gap: 5px !important;
-        }
-        .loadout-gamemode-row .build-card .stat-row:last-child { margin-bottom: 0 !important; }
-        .loadout-gamemode-row .build-card .stat-icon   { grid-column: unset !important; grid-row: unset !important; font-size: .9rem !important; }
-        .loadout-gamemode-row .build-card .stat-name   { grid-column: unset !important; grid-row: unset !important; font-size: .66rem !important; width: 30px !important; }
-        .loadout-gamemode-row .build-card .stat-value  { grid-column: unset !important; grid-row: unset !important; font-size: .72rem !important; width: 48px !important; min-width: unset !important; }
-        .loadout-gamemode-row .build-card .stat-controls { grid-column: unset !important; grid-row: unset !important; display: flex !important; flex: 1 !important; }
-        .loadout-gamemode-row .build-card .stat-bar  { height: 6px !important; }
-        .loadout-gamemode-row .build-card .stat-btn  { width: 26px !important; height: 26px !important; font-size: .9rem !important; border-radius: 6px !important; }
-        .build-card { padding: 9px 10px !important; }
-        .bc-header  { margin-bottom: 7px !important; }
-
-        /* Gamemode panel: 2 butoane orizontal, fara descriere */
-        .gamemode-panel { flex-direction: row !important; gap: 7px !important; }
-        .gm-label { display: none !important; }
-        .gm-card  {
-            flex: 1 !important; padding: 8px 5px !important;
-            flex-direction: column !important; align-items: center !important;
-            text-align: center !important; gap: 3px !important; min-height: unset !important;
-        }
-        .gm-icon  { font-size: 1.2rem !important; }
-        .gm-name  { font-size: .6rem !important; text-align: center !important; }
-        .gm-desc  { display: none !important; }
-        .gm-check { display: none !important; }
-        .gm-info  { align-items: center !important; }
-
-        /* Room section: ascunde panoul de info mod (redundant) */
-        .rc-mode-panel { display: none !important; }
-        .rc-actions { padding: 7px 9px !important; gap: 5px !important; }
-        .lobby-online-bar { padding: 2px 6px !important; }
-        .lobby-online-text { font-size: .58rem !important; }
-
-        /* Chest-uri: ascunse */
-        .chest-row { display: none !important; }
-
-        /* Lobby inner: fara max-width limitant, padding redus */
-        .lobby-inner { max-width: 100% !important; padding: 8px 10px 10px !important; gap: 8px !important; }
-
-        /* Loadout + gamemode: orizontal in landscape */
-        .loadout-gamemode-row { display: flex !important; flex-direction: row !important; gap: 8px !important; }
-        .loadout-gamemode-row .build-card { flex: 0 0 52% !important; width: auto !important; }
-        .gamemode-panel { flex: 1 !important; width: auto !important; }
-    }
-
-    /* ── Tablet landscape 521-680px inaltime: avatar redus ─────── */
-    @media (max-width: 1023px) and (min-height: 521px) and (max-height: 680px) {
-        .char-preview-outer { width: 90px !important; height: 90px !important; }
-        .char-name { font-size: 1rem !important; }
-        .char-change-btn { font-size: .62rem !important; padding: 5px 12px !important; }
-    }
-
-    /* ── Portrait portrait ≤768px, ≥680px inaltime ──────────── */
-    @media (max-width: 768px) and (orientation: portrait) and (min-height: 680px) {
-        /* Opreste scroll */
-        .lobby-body { overflow-y: hidden !important; }
-
-        /* Personaj vertical, MARE */
-        .char-section {
-            flex-direction: column !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 6px !important;
-        }
-        .char-preview-outer { width: 130px !important; height: 130px !important; }
-        .char-name { font-size: 1.2rem !important; text-align: center !important; }
-        .char-section-text { align-items: center !important; }
-        .char-change-btn { font-size: .62rem !important; padding: 6px 14px !important; }
-
-        /* Stat rows single-line (si pentru portrait ≥680px h) */
-        .loadout-gamemode-row .build-card .stat-row {
-            display: flex !important; margin-bottom: 7px !important; gap: 5px !important;
-        }
-        .loadout-gamemode-row .build-card .stat-row:last-child { margin-bottom: 0 !important; }
-        .loadout-gamemode-row .build-card .stat-icon   { grid-column: unset !important; grid-row: unset !important; font-size: .95rem !important; }
-        .loadout-gamemode-row .build-card .stat-name   { grid-column: unset !important; grid-row: unset !important; font-size: .68rem !important; width: 32px !important; }
-        .loadout-gamemode-row .build-card .stat-value  { grid-column: unset !important; grid-row: unset !important; font-size: .75rem !important; width: 50px !important; min-width: unset !important; }
-        .loadout-gamemode-row .build-card .stat-controls { grid-column: unset !important; grid-row: unset !important; display: flex !important; flex: 1 !important; }
-        .loadout-gamemode-row .build-card .stat-bar  { height: 6px !important; }
-        .loadout-gamemode-row .build-card .stat-btn  { width: 28px !important; height: 28px !important; font-size: .95rem !important; border-radius: 7px !important; }
-
-        /* Gamemode orizontal */
-        .gamemode-panel { flex-direction: row !important; gap: 8px !important; }
-        .gm-label { display: none !important; }
-        .gm-card  { flex: 1 !important; padding: 9px 6px !important; flex-direction: column !important; align-items: center !important; text-align: center !important; gap: 4px !important; min-height: unset !important; }
-        .gm-icon  { font-size: 1.3rem !important; }
-        .gm-name  { font-size: .62rem !important; text-align: center !important; }
-        .gm-desc  { display: none !important; }
-        .gm-check { display: none !important; }
-        .gm-info  { align-items: center !important; }
-
-        .rc-mode-panel { display: none !important; }
-        .rc-actions { padding: 8px 10px !important; gap: 6px !important; }
-        .chest-row { display: none !important; }
-        .lobby-inner { max-width: 100% !important; padding: 10px 12px 12px !important; gap: 10px !important; }
-    }
-    /* ═══════════════════════════════════════════════════════════════ */
-    </style>
 </head>
 <body>
+<svg id="ar-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden"><defs>
+<symbol id="swords" viewBox="0 0 24 24"><path d="m13 19 6-6" /><path d="M14.5 17.5 3.586 6.586A2 2 0 013 5.172V3h2.172a2 2 0 011.414.586L17.5 14.5" /><path d="m14.828 6.172 2.586-2.586A2 2 0 0118.828 3H21v2.172a2 2 0 01-.586 1.414l-2.586 2.586" /><path d="m16 16 4 4" /><path d="m19 21 2-2" /><path d="m5 14 4 4" /><path d="m5 21-2-2" /><path d="M7.5 16.5 4 20" /></symbol>
+<symbol id="skull" viewBox="0 0 24 24"><path d="m12.5 17-.5-1-.5 1h1z" /><path d="M15 22a1 1 0 0 0 1-1v-1a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20v1a1 1 0 0 0 1 1z" /><circle cx="15" cy="12" r="1" /><circle cx="9" cy="12" r="1" /></symbol>
+<symbol id="users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><path d="M16 3.128a4 4 0 0 1 0 7.744" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><circle cx="9" cy="7" r="4" /></symbol>
+<symbol id="user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></symbol>
+<symbol id="trophy" viewBox="0 0 24 24"><path d="M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2" /><path d="M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2" /><path d="M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3" /><path d="M4 22h16" /><path d="M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z" /><path d="M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3" /></symbol>
+<symbol id="medal" viewBox="0 0 24 24"><path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15" /><path d="M11 12 5.12 2.2" /><path d="m13 12 5.88-9.8" /><path d="M8 7h8" /><circle cx="12" cy="17" r="5" /><path d="M12 18v-2h-.5" /></symbol>
+<symbol id="target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></symbol>
+<symbol id="crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="22" x2="18" y1="12" y2="12" /><line x1="6" x2="2" y1="12" y2="12" /><line x1="12" x2="12" y1="6" y2="2" /><line x1="12" x2="12" y1="22" y2="18" /></symbol>
+<symbol id="zap" viewBox="0 0 24 24"><path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" /></symbol>
+<symbol id="heart-pulse" viewBox="0 0 24 24"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" /><path d="M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27" /></symbol>
+<symbol id="heart" viewBox="0 0 24 24"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" /></symbol>
+<symbol id="shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /></symbol>
+<symbol id="lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></symbol>
+<symbol id="check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
+<symbol id="x" viewBox="0 0 24 24"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></symbol>
+<symbol id="plus" viewBox="0 0 24 24"><path d="M5 12h14" /><path d="M12 5v14" /></symbol>
+<symbol id="minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+<symbol id="arrow-right" viewBox="0 0 24 24"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></symbol>
+<symbol id="play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol>
+<symbol id="power" viewBox="0 0 24 24"><path d="M12 2v10" /><path d="M18.4 6.6a9 9 0 1 1-12.77.04" /></symbol>
+<symbol id="volume-2" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" /><path d="M16 9a5 5 0 0 1 0 6" /><path d="M19.364 18.364a9 9 0 0 0 0-12.728" /></symbol>
+<symbol id="volume-x" viewBox="0 0 24 24"><path d="M11 4.702a.7.7 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.7.7 0 0 0 11 19.298z" /><path d="m16.5 14.5 5-5" /><path d="m16.5 9.5 5 5" /></symbol>
+<symbol id="eye" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></symbol>
+<symbol id="skip-forward" viewBox="0 0 24 24"><path d="M21 4v16" /><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z" /></symbol>
+<symbol id="refresh-cw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></symbol>
+<symbol id="user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" x2="19" y1="8" y2="14" /><line x1="22" x2="16" y1="11" y2="11" /></symbol>
+<symbol id="search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></symbol>
+<symbol id="coins" viewBox="0 0 24 24"><path d="M13.744 17.736a6 6 0 1 1-7.48-7.48" /><path d="M15 6h1v4" /><path d="m6.134 14.768.866-.5 2 3.464" /><circle cx="16" cy="8" r="6" /></symbol>
+<symbol id="gem" viewBox="0 0 24 24"><path d="M10.5 3 8 9l4 13 4-13-2.5-6" /><path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z" /><path d="M2 9h20" /></symbol>
+<symbol id="package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /><path d="M12 22V12" /><polyline points="3.29 7 12 12 20.71 7" /><path d="m7.5 4.27 9 5.15" /></symbol>
+<symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></symbol>
+<symbol id="radio" viewBox="0 0 24 24"><path d="M16.247 7.761a6 6 0 0 1 0 8.478" /><path d="M19.075 4.933a10 10 0 0 1 0 14.134" /><path d="M4.925 19.067a10 10 0 0 1 0-14.134" /><path d="M7.753 16.239a6 6 0 0 1 0-8.478" /><circle cx="12" cy="12" r="2" /></symbol>
+<symbol id="biohazard" viewBox="0 0 24 24"><circle cx="12" cy="11.9" r="2" /><path d="M6.7 3.4c-.9 2.5 0 5.2 2.2 6.7C6.5 9 3.7 9.6 2 11.6" /><path d="m8.9 10.1 1.4.8" /><path d="M17.3 3.4c.9 2.5 0 5.2-2.2 6.7 2.4-1.2 5.2-.6 6.9 1.5" /><path d="m15.1 10.1-1.4.8" /><path d="M16.7 20.8c-2.6-.4-4.6-2.6-4.7-5.3-.2 2.6-2.1 4.8-4.7 5.2" /><path d="M12 13.9v1.6" /><path d="M13.5 5.4c-1-.2-2-.2-3 0" /><path d="M17 16.4c.7-.7 1.2-1.6 1.5-2.5" /><path d="M5.5 13.9c.3.9.8 1.8 1.5 2.5" /></symbol>
+<symbol id="handshake" viewBox="0 0 24 24"><path d="m11 17 2 2a1 1 0 1 0 3-3" /><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4" /><path d="m21 3 1 11h-2" /><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3" /><path d="M3 4h8" /></symbol>
+<symbol id="smartphone" viewBox="0 0 24 24"><rect width="14" height="20" x="5" y="2" rx="2" ry="2" /><path d="M12 18h.01" /></symbol>
+<symbol id="rotate-cw" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /></symbol>
+<symbol id="triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></symbol>
+<symbol id="loader" viewBox="0 0 24 24"><path d="M12 2v4" /><path d="m16.2 7.8 2.9-2.9" /><path d="M18 12h4" /><path d="m16.2 16.2 2.9 2.9" /><path d="M12 18v4" /><path d="m4.9 19.1 2.9-2.9" /><path d="M2 12h4" /><path d="m4.9 4.9 2.9 2.9" /></symbol>
+<symbol id="door-open" viewBox="0 0 24 24"><path d="M10 21H2" /><path d="M10 3H7a2 2 0 00-2 2v16" /><path d="M14 12h.01" /><path d="M19 21V5a2 2 0 00-1.675-1.974l-6.163-1.013A1 1 0 0010 3v18a1 1 0 001.124.992z" /><path d="M22 21h-3" /></symbol>
+<symbol id="flag" viewBox="0 0 24 24"><path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528" /></symbol>
+<symbol id="crown" viewBox="0 0 24 24"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z" /><path d="M5 21h14" /></symbol>
+<symbol id="award" viewBox="0 0 24 24"><path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526" /><circle cx="12" cy="8" r="6" /></symbol>
+<symbol id="gamepad-2" viewBox="0 0 24 24"><line x1="6" x2="10" y1="11" y2="11" /><line x1="8" x2="8" y1="9" y2="13" /><line x1="15" x2="15.01" y1="12" y2="12" /><line x1="18" x2="18.01" y1="10" y2="10" /><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z" /></symbol>
+<symbol id="chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></symbol>
+<symbol id="chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+<symbol id="gauge" viewBox="0 0 24 24"><path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" /></symbol>
+<symbol id="timer" viewBox="0 0 24 24"><line x1="10" x2="14" y1="2" y2="2" /><line x1="12" x2="15" y1="14" y2="11" /><circle cx="12" cy="14" r="8" /></symbol>
+<symbol id="trending-up" viewBox="0 0 24 24"><path d="M16 7h6v6" /><path d="m22 7-8.5 8.5-5-5L2 17" /></symbol>
+<symbol id="list-ordered" viewBox="0 0 24 24"><path d="M11 5h10" /><path d="M11 12h10" /><path d="M11 19h10" /><path d="M4 4h1v5" /><path d="M4 9h2" /><path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" /></symbol>
+<symbol id="hash" viewBox="0 0 24 24"><line x1="4" x2="20" y1="9" y2="9" /><line x1="4" x2="20" y1="15" y2="15" /><line x1="10" x2="8" y1="3" y2="21" /><line x1="16" x2="14" y1="3" y2="21" /></symbol>
+<symbol id="ticket" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" /><path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" /></symbol>
+<symbol id="bomb" viewBox="0 0 24 24"><circle cx="11" cy="13" r="9" /><path d="M14.35 4.65 16.3 2.7a2.41 2.41 0 0 1 3.4 0l1.6 1.6a2.4 2.4 0 0 1 0 3.4l-1.95 1.95" /><path d="m22 2-1.5 1.5" /></symbol>
+<symbol id="wind" viewBox="0 0 24 24"><path d="M12.8 19.6A2 2 0 1 0 14 16H2" /><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2" /><path d="M9.8 4.4A2 2 0 1 1 11 8H2" /></symbol>
+<symbol id="flame" viewBox="0 0 24 24"><path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4" /></symbol>
+<symbol id="circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="m16 9-5.5 5.5L8 12" /></symbol>
+<symbol id="circle-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="12" r="10" /></symbol>
+<symbol id="circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></symbol>
+<symbol id="id-card" viewBox="0 0 24 24"><path d="M13 19a4 4 0 00-8 0" /><path d="M16 10h2" /><path d="M16 14h2" /><circle cx="9" cy="12" r="3" /><rect x="2" y="5" width="20" height="14" rx="2" /></symbol>
+<symbol id="sparkles" viewBox="0 0 24 24"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></symbol>
+<symbol id="log-out" viewBox="0 0 24 24"><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /></symbol>
+<symbol id="chart-no-axes-column" viewBox="0 0 24 24"><path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" /></symbol>
+<symbol id="user-check" viewBox="0 0 24 24"><path d="m16 11 2 2 4-4" /><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></symbol>
+<symbol id="maximize" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" /></symbol>
+<symbol id="wifi" viewBox="0 0 24 24"><path d="M12 20h.01" /><path d="M2 8.82a15 15 0 0 1 20 0" /><path d="M5 12.859a10 10 0 0 1 14 0" /><path d="M8.5 16.429a5 5 0 0 1 7 0" /></symbol>
+<symbol id="arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></symbol>
+<symbol id="chevrons-up" viewBox="0 0 24 24"><path d="m17 11-5-5-5 5" /><path d="m17 18-5-5-5 5" /></symbol>
+<symbol id="castle" viewBox="0 0 24 24"><path d="M10 5V3" /><path d="M14 5V3" /><path d="M15 21v-3a3 3 0 0 0-6 0v3" /><path d="M18 3v8" /><path d="M18 5H6" /><path d="M22 11H2" /><path d="M22 9v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9" /><path d="M6 3v8" /></symbol>
+<symbol id="share-2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" x2="15.42" y1="13.51" y2="17.49" /><line x1="15.41" x2="8.59" y1="6.51" y2="10.49" /></symbol>
+<symbol id="star" viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" /></symbol>
+<symbol id="sword" viewBox="0 0 24 24"><path d="m11 19-6-6" /><path d="m5 21-2-2" /><path d="m8 16-4 4" /><path d="M9.5 17.5 20.414 6.586A2 2 0 0021 5.172V3h-2.172a2 2 0 00-1.414.586L6.5 14.5" /></symbol>
+<symbol id="badge-check" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" /><path d="m16 9-5.5 5.5L8 12" /></symbol>
+<symbol id="scan-eye" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><circle cx="12" cy="12" r="1" /><path d="M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0" /></symbol>
+<symbol id="fullscreen" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><rect width="10" height="8" x="7" y="8" rx="1" /></symbol>
+<symbol id="ellipsis" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></symbol>
+<symbol id="bolt" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><circle cx="12" cy="12" r="4" /></symbol>
+<symbol id="lock-open" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></symbol>
+<symbol id="settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /><circle cx="12" cy="12" r="3" /></symbol>
+<symbol id="minimize" viewBox="0 0 24 24"><path d="M8 3v3a2 2 0 0 1-2 2H3" /><path d="M21 8h-3a2 2 0 0 1-2-2V3" /><path d="M3 16h3a2 2 0 0 1 2 2v3" /><path d="M16 21v-3a2 2 0 0 1 2-2h3" /></symbol>
+<symbol id="mark" viewBox="0 0 24 24"><path d="M1 1h17l5 5v17H1z" fill="currentColor" stroke="none"/><path d="M5.5 19 12 5.5 18.5 19M8.2 14.6h7.6" fill="none" stroke="#0B1417" stroke-width="2.6" stroke-linecap="square" stroke-linejoin="miter"/></symbol>
+<symbol id="w-pistol" viewBox="0 0 24 24"><path d="M3 7h17v5h-8.5L10 14.2V19H6.5l.8-7H3z"/><path d="M14 12v2.5"/></symbol>
+<symbol id="w-assault" viewBox="0 0 24 24"><path d="M2 10.5h4.5L8 9h8.5l1 1.5H22V13h-8l-1 1.5h-2L10.2 19H7.2L8 14.5H6.5L5 13H2z"/><path d="M19.5 8v2.5"/></symbol>
+<symbol id="w-sniper" viewBox="0 0 24 24"><path d="M2 11.5h5l1-1.5h7.5l.5 1.5H22V13h-6.5l-1 1.5H11l-1 4.5H7l1-4.5H7L5.5 13H2z"/><path d="M9 6.5h6v2.5H9z"/></symbol>
+<symbol id="w-shotgun" viewBox="0 0 24 24"><path d="M2 10.5l4-1.5h16v3H12l-1.5 2H9l-.7 4.5H5.3L6.5 14 2 12.5z"/><path d="M13.5 14.5h4"/></symbol>
+<symbol id="w-burst" viewBox="0 0 24 24"><path d="M2 10.5H17.5V11H22V12.5H17.5V13.5H13.5L12.6 18.5H10L10.6 13.5H7.2V17.8H4.2V13.5H2Z"/><path d="M5.5 10.5V7.5H15L17 10.5"/><path d="M20.5 10v3"/></symbol>
+<symbol id="w-smg" viewBox="0 0 24 24"><path d="M3 8.5h13l1 1.5h5v3H11.5l-1 1.5H9V20H6v-6H3z"/><path d="M14 13v3"/></symbol>
+
+<symbol id="ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 7.6l4.2 3-1.6 4.9H9.4l-1.6-4.9z"/><path d="M12 7.6V2.2M16.2 10.6l4.9-1.7M14.6 15.5l3 4.3M9.4 15.5l-3 4.3M7.8 10.6L2.9 8.9"/></symbol></defs></svg>
 <canvas id="lobby-bg-canvas"></canvas>
 
 <!-- ========== OVERLAY FULLSCREEN ========== -->
 <div id="fs-overlay">
     <div class="fs-content">
-        <div class="fs-icon">⚔️</div>
-        <h2>ARENA ROYALE</h2>
+        <svg class="ic fs-mark" aria-hidden="true"><use href="#mark"/></svg>
+        <h2 class="wordmark wm-lg"><span>ARENA</span><span class="wm-r">ROYALE</span></h2>
         <div id="fs-ios-hint">
-            <p style="font-size:.85rem;margin-bottom:4px">Bara browserului ocupa spatiu din joc.<br>Ruleaza ca aplicatie pentru fullscreen:</p>
-            <div style="text-align:left;line-height:1.9;font-size:.95rem;padding:0 4px">
-                <div>1. Apasa <strong>⬆ Share</strong> <span style="font-size:.78rem;opacity:.7">(butonul din bara de jos)</span></div>
-                <div>2. Deruleaza in jos in meniu</div>
-                <div>3. Apasa <strong>Adauga pe ecranul de pornire</strong></div>
-                <div>4. Deschide jocul de pe ecranul principal</div>
-            </div>
+            <p class="fs-hint-lead">Bara browserului ocupa spatiu din joc. Ruleaza ca aplicatie pentru fullscreen:</p>
+            <ol class="fs-steps">
+                <li>Apasa <strong><svg class="ic" aria-hidden="true"><use href="#share-2"/></svg> Share</strong> <span class="fs-steps-note">(butonul din bara de jos)</span></li>
+                <li>Deruleaza in jos in meniu</li>
+                <li>Apasa <strong>Adauga pe ecranul de pornire</strong></li>
+                <li>Deschide jocul de pe ecranul principal</li>
+            </ol>
             <button id="fs-btn">CONTINUA IN BROWSER</button>
         </div>
-        <button id="fs-btn-android">INTRA IN FULLSCREEN</button>
+        <button id="fs-btn-android"><svg class="ic" aria-hidden="true"><use href="#fullscreen"/></svg><span>INTRA IN FULLSCREEN</span></button>
     </div>
 </div>
 
 <!-- ========== ECRANUL DE AUTENTIFICARE ========== -->
 <div id="screen-auth">
+    <button class="lb-btn lb-btn-icon auth-settings" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
     <div class="auth-wrap">
 
         <div class="auth-logo">
-            <div class="auth-logo-icon">⚔️</div>
-            <h1 class="auth-logo-title">ARENA<span>ROYALE</span></h1>
+            <div class="auth-lanes" aria-hidden="true">
+                <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span>
+                <span style="--i:3"></span><span style="--i:4"></span><span style="--i:5"></span>
+            </div>
+            <svg class="ic auth-logo-icon" aria-hidden="true"><use href="#mark"/></svg>
+            <h1 class="auth-logo-title wordmark wm-xl"><span>ARENA</span><span class="wm-r">ROYALE</span></h1>
         </div>
 
         <div class="auth-card">
-            <div class="auth-tabs">
+            <div class="auth-tabs" role="tablist">
                 <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">INTRU IN JOC</button>
                 <button class="auth-tab"         id="tab-register" onclick="switchTab('register')">CONT NOU</button>
             </div>
@@ -2058,22 +150,22 @@
             <!-- LOGIN -->
             <div id="form-login" class="auth-form">
                 <div class="input-group">
-                    <label class="input-label">NICKNAME</label>
-                    <input type="text" id="login-nickname" placeholder="Nickname-ul tau..."
+                    <label class="input-label" for="login-nickname">NICKNAME</label>
+                    <input type="text" id="login-nickname" placeholder="Nickname-ul tau"
                         maxlength="15" autocomplete="username" autocapitalize="none"
                         oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
                     <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label">PAROLA</label>
-                    <input type="password" id="login-password" placeholder="Parola ta..."
+                    <label class="input-label" for="login-password">PAROLA</label>
+                    <input type="password" id="login-password" placeholder="Parola ta"
                         maxlength="32" autocomplete="off">
                     <div class="input-line"></div>
                 </div>
                 <div class="auth-error" id="login-error"></div>
                 <button class="auth-btn" id="login-btn" onclick="doLogin()">
                     <span class="btn-text">INTRU IN JOC</span>
-                    <span class="btn-arrow">→</span>
+                    <svg class="ic btn-arrow" aria-hidden="true"><use href="#arrow-right"/></svg>
                 </button>
                 <p class="auth-note">Nu ai cont? Apasa <strong>CONT NOU</strong> sus.</p>
             </div>
@@ -2081,28 +173,28 @@
             <!-- REGISTER -->
             <div id="form-register" class="auth-form" style="display:none">
                 <div class="input-group">
-                    <label class="input-label">NICKNAME</label>
-                    <input type="text" id="reg-nickname" placeholder="Alege un nickname..."
+                    <label class="input-label" for="reg-nickname">NICKNAME</label>
+                    <input type="text" id="reg-nickname" placeholder="Alege un nickname"
                         maxlength="15" autocomplete="username" autocapitalize="none"
                         oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
                     <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label">PAROLA <span class="auth-hint">(min. 6 car., litere + cifre)</span></label>
-                    <input type="password" id="reg-password" placeholder="Alege o parola..."
+                    <label class="input-label" for="reg-password">PAROLA <span class="auth-hint">(min. 6 car., litere + cifre)</span></label>
+                    <input type="password" id="reg-password" placeholder="Alege o parola"
                         maxlength="32" autocomplete="new-password">
                     <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label">CONFIRMA PAROLA</label>
-                    <input type="password" id="reg-confirm" placeholder="Repeta parola..."
+                    <label class="input-label" for="reg-confirm">CONFIRMA PAROLA</label>
+                    <input type="password" id="reg-confirm" placeholder="Repeta parola"
                         maxlength="32" autocomplete="new-password">
                     <div class="input-line"></div>
                 </div>
                 <div class="auth-error" id="reg-error"></div>
                 <button class="auth-btn" id="reg-btn" onclick="doRegister()">
                     <span class="btn-text">CREEAZA CONT</span>
-                    <span class="btn-arrow">→</span>
+                    <svg class="ic btn-arrow" aria-hidden="true"><use href="#arrow-right"/></svg>
                 </button>
                 <p class="auth-note">Ai deja cont? Apasa <strong>INTRU IN JOC</strong> sus.</p>
             </div>
@@ -2111,287 +203,242 @@
     </div>
 </div>
 
-<!-- ========== LOBBY — Personalizare + Camera (acelasi ecran) ========== -->
+<!-- ========== LOBBY ========== -->
 <div id="screen-lobby" style="display:none">
-    <!-- Top bar -->
-    <div class="lb-topbar" style="position:relative;z-index:1">
+    <!-- Top bar: logo, season, (tabs on phones), social + settings -->
+    <header class="lb-topbar">
         <div class="lb-topbar-left">
-            <button class="lb-topbar-back" onclick="logoutToAuth()" title="Iesi din cont">⏻</button>
-            <span class="lb-topbar-title">ARENA<span>ROYALE</span></span>
+            <span class="lb-topbar-title wordmark"><svg class="ic tb-mark" aria-hidden="true"><use href="#mark"/></svg><span>ARENA</span><span class="wm-r">ROYALE</span></span>
         </div>
-        <!-- Tab selector (mobile only, hidden on desktop) -->
-        <div class="lobby-tabs-inline">
-            <button class="lti-btn" id="tab-left"   onclick="switchLobbyTab('left')">👤 Profil</button>
-            <button class="lti-btn active" id="tab-center" onclick="switchLobbyTab('center')">⚔️ Joc</button>
-            <button class="lti-btn" id="tab-right"  onclick="switchLobbyTab('right')">🎯 Misiuni</button>
-            <button class="lti-btn" id="tab-friends" onclick="switchLobbyTab('friends')">👥 <span id="friends-tab-badge" class="friends-tab-badge" style="display:none"></span></button>
+        <div class="season-pill" aria-label="Sezonul curent: Stadium Showdown">
+            <span class="sp-ball" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#ball"/></svg></span>
+            <span class="sp-text"><span class="sp-kick">SEZONUL 1</span><span class="sp-name">STADIUM SHOWDOWN</span></span>
         </div>
+        <!-- Tabs (phones and narrow screens) -->
+        <nav class="lobby-tabs-inline" aria-label="Sectiuni lobby">
+            <button class="lti-btn" id="tab-left" onclick="switchLobbyTab('left')"><svg class="ic" aria-hidden="true"><use href="#id-card"/></svg><span>Profil</span></button>
+            <button class="lti-btn active" id="tab-center" onclick="switchLobbyTab('center')"><svg class="ic" aria-hidden="true"><use href="#swords"/></svg><span>Joc</span></button>
+            <button class="lti-btn" id="tab-right" onclick="switchLobbyTab('right')"><svg class="ic" aria-hidden="true"><use href="#target"/></svg><span>Misiuni</span></button>
+        </nav>
         <div class="lb-topbar-right">
             <button class="lb-btn friends-nav-btn" onclick="openFriendsPanel()" id="friends-nav-btn">
-                👥 <span class="lb-btn-text">PRIETENI</span>
+                <svg class="ic" aria-hidden="true"><use href="#users"/></svg><span class="lb-btn-text">PRIETENI</span>
                 <span id="friends-nav-badge" class="friends-nav-badge" style="display:none"></span>
             </button>
-            <a href="#" class="lb-btn" onclick="openLeaderboard(); return false;">🏆 <span class="lb-btn-text">LEADERBOARD</span></a>
-            <button class="lb-btn" id="btn-mute-lobby" title="Muzica on/off">🔊</button>
+            <a href="#" class="lb-btn lb-gold" onclick="openLeaderboard(); return false;"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg><span class="lb-btn-text">LEADERBOARD</span></a>
+            <button class="lb-btn lb-btn-icon" id="btn-settings-lobby" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
         </div>
-    </div>
+    </header>
 
-    <!-- Continut scrollabil -->
-    <div class="lobby-body" style="position:relative;z-index:1">
+    <!-- Three columns on wide screens; on phones the same blocks regroup into three tabs -->
+    <div class="lobby-body" data-tab="center">
 
-    <!-- ── Left panel (desktop ≥1100px) ── -->
-    <div class="lobby-panel-left">
-        <!-- Profile card -->
-        <div class="lp-card">
+    <!-- Left: profile, record, chests -->
+    <aside class="lobby-panel-left lb-col">
+        <section class="lp-card lp-athlete">
             <div class="lp-profile">
                 <div class="lp-avatar-ring">
-                    <img id="lp-avatar-img" src="" alt="" style="display:none">
-                    <div class="lp-av-placeholder" id="lp-avatar-ph">⚔️</div>
-                    <div class="lp-level-badge" id="lp-level">LV 1</div>
+                    <img id="lp-avatar-img" alt="" style="display:none">
+                    <div class="lp-av-placeholder" id="lp-avatar-ph"><svg class="ic" aria-hidden="true"><use href="#user"/></svg></div>
                 </div>
-                <div class="lp-nick" id="lp-nick">JUCATOR</div>
-                <div class="lp-rank" id="lp-rank">RECRUT</div>
+                <div class="lp-id">
+                    <div class="lp-nick" id="lp-nick">JUCATOR</div>
+                    <div class="lp-rank" id="lp-rank">RECRUT</div>
+                </div>
+                <div class="lp-level-badge" id="lp-level">LV 1</div>
             </div>
             <div class="lp-xp-wrap">
                 <div class="lp-xp-label"><span>XP</span><span id="lp-xp-txt">0 / 50</span></div>
                 <div class="lp-xp-bar"><div class="lp-xp-fill" id="lp-xp-fill" style="width:0%"></div></div>
             </div>
             <div class="lp-coins-row">
-                <div class="lp-coin-box"><span class="lp-coin-icon">🪙</span><span class="lp-coin-val" id="lp-coins">0</span></div>
-                <div class="lp-coin-box"><span class="lp-coin-icon">💎</span><span class="lp-coin-val" id="lp-crystals">0</span></div>
+                <div class="lp-coin-box lp-coin-gold"><svg class="ic lp-coin-icon" aria-hidden="true"><use href="#coins"/></svg><span class="lp-coin-val" id="lp-coins" data-flap>0</span></div>
+                <div class="lp-coin-box lp-coin-gem"><svg class="ic lp-coin-icon" aria-hidden="true"><use href="#gem"/></svg><span class="lp-coin-val" id="lp-crystals" data-flap>0</span></div>
             </div>
-        </div>
-        <!-- Stats card -->
-        <div class="lp-card">
-            <div class="lp-card-title">STATISTICI</div>
+        </section>
+
+        <section class="lp-card lp-results">
+            <h2 class="lp-card-title">STATISTICI</h2>
             <div class="lp-stats-grid">
-                <div class="lp-stat-box lp-stat-wins">
-                    <span class="lp-stat-icon">🏆</span>
-                    <div class="lp-stat-val" id="lp-wins">0</div>
-                    <div class="lp-stat-lbl">VICTORII</div>
-                </div>
-                <div class="lp-stat-box lp-stat-kills">
-                    <span class="lp-stat-icon">💀</span>
-                    <div class="lp-stat-val" id="lp-kills">0</div>
-                    <div class="lp-stat-lbl">ELIMINARI</div>
-                </div>
-                <div class="lp-stat-box lp-stat-games">
-                    <span class="lp-stat-icon">🎮</span>
-                    <div class="lp-stat-val" id="lp-games">0</div>
-                    <div class="lp-stat-lbl">MECIURI</div>
-                </div>
-                <div class="lp-stat-box lp-stat-winrate">
-                    <span class="lp-stat-icon">📈</span>
-                    <div class="lp-stat-val" id="lp-winrate">0%</div>
-                    <div class="lp-stat-lbl">WIN RATE</div>
-                </div>
+                <div class="lp-stat-box lp-stat-wins"><span class="lp-stat-val" id="lp-wins">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#trophy"/></svg>VICTORII</span></div>
+                <div class="lp-stat-box lp-stat-kills"><span class="lp-stat-val" id="lp-kills">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#skull"/></svg>ELIMINARI</span></div>
+                <div class="lp-stat-box lp-stat-games"><span class="lp-stat-val" id="lp-games">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#gamepad-2"/></svg>MECIURI</span></div>
+                <div class="lp-stat-box lp-stat-winrate"><span class="lp-stat-val" id="lp-winrate">0%</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#trending-up"/></svg>WIN RATE</span></div>
             </div>
-        </div>
-    </div>
+        </section>
 
-    <!-- ── Center col (always visible) ── -->
-    <div class="lobby-center">
-    <div class="lobby-inner">
-
-        <!-- PERSONAJ -->
-        <div class="char-section">
-            <div class="char-preview-outer" id="char-rarity-ring" onclick="openCharacterShop()">
-                <img id="preview" src="/images/characters/ninja.png" alt="" class="char-preview-img">
-            </div>
-            <div class="char-section-text" style="display:flex;flex-direction:column;align-items:center;gap:6px">
-                <div class="char-name" id="char-name-display">JUCATOR</div>
-                <button class="char-change-btn" onclick="openCharacterShop()">PERSONAJE</button>
-            </div>
-        </div>
-
-        <!-- LOADOUT + GAMEMODE ROW -->
-        <div class="loadout-gamemode-row">
-
-            <!-- BUILD STATS (stanga, mai ingust) -->
-            <div class="build-card">
-                <div class="bc-header">
-                    <span class="bc-title">LOADOUT</span>
-                    <span class="bc-points"><span id="points-display">10</span> / 10</span>
-                </div>
-
-                <div class="stat-row">
-                    <span class="stat-icon">❤️</span>
-                    <span class="stat-name">HP</span>
-                    <div class="stat-controls">
-                        <button class="stat-btn minus" onclick="changeStat('hp',-1)">−</button>
-                        <div class="stat-bar"><div class="stat-fill red" id="bar-hp" style="width:10%"></div></div>
-                        <button class="stat-btn plus"  onclick="changeStat('hp', 1)">+</button>
-                    </div>
-                    <span class="stat-value" id="val-hp">500 HP</span>
-                </div>
-
-                <div class="stat-row">
-                    <span class="stat-icon">💥</span>
-                    <span class="stat-name">DMG</span>
-                    <div class="stat-controls">
-                        <button class="stat-btn minus" onclick="changeStat('dmg',-1)">−</button>
-                        <div class="stat-bar"><div class="stat-fill orange" id="bar-dmg" style="width:10%"></div></div>
-                        <button class="stat-btn plus"  onclick="changeStat('dmg', 1)">+</button>
-                    </div>
-                    <span class="stat-value" id="val-dmg">10 DMG</span>
-                </div>
-
-                <div class="stat-row">
-                    <span class="stat-icon">⚡</span>
-                    <span class="stat-name">SPD</span>
-                    <div class="stat-controls">
-                        <button class="stat-btn minus" onclick="changeStat('spd',-1)">−</button>
-                        <div class="stat-bar"><div class="stat-fill blue" id="bar-spd" style="width:10%"></div></div>
-                        <button class="stat-btn plus"  onclick="changeStat('spd', 1)">+</button>
-                    </div>
-                    <span class="stat-value" id="val-spd">2.5 SPD</span>
-                </div>
-            </div>
-
-            <!-- GAMEMODE SELECTION (dreapta) -->
-            <div class="gamemode-panel">
-                <div class="gm-label">GAMEMODE</div>
-                <button class="gm-card gm-br" id="gm-br" onclick="selectGamemode('br')">
-                    <span class="gm-icon">⚔️</span>
-                    <div class="gm-info">
-                        <div class="gm-name">BATTLE ROYALE</div>
-                        <div class="gm-desc">Ultimul supravietuitor castiga</div>
-                    </div>
-                    <div class="gm-check">✓</div>
-                </button>
-                <button class="gm-card gm-pve" id="gm-pve" onclick="selectGamemode('pve')">
-                    <span class="gm-icon">🧟</span>
-                    <div class="gm-info">
-                        <div class="gm-name">SURVIVAL PvE</div>
-                        <div class="gm-desc">Cooperare contra hoardelor</div>
-                    </div>
-                    <div class="gm-check">✓</div>
-                </button>
-            </div>
-
-        </div><!-- /loadout-gamemode-row -->
-
-        <!-- CAMERA — mereu vizibila, Play blocat pana la selectia gamemode -->
-        <div class="room-card" id="room-section">
-            <div class="rc-split">
-                <!-- Stanga: info gamemode -->
-                <div class="rc-mode-panel" id="rc-mode-panel">
-                    <div class="rc-no-sel" id="rc-no-sel">
-                        <span class="rc-no-sel-icon">🎮</span>
-                        <span class="rc-no-sel-txt">Selecteaza<br>un gamemode</span>
-                    </div>
-                    <div class="rc-mode-info" id="rc-mode-info" style="display:none">
-                        <span class="rc-big-icon" id="rc-big-icon">⚔️</span>
-                        <div class="rc-mode-big-name" id="rc-mode-big-name">BATTLE ROYALE</div>
-                        <div class="rc-mode-badge" id="rc-mode-badge">PvP</div>
-                        <div class="rc-mode-big-desc" id="rc-mode-big-desc">Ultimul supravietuitor castiga</div>
-                        <div class="rc-mode-features" id="rc-mode-features">
-                            <span class="rc-mode-feat-line" id="rc-mode-feat-1">👥 Max 20 jucatori</span>
-                            <span class="rc-mode-feat-line" id="rc-mode-feat-2">⏱ ~10 min / runda</span>
-                        </div>
-                    </div>
-                </div>
-                <!-- Dreapta: actiuni -->
-                <div class="rc-actions">
-                    <div class="lobby-online-bar">
-                        <div class="lobby-online-dot"></div>
-                        <span class="lobby-online-text"><strong id="lobby-online-count">--</strong> jucatori online</span>
-                    </div>
-                    <button class="btn-play" id="btn-play" onclick="startCreate()" disabled>PLAY</button>
-                    <div class="or-divider">SAU INTRA CU COD</div>
-                    <div class="join-row">
-                        <input type="text" id="room-code-input" class="join-input"
-                            placeholder="Cod (ex: KBNJM)"
-                            maxlength="5" autocomplete="off" autocapitalize="characters"
-                            oninput="this.value=this.value.toUpperCase()">
-                        <button class="btn-join" onclick="startJoin()">→</button>
-                    </div>
-                    <p class="room-err" id="room-error-msg"></p>
-                </div>
-            </div>
-        </div>
-
-        <p class="lobby-err" id="error-msg"></p>
-
-        <!-- CHEST SLOTS -->
-        <div class="chest-row">
+        <section class="lp-card chest-row">
             <div class="chest-row-header">
-                <span class="chest-row-title">CHEST-URI</span>
+                <h2 class="lp-card-title chest-row-title">CHEST-URI</h2>
                 <span class="chest-row-sub">0 / 4 sloturi</span>
             </div>
             <div class="chest-slots">
-                <div class="chest-slot">
-                    <span class="chest-slot-icon">📦</span>
-                    <span class="chest-slot-label">Empty</span>
-                </div>
-                <div class="chest-slot">
-                    <span class="chest-slot-icon">📦</span>
-                    <span class="chest-slot-label">Empty</span>
-                </div>
-                <div class="chest-slot">
-                    <span class="chest-slot-icon">📦</span>
-                    <span class="chest-slot-label">Empty</span>
-                </div>
-                <div class="chest-slot">
-                    <span class="chest-slot-icon">📦</span>
-                    <span class="chest-slot-label">Empty</span>
-                </div>
+                <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
+                <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
+                <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
+                <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
             </div>
+            <p class="chest-hint">Castiga meciuri ca sa primesti chest-uri.</p>
+        </section>
+    </aside>
+
+    <!-- Center: the character on stage, then the loadout -->
+    <main class="lobby-center lb-col">
+        <section class="hero-card" id="char-rarity-ring">
+            <div class="hero-head">
+                <span class="hero-kick">PERSONAJ</span>
+                <h2 class="hero-name" id="char-name-display">NINJA</h2>
+            </div>
+            <button type="button" class="hero-arrow hero-prev" onclick="cycleCharacter(-1)" aria-label="Personajul anterior"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+            <div class="hero-stage" id="hero-stage">
+                <span class="hero-spot" aria-hidden="true"></span>
+                <span class="hero-floor" aria-hidden="true"></span>
+                <img id="preview" src="/images/characters/ninja.png" alt="" class="char-preview-img hero-img">
+                <span class="hero-lock" id="hero-lock" hidden><svg class="ic" aria-hidden="true"><use href="#lock"/></svg><span id="hero-lock-txt">BLOCAT</span></span>
+            </div>
+            <button type="button" class="hero-arrow hero-next" onclick="cycleCharacter(1)" aria-label="Personajul urmator"><svg class="ic" aria-hidden="true"><use href="#chevron-right"/></svg></button>
+            <div class="hero-foot">
+                <button type="button" class="hero-weapon hero-chars" onclick="openCharacterShop()" aria-label="Toate personajele">
+                    <span class="weapon-preview-icon hc-icon"><svg class="ic" aria-hidden="true"><use href="#users"/></svg></span>
+                    <span class="hw-text"><span class="hw-kick">SKIN <b id="hero-skin-idx">1</b> / <span id="hero-skin-total">30</span></span><span class="hw-name">PERSONAJE</span></span>
+                </button>
+                <button type="button" class="hero-weapon hero-arms" id="weapon-ring" onclick="openWeaponSelect()" aria-label="Alege arma">
+                    <span class="weapon-preview-icon" id="weapon-preview-icon"><svg class="ic" aria-hidden="true"><use href="#w-pistol"/></svg></span>
+                    <span class="hw-text"><span class="hw-kick">ARMA</span><span class="hw-name" id="weapon-name-display">PISTOL</span></span>
+                </button>
+            </div>
+        </section>
+
+        <section class="build-card">
+            <div class="bc-header">
+                <h2 class="bc-title" id="loadout-title">LOADOUT</h2>
+                <span class="bc-points"><span id="points-display" data-flap>10</span><span class="bc-points-max"> puncte ramase</span></span>
+            </div>
+
+            <div class="stat-row stat-hp">
+                <span class="stat-name">HP</span>
+                <button class="stat-btn minus" onclick="changeStat('hp',-1)" aria-label="Scade HP"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
+                <div class="stat-bar"><div class="stat-fill red" id="bar-hp" style="width:10%"></div></div>
+                <button class="stat-btn plus"  onclick="changeStat('hp', 1)" aria-label="Creste HP"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
+                <span class="stat-value" id="val-hp" data-flap>500 HP</span>
+            </div>
+
+            <div class="stat-row stat-dmg">
+                <span class="stat-name">DMG</span>
+                <button class="stat-btn minus" onclick="changeStat('dmg',-1)" aria-label="Scade DMG"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
+                <div class="stat-bar"><div class="stat-fill orange" id="bar-dmg" style="width:10%"></div></div>
+                <button class="stat-btn plus"  onclick="changeStat('dmg', 1)" aria-label="Creste DMG"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
+                <span class="stat-value" id="val-dmg" data-flap>10 DMG</span>
+            </div>
+
+            <div class="stat-row stat-spd">
+                <span class="stat-name">SPD</span>
+                <button class="stat-btn minus" onclick="changeStat('spd',-1)" aria-label="Scade SPD"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
+                <div class="stat-bar"><div class="stat-fill blue" id="bar-spd" style="width:10%"></div></div>
+                <button class="stat-btn plus"  onclick="changeStat('spd', 1)" aria-label="Creste SPD"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
+                <span class="stat-value" id="val-spd" data-flap>2.5 SPD</span>
+            </div>
+        </section>
+    </main>
+
+    <!-- Right: mode + play, missions, tournament -->
+    <aside class="lobby-panel-right lb-col">
+        <div class="season-pill season-pill-m" aria-hidden="true">
+            <span class="sp-ball"><svg class="ic" aria-hidden="true"><use href="#ball"/></svg></span>
+            <span class="sp-text"><span class="sp-kick">SEZONUL 1</span><span class="sp-name">STADIUM SHOWDOWN</span></span>
         </div>
+        <section class="gamemode-panel play-card" id="room-section">
+            <h2 class="gm-label">GAMEMODE</h2>
+            <button class="gm-card gm-br" id="gm-br" onclick="selectGamemode('br')">
+                <span class="gm-lane">1</span>
+                <svg class="ic gm-icon" aria-hidden="true"><use href="#swords"/></svg>
+                <span class="gm-info">
+                    <span class="gm-name">BATTLE ROYALE</span>
+                    <span class="gm-desc">Ultimul supravietuitor castiga</span>
+                </span>
+                <svg class="ic gm-check" aria-hidden="true"><use href="#check"/></svg>
+            </button>
+            <button class="gm-card gm-pve" id="gm-pve" onclick="selectGamemode('pve')">
+                <span class="gm-lane">2</span>
+                <svg class="ic gm-icon" aria-hidden="true"><use href="#biohazard"/></svg>
+                <span class="gm-info">
+                    <span class="gm-name">SURVIVAL PvE</span>
+                    <span class="gm-desc">Cooperare contra hoardelor</span>
+                </span>
+                <svg class="ic gm-check" aria-hidden="true"><use href="#check"/></svg>
+            </button>
+            <button class="btn-play" id="btn-play" onclick="startCreate()">
+                <svg class="ic" aria-hidden="true"><use href="#play"/></svg><span>PLAY</span>
+            </button>
+            <label class="gm-label join-label" for="room-code-input">COD CAMERA</label>
+            <div class="join-row">
+                <input type="text" id="room-code-input" class="join-input"
+                    placeholder="ex: KBNJM" aria-label="Cod camera"
+                    maxlength="5" autocomplete="off" autocapitalize="characters"
+                    oninput="this.value=this.value.toUpperCase()">
+                <button class="btn-join" onclick="startJoin()" aria-label="Intra in camera"><svg class="ic" aria-hidden="true"><use href="#arrow-right"/></svg></button>
+            </div>
+            <p class="room-err" id="room-error-msg"></p>
+            <p class="lobby-err" id="error-msg"></p>
+        </section>
 
-    </div>
-    </div><!-- lobby-inner / lobby-center -->
-
-    <!-- ── Right panel (desktop ≥1100px) ── -->
-    <div class="lobby-panel-right">
-        <!-- Daily missions -->
-        <div class="lp-card">
-            <div class="lp-card-title">🎯 MISIUNI ZILNICE</div>
+        <section class="lp-card missions-card">
+            <div class="mc-head">
+                <h2 class="lp-card-title"><svg class="ic" aria-hidden="true"><use href="#target"/></svg>MISIUNI ZILNICE</h2>
+                <button type="button" class="mc-all" onclick="openMissions()">Toate <b id="mc-count">6</b></button>
+            </div>
             <div id="lp-missions"></div>
-        </div>
-        <!-- Mini leaderboard -->
-        <div class="lp-card">
-            <div class="lp-card-title">🏆 TOP JUCATORI</div>
-            <div id="lp-mini-lb">
-                <div class="lp-lb-row" style="justify-content:center;color:var(--dim);font-size:.7rem;border:none;padding:10px 0">Se incarca...</div>
+        </section>
+
+        <section class="lp-event">
+            <div class="lp-event-name"><svg class="ic" aria-hidden="true"><use href="#radio"/></svg>Weekend Tournament</div>
+            <div class="lp-event-row">
+                <span class="lp-event-timer" id="lp-event-timer">--:--:--</span>
+                <button type="button" class="lp-event-join" onclick="tournamentSignup()">INSCRIE-TE</button>
             </div>
-        </div>
-        <!-- Live event -->
-        <div class="lp-event">
-            <div class="lp-event-glow"></div>
-            <div class="lp-event-label">⚡ LIVE EVENT</div>
-            <div class="lp-event-name">Weekend Tournament</div>
-            <div class="lp-event-timer-label">INCEPE IN</div>
-            <div class="lp-event-timer" id="lp-event-timer">--:--:--</div>
-        </div>
+        </section>
+    </aside>
+
     </div>
 
+    <!-- ── Missions Modal (all six of today's missions) ── -->
+    <div id="missions-overlay" style="display:none">
+        <div class="missions-backdrop" onclick="closeMissions()"></div>
+        <div class="missions-modal" role="dialog" aria-label="Misiuni zilnice">
+            <div class="missions-header">
+                <span class="missions-title"><svg class="ic" aria-hidden="true"><use href="#target"/></svg>MISIUNI ZILNICE</span>
+                <button class="missions-close" onclick="closeMissions()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+            </div>
+            <div class="missions-body" id="missions-modal-list"></div>
+        </div>
     </div>
 
     <!-- ── Friends Modal ── -->
     <div id="friends-overlay" style="display:none">
         <div class="friends-modal">
             <div class="friends-header">
-                <span class="friends-title">👥 PRIETENI</span>
-                <button class="friends-close" onclick="closeFriendsPanel()">✕</button>
+                <span class="friends-title"><svg class="ic" aria-hidden="true"><use href="#users"/></svg>PRIETENI</span>
+                <button class="friends-close" onclick="closeFriendsPanel()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
             </div>
-            <!-- Search -->
-            <div class="friends-search-wrap">
-                <input type="text" id="friends-search-input" class="friends-search-input"
-                    placeholder="Cauta dupa nickname..." autocomplete="off" maxlength="20"
-                    onkeydown="if(event.key==='Enter')searchFriend()">
-                <button class="friends-search-btn" onclick="searchFriend()">CAUTA</button>
-            </div>
-            <div id="friends-search-results" class="friends-search-results"></div>
-            <!-- Pending incoming -->
-            <div id="friends-pending-section" style="display:none">
-                <div class="friends-section-title">CERERI PRIMITE <span id="friends-pending-count" class="fpcount"></span></div>
-                <div id="friends-pending-list"></div>
-            </div>
-            <!-- Friends list -->
-            <div class="friends-section-title">PRIETENI <span id="friends-count" class="fpcount"></span></div>
-            <div id="friends-list" class="friends-list">
-                <div class="friends-empty">Niciun prieten inca. Cauta jucatori de mai sus!</div>
+            <div class="friends-scroll">
+                <!-- Search -->
+                <div class="friends-search-wrap">
+                    <input type="text" id="friends-search-input" class="friends-search-input"
+                        placeholder="Cauta dupa nickname" autocomplete="off" maxlength="20"
+                        onkeydown="if(event.key==='Enter')searchFriend()">
+                    <button class="friends-search-btn" onclick="searchFriend()"><svg class="ic" aria-hidden="true"><use href="#search"/></svg><span>CAUTA</span></button>
+                </div>
+                <div id="friends-search-results" class="friends-search-results"></div>
+                <!-- Pending incoming -->
+                <div id="friends-pending-section" style="display:none">
+                    <div class="friends-section-title">CERERI PRIMITE <span id="friends-pending-count" class="fpcount"></span></div>
+                    <div id="friends-pending-list"></div>
+                </div>
+                <!-- Friends list -->
+                <div class="friends-section-title">PRIETENI <span id="friends-count" class="fpcount"></span></div>
+                <div id="friends-list" class="friends-list">
+                    <div class="friends-empty">Niciun prieten inca. Cauta jucatori de mai sus.</div>
+                </div>
             </div>
         </div>
     </div>
@@ -2400,12 +447,12 @@
     <div id="char-shop-overlay" style="display:none">
         <div class="char-shop-modal">
             <div class="char-shop-header">
-                <span class="char-shop-title">🎭 PERSONAJE</span>
+                <span class="char-shop-title"><svg class="ic" aria-hidden="true"><use href="#id-card"/></svg>PERSONAJE</span>
                 <div class="char-shop-currency">
-                    <span class="csc-box">🪙 <span id="shop-coins">0</span></span>
-                    <span class="csc-box">💎 <span id="shop-diamonds">0</span></span>
+                    <span class="csc-box csc-gold"><svg class="ic" aria-hidden="true"><use href="#coins"/></svg><span id="shop-coins">0</span></span>
+                    <span class="csc-box csc-gem"><svg class="ic" aria-hidden="true"><use href="#gem"/></svg><span id="shop-diamonds">0</span></span>
                 </div>
-                <button class="char-shop-close" onclick="closeCharacterShop()">✕</button>
+                <button class="char-shop-close" onclick="closeCharacterShop()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
             </div>
             <div class="char-shop-filters">
                 <button class="csf-btn active" data-filter="all"       onclick="filterCharShop('all',this)">TOATE</button>
@@ -2418,42 +465,60 @@
         </div>
     </div>
 
+    <!-- WEAPON SELECT OVERLAY -->
+    <div id="weapon-select-overlay">
+        <div class="weapon-select-modal">
+            <div class="weapon-select-header">
+                <span class="weapon-select-title"><svg class="ic" aria-hidden="true"><use href="#crosshair"/></svg>SELECTEAZA ARMA</span>
+                <button class="weapon-select-close" onclick="closeWeaponSelect()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+            </div>
+            <div class="weapon-select-grid" id="weapon-select-grid"></div>
+        </div>
+    </div>
+
 </div>
 
 <!-- ========== ECRANUL DE ASTEPTARE ========== -->
 <div id="screen-waiting" style="display:none">
 
-    <div class="waiting-topbar">
-        <button class="lb-topbar-back" onclick="leaveWaiting()" title="Iesi din camera">⏻</button>
-        <a href="#" class="lb-btn" onclick="openLeaderboard(); return false;">🏆</a>
-    </div>
+    <header class="waiting-topbar">
+        <button class="lb-topbar-back" onclick="leaveWaiting()" title="Iesi din camera" aria-label="Iesi din camera"><svg class="ic" aria-hidden="true"><use href="#log-out"/></svg></button>
+        <span class="lb-topbar-title wordmark"><svg class="ic tb-mark" aria-hidden="true"><use href="#mark"/></svg><span>ARENA</span><span class="wm-r">ROYALE</span></span>
+        <div class="lb-topbar-right">
+            <a href="#" class="lb-btn lb-btn-icon" onclick="openLeaderboard(); return false;" aria-label="Leaderboard"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg></a>
+            <button class="lb-btn lb-btn-icon" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
+        </div>
+    </header>
 
     <div class="waiting-scroll">
     <div class="waiting-content">
-        <div class="waiting-logo">⚔️</div>
-        <h2 class="waiting-title">SALA DE ASTEPTARE</h2>
-
-        <div class="waiting-code-box">
-            <span class="waiting-code-label">COD CAMERA</span>
-            <span class="waiting-code-value" id="waiting-code-display">—</span>
-        </div>
-
-        <div class="waiting-stats">
-            <div class="online-dot"></div>
-            <span id="waiting-count">0</span> jucatori conectati
+        <div class="waiting-head">
+            <div class="waiting-title-block">
+                <h2 class="waiting-title">SALA DE ASTEPTARE</h2>
+                <div class="waiting-stats">
+                    <div class="online-dot"></div>
+                    <span class="waiting-count-num" id="waiting-count" data-flap>0</span><span>jucatori conectati</span>
+                </div>
+            </div>
+            <div class="waiting-code-box">
+                <span class="waiting-code-label">COD CAMERA</span>
+                <span class="waiting-code-value" id="waiting-code-display">—</span>
+            </div>
         </div>
 
         <div class="waiting-players-area">
             <div class="waiting-players-grid" id="waiting-players"></div>
             <button id="btn-invite-friends" class="waiting-invite-btn"
-                    onclick="openWaitingInvitePanel()" title="Invita prieteni"
-                    style="display:none">+</button>
+                    onclick="openWaitingInvitePanel()" title="Invita prieteni" aria-label="Invita prieteni"
+                    style="display:none"><svg class="ic" aria-hidden="true"><use href="#user-plus"/></svg><span>INVITA</span></button>
         </div>
 
-        <button id="btn-start-game" class="btn-start-game" onclick="startGame()" style="display:none">
-            ▶ PORNESTE JOCUL
-        </button>
-        <p class="waiting-sub" id="waiting-sub-msg">Asteapta ca hostul sa porneasca jocul...</p>
+        <div class="waiting-foot">
+            <button id="btn-start-game" class="btn-start-game" onclick="startGame()" style="display:none">
+                <svg class="ic" aria-hidden="true"><use href="#play"/></svg><span>PORNESTE JOCUL</span>
+            </button>
+            <p class="waiting-sub" id="waiting-sub-msg">Asteapta ca hostul sa porneasca jocul...</p>
+        </div>
     </div>
     </div>
 </div>
@@ -2463,8 +528,8 @@
     <div class="wip-overlay" onclick="closeWaitingInvitePanel()"></div>
     <div class="wip-modal">
         <div class="wip-header">
-            <span class="wip-title">👥 Invita Prieteni</span>
-            <button class="wip-close" onclick="closeWaitingInvitePanel()">✕</button>
+            <span class="wip-title"><svg class="ic" aria-hidden="true"><use href="#user-plus"/></svg>Invita prieteni</span>
+            <button class="wip-close" onclick="closeWaitingInvitePanel()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
         </div>
         <div class="wip-body" id="waiting-invite-list">
             <div class="wip-empty">Niciun prieten online momentan.</div>
@@ -2475,11 +540,11 @@
 <!-- ========== POPUP INVITATIE PRIMITA ========== -->
 <div id="room-invite-popup" style="display:none">
     <div class="rip-card">
-        <div class="rip-badge">⚔️ INVITATIE</div>
+        <div class="rip-badge"><svg class="ic" aria-hidden="true"><use href="#swords"/></svg>INVITATIE</div>
         <div class="rip-body">
             <strong id="invite-from">—</strong> te invita sa joci impreuna!
         </div>
-        <div class="rip-code">Cod camera: <span id="invite-room-code">—</span></div>
+        <div class="rip-code">Cod camera <span id="invite-room-code">—</span></div>
         <div class="rip-actions">
             <button class="rip-decline" onclick="declineRoomInvite()">REFUZA</button>
             <button class="rip-accept"  onclick="acceptRoomInvite()">ACCEPTA</button>
@@ -2494,11 +559,11 @@
 
     <div id="game-ui">
         <div class="ui-players">
-            <span>👥</span>
-            <span id="players-alive">0</span>
-            <span class="ui-sep">|</span>
-            <span>💀</span>
-            <span id="my-kills">0</span>
+            <svg class="ic" aria-hidden="true"><use href="#users"/></svg>
+            <span id="players-alive" data-flap>0</span>
+            <span class="ui-sep"></span>
+            <svg class="ic" aria-hidden="true"><use href="#skull"/></svg>
+            <span id="my-kills" data-flap>0</span>
         </div>
         <div id="kill-feed"></div>
     </div>
@@ -2506,29 +571,86 @@
     <div id="zone-left"></div>
     <div id="zone-right"></div>
 
+    <!-- PvE top HUD wrapper -->
+    <div id="pve-top-hud" style="display:none">
+        <div id="pve-hud">
+            <div id="pve-wave-badge">WAVE <span id="pve-wave-num">0</span><span class="pve-wave-tot">/10</span></div>
+            <div class="pve-hud-sep"></div>
+            <div id="pve-base-section">
+                <span class="pve-base-label">BAZA</span>
+                <div class="pve-base-bar-outer"><div class="pve-base-bar-inner" id="pve-base-bar-inner"></div></div>
+                <span id="pve-base-hp-text">1000</span>
+            </div>
+        </div>
+        <div id="pve-coins-badge">
+            <svg class="ic" aria-hidden="true"><use href="#coins"/></svg>
+            <span id="pve-coins-num">0</span>
+        </div>
+    </div>
+
+    <!-- PvE Upgrade Panel -->
+    <div id="pve-upgrade-panel" style="display:none">
+        <div class="pve-upg-header">
+            <span class="pve-upg-title"><svg class="ic" aria-hidden="true"><use href="#chevrons-up"/></svg>UPGRADE</span>
+            <span id="pve-upgrade-wave-info" class="pve-upg-wave">Wave 1<svg class="ic" aria-hidden="true"><use href="#arrow-right"/></svg>2</span>
+        </div>
+        <div class="pve-upg-coins"><svg class="ic" aria-hidden="true"><use href="#coins"/></svg><span id="pve-upgrade-coins">0</span><span class="pve-upg-coins-lbl">monede</span></div>
+        <div class="pve-upg-grid">
+            <button class="pve-upg-btn" data-type="dmg" onclick="buyUpgrade('dmg')">
+                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#crosshair"/></svg>
+                <span class="pve-upg-name">DAMAGE</span>
+                <span class="pve-upg-val">+5%</span>
+                <span class="pve-upg-cost">6</span>
+                <div class="pve-upg-segs"></div>
+            </button>
+            <button class="pve-upg-btn" data-type="spd" onclick="buyUpgrade('spd')">
+                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#gauge"/></svg>
+                <span class="pve-upg-name">VITEZA</span>
+                <span class="pve-upg-val">+4%</span>
+                <span class="pve-upg-cost">5</span>
+                <div class="pve-upg-segs"></div>
+            </button>
+            <button class="pve-upg-btn" data-type="hp" onclick="buyUpgrade('hp')">
+                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#heart-pulse"/></svg>
+                <span class="pve-upg-name">HP MAX</span>
+                <span class="pve-upg-val">+15</span>
+                <span class="pve-upg-cost">7</span>
+                <div class="pve-upg-segs"></div>
+            </button>
+            <button class="pve-upg-btn" data-type="ammo" onclick="buyUpgrade('ammo')">
+                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#bolt"/></svg>
+                <span class="pve-upg-name">AMMO</span>
+                <span class="pve-upg-val">+12%</span>
+                <span class="pve-upg-cost">4</span>
+                <div class="pve-upg-segs"></div>
+            </button>
+        </div>
+        <button id="pve-skip-btn" onclick="skipWaveBreak()">SKIP</button>
+        <div class="pve-upg-timer-wrap"><div class="pve-upg-timer-bar" id="pve-upg-timer-bar"></div></div>
+    </div>
+
     <!-- Spectator HUD -->
     <div id="spectator-hud" style="display:none">
-        <button class="spec-nav-btn" onclick="window._specCycle && window._specCycle(-1)">◀</button>
+        <button class="spec-nav-btn" onclick="window._specCycle && window._specCycle(-1)" aria-label="Jucator anterior"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
         <div class="spec-info">
-            <span class="spec-label">👁 SPECTATING</span>
+            <span class="spec-label"><svg class="ic" aria-hidden="true"><use href="#eye"/></svg>SPECTATING</span>
             <span id="spec-target-name">—</span>
             <span id="spec-target-hp"></span>
         </div>
-        <button class="spec-nav-btn" onclick="window._specCycle && window._specCycle(1)">▶</button>
+        <button class="spec-nav-btn" onclick="window._specCycle && window._specCycle(1)" aria-label="Jucator urmator"><svg class="ic" aria-hidden="true"><use href="#chevron-right"/></svg></button>
     </div>
 
     <!-- Exit button -->
-    <button id="btn-leave-game" onclick="showLeaveConfirm()" title="Iesi din joc">✕ IESI</button>
-
-    <!-- Music mute button -->
-    <button id="btn-mute-game" title="Muzica on/off">🔊</button>
-
-    <!-- Debug toggle button -->
+    <!-- Top-right controls -->
+    <div class="hud-actions">
     <button id="btn-debug-toggle" onclick="window._toggleDbg && window._toggleDbg()" title="Debug overlay">DBG</button>
+    <button id="btn-settings-game" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
+    <button id="btn-leave-game" onclick="showLeaveConfirm()" title="Iesi din joc"><svg class="ic" aria-hidden="true"><use href="#x"/></svg><span>IESI</span></button>
+    </div>
 
     <div id="leave-confirm">
         <div class="leave-confirm-card">
-            <span class="leave-confirm-icon">🚪</span>
+            <svg class="ic leave-confirm-icon" aria-hidden="true"><use href="#door-open"/></svg>
             <div class="leave-confirm-title">IESI DIN MECI?</div>
             <div class="leave-confirm-text">Vei parasi runda curenta si te vei intoarce in lobby.</div>
             <div class="leave-confirm-actions">
@@ -2540,7 +662,7 @@
 
     <!-- Kill notification -->
     <div id="kill-notif">
-        <div id="kill-notif-skull">💀</div>
+        <svg class="ic" id="kill-notif-skull" aria-hidden="true"><use href="#skull"/></svg>
         <div id="kill-notif-count">1 KILL</div>
     </div>
 
@@ -2552,30 +674,64 @@
     <!-- Game Over -->
     <div id="screen-gameover">
         <div class="gameover-content">
-            <h2 id="gameover-title">💀 ELIMINAT!</h2>
+            <h2 id="gameover-title">ELIMINAT!</h2>
             <p id="gameover-msg">Ai fost eliminat din arena</p>
 
             <div id="round-stats-section" class="round-stats" style="display:none">
                 <div class="stats-kills-big">
                     <span class="stats-kills-num" id="stat-round-kills">0</span>
-                    <span class="stats-kills-lbl">💀 KILLS IN RUNDA</span>
+                    <span class="stats-kills-lbl"><svg class="ic" aria-hidden="true"><use href="#skull"/></svg>KILLS IN RUNDA</span>
                 </div>
             </div>
 
-            <button id="btn-spectate" style="display:none" onclick="window._startSpectating && window._startSpectating()">👁 SPECTATE</button>
+            <button id="btn-spectate" style="display:none" onclick="window._startSpectating && window._startSpectating()">SPECTATE</button>
 
-            <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
-                <button id="btn-rematch">🔄 JOACA DIN NOU</button>
+            <div class="gameover-actions">
+                <button id="btn-rematch">JOACA DIN NOU</button>
                 <button class="btn-leave" onclick="returnToLobby()">IESI</button>
             </div>
-            <a href="#" class="lb-btn" style="margin-top:4px" onclick="openLeaderboard(); return false;">🏆 LEADERBOARD</a>
+            <a href="#" class="lb-btn gameover-lb" onclick="openLeaderboard(); return false;"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg>LEADERBOARD</a>
+        </div>
+    </div>
+</div>
+
+<!-- ========== SETARI ========== -->
+<div id="settings-overlay" style="display:none">
+    <div class="settings-backdrop" onclick="closeSettings()"></div>
+    <div class="settings-modal" role="dialog" aria-label="Setari">
+        <div class="settings-header">
+            <span class="settings-title"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg>SETARI</span>
+            <button class="settings-close" onclick="closeSettings()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+        </div>
+        <div class="settings-body">
+            <div class="settings-row">
+                <div class="settings-label">
+                    <svg class="ic" id="set-sound-ic" aria-hidden="true"><use href="#volume-2"/></svg>
+                    <div><div class="settings-name">Sunet</div><div class="settings-hint">Efecte la butoane, alegeri si start de meci</div></div>
+                </div>
+                <button class="switch" id="set-sound" role="switch" aria-checked="true" aria-label="Sunet"><span class="switch-knob"></span><span class="switch-text">ON</span></button>
+            </div>
+            <div class="settings-row" id="set-row-fs">
+                <div class="settings-label">
+                    <svg class="ic" aria-hidden="true"><use href="#maximize"/></svg>
+                    <div><div class="settings-name">Ecran complet</div><div class="settings-hint" id="set-fs-hint">Ascunde bara browserului</div></div>
+                </div>
+                <button class="settings-btn" id="set-fs">INTRA</button>
+            </div>
+            <div class="settings-row" id="set-row-logout">
+                <div class="settings-label">
+                    <svg class="ic" aria-hidden="true"><use href="#log-out"/></svg>
+                    <div><div class="settings-name">Cont</div><div class="settings-hint" id="set-account-hint">Iesi din contul curent</div></div>
+                </div>
+                <button class="settings-btn settings-logout" onclick="closeSettings(); logoutToAuth()">DECONECTARE</button>
+            </div>
         </div>
     </div>
 </div>
 
 <!-- ========== OVERLAY ROTIRE ========== -->
 <div id="rotate-overlay">
-    <span class="rotate-phone">📱</span>
+    <svg class="ic rotate-phone" aria-hidden="true"><use href="#smartphone"/></svg>
     <div class="rotate-title">ROTESTE DISPOZITIVUL</div>
     <div class="rotate-sub">Jocul functioneaza doar in modul landscape</div>
 </div>
@@ -2585,8 +741,8 @@
     <div class="lbo-backdrop" onclick="closeLeaderboard()"></div>
     <div class="lbo-card">
         <div class="lbo-header">
-            <span class="lbo-title">🏆 LEADERBOARD</span>
-            <button class="lbo-close" onclick="closeLeaderboard()">✕ INCHIDE</button>
+            <span class="lbo-title"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg>LEADERBOARD</span>
+            <button class="lbo-close" onclick="closeLeaderboard()"><svg class="ic" aria-hidden="true"><use href="#x"/></svg><span>INCHIDE</span></button>
         </div>
         <div class="lbo-table-wrap">
             <table>
@@ -2603,7 +759,7 @@
                 <tbody id="lbo-body"></tbody>
             </table>
         </div>
-        <div id="lbo-status" class="lbo-status">⏳ Se incarca...</div>
+        <div id="lbo-status" class="lbo-status">Se incarca...</div>
     </div>
 </div>
 
@@ -2611,6 +767,8 @@
 <script src="/socket-msgpack-parser.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+<script src="ui-fx.js"></script>
+<script src="arena-art.js"></script>
 <script src="game.js"></script>
 
 <script>
@@ -2635,7 +793,9 @@
         } catch(e) {}
     }
 
-    if (isIOS && !isStandalone) {
+    if (!(window.ARDevice && ARDevice.isPhone)) {
+        overlay.style.display = 'none';
+    } else if (isIOS && !isStandalone) {
         iosHint.style.display = 'flex'; btnAndroid.style.display = 'none';
         btnIOS.addEventListener('click', () => { overlay.style.display = 'none'; });
     } else if (isStandalone || !canFullscreen) {

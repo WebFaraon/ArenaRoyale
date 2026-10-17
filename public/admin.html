@@ -4,21 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arena Royale — Admin</title>
-    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sen:wght@400..800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         :root {
-            --bg:      #0a0a0f;
-            --bg2:     #12121e;
-            --bg3:     #1a1a2e;
-            --accent:  #e94560;
-            --green:   #00ff88;
-            --blue:    #00d4ff;
-            --orange:  #ff8c00;
-            --dim:     #8888aa;
-            --border:  #ffffff15;
-            --font-t:  'Lexend', sans-serif;
-            --font-b:  'Lexend', sans-serif;
+            --bg:      #0C1115;
+            --bg2:     #121A20;
+            --bg3:     #18232B;
+            --accent:  #FF6A1A;
+            --green:   #46D17C;
+            --blue:    #52B6F0;
+            --orange:  #FFC52E;
+            --dim:     #7C8F9A;
+            --border:  #26343E;
+            --font-t:  'Sen', 'Helvetica Neue', Arial, sans-serif;
+            --font-b:  'Sen', 'Helvetica Neue', Arial, sans-serif;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -61,7 +61,7 @@
             gap: 8px;
             background: var(--bg2);
             border: 1px solid var(--border);
-            border-radius: 20px;
+            border-radius: 2px;
             padding: 8px 16px;
             font-size: 0.85rem;
         }
@@ -89,7 +89,7 @@
         .card {
             background: var(--bg2);
             border: 1px solid var(--border);
-            border-radius: 16px;
+            border-radius: 2px;
             padding: 20px;
         }
 
@@ -122,7 +122,7 @@
         #qrcode {
             background: white;
             padding: 12px;
-            border-radius: 12px;
+            border-radius: 2px;
             display: inline-block;
         }
 
@@ -150,7 +150,7 @@
 
         .stat-box {
             background: var(--bg3);
-            border-radius: 12px;
+            border-radius: 2px;
             padding: 14px;
             text-align: center;
             border: 1px solid var(--border);
@@ -182,7 +182,7 @@
             width: 100%;
             padding: 14px;
             border: none;
-            border-radius: 10px;
+            border-radius: 2px;
             font-family: var(--font-t);
             font-size: 0.7rem;
             letter-spacing: 1px;
@@ -224,7 +224,7 @@
         .player-card {
             background: var(--bg2);
             border: 1px solid var(--border);
-            border-radius: 14px;
+            border-radius: 2px;
             padding: 16px;
             transition: all 0.3s;
             animation: fadeIn 0.4s ease;
@@ -265,7 +265,7 @@
             display: inline-block;
             font-size: 0.65rem;
             padding: 2px 8px;
-            border-radius: 10px;
+            border-radius: 2px;
             margin-top: 3px;
             letter-spacing: 1px;
         }
@@ -286,9 +286,9 @@
         .pstat-icon  { width: 14px; text-align: center; font-size: 0.8rem; }
         .pstat-label { font-family: var(--font-t); font-size: 0.55rem; letter-spacing: 1px; color: var(--dim); width: 28px; }
 
-        .pstat-bar { flex: 1; height: 5px; background: var(--bg3); border-radius: 10px; overflow: hidden; }
+        .pstat-bar { flex: 1; height: 5px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
 
-        .pstat-fill { height: 100%; border-radius: 10px; transition: width 0.3s; }
+        .pstat-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
         .fill-red    { background: linear-gradient(90deg, #ff4444, #ff8888); }
         .fill-orange { background: linear-gradient(90deg, #ff8c00, #ffcc00); }
         .fill-blue   { background: linear-gradient(90deg, #0088ff, #00d4ff); }
@@ -297,9 +297,9 @@
 
         .hp-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 
-        .hp-bar-container { height: 8px; background: var(--bg3); border-radius: 10px; overflow: hidden; margin-top: 4px; }
+        .hp-bar-container { height: 8px; background: var(--bg3); border-radius: 2px; overflow: hidden; margin-top: 4px; }
 
-        .hp-bar-fill { height: 100%; border-radius: 10px; transition: width 0.3s, background 0.3s; }
+        .hp-bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s, background 0.3s; }
 
         .player-pos { font-size: 0.7rem; color: var(--dim); margin-top: 8px; text-align: right; }
 
@@ -319,7 +319,7 @@
             font-size: 0.8rem;
             color: var(--dim);
             padding: 4px 8px;
-            border-radius: 6px;
+            border-radius: 2px;
             background: var(--bg3);
             animation: fadeIn 0.3s ease;
         }
@@ -333,7 +333,7 @@
         .game-status-badge {
             display: inline-block;
             padding: 4px 12px;
-            border-radius: 20px;
+            border-radius: 2px;
             font-family: var(--font-t);
             font-size: 0.65rem;
             letter-spacing: 1px;
@@ -364,7 +364,7 @@
     <!-- HEADER -->
     <div class="header">
         <div class="header-left">
-            <h1>⚔️ ARENA ROYALE — ADMIN</h1>
+            <h1>ARENA ROYALE — ADMIN</h1>
             <p>Panou de control profesor</p>
         </div>
         <div class="server-status">
@@ -418,23 +418,23 @@
 
                 <!-- Badge status -->
                 <div class="game-status-badge badge-waiting" id="game-status-badge">
-                    ⏳ ASTEPTARE
+                    ASTEPTARE
                 </div>
 
                 <div class="controls">
                     <!-- Buton START — principal -->
                     <button class="btn btn-start" id="btn-start" onclick="startGame()">
-                        ▶ PORNESTE JOCUL
+                        PORNESTE JOCUL
                     </button>
 
                     <!-- Buton zona manuala -->
                     <button class="btn btn-zone" id="btn-zone" onclick="triggerZone()">
-                        ⚠️ PORNESTE ZONA ACUM
+                        PORNESTE ZONA ACUM
                     </button>
 
                     <!-- Buton reset -->
                     <button class="btn btn-reset" onclick="resetGame()">
-                        🔄 RESETEAZA JOCUL
+                        RESETEAZA JOCUL
                     </button>
                 </div>
             </div>
@@ -443,7 +443,7 @@
             <div class="card">
                 <div class="card-title">EVENIMENTE</div>
                 <div class="event-log" id="event-log">
-                    <div class="log-entry system">🟢 Admin conectat la server</div>
+                    <div class="log-entry system">Admin conectat la server</div>
                 </div>
             </div>
 
@@ -456,7 +456,6 @@
             </div>
             <div class="players-grid" id="players-grid">
                 <div class="no-players">
-                    <p>👾</p>
                     <p>NICIUN JUCATOR CONECTAT</p>
                 </div>
             </div>
@@ -529,16 +528,16 @@
     const btnStart = document.getElementById('btn-start');
 
     if (started) {
-        badge.textContent = '🟢 JOC IN DESFASURARE';
+        badge.textContent = 'JOC IN DESFASURARE';
         badge.className   = 'game-status-badge badge-running';
-        btnStart.textContent = '▶ JOC PORNIT';
+        btnStart.textContent = 'JOC PORNIT';
         btnStart.className   = 'btn btn-disabled';
         btnStart.disabled    = true;
     } else {
         // Reset — reactivam butonul
-        badge.textContent = '⏳ ASTEPTARE';
+        badge.textContent = 'ASTEPTARE';
         badge.className   = 'game-status-badge badge-waiting';
-        btnStart.textContent = '▶ PORNESTE JOCUL';
+        btnStart.textContent = 'PORNESTE JOCUL';
         btnStart.className   = 'btn btn-start';
         btnStart.disabled    = false;
     }
@@ -550,13 +549,13 @@
 
             players.forEach(p => {
                 if (!prevPlayerIds.has(p.id)) {
-                    addLog(`⚔️ ${p.name} a intrat in arena`, 'join');
+                    addLog(`${p.name} a intrat in arena`, 'join');
                 }
             });
 
             prevPlayerIds.forEach(id => {
                 if (!currentIds.has(id)) {
-                    addLog(`🚪 Un jucator a parasit jocul`, 'leave');
+                    addLog(`Un jucator a parasit jocul`, 'leave');
                 }
             });
 
@@ -570,7 +569,6 @@
             if (players.length === 0) {
                 grid.innerHTML = `
                     <div class="no-players">
-                        <p>👾</p>
                         <p>NICIUN JUCATOR CONECTAT</p>
                     </div>`;
                 return;
@@ -594,13 +592,13 @@
                 let statusClass, statusText;
                 if (!gameHasStarted) {
                     statusClass = 'status-waiting';
-                    statusText  = '● ASTEAPTA';
+                    statusText  = 'ASTEAPTA';
                 } else if (player.alive) {
                     statusClass = 'status-alive';
-                    statusText  = '● VIU';
+                    statusText  = 'VIU';
                 } else {
                     statusClass = 'status-dead';
-                    statusText  = '✕ ELIMINAT';
+                    statusText  = 'ELIMINAT';
                 }
 
                 card.className = `player-card ${!player.alive && gameHasStarted ? 'dead' : ''}`;
@@ -619,7 +617,7 @@
 
                     <div class="player-stats">
                         <div class="pstat">
-                            <span class="pstat-icon">❤️</span>
+                            <span class="pstat-icon"></span>
                             <span class="pstat-label">HP</span>
                             <div class="pstat-bar">
                                 <div class="pstat-fill fill-red" style="width:${hpPercent}%"></div>
@@ -627,7 +625,7 @@
                             <span class="pstat-val">${player.hp}/${player.maxHp}</span>
                         </div>
                         <div class="pstat">
-                            <span class="pstat-icon">💥</span>
+                            <span class="pstat-icon"></span>
                             <span class="pstat-label">DMG</span>
                             <div class="pstat-bar">
                                 <div class="pstat-fill fill-orange" style="width:${dmgPercent}%"></div>
@@ -635,7 +633,7 @@
                             <span class="pstat-val">${player.damage}</span>
                         </div>
                         <div class="pstat">
-                            <span class="pstat-icon">⚡</span>
+                            <span class="pstat-icon"></span>
                             <span class="pstat-label">SPD</span>
                             <div class="pstat-bar">
                                 <div class="pstat-fill fill-blue" style="width:${spdPercent}%"></div>
@@ -654,7 +652,7 @@
                         </div>
                     </div>
 
-                    <div class="player-pos">📍 ${player.x}, ${player.y}</div>
+                    <div class="player-pos">POZITIE ${player.x}, ${player.y}</div>
                 `;
             });
 
@@ -678,7 +676,7 @@
             }
             if (confirm(`Pornesti jocul cu ${count} jucatori?`)) {
                 socket.emit('admin-start');
-                addLog('▶ Jocul a fost pornit!', 'system');
+                addLog('Jocul a fost pornit!', 'system');
                 updateGameStatusUI(true);
                 gameHasStarted = true;
             }
@@ -692,7 +690,7 @@
             }
             if (confirm('Pornesti zona acum?')) {
                 socket.emit('admin-trigger-zone');
-                addLog('⚠️ Zona pornita manual', 'zone');
+                addLog('Zona pornita manual', 'zone');
             }
         }
 
@@ -700,7 +698,7 @@
         function resetGame() {
             if (confirm('Resetezi jocul? Toti jucatorii vor fi dati afara.')) {
                 socket.emit('admin-reset');
-                addLog('🔄 Joc resetat', 'system');
+                addLog('Joc resetat', 'system');
                 gameHasStarted = false;
                 updateGameStatusUI(false);
             }
