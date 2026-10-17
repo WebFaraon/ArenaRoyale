@@ -1,0 +1,332 @@
+{
+ "weapons": {
+  "pistol": {
+   "type": "gun",
+   "name": "Pistol",
+   "sprite": "pistol.png",
+   "hands": [
+    [
+     -9.0,
+     38
+    ],
+    [
+     9.0,
+     41
+    ]
+   ],
+   "muzzle": [
+    0,
+    72
+   ],
+   "recoilPx": 4
+  },
+  "smg": {
+   "type": "gun",
+   "name": "SMG",
+   "sprite": "smg.png",
+   "hands": [
+    [
+     -12.0,
+     36
+    ],
+    [
+     12.0,
+     62
+    ]
+   ],
+   "muzzle": [
+    0,
+    84
+   ],
+   "recoilPx": 4
+  },
+  "assault": {
+   "type": "gun",
+   "name": "Assault",
+   "sprite": "assault.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    104
+   ],
+   "recoilPx": 4
+  },
+  "sniper": {
+   "type": "gun",
+   "name": "Sniper",
+   "sprite": "sniper.png",
+   "hands": [
+    [
+     -12.0,
+     39
+    ],
+    [
+     10.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    126
+   ],
+   "recoilPx": 4
+  },
+  "shotgun": {
+   "type": "gun",
+   "name": "Shotgun",
+   "sprite": "shotgun.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     15.0,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    106
+   ],
+   "recoilPx": 4
+  },
+  "burst": {
+   "type": "gun",
+   "name": "Burst",
+   "sprite": "burst.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     12.0,
+     66
+    ]
+   ],
+   "muzzle": [
+    0,
+    96
+   ],
+   "recoilPx": 4
+  },
+  "fists": {
+   "type": "melee",
+   "sprite": null,
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     12,
+     36
+    ]
+   ],
+   "pivot": 0,
+   "range": 34,
+   "cooldownMs": 220,
+   "arc": 0,
+   "speedBonus": 0.2
+  },
+  "knife": {
+   "type": "melee",
+   "sprite": "knife.png",
+   "hands": [
+    [
+     -13.5,
+     28
+    ],
+    [
+     6,
+     40
+    ]
+   ],
+   "pivot": 1,
+   "range": 50,
+   "cooldownMs": 300,
+   "arc": 0,
+   "speedBonus": 0.15
+  },
+  "bat": {
+   "type": "melee",
+   "sprite": "bat.png",
+   "hands": [
+    [
+     -9,
+     36
+    ],
+    [
+     9,
+     52
+    ]
+   ],
+   "pivot": 0,
+   "range": 78,
+   "cooldownMs": 500,
+   "arc": 120,
+   "speedBonus": 0.1
+  },
+  "axe": {
+   "type": "melee",
+   "sprite": "axe.png",
+   "hands": [
+    [
+     -9,
+     34
+    ],
+    [
+     9,
+     60
+    ]
+   ],
+   "pivot": 0,
+   "range": 76,
+   "cooldownMs": 700,
+   "arc": 110,
+   "speedBonus": 0.1
+  },
+  "shovel": {
+   "type": "melee",
+   "sprite": "shovel.png",
+   "hands": [
+    [
+     -9,
+     36
+    ],
+    [
+     9,
+     62
+    ]
+   ],
+   "pivot": 0,
+   "range": 84,
+   "cooldownMs": 550,
+   "arc": 120,
+   "speedBonus": 0.1
+  },
+  "hammer": {
+   "type": "melee",
+   "sprite": "hammer.png",
+   "hands": [
+    [
+     -9,
+     36
+    ],
+    [
+     9,
+     60
+    ]
+   ],
+   "pivot": 0,
+   "range": 70,
+   "cooldownMs": 900,
+   "arc": 100,
+   "speedBonus": 0.05
+  }
+ },
+ "weaponSkins": {
+  "sniper_frost": {
+   "base": "sniper",
+   "sprite": "sniper_frost.png",
+   "muzzle": [
+    0,
+    126
+   ]
+  },
+  "sniper_dragon": {
+   "base": "sniper",
+   "sprite": "sniper_dragon.png",
+   "muzzle": [
+    0,
+    140
+   ]
+  },
+  "fists_manusi_box_rosii": {
+   "base": "fists",
+   "glove": "#E5384B",
+   "claws": false
+  },
+  "fists_manusi_aurii": {
+   "base": "fists",
+   "glove": "#FFC53D",
+   "claws": false
+  },
+  "fists_gheare": {
+   "base": "fists",
+   "glove": null,
+   "claws": true
+  },
+  "knife_cutit_frost": {
+   "base": "knife",
+   "sprite": "knife_cutit_frost.png"
+  },
+  "knife_cutit_lava": {
+   "base": "knife",
+   "sprite": "knife_cutit_lava.png"
+  },
+  "knife_cutit_neon": {
+   "base": "knife",
+   "sprite": "knife_cutit_neon.png"
+  },
+  "bat_bata_cu_cuie": {
+   "base": "bat",
+   "sprite": "bat_bata_cu_cuie.png"
+  },
+  "bat_bata_neon": {
+   "base": "bat",
+   "sprite": "bat_bata_neon.png"
+  },
+  "axe_topor_pompier": {
+   "base": "axe",
+   "sprite": "axe_topor_pompier.png"
+  },
+  "axe_topor_lava": {
+   "base": "axe",
+   "sprite": "axe_topor_lava.png"
+  },
+  "axe_topor_aur": {
+   "base": "axe",
+   "sprite": "axe_topor_aur.png"
+  },
+  "shovel_lopata_armata": {
+   "base": "shovel",
+   "sprite": "shovel_lopata_armata.png"
+  },
+  "shovel_lopata_aur": {
+   "base": "shovel",
+   "sprite": "shovel_lopata_aur.png"
+  },
+  "hammer_ciocan_frost": {
+   "base": "hammer",
+   "sprite": "hammer_ciocan_frost.png"
+  },
+  "hammer_ciocan_lava": {
+   "base": "hammer",
+   "sprite": "hammer_ciocan_lava.png"
+  }
+ },
+ "units": "unitati-lume; corpul are raza 36; directia de tintire 0 = in jos; originea = centrul corpului",
+ "sprite": {
+  "topLeft": [
+   -40,
+   6
+  ],
+  "size": [
+   80,
+   144
+  ],
+  "pixelsPerUnit": 4,
+  "note": "PNG-ul se deseneaza cu coltul stanga-sus la (-40,6) fata de centrul corpului, 1 unitate = 4px, rotit impreuna cu corpul. hands, muzzle si pivot sunt deja in coordonate fata de centrul corpului; pivot = indexul mainii in jurul careia se roteste arma melee la lovitura."
+ }
+}

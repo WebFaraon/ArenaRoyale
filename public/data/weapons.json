@@ -1,0 +1,142 @@
+{
+ "units": "unitati-lume; corpul are raza 36; directia de tintire 0 = in jos; originea = centrul corpului",
+ "sprite": {
+  "topLeft": [
+   -40,
+   6
+  ],
+  "size": [
+   80,
+   144
+  ],
+  "pixelsPerUnit": 4
+ },
+ "weapons": {
+  "pistol": {
+   "type": "gun",
+   "name": "Pistol",
+   "sprite": "/images/weapons/pistol.png",
+   "hands": [
+    [
+     -9,
+     38
+    ],
+    [
+     9,
+     41
+    ]
+   ],
+   "muzzle": [
+    0,
+    72
+   ],
+   "recoil": 4,
+   "accent": "#FFC53D"
+  },
+  "smg": {
+   "type": "gun",
+   "name": "SMG",
+   "sprite": "/images/weapons/smg.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     12,
+     62
+    ]
+   ],
+   "muzzle": [
+    0,
+    84
+   ],
+   "recoil": 4,
+   "accent": "#8BD62A"
+  },
+  "assault": {
+   "type": "gun",
+   "name": "Assault",
+   "sprite": "/images/weapons/assault.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    104
+   ],
+   "recoil": 4,
+   "accent": "#FF7A1A"
+  },
+  "sniper": {
+   "type": "gun",
+   "name": "Sniper",
+   "sprite": "/images/weapons/sniper.png",
+   "hands": [
+    [
+     -12,
+     39
+    ],
+    [
+     10.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    126
+   ],
+   "recoil": 4,
+   "accent": "#35C8FF"
+  },
+  "shotgun": {
+   "type": "gun",
+   "name": "Shotgun",
+   "sprite": "/images/weapons/shotgun.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    106
+   ],
+   "recoil": 4,
+   "accent": "#E5384B"
+  },
+  "burst": {
+   "type": "gun",
+   "name": "Burst",
+   "sprite": "/images/weapons/burst.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     12,
+     66
+    ]
+   ],
+   "muzzle": [
+    0,
+    96
+   ],
+   "recoil": 4,
+   "accent": "#8A4BE0"
+  }
+ }
+}

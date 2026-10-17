@@ -1797,19 +1797,21 @@ const SKIN_BODY_R      = 36;
 const SKIN_OUTLINE     = '#0B0F1A';
 const SKIN_DRAW_UNITS  = SKIN_FRAME_UNITS * PLAYER_VISUAL_SCALE; // the frame as drawn (85 units at 0.85)
 
-// The sprite: the PNG drawn once at its on-screen size (SKIN_DRAW_UNITS × dpr × ZOOM) and rotated per player.
+// The sprite: a PNG drawn once at its on-screen size (frame units × dpr × ZOOM) and rotated per player.
 // No clip, so parts outside the body (horns, halo) stay whole. Redone once the zoom settles, a few per
 // frame (ARArena.takeBudget), like the labels; while the zoom moves the old one is stretched.
 function _skinSprite(entry, scale) {
-    const img = entry.img;
+    return _imageSprite(entry, 'sprite', entry.img, scale, SKIN_DRAW_UNITS, SKIN_DRAW_UNITS);
+}
+function _imageSprite(holder, key, img, scale, wUnits, hUnits) {
     if (!img.complete || !img.naturalWidth) return null;
-    let s = entry.sprite;
+    let s = holder[key];
     if (s && (s.scale === scale || !ARArena.isScaleStable())) return s;
     if (s && !ARArena.takeBudget()) return s;
-    const px = Math.max(8, Math.ceil(SKIN_DRAW_UNITS * scale));
+    const pw = Math.max(8, Math.ceil(wUnits * scale)), ph = Math.max(8, Math.ceil(hUnits * scale));
     // Big reductions in one step lose detail on some browsers: halve first while the source is over 2× the target
     let src = img, sw = img.naturalWidth, sh = img.naturalHeight;
-    while (sw > px * 2) {
+    while (sw > pw * 2 && sh > ph * 2) {
         const h = document.createElement('canvas');
         h.width = Math.ceil(sw / 2); h.height = Math.ceil(sh / 2);
         const hg = h.getContext('2d');
@@ -1818,12 +1820,12 @@ function _skinSprite(entry, scale) {
         src = h; sw = h.width; sh = h.height;
     }
     const c = s ? s.c : document.createElement('canvas');
-    c.width = c.height = px; // also clears
+    c.width = pw; c.height = ph; // also clears
     const g = c.getContext('2d', { willReadFrequently: true }); // CPU-painted, uploaded once
     g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
-    g.drawImage(src, 0, 0, sw, sh, 0, 0, px, px);
+    g.drawImage(src, 0, 0, sw, sh, 0, 0, pw, ph);
     s = { c, scale };
-    entry.sprite = s;
+    holder[key] = s;
     return s;
 }
 
@@ -1873,10 +1875,14 @@ function _unitSprite(holder, key, scale, box, paint) {
     holder[key] = s;
     return s;
 }
-function _drawHands(ctx, entry, scale) {
+// pts: two [x, y] points in the rotated frame, already scaled (a gun's grip); omitted = the default spot
+function _drawHands(ctx, entry, scale, pts) {
     const S = PLAYER_VISUAL_SCALE, box = HAND_BOX * S;
     const s = _unitSprite(entry, 'hand', scale, box, g => { g.scale(S, S); _paintHand(g, entry.base, entry.dark); });
-    for (let i = 0; i < 2; i++) ctx.drawImage(s.c, _HAND.cx[i] - box, _HAND.cy[i] - box, box * 2, box * 2);
+    for (let i = 0; i < 2; i++) {
+        const hx = pts ? pts[i][0] : _HAND.cx[i], hy = pts ? pts[i][1] : _HAND.cy[i];
+        ctx.drawImage(s.c, hx - box, hy - box, box * 2, box * 2);
+    }
 }
 // Highlight: a small white ellipse at the top left of the body that never turns with the aim, one
 // sprite for every skin. It lies wholly inside the body (centre 21.4 units out + 8.2 radius < 36),
@@ -1895,6 +1901,96 @@ function _drawSkinHighlight(ctx, x, y, scale) {
     });
     ctx.drawImage(s.c, x - 13 * S - box, y - 17 * S - box, box * 2, box * 2);
 }
+
+// ---------- GUNS IN HAND ----------
+// public/data/weapons.json: per gun the sprite, the two hand points and the muzzle, in world units from
+// the body centre with the aim pointing down (the same frame as the skins); every sprite shares one frame
+// (top left at -40,6, 80 × 144 units). All of it is multiplied by PLAYER_VISUAL_SCALE.
+const WEAPON_ART = { ready: false, tl: [-40, 6], size: [80, 144], byId: {} };
+const WEAPONS_ART_READY = fetch('/data/weapons.json')
+    .then(r => { if (!r.ok) throw new Error('weapons.json ' + r.status); return r.json(); })
+    .then(data => {
+        const S = PLAYER_VISUAL_SCALE, sp = data.sprite || {};
+        WEAPON_ART.tl = (sp.topLeft || [-40, 6]).map(v => v * S);
+        WEAPON_ART.size = (sp.size || [80, 144]).map(v => v * S);
+        for (const [id, w] of Object.entries(data.weapons || {})) {
+            const img = new Image();
+            img.src = w.sprite;
+            WEAPON_ART.byId[id] = {
+                id, name: w.name, img, accent: w.accent,
+                hands:  w.hands.map(p => [p[0] * S, p[1] * S]),
+                muzzle: [w.muzzle[0] * S, w.muzzle[1] * S],
+                hands0: w.hands, muzzle0: w.muzzle, // unscaled, for the dev view readout
+            };
+        }
+        WEAPON_ART.ready = true;
+    })
+    .catch(e => console.warn('[weapons]', e.message));
+
+// A skin's draw cache: the image, its colours and the sprites made from it
+function _makeSkinEntry(skinId) {
+    const charDef = getCharacterById(skinId) || getCharacterById(DEFAULT_SKIN);
+    return {
+        img: _getCharImg(charDef ? charDef.png : ''), sprite: null, hand: null,
+        base: charDef ? charDef.base : '#E7ECF3', dark: charDef ? charDef.dark : '#AEB8C8',
+        bulletImg: defaultBulletImg, bulletScale: 1.0,
+    };
+}
+
+// The ring under a player: just outside the default hands (its 3-unit stroke clears them)
+function _playerRingR() { return _HAND.reach + 2.5; }
+
+// One player as the match draws it, used by the match loop and the ?dev=weapons view.
+// ctx's transform is `wm` (world -> device) on entry and on exit; x, y, angle in world units / player.angle
+// (0 = aim down); scale = device px per world unit (dpr × ZOOM) for the sprite caches.
+// Order: ring, then with a gun: body, gun, hands on the gun, fixed highlight;
+// without one (dev view only): hands at the default spot under the body, body, highlight.
+function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStroke, ringFill) {
+    const ringR = _playerRingR();
+    ctx.beginPath();
+    ctx.arc(x, y, ringR, 0, Math.PI * 2);
+    ctx.fillStyle = ringFill;
+    ctx.fill();
+    ctx.strokeStyle = ringStroke;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.55;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    const gun = weaponId ? WEAPON_ART.byId[weaponId] : null;
+    _setRotated(ctx, wm, x, y, Math.cos(angle), Math.sin(angle));
+    if (entry && !gun) _drawHands(ctx, entry, scale);
+    const spr = entry ? _skinSprite(entry, scale) : null;
+    if (spr) {
+        const pivX = (SKIN_META ? SKIN_META.pivot[0] / SKIN_META.size : 0.5) * SKIN_DRAW_UNITS;
+        const pivY = (SKIN_META ? SKIN_META.pivot[1] / SKIN_META.size : 0.4609375) * SKIN_DRAW_UNITS;
+        ctx.drawImage(spr.c, -pivX, -pivY, SKIN_DRAW_UNITS, SKIN_DRAW_UNITS);
+    } else {
+        // image still loading: the body as a plain disc in the skin colour
+        ctx.beginPath();
+        ctx.arc(0, 0, SKIN_BODY_R * PLAYER_VISUAL_SCALE, 0, Math.PI * 2);
+        ctx.fillStyle = entry ? entry.base : '#E7ECF3';
+        ctx.fill();
+        ctx.strokeStyle = SKIN_OUTLINE; ctx.lineWidth = 4.4 * PLAYER_VISUAL_SCALE; ctx.stroke();
+    }
+    if (gun) {
+        const gs = _imageSprite(gun, 'sprite', gun.img, scale, WEAPON_ART.size[0], WEAPON_ART.size[1]);
+        if (gs) ctx.drawImage(gs.c, WEAPON_ART.tl[0], WEAPON_ART.tl[1], WEAPON_ART.size[0], WEAPON_ART.size[1]);
+        if (entry) _drawHands(ctx, entry, scale, gun.hands);
+    }
+    ctx.setTransform(wm);
+    _drawSkinHighlight(ctx, x, y, scale);
+}
+
+// Developer view of a player with each gun: open the game with ?dev=weapons (public/dev-weapons.js).
+// Nothing of it loads without the parameter.
+try {
+    if (new URLSearchParams(location.search).get('dev') === 'weapons') {
+        const s = document.createElement('script');
+        s.src = 'dev-weapons.js';
+        document.head.appendChild(s);
+    }
+} catch (e) { /* no URL API */ }
 
 // ---------- INITIALIZARE ----------
 function initGame(playerName, playerSkin, playerStats, roomAction) {
@@ -1971,11 +2067,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
             return;
         }
 
-        const entry = {
-            img: _getCharImg(url), sprite: null, hand: null,
-            base: charDef ? charDef.base : '#E7ECF3', dark: charDef ? charDef.dark : '#AEB8C8',
-            bulletImg: defaultBulletImg, bulletScale: 1.0,
-        };
+        const entry = _makeSkinEntry(charDef ? charDef.id : DEFAULT_SKIN);
         playerImages[data.id] = entry;
         _playerEntryByUrl[url] = entry; // inregistrat dupa URL pentru reutilizare
     });
@@ -4080,10 +4172,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
 
         // --- JUCATORI ---
-        const _skinPivX = (SKIN_META ? SKIN_META.pivot[0] / SKIN_META.size : 0.5) * SKIN_DRAW_UNITS;
-        const _skinPivY = (SKIN_META ? SKIN_META.pivot[1] / SKIN_META.size : 0.4609375) * SKIN_DRAW_UNITS;
-        // The ring sits just outside the hands (its 3-unit stroke clears them) and the labels stack on it
-        const _ringR    = _HAND.reach + 2.5;
+        // The ring sits just outside the default hands and the labels stack on it
+        const _ringR    = _playerRingR();
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         for (const pid in rState.players) {
@@ -4108,39 +4198,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 _footsteps.push({ x: px, y: py, t: performance.now() });
             }
 
-            if (!isMe && (px + 80 < visLeft || px - 80 > visRight || py + 80 < visTop || py - 80 > visBottom)) continue;
+            // 130: a long gun (up to ~128 units in front) must not vanish at the screen edge
+            if (!isMe && (px + 130 < visLeft || px - 130 > visRight || py + 130 < visTop || py - 130 > visBottom)) continue;
             const ringR  = _ringR;
             const ringColor = isMe ? '#46D17C' : '#FF4155';
             const ringFill  = isMe ? 'rgba(70,209,124,0.14)' : 'rgba(255,65,85,0.14)';
-
-            // Ring: filled + stroked, drawn BEFORE the character so it appears behind
-            ctx.beginPath();
-            ctx.arc(px, py, ringR, 0, Math.PI * 2);
-            ctx.fillStyle = ringFill;
-            ctx.fill();
-            ctx.strokeStyle = ringColor;
-            ctx.lineWidth = 3;
-            ctx.globalAlpha = 0.55;
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-
-            // Hands under the body, then the skin sprite, both turned with the aim (see SKINS IN THE MATCH)
-            const _entry = playerImages[player.id];
-            _setRotated(ctx, _wm, px, py, Math.cos(pangle), Math.sin(pangle));
-            if (_entry) _drawHands(ctx, _entry, _lblScale);
-            const _spr = _entry ? _skinSprite(_entry, _lblScale) : null;
-            if (_spr) {
-                ctx.drawImage(_spr.c, -_skinPivX, -_skinPivY, SKIN_DRAW_UNITS, SKIN_DRAW_UNITS);
-            } else {
-                // image still loading: the body as a plain disc in the skin colour
-                ctx.beginPath();
-                ctx.arc(0, 0, SKIN_BODY_R * PLAYER_VISUAL_SCALE, 0, Math.PI * 2);
-                ctx.fillStyle = _entry ? _entry.base : '#E7ECF3';
-                ctx.fill();
-                ctx.strokeStyle = SKIN_OUTLINE; ctx.lineWidth = 4.4 * PLAYER_VISUAL_SCALE; ctx.stroke();
-            }
-            ctx.setTransform(_wm);
-            _drawSkinHighlight(ctx, px, py, _lblScale);
+            // Ring, body, gun, hands on the gun, fixed highlight (see GUNS IN HAND)
+            const _pWeapon = isMe ? (_playerWeapons.get(socket.id) || selectedWeapon) : (_playerWeapons.get(player.id) || 'pistol');
+            _drawPlayerFigure(ctx, _wm, px, py, pangle, playerImages[player.id], _pWeapon, _lblScale, ringColor, ringFill);
 
             // Flash + Nume (name tag is a cached label: one drawImage instead of strokeText+fillText)
             const flashAge = flashTimers[player.id] !== undefined
