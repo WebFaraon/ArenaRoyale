@@ -3777,16 +3777,6 @@ button:disabled { cursor: not-allowed; }
     background: none;
     border: 0;
 }
-.hero-floor {
-    position: absolute;
-    left: 50%; bottom: calc(62px + 4%);
-    width: min(64%, 300px);
-    aspect-ratio: 4 / 1;
-    transform: translateX(-50%);
-    border-radius: 50%;
-    background: rgba(6, 12, 9, .55);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--rc, #7C8F9A) 70%, transparent);
-}
 .hero-spot { position: absolute; inset: 0; pointer-events: none; }
 .lobby-body .hero-img {
     position: relative;
@@ -3798,12 +3788,14 @@ button:disabled { cursor: not-allowed; }
     aspect-ratio: 1;
     padding: 0;
     object-fit: contain;
-    filter: drop-shadow(0 10px 0 rgba(0, 0, 0, .35));
-    animation: heroIdle 3.2s ease-in-out infinite;
-    transition: transform .45s var(--spring), filter .3s;
+    /* the preview carries its own soft ground shadow (skinPreviewSvg, SKIN_PREVIEW.hero) */
+    transform-origin: 50% 90%;
+    animation: heroBreathe 3s ease-in-out infinite;
+    transition: filter .3s;
 }
-@keyframes heroIdle { 50% { transform: translateY(-6px); } }
-.hero-card.is-locked .hero-img { filter: grayscale(1) brightness(.55) drop-shadow(0 10px 0 rgba(0, 0, 0, .35)); }
+/* breathing: a slow 1 -> 1.03 swell, grounded at the shadow */
+@keyframes heroBreathe { 50% { transform: scale(1.03); } }
+.hero-card.is-locked .hero-img { filter: grayscale(1) brightness(.55); }
 .hero-lock {
     position: absolute;
     z-index: 2;
@@ -4125,7 +4117,6 @@ button:disabled { cursor: not-allowed; }
     .hero-head { padding-top: 10px; }
     .hero-name { font-size: 1.45rem; }
     .hero-stage { margin: 0 46px; padding-bottom: 54px; }
-    .hero-floor { bottom: calc(54px + 4%); }
     .hero-arrow { width: 40px; height: 40px; }
     .hero-prev { left: 8px; }
     .hero-next { right: 8px; }
@@ -4367,3 +4358,6 @@ button:disabled { cursor: not-allowed; }
     .hero-chars { padding-right: 10px; }
     .hero-arms { padding-right: 12px; }
 }
+
+/* new skins: the lobby previews match the match look, without the old hard drop shadow */
+.cs-img-wrap img { filter: none; }

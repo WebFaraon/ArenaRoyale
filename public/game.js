@@ -156,7 +156,74 @@ const SKINS_READY = fetch('/data/skins.json')
         CHARACTERS = data.skins.map(s => ({ ...s, img: s.svg }));
         _initHands(data);
         CHARACTERS.forEach(c => _getCharImg(c.png));
+        // the lobby previews nest each skin's SVG (skinPreviewSvg); ~57 KB for all of them
+        return Promise.all(CHARACTERS.map(c => fetch(c.svg)
+            .then(r => r.ok ? r.text() : '')
+            .then(txt => { if (txt) _skinSvgText[c.id] = _nestSkinSvg(txt); })
+            .catch(() => {})));
     });
+
+// ---------- SKIN PREVIEW (lobby) ----------
+// The lobby shows a skin the way the match draws it: the hands under the body, the skin SVG, then a
+// highlight that does not turn. All in the skins' 100 × 100 viewBox (body centre 50,46, radius 36,
+// facing down). The skin's own SVG is nested inline, so the result is a standalone SVG: an <img> shows
+// it as a data: URL, vector-sharp at any size, and the skins' clipPath ids never meet in the page.
+const _skinSvgText = {};      // skin id -> its SVG, root resized to the 100 box
+const _skinPreviewCache = {}; // id + options -> data: URL
+const SKIN_PREVIEW = {
+    hero:   { hands: true, highlight: true, shadow: true, ring: true }, // the big character in the lobby
+    full:   { hands: true, highlight: true },               // character catalog, waiting room
+    avatar: { body: true },                                 // profile avatar: the body only, cut to its circle
+};
+function _nestSkinSvg(txt) {
+    return txt.replace(/^\s*<svg\b[^>]*>/, '<svg x="0" y="0" width="100" height="100" viewBox="0 0 100 100">');
+}
+// One hand, bottom to top: dark disc, base disc up-left, small gloss, outline (same as _paintHand in the match)
+function _previewHand(x, y, base, dark) {
+    const r = _HAND.r, f = n => +n.toFixed(2);
+    return '<circle cx="' + f(x) + '" cy="' + f(y) + '" r="' + r + '" fill="' + dark + '"/>'
+        + '<circle cx="' + f(x - 1) + '" cy="' + f(y - 1.2) + '" r="' + _HAND.inner + '" fill="' + base + '"/>'
+        + '<circle cx="' + f(x - 2.6) + '" cy="' + f(y - 3.4) + '" r="1.8" fill="#FFFFFF" fill-opacity=".45"/>'
+        + '<circle cx="' + f(x) + '" cy="' + f(y) + '" r="' + r + '" fill="none" stroke="' + SKIN_OUTLINE + '" stroke-width="' + _HAND.line + '"/>';
+}
+function skinPreviewSvg(skinId, opts = {}) {
+    const s = getCharacterById(skinId) || getCharacterById(DEFAULT_SKIN);
+    const inner = s && _skinSvgText[s.id];
+    if (!inner) return null;
+    if (opts.body) {
+        // the body circle with its outline (radius 36 + half the 6.2 × 0.8182 stroke ≈ 38.5)
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="11.5 7.5 77 77">'
+            + '<defs><clipPath id="arPvBody"><circle cx="50" cy="46" r="38.5"/></clipPath></defs>'
+            + '<g clip-path="url(#arPvBody)">' + inner + '</g></svg>';
+    }
+    const h = (SKIN_META && SKIN_META.hand) || {};
+    const ang = (h.defaultAngleDeg ?? 34) * Math.PI / 180, dist = h.defaultDistance || 47;
+    const hx = Math.sin(ang) * dist, hy = 46 + Math.cos(ang) * dist; // 26.3, 85.0
+    let out = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">';
+    if (opts.shadow) {
+        // a soft ground shadow under the body and hands
+        out += '<defs><radialGradient id="arPvShadow"><stop offset="0" stop-color="#000" stop-opacity=".32"/>'
+            + '<stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>'
+            + '<ellipse cx="50" cy="91" rx="40" ry="8" fill="url(#arPvShadow)"/>';
+    }
+    if (opts.ring) {
+        // the rarity colour as a thin ring in the shadow, 3 screen px at any size (non-scaling stroke)
+        out += '<ellipse cx="50" cy="91" rx="31" ry="6" fill="none" stroke="' + (RARITY_COLOR[s.rarity] || RARITY_COLOR.common)
+            + '" stroke-opacity=".75" stroke-width="3" vector-effect="non-scaling-stroke"/>';
+    }
+    if (opts.hands) out += _previewHand(50 - hx, hy, s.base, s.dark) + _previewHand(50 + hx, hy, s.base, s.dark);
+    out += inner;
+    if (opts.highlight) out += '<ellipse cx="34" cy="25" rx="10" ry="4.6" fill="#FFFFFF" fill-opacity=".42" transform="rotate(-35 34 25)"/>';
+    return out + '</svg>';
+}
+// The preview as an <img> src; falls back to the plain skin SVG if its text is not loaded
+function skinPreviewSrc(skinId, opts) {
+    const key = skinId + '|' + (opts.hands ? 'h' : '') + (opts.highlight ? 'l' : '') + (opts.shadow ? 's' : '') + (opts.ring ? 'r' : '') + (opts.body ? 'b' : '');
+    if (_skinPreviewCache[key]) return _skinPreviewCache[key];
+    const svg = skinPreviewSvg(skinId, opts);
+    if (!svg) { const c = getCharacterById(skinId); return c ? c.svg : ''; }
+    return (_skinPreviewCache[key] = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg));
+}
 const RARITY_COLOR = { common: '#7C8F9A', rare: '#52B6F0', epic: '#FF6A1A', legendary: '#FFC52E', season: '#FFD02A' };
 const RARITY_LABEL = { common: 'COMMON', rare: 'RARE', epic: 'EPIC', legendary: 'LEGENDARY', season: 'SEZON' };
 
@@ -189,7 +256,7 @@ let heroIndex = 0;
 function _heroRender(char) {
     const unlocked = unlockedCharacters.includes(char.id);
     const preview = document.getElementById('preview');
-    if (preview) preview.src = char.img;
+    if (preview) preview.src = skinPreviewSrc(char.id, SKIN_PREVIEW.hero);
     const ring = document.getElementById('char-rarity-ring');
     if (ring) { ring.style.setProperty('--rc', RARITY_COLOR[char.rarity]); ring.classList.toggle('is-locked', !unlocked); }
     const nameEl = document.getElementById('char-name-display');
@@ -225,7 +292,7 @@ function selectCharacter(id) {
     const char = getCharacterById(id);
     if (!char) return;
     const preview = document.getElementById('preview');
-    if (preview) preview.src = char.img;
+    if (preview) preview.src = skinPreviewSrc(char.id, SKIN_PREVIEW.hero);
     const ring = document.getElementById('char-rarity-ring');
     if (ring) ring.style.setProperty('--rc', RARITY_COLOR[char.rarity]);
     const _cnd = document.getElementById('char-name-display');
@@ -233,7 +300,7 @@ function selectCharacter(id) {
     _heroRender(char);
     const lpImg = document.getElementById('lp-avatar-img');
     const lpPh  = document.getElementById('lp-avatar-ph');
-    if (lpImg) { lpImg.src = char.img; lpImg.style.display = 'block'; }
+    if (lpImg) { lpImg.src = skinPreviewSrc(char.id, SKIN_PREVIEW.avatar); lpImg.style.display = 'block'; }
     if (lpPh)  lpPh.style.display = 'none';
     renderCharShopGrid(_currentShopFilter);
     if (currentProfile) currentProfile.skin = currentProfile.avatar = char.id;
@@ -387,7 +454,7 @@ function renderCharShopGrid(filter) {
         return `<div class="char-shop-card cs-r-${char.rarity}${isSelected ? ' cs-card-selected' : ''}${!isUnlocked ? ' cs-card-locked' : ''}" style="--rc:${col}">
             <div class="cs-img-outer">
                 <div class="cs-img-wrap">
-                    <img src="${char.img}" alt="${char.name}"${shopImgStyle} onerror="this.style.opacity='.25'">
+                    <img src="${skinPreviewSrc(char.id, SKIN_PREVIEW.full)}" alt="${char.name}"${shopImgStyle} onerror="this.style.opacity='.25'">
                     ${!isUnlocked ? `<div class="cs-lock-overlay">${ico('lock')}</div>` : ''}
                 </div>
                 ${isSelected ? `<div class="cs-selected-badge">${ico('check')}</div>` : ''}
@@ -923,7 +990,7 @@ function prepopulateLobby() {
     const nameDisplay = document.getElementById('char-name-display');
     if (nameDisplay) nameDisplay.textContent = (activeChar.name || 'NINJA').toUpperCase();
     const preview = document.getElementById('preview');
-    if (preview) preview.src = activeChar.img;
+    if (preview) preview.src = skinPreviewSrc(activeChar.id, SKIN_PREVIEW.hero);
     const rarityRing = document.getElementById('char-rarity-ring');
     if (rarityRing) rarityRing.style.setProperty('--rc', RARITY_COLOR[activeChar.rarity]);
     heroShowSelected();
@@ -978,7 +1045,7 @@ function prepopulateLobby() {
     const lpAvatarPh  = document.getElementById('lp-avatar-ph');
     const lpChar = getSelectedCharacter();
     if (lpAvatarImg && lpChar) {
-        lpAvatarImg.src = lpChar.img;
+        lpAvatarImg.src = skinPreviewSrc(lpChar.id, SKIN_PREVIEW.avatar);
         lpAvatarImg.style.display = 'block';
         lpAvatarImg.style.border = `3px solid ${tier.color}`;
         lpAvatarImg.style.boxShadow = `0 0 18px ${tier.glow}`;
@@ -1926,7 +1993,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
             card.className = 'waiting-card';
             card.innerHTML = `
                 <div class="waiting-card-av">
-                    <img src="${(getCharacterById(p.skin) || getCharacterById(DEFAULT_SKIN) || {}).img || ''}" onerror="this.style.background='#e8a020';this.src=''"
+                    <img src="${skinPreviewSrc(getCharacterById(p.skin) ? p.skin : DEFAULT_SKIN, SKIN_PREVIEW.full)}" onerror="this.style.background='#e8a020';this.src=''"
                          style="border:3px solid ${pTier.color};box-shadow:0 0 14px ${pTier.glow}">
                     <span class="waiting-lv-badge" style="background:${pTier.color};color:#000">LV ${pLevel}</span>
                 </div>
