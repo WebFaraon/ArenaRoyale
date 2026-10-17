@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sen:wght@400..800&display=swap" rel="stylesheet">
-    <link rel="preload" href="/images/characters/ninja.png" as="image">
+    <link rel="preload" href="/images/skins/svg/rookie.svg" as="image">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -293,7 +293,7 @@
             <div class="hero-stage" id="hero-stage">
                 <span class="hero-spot" aria-hidden="true"></span>
                 <span class="hero-floor" aria-hidden="true"></span>
-                <img id="preview" src="/images/characters/ninja.png" alt="" class="char-preview-img hero-img">
+                <img id="preview" src="/images/skins/svg/rookie.svg" alt="" class="char-preview-img hero-img">
                 <span class="hero-lock" id="hero-lock" hidden><svg class="ic" aria-hidden="true"><use href="#lock"/></svg><span id="hero-lock-txt">BLOCAT</span></span>
             </div>
             <button type="button" class="hero-arrow hero-next" onclick="cycleCharacter(1)" aria-label="Personajul urmator"><svg class="ic" aria-hidden="true"><use href="#chevron-right"/></svg></button>
@@ -460,6 +460,7 @@
                 <button class="csf-btn"         data-filter="rare"      onclick="filterCharShop('rare',this)">RARE</button>
                 <button class="csf-btn"         data-filter="epic"      onclick="filterCharShop('epic',this)">EPIC</button>
                 <button class="csf-btn"         data-filter="legendary" onclick="filterCharShop('legendary',this)">LEGENDARY</button>
+                <button class="csf-btn"         data-filter="season"    onclick="filterCharShop('season',this)">SEZON</button>
             </div>
             <div class="char-shop-grid" id="char-shop-grid"></div>
         </div>

@@ -4,6 +4,7 @@ const http    = require('http');
 const { Server } = require('socket.io');
 const msgpackParser = require('socket.io-msgpack-parser');
 const path    = require('path');
+const fs      = require('fs');
 const bcrypt  = require('bcryptjs');
 const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
@@ -35,6 +36,48 @@ const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)
 const sessionTokens = new Map();
 
 if (!supabase) console.warn('[Supabase] Nu e configurat — statisticile nu se salveaza.');
+
+// ---------- SKINS ----------
+// One list for client and server: public/data/skins.json (the client fetches the same file).
+const SKIN_DATA    = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'data', 'skins.json'), 'utf8'));
+const SKINS        = new Map(SKIN_DATA.skins.map(s => [s.id, s]));
+const DEFAULT_SKIN = SKIN_DATA.defaultSkin;
+// TODO: SCOATE INAINTE DE LANSARE — "unlockAllForTesting" in public/data/skins.json gives every skin to everyone
+const UNLOCK_ALL_FOR_TESTING = SKIN_DATA.unlockAllForTesting === true;
+// Ids of the old set that also exist in the new one and carry over to whoever owned them. Ninja is
+// left out on purpose: it was the old free default, so it does not carry over.
+const LEGACY_CARRY = new Set(['robot', 'wizard', 'tiger', 'viking', 'samurai', 'pharaoh']);
+// nickname → Set of owned skin ids; filled at login, updated on unlock (in-memory, like sessionTokens)
+const ownedSkins = new Map();
+// Without Supabase (local runs) the chosen skin lives here, so it survives a page refresh
+const memAvatars = new Map();
+
+function parseUnlocked(raw) {
+    try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+// A stored unlocked_characters list predates the new set when it has no DEFAULT_SKIN in it. From such a
+// list only LEGACY_CARRY ids count; its other old ids stay in the database for the refund script.
+function isLegacyList(list) { return !list.includes(DEFAULT_SKIN); }
+function ownedFromList(list) {
+    const legacy = isLegacyList(list);
+    const owned = new Set([DEFAULT_SKIN]);
+    for (const id of list) if (SKINS.has(id) && (!legacy || LEGACY_CARRY.has(id))) owned.add(id);
+    return owned;
+}
+function ownsSkin(nickname, id) {
+    if (!SKINS.has(id)) return false;
+    return UNLOCK_ALL_FOR_TESTING || id === DEFAULT_SKIN || !!ownedSkins.get(nickname)?.has(id);
+}
+function ownedSkinList(nickname) {
+    return UNLOCK_ALL_FOR_TESTING ? [...SKINS.keys()] : [...(ownedSkins.get(nickname) || [DEFAULT_SKIN])];
+}
+// players.avatar holds a skin id; older rows hold the old image URL (/images/characters/<id>.png)
+function skinFromAvatar(avatar, nickname) {
+    const s = String(avatar || '');
+    const m = s.match(/\/images\/characters\/([A-Za-z0-9_]+)\.png$/);
+    const id = m ? m[1].toLowerCase() : s;
+    return ownsSkin(nickname, id) ? id : DEFAULT_SKIN;
+}
 
 // ---------- DAILY MISSIONS (missions.js) ----------
 // Stored as JSON in players.missions_state. Until that column exists (run
@@ -90,7 +133,9 @@ app.post('/api/auth/login', async (req, res) => {
     if (!supabase) {
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(nickname, token);
-        return res.json({ ok: true, token, player: { nickname, avatar: null, kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname) } });
+        if (!ownedSkins.has(nickname)) ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
+        const skin = skinFromAvatar(memAvatars.get(nickname), nickname);
+        return res.json({ ok: true, token, player: { nickname, avatar: skin, skin, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname) } });
     }
 
     try {
@@ -109,19 +154,20 @@ app.post('/api/auth/login', async (req, res) => {
         // Misiuni zilnice: sase din pool, alese pe zi (missions.js)
         const missions = await missionsForLogin(existing.nickname);
 
-        let unlockedChars;
-        try { unlockedChars = JSON.parse(existing.unlocked_characters || '["ninja"]'); }
-        catch { unlockedChars = ['ninja']; }
-        // Migrate old 'captain' id to 'ninja'
-        if (unlockedChars.includes('captain')) {
-            unlockedChars = unlockedChars.map(id => id === 'captain' ? 'ninja' : id);
+        // Skins: what the stored list grants in the new set, and the chosen skin as an id. An old image
+        // URL in players.avatar is turned into its id (or the default) and written back once.
+        ownedSkins.set(existing.nickname, ownedFromList(parseUnlocked(existing.unlocked_characters)));
+        const skin = skinFromAvatar(existing.avatar, existing.nickname);
+        if (skin !== existing.avatar) {
+            supabase.from('players').update({ avatar: skin }).eq('nickname', existing.nickname)
+                .then(({ error }) => { if (error) console.error('[Auth/Login] avatar update:', error.message); });
         }
-        if (!unlockedChars.includes('ninja')) unlockedChars.unshift('ninja');
 
         return res.json({ ok: true, token, player: {
             nickname: existing.nickname,
-            avatar:   existing.avatar   || null,
-            unlocked_characters: unlockedChars,
+            avatar:   skin,
+            skin,
+            unlocked_characters: ownedSkinList(existing.nickname),
             kills_total:  existing.kills_total  || 0,
             wins_total:   existing.wins_total   || 0,
             games_played: existing.games_played || 0,
@@ -150,8 +196,10 @@ app.post('/api/auth/register', async (req, res) => {
     if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password))
         return res.json({ ok: false, error: 'Parola trebuie sa contina litere si cifre' });
 
-    if (!supabase)
-        return res.json({ ok: true, player: { nickname, avatar: null, kills_total: 0, wins_total: 0, games_played: 0, missions: await missionsForLogin(nickname) } });
+    if (!supabase) {
+        ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
+        return res.json({ ok: true, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, missions: await missionsForLogin(nickname) } });
+    }
 
     try {
         const { data: existing } = await supabase
@@ -163,7 +211,7 @@ app.post('/api/auth/register', async (req, res) => {
         const hash = await bcrypt.hash(password, 10);
         const { error } = await supabase
             .from('players')
-            .insert({ nickname, password_hash: hash, kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, unlocked_characters: '["ninja"]' });
+            .insert({ nickname, password_hash: hash, kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, avatar: DEFAULT_SKIN, unlocked_characters: JSON.stringify([DEFAULT_SKIN]) });
         if (error) {
             console.error('[Auth/Register] Insert error:', error);
             return res.json({ ok: false, error: 'Eroare la creare cont. Incearca din nou.' });
@@ -171,77 +219,65 @@ app.post('/api/auth/register', async (req, res) => {
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(nickname, token);
         const missions = await missionsForLogin(nickname);
-        return res.json({ ok: true, token, player: { nickname, avatar: null, kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, missions } });
+        ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
+        return res.json({ ok: true, token, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, missions } });
     } catch (err) {
         console.error('[Auth/Register] Error:', err);
         return res.json({ ok: false, error: 'Eroare server. Incearca din nou.' });
     }
 });
 
-// ---------- CHARACTER UNLOCK ----------
-const CHAR_DEFS = {
-    zombie:     { level: 1,  coins: 150,  diamonds: 0  },
-    robot:      { level: 1,  coins: 150,  diamonds: 0  },
-    wizard:     { level: 2,  coins: 200,  diamonds: 0  },
-    sheriff:    { level: 3,  coins: 250,  diamonds: 0  },
-    pumpkin:    { level: 3,  coins: 300,  diamonds: 0  },
-    forestelf:  { level: 4,  coins: 400,  diamonds: 0  },
-    fire:       { level: 5,  coins: 500,  diamonds: 0  },
-    tiger:      { level: 5,  coins: 500,  diamonds: 0  },
-    shark:      { level: 6,  coins: 600,  diamonds: 0  },
-    thunderbot: { level: 6,  coins: 650,  diamonds: 0  },
-    werewolf:   { level: 6,  coins: 700,  diamonds: 0  },
-    cyberbrain: { level: 7,  coins: 800,  diamonds: 0  },
-    viking:     { level: 10, coins: 1800, diamonds: 0  },
-    sungod:     { level: 10, coins: 2000, diamonds: 0  },
-    ice:        { level: 10, coins: 0,    diamonds: 15 },
-    magmagolem: { level: 12, coins: 2500, diamonds: 0  },
-    royalking:  { level: 12, coins: 0,    diamonds: 20 },
-    vampire:    { level: 15, coins: 0,    diamonds: 40 },
-    samurai:    { level: 18, coins: 0,    diamonds: 60 },
-    pharaoh:    { level: 20, coins: 0,    diamonds: 75 },
-};
-
+// ---------- SKIN UNLOCK ----------
+// Prices and levels come from public/data/skins.json. Season skins are not sold in the shop.
+// TODO: grant season skins (rarity "season", shop: false) through admin or code — there is no path for it yet.
 app.post('/api/characters/unlock', async (req, res) => {
     const { nickname, token, characterId } = req.body || {};
-    if (!nickname || !token || !characterId || !supabase) return res.json({ ok: false });
+    if (!nickname || !token || !characterId) return res.json({ ok: false });
     if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Sesiune invalida' });
-    const charDef = CHAR_DEFS[characterId];
-    if (!charDef) return res.json({ ok: false, error: 'Personaj invalid' });
+    const skin = SKINS.get(characterId);
+    if (!skin) return res.json({ ok: false, error: 'Skin invalid' });
+    if (!skin.shop) return res.json({ ok: false, error: 'Skinul nu se poate cumpara din magazin' });
+    if (!supabase) return res.json({ ok: false, error: 'Cumpararea are nevoie de baza de date' });
     try {
         const { data } = await supabase.from('players')
             .select('xp, coins, diamonds, unlocked_characters')
             .eq('nickname', nickname).single();
         if (!data) return res.json({ ok: false });
+        let list = parseUnlocked(data.unlocked_characters);
+        if (ownedFromList(list).has(characterId)) return res.json({ ok: false, error: 'Deja deblocat' });
         const xp = data.xp || 0;
         let lvl = 1, inc = 100, thresh = 0;
         for (let n = 2; n <= 50; n++) { thresh += inc; if (xp >= thresh) lvl = n; else break; if (n >= 3) inc += 50; }
-        if (lvl < charDef.level) return res.json({ ok: false, error: `Nivel insuficient (necesar LV ${charDef.level})` });
+        if (lvl < skin.level) return res.json({ ok: false, error: `Nivel insuficient (necesar LV ${skin.level})` });
         const coins    = data.coins    ?? 1000;
         const diamonds = data.diamonds || 0;
-        if (charDef.coins    > 0 && coins    < charDef.coins)    return res.json({ ok: false, error: 'Monede insuficiente' });
-        if (charDef.diamonds > 0 && diamonds < charDef.diamonds) return res.json({ ok: false, error: 'Diamante insuficiente' });
-        let unlocked;
-        try { unlocked = JSON.parse(data.unlocked_characters || '["ninja"]'); } catch { unlocked = ['ninja']; }
-        if (unlocked.includes(characterId)) return res.json({ ok: false, error: 'Deja deblocat' });
-        unlocked.push(characterId);
-        const newCoins    = coins    - charDef.coins;
-        const newDiamonds = diamonds - charDef.diamonds;
+        if (skin.coins    > 0 && coins    < skin.coins)    return res.json({ ok: false, error: 'Monede insuficiente' });
+        if (skin.diamonds > 0 && diamonds < skin.diamonds) return res.json({ ok: false, error: 'Diamante insuficiente' });
+        // A legacy list becomes a new-set list here (it gains DEFAULT_SKIN). Keep its old ids for the refund
+        // script and the ids that carry over; drop new-set ids it never really owned (the old free ninja).
+        if (isLegacyList(list)) list = [DEFAULT_SKIN, ...list.filter(id => !SKINS.has(id) || LEGACY_CARRY.has(id))];
+        list.push(characterId);
+        const newCoins    = coins    - skin.coins;
+        const newDiamonds = diamonds - skin.diamonds;
         await supabase.from('players').update({
             coins: newCoins, diamonds: newDiamonds,
-            unlocked_characters: JSON.stringify(unlocked),
+            unlocked_characters: JSON.stringify(list),
             updated_at: new Date().toISOString()
         }).eq('nickname', nickname);
-        res.json({ ok: true, coins: newCoins, diamonds: newDiamonds, unlocked_characters: unlocked });
+        ownedSkins.set(nickname, ownedFromList(list));
+        res.json({ ok: true, coins: newCoins, diamonds: newDiamonds, unlocked_characters: ownedSkinList(nickname) });
     } catch (err) {
         console.error('[Characters/Unlock]', err);
         res.json({ ok: false, error: 'Eroare server' });
     }
 });
 
+// The chosen skin, saved as its id. Only a skin the player owns is accepted.
 app.post('/api/profile/avatar', async (req, res) => {
     const { nickname, password, avatar } = req.body || {};
-    if (!nickname || !password || !avatar || !supabase) return res.json({ ok: false });
+    if (!nickname || !password || !avatar) return res.json({ ok: false });
+    if (!ownsSkin(nickname, avatar)) return res.json({ ok: false, error: 'Skin indisponibil' });
+    if (!supabase) { memAvatars.set(nickname, avatar); return res.json({ ok: true }); }
     try {
         const { data } = await supabase.from('players').select('password_hash').eq('nickname', nickname).single();
         if (!data) return res.json({ ok: false });
@@ -854,8 +890,12 @@ function addPlayer(code, room, socket, data) {
     const damage = _wl.baseDmg + Math.round(dmg * scale) * _wl.dmgPer;
     const speed  = (_wl.baseSpd + Math.round(spd * scale) * _wl.spdPer) * 60;
 
+    // The skin is an id from public/data/skins.json; one the account does not own becomes the default.
+    // data.name is the authenticated socket's nickname (set by create-room / join-room).
+    const skin = ownsSkin(data.name, data.skin) ? data.skin : DEFAULT_SKIN;
+
     room.players[socket.id] = {
-        id: socket.id, name: data.name, image: data.image, xp: data.xp || 0, weapon,
+        id: socket.id, name: data.name, skin, xp: data.xp || 0, weapon,
         x: SPAWN_POINTS[room.spawnIndex % SPAWN_POINTS.length].x,
         y: SPAWN_POINTS[(room.spawnIndex++) % SPAWN_POINTS.length].y,
         angle: 0, size: PLAYER_SIZE,
@@ -875,9 +915,9 @@ function addPlayer(code, room, socket, data) {
     };
     room._playerArr.push(room.players[socket.id]);
 
-    io.to(code).emit('player-image', { id: socket.id, image: data.image, weapon });
+    io.to(code).emit('player-image', { id: socket.id, skin, weapon });
     Object.values(room.players).forEach(p => {
-        if (p.id !== socket.id) socket.emit('player-image', { id: p.id, image: p.image, weapon: p.weapon || 'pistol' });
+        if (p.id !== socket.id) socket.emit('player-image', { id: p.id, skin: p.skin, weapon: p.weapon || 'pistol' });
     });
 }
 
@@ -891,7 +931,7 @@ function broadcastWaiting(code, room) {
             if (xp >= thresh) lvl = n; else break;
             if (n >= 3) inc += 50;
         }
-        return { id: p.id, name: p.name, image: p.image, level: lvl };
+        return { id: p.id, name: p.name, skin: p.skin, level: lvl };
     });
     Object.keys(room.players).forEach(pid => {
         io.to(pid).emit('waiting-room', { players, hostId: room.hostId });

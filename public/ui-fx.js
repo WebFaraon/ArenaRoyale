@@ -351,6 +351,9 @@
         function normalise(img) {
             const src = img.getAttribute('src');
             if (!src || src.indexOf('data:') === 0) return;
+            // The new skins (SVG, public/images/skins/svg) share one frame and one body size, and must stay
+            // vector so the lobby renders them sharp; only the old raster sprites need this crop.
+            if (/\.svg(\?|$)/i.test(src)) return;
             if (normCache.has(src)) { img.src = normCache.get(src); return; }
             img.style.opacity = '0';
             let pr = normLoad.get(src);

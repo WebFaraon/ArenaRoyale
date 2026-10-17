@@ -143,47 +143,21 @@ const _ambParts = Array.from({ length: 20 }, () => ({
     phase: Math.random() * Math.PI * 2
 }));
 
-// ---------- SISTEM PERSONAJE ----------
-const CHARACTERS = [
-    // scale: factor de zoom (>1 = mai mare, <1 = mai mic)
-    // bullet: imaginea proiectilului; scale: zoom in cerc; bulletScale: marimea proiectilului (1.0=normal, 1.4=mai mare)
-    // ── COMMON ──────────────────────────────────────────────────────────────────
-    { id: 'ninja',       name: 'Ninja',        rarity: 'common',    img: '/images/characters/ninja.png',         level: 1,  coins: 0,    diamonds: 0,  default: true, scale: 1.0, bulletScale: 1.0, bullet: '/assets/bullets/ninja_bullet.png'            },
-    { id: 'zombie',      name: 'Zombie',       rarity: 'common',    img: '/images/characters/zombie.png',        level: 1,  coins: 150,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Zombie.png'     },
-    { id: 'robot',       name: 'Robot',        rarity: 'common',    img: '/images/characters/robot.png',         level: 1,  coins: 150,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Robot.png'      },
-    { id: 'wizard',      name: 'Wizard',       rarity: 'common',    img: '/images/characters/wizard.png',        level: 2,  coins: 200,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Wizard.png'     },
-    { id: 'pilot',       name: 'Pilot',        rarity: 'common',    img: '/images/characters/pilot.png',         level: 2,  coins: 180,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Pilot.png',      isNew: true },
-    { id: 'sheriff',     name: 'Cowboy',       rarity: 'common',    img: '/images/characters/cowboy.png',        level: 3,  coins: 250,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Cowboy.png'     },
-    { id: 'pumpkin',     name: 'Pumpkin',      rarity: 'common',    img: '/images/characters/pumpkin.png',       level: 3,  coins: 300,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Pumpkin.png'    },
-    // ── RARE ────────────────────────────────────────────────────────────────────
-    { id: 'forestelf',   name: 'Forest Elf',   rarity: 'rare',      img: '/images/characters/forestElf.png',     level: 4,  coins: 400,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_ForestElf.png'  },
-    { id: 'fire',        name: 'Fire Knight',  rarity: 'rare',      img: '/images/characters/fire.png',          level: 5,  coins: 500,  diamonds: 0,  scale: 0.85,   bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Fire.png'       },
-    { id: 'tiger',       name: 'Tiger',        rarity: 'rare',      img: '/images/characters/tiger.png',         level: 5,  coins: 500,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Tiger.png'      },
-    { id: 'shark',       name: 'Shark',        rarity: 'rare',      img: '/images/characters/shark.png',         level: 6,  coins: 600,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Shark.png'      },
-    { id: 'thunderbot',  name: 'Thunder Bot',  rarity: 'rare',      img: '/images/characters/thunderBot.png',    level: 6,  coins: 650,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_ThunderBot.png' },
-    { id: 'werewolf',    name: 'Werewolf',     rarity: 'rare',      img: '/images/characters/werewolf.png',      level: 6,  coins: 700,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Werewolf.png'   },
-    { id: 'cyberbrain',  name: 'Cyber Brain',  rarity: 'rare',      img: '/images/characters/cyberBrain.png',    level: 7,  coins: 800,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_CyberBrain.png' },
-    { id: 'hacker',      name: 'Hacker',       rarity: 'rare',      img: '/images/characters/hacker.png',        level: 7,  coins: 750,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Hacker.png',     isNew: true },
-    { id: 'timetraveler',name: 'Time Traveler', rarity: 'rare',     img: '/images/characters/timeTraveller.png', level: 8,  coins: 850,  diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_TimeTraveler.png',isNew: true },
-    // ── EPIC ────────────────────────────────────────────────────────────────────
-    { id: 'viking',      name: 'Viking',       rarity: 'epic',      img: '/images/characters/viking.png',        level: 10, coins: 1800, diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Viking.png'     },
-    { id: 'sungod',      name: 'Sun God',      rarity: 'epic',      img: '/images/characters/sunGod.png',        level: 10, coins: 2000, diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_SunGod.png'     },
-    { id: 'ice',         name: 'Ice Queen',    rarity: 'epic',      img: '/images/characters/ice.png',           level: 10, coins: 0,    diamonds: 15, scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Ice.png'        },
-    { id: 'crocodile',   name: 'Crocodile',    rarity: 'epic',      img: '/images/characters/crocodile.png',     level: 11, coins: 2200, diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Crocodile.png',  isNew: true },
-    { id: 'magmagolem',  name: 'Magma Golem',  rarity: 'epic',      img: '/images/characters/magmaGolem.png',    level: 12, coins: 2500, diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_MagmaGolem.png' },
-    { id: 'royalking',   name: 'Royal King',   rarity: 'epic',      img: '/images/characters/royalKing.png',     level: 12, coins: 0,    diamonds: 20, scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_King.png'       },
-    { id: 'gorilla',     name: 'Gorilla',      rarity: 'epic',      img: '/images/characters/gorilla.png',       level: 13, coins: 2800, diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Gorilla.png',    isNew: true },
-    { id: 'taurus',      name: 'Taurus',       rarity: 'epic',      img: '/images/characters/taurus.png',        level: 13, coins: 2600, diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Taurus.png',     isNew: true },
-    { id: 'necromancer', name: 'Necromancer',  rarity: 'epic',      img: '/images/characters/necromancer.png',   level: 14, coins: 3000, diamonds: 0,  scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Necromancer.png',isNew: true },
-    // ── LEGENDARY ───────────────────────────────────────────────────────────────
-    { id: 'vampire',     name: 'Vampire',      rarity: 'legendary', img: '/images/characters/vampire.png',       level: 15, coins: 0,    diamonds: 40, scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Vampire.png'    },
-    { id: 'paladin',     name: 'Paladin',      rarity: 'legendary', img: '/images/characters/paladin.png',       level: 17, coins: 0,    diamonds: 50, scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Paladin.png',    isNew: true },
-    { id: 'samurai',     name: 'Samurai',      rarity: 'legendary', img: '/images/characters/samurai.png',       level: 18, coins: 0,    diamonds: 60, scale: 1.0,    bulletScale: 1.0, bullet: '/assets/bullets/ninja_bullet.png'           },
-    { id: 'scorpion',    name: 'Scorpion',     rarity: 'legendary', img: '/images/characters/scorpion.png',      level: 19, coins: 0,    diamonds: 65, scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Scorpion.png',   isNew: true },
-    { id: 'pharaoh',     name: 'Pharaoh',      rarity: 'legendary', img: '/images/characters/pharaoh.png',       level: 20, coins: 0,    diamonds: 75, scale: 1.0,    bulletScale: 1.4, bullet: '/assets/bullets/Projectile_Pharaoh.png'    },
-];
-const RARITY_COLOR = { common: '#7C8F9A', rare: '#52B6F0', epic: '#FF6A1A', legendary: '#FFC52E' };
-const RARITY_LABEL = { common: 'COMMON', rare: 'RARE', epic: 'EPIC', legendary: 'LEGENDARY' };
+// ---------- SKINURI ----------
+// The skin list lives in public/data/skins.json, shared with the server (server.js reads the same file).
+// img is the SVG (lobby), png the in-match sprite. Login waits for the list (doLogin / doRegister).
+let CHARACTERS = [];
+let SKIN_META  = null; // pivot, bodyRadius, hand, defaultSkin
+const DEFAULT_SKIN = 'rookie';
+const SKINS_READY = fetch('/data/skins.json')
+    .then(r => { if (!r.ok) throw new Error('skins.json ' + r.status); return r.json(); })
+    .then(data => {
+        SKIN_META  = data;
+        CHARACTERS = data.skins.map(s => ({ ...s, img: s.svg }));
+        CHARACTERS.forEach(c => _getCharImg(c.png));
+    });
+const RARITY_COLOR = { common: '#7C8F9A', rare: '#52B6F0', epic: '#FF6A1A', legendary: '#FFC52E', season: '#FFD02A' };
+const RARITY_LABEL = { common: 'COMMON', rare: 'RARE', epic: 'EPIC', legendary: 'LEGENDARY', season: 'SEZON' };
 
 // Tier colors by level bracket
 const TIER_COLORS = [
@@ -198,8 +172,10 @@ function getTier(level) {
     return TIER_COLORS.find(t => level >= t.min && level <= t.max) || TIER_COLORS[0];
 }
 
-let selectedCharacterId = 'ninja';
-let unlockedCharacters  = CHARACTERS.map(c => c.id); // TESTING: toate deblocate
+let selectedCharacterId = DEFAULT_SKIN;
+// Owned skins, sent by the server at login. While "unlockAllForTesting" is true in public/data/skins.json
+// the server sends every skin. TODO: SCOATE INAINTE DE LANSARE (flagul din skins.json).
+let unlockedCharacters  = [DEFAULT_SKIN];
 let _currentShopFilter  = 'all';
 
 function getCharacterById(id) { return CHARACTERS.find(c => c.id === id); }
@@ -225,7 +201,7 @@ function _heroRender(char) {
     if (lock) {
         lock.hidden = unlocked;
         const txt = document.getElementById('hero-lock-txt');
-        if (txt && !unlocked) txt.innerHTML = char.diamonds > 0 ? ico('gem') + ' ' + char.diamonds : ico('coins') + ' ' + char.coins.toLocaleString();
+        if (txt && !unlocked) txt.innerHTML = !char.shop ? 'SEZON' : char.diamonds > 0 ? ico('gem') + ' ' + char.diamonds : ico('coins') + ' ' + char.coins.toLocaleString();
     }
 }
 function cycleCharacter(dir) {
@@ -259,12 +235,12 @@ function selectCharacter(id) {
     if (lpImg) { lpImg.src = char.img; lpImg.style.display = 'block'; }
     if (lpPh)  lpPh.style.display = 'none';
     renderCharShopGrid(_currentShopFilter);
-    if (currentProfile) currentProfile.avatar = char.img;
+    if (currentProfile) currentProfile.skin = currentProfile.avatar = char.id;
     if (currentNickname && currentPassword) {
         fetch('/api/profile/avatar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nickname: currentNickname, password: currentPassword, avatar: char.img })
+            body: JSON.stringify({ nickname: currentNickname, password: currentPassword, avatar: char.id })
         }).catch(() => {});
     }
 }
@@ -398,6 +374,9 @@ function renderCharShopGrid(filter) {
             actionBtn = isSelected
                 ? `<button class="cs-action-btn cs-selected-btn">${ico('check')} SELECTAT</button>`
                 : `<button class="cs-action-btn cs-select-btn" onclick="selectCharacter('${char.id}');closeCharacterShop()">SELECTEAZA</button>`;
+        } else if (!char.shop) {
+            // TODO: season skins are granted through admin or code, never sold here
+            actionBtn = `<button class="cs-action-btn cs-locked-btn" disabled>SEZON</button>`;
         } else if (canAfford) {
             actionBtn = `<button class="cs-action-btn cs-unlock-btn" onclick="unlockCharacter('${char.id}',this)">${costStr}${lvlStr}</button>`;
         } else {
@@ -787,7 +766,7 @@ function authSuccess(nickname, password, player, token) {
     currentPassword = password;
     currentProfile  = player;
     sessionToken    = token || '';
-    unlockedCharacters = CHARACTERS.map(c => c.id); // TESTING: toate deblocate
+    unlockedCharacters = Array.isArray(player.unlocked_characters) && player.unlocked_characters.length ? player.unlocked_characters : [DEFAULT_SKIN];
     localStorage.setItem('ar_nickname', nickname);
 
     // Prioritate: DB daca are valori salvate; altfel localStorage (fallback instant)
@@ -848,6 +827,7 @@ async function doLogin() {
             btnText.textContent = 'INTRU IN JOC';
             return;
         }
+        await SKINS_READY;
         authSuccess(nickname, password, data.player, data.token);
     } catch {
         errorEl.textContent = 'Eroare de retea. Incearca din nou.';
@@ -885,6 +865,7 @@ async function doRegister() {
             btnText.textContent = 'CREEAZA CONT';
             return;
         }
+        await SKINS_READY;
         authSuccess(nickname, password, data.player, data.token);
     } catch {
         errorEl.textContent = 'Eroare de retea. Incearca din nou.';
@@ -933,14 +914,9 @@ function prepopulateLobby() {
     const nameInput = document.getElementById('input-name');
     if (nameInput) nameInput.value = currentNickname || '';
 
-    // Restore selected character from saved avatar URL (case-insensitive match)
-    const savedAvatar     = (currentProfile?.avatar || '').toLowerCase();
-    const savedChar       = CHARACTERS.find(c => savedAvatar.includes('/' + c.id + '.'));
-    if (savedChar && unlockedCharacters.includes(savedChar.id)) {
-        selectedCharacterId = savedChar.id;
-    } else {
-        selectedCharacterId = 'ninja';
-    }
+    // The saved skin id (server.js maps an old image URL to its id, or to the default, at login)
+    const savedId = currentProfile?.skin;
+    selectedCharacterId = savedId && getCharacterById(savedId) && unlockedCharacters.includes(savedId) ? savedId : DEFAULT_SKIN;
     const activeChar = getSelectedCharacter();
     // Arata numele caracterului (ex: "Pharaoh"), nu al jucatorului
     const nameDisplay = document.getElementById('char-name-display');
@@ -1559,7 +1535,6 @@ function joinGame() {
     const name = currentNickname;
     if (!name) return;
     const char     = getSelectedCharacter();
-    const imageUrl = char.img;
 
     if (currentNickname && currentPassword) {
         fetch('/api/profile/stats', {
@@ -1572,7 +1547,7 @@ function joinGame() {
     goFullscreen();
     document.getElementById('screen-lobby').style.display   = 'none';
     document.getElementById('screen-waiting').style.display = 'flex';
-    initGame(name, imageUrl, stats, pendingRoom);
+    initGame(name, char.id, stats, pendingRoom);
 }
 
 // ---------- FULLSCREEN ----------
@@ -1727,8 +1702,7 @@ function _getBulletImg(src) {
     }
     return _bulletImgCache[src];
 }
-// Preîncarcă toate proiectilele unice
-CHARACTERS.forEach(c => _getBulletImg(c.bullet || '/assets/bullets/ninja_bullet.png'));
+// One bullet for every skin (weapon skins will set the tracer colour later)
 const defaultBulletImg = _getBulletImg('/assets/bullets/ninja_bullet.png');
 
 const _charImgCache = {};
@@ -1740,8 +1714,6 @@ function _getCharImg(src) {
     }
     return _charImgCache[src];
 }
-// Preîncarcă toate imaginile caracterelor imediat la încărcarea paginii
-CHARACTERS.forEach(c => _getCharImg(c.img));
 
 const PLAYER_SPRITE_SIZE = 90;
 
@@ -1764,7 +1736,7 @@ function drawCircularCoverImage(ctx, img, size, scale = 1) {
 }
 
 // ---------- INITIALIZARE ----------
-function initGame(playerName, playerImage, playerStats, roomAction) {
+function initGame(playerName, playerSkin, playerStats, roomAction) {
     const canvas = document.getElementById('gameCanvas');
     const ctx    = canvas.getContext('2d');
 
@@ -1789,7 +1761,7 @@ function initGame(playerName, playerImage, playerStats, roomAction) {
     const socket = _sessionSocket || io(_ioFallbackOpts);
     _sessionSocket = null;
 
-    const playerData = { name: playerName, image: playerImage, stats: playerStats, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode || 'br' };
+    const playerData = { name: playerName, skin: playerSkin, stats: playerStats, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode || 'br' };
 
     if (roomAction.action === 'create') {
         socket.emit('create-room', playerData);
@@ -1829,20 +1801,20 @@ function initGame(playerName, playerImage, playerStats, roomAction) {
         if (data.weapon) _playerWeapons.set(data.id, data.weapon);
         if (playerImages[data.id]) return;
 
-        // Refoloseste entry-ul deja construit pentru acest URL (alt jucator cu acelasi personaj)
-        if (_playerEntryByUrl[data.image]) {
-            playerImages[data.id] = _playerEntryByUrl[data.image];
+        // The server sends a skin id it has validated; the sprite comes from our own list
+        const charDef = getCharacterById(data.skin) || getCharacterById(DEFAULT_SKIN);
+        const url = charDef ? charDef.png : '';
+        // Refoloseste entry-ul deja construit pentru acest URL (alt jucator cu acelasi skin)
+        if (_playerEntryByUrl[url]) {
+            playerImages[data.id] = _playerEntryByUrl[url];
             return;
         }
 
         const img = new Image();
-        img.src = data.image;
-        const charDef = CHARACTERS.find(c => data.image === c.img);
-        const bulletSrc = charDef?.bullet || '/assets/bullets/ninja_bullet.png';
-        const scale = charDef?.scale || 1.0;
-        const entry = { img, scale, bulletImg: _getBulletImg(bulletSrc), bulletScale: charDef?.bulletScale || 1.0, circleOC: null };
+        img.src = url;
+        const entry = { img, scale: 1.0, bulletImg: defaultBulletImg, bulletScale: 1.0, circleOC: null };
         playerImages[data.id] = entry;
-        _playerEntryByUrl[data.image] = entry; // inregistrat dupa URL pentru reutilizare
+        _playerEntryByUrl[url] = entry; // inregistrat dupa URL pentru reutilizare
         img.onload = () => {
             const sz = PLAYER_SPRITE_SIZE;
             const res = sz * 2; // 2× resolution so DPR=2 displays crisply
@@ -1875,7 +1847,7 @@ function initGame(playerName, playerImage, playerStats, roomAction) {
             card.className = 'waiting-card';
             card.innerHTML = `
                 <div class="waiting-card-av">
-                    <img src="${p.image}" onerror="this.style.background='#e8a020';this.src=''"
+                    <img src="${(getCharacterById(p.skin) || getCharacterById(DEFAULT_SKIN) || {}).img || ''}" onerror="this.style.background='#e8a020';this.src=''"
                          style="border:3px solid ${pTier.color};box-shadow:0 0 14px ${pTier.glow}">
                     <span class="waiting-lv-badge" style="background:${pTier.color};color:#000">LV ${pLevel}</span>
                 </div>
@@ -4470,7 +4442,7 @@ function acceptRoomInvite() {
     _sessionSocket = io(_invIoOpts);
     _sessionSocket.emit('authenticate', { nickname: currentNickname, token: sessionToken });
     const char = getSelectedCharacter();
-    initGame(currentNickname, char.img, stats, pendingRoom);
+    initGame(currentNickname, char.id, stats, pendingRoom);
 }
 
 
