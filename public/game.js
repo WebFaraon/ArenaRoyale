@@ -154,6 +154,7 @@ const SKINS_READY = fetch('/data/skins.json')
     .then(data => {
         SKIN_META  = data;
         CHARACTERS = data.skins.map(s => ({ ...s, img: s.svg }));
+        _initHands(data);
         CHARACTERS.forEach(c => _getCharImg(c.png));
     });
 const RARITY_COLOR = { common: '#7C8F9A', rare: '#52B6F0', epic: '#FF6A1A', legendary: '#FFC52E', season: '#FFD02A' };
@@ -1715,24 +1716,117 @@ function _getCharImg(src) {
     return _charImgCache[src];
 }
 
-const PLAYER_SPRITE_SIZE = 90;
+// ---------- SKINS IN THE MATCH ----------
+// World units: the body has radius 36; the 256 px PNG covers 100 × 100 units with its pivot
+// (skins.json "pivot", 128,118 px) on the player position. Hitbox stays PLAYER_HIT_R (30).
+// The art faces down, and player.angle is already measured from "down" (atan2(-dx, dy)), so the
+// sprite and the hands rotate by player.angle; +y in that frame is the aim direction.
+// How big a player looks in the match, relative to the art (body radius 36, frame 100 units).
+// Reglabil intre 0.8 si 0.9. It scales the sprite, the hands, the highlight, the hit flash, the ring
+// and the label positions together; the hitbox (PLAYER_HIT_R, server PLAYER_SIZE) does not change.
+const PLAYER_VISUAL_SCALE = 0.85;
+const SKIN_FRAME_UNITS = 100;
+const SKIN_BODY_R      = 36;
+const SKIN_OUTLINE     = '#0B0F1A';
+const SKIN_DRAW_UNITS  = SKIN_FRAME_UNITS * PLAYER_VISUAL_SCALE; // the frame as drawn (85 units at 0.85)
 
-// buildObstacleCanvases removed
+// The sprite: the PNG drawn once at its on-screen size (SKIN_DRAW_UNITS × dpr × ZOOM) and rotated per player.
+// No clip, so parts outside the body (horns, halo) stay whole. Redone once the zoom settles, a few per
+// frame (ARArena.takeBudget), like the labels; while the zoom moves the old one is stretched.
+function _skinSprite(entry, scale) {
+    const img = entry.img;
+    if (!img.complete || !img.naturalWidth) return null;
+    let s = entry.sprite;
+    if (s && (s.scale === scale || !ARArena.isScaleStable())) return s;
+    if (s && !ARArena.takeBudget()) return s;
+    const px = Math.max(8, Math.ceil(SKIN_DRAW_UNITS * scale));
+    // Big reductions in one step lose detail on some browsers: halve first while the source is over 2× the target
+    let src = img, sw = img.naturalWidth, sh = img.naturalHeight;
+    while (sw > px * 2) {
+        const h = document.createElement('canvas');
+        h.width = Math.ceil(sw / 2); h.height = Math.ceil(sh / 2);
+        const hg = h.getContext('2d');
+        hg.imageSmoothingEnabled = true; hg.imageSmoothingQuality = 'high';
+        hg.drawImage(src, 0, 0, h.width, h.height);
+        src = h; sw = h.width; sh = h.height;
+    }
+    const c = s ? s.c : document.createElement('canvas');
+    c.width = c.height = px; // also clears
+    const g = c.getContext('2d', { willReadFrequently: true }); // CPU-painted, uploaded once
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.drawImage(src, 0, 0, sw, sh, 0, 0, px, px);
+    s = { c, scale };
+    entry.sprite = s;
+    return s;
+}
 
-function drawCircularCoverImage(ctx, img, size, scale = 1) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
-    ctx.clip();
-
-    const iw = img.naturalWidth || img.width || size;
-    const ih = img.naturalHeight || img.height || size;
-    // Dividing srcSize by scale zooms in (scale>1 = larger character)
-    const srcSize = Math.min(iw, ih) / scale;
-    const sx = (iw - srcSize) / 2;
-    const sy = (ih - srcSize) / 2;
-    ctx.drawImage(img, sx, sy, srcSize, srcSize, -size / 2, -size / 2, size, size);
-    ctx.restore();
+// Hands: two circles under the body, in the skin colours, at ±34° from the aim and 47 units out
+// (skins.json "hand"). One hand is painted once per skin at the on-screen scale and that sprite is
+// drawn twice in the rotated frame, so the inner circle and the gloss keep their offsets in rotated
+// coordinates. Filling the circles as paths instead, in a frame rotated differently for every player,
+// cost far more than the whole old frame on a software rasteriser (24 players, dpr 2: 164 -> 10 fps).
+const _HAND = { r: 9.4, inner: 6.6, line: 3.2, cx: [0, 0], cy: [0, 0], reach: 0 };
+const HAND_BOX = 12; // half the hand sprite, in art units: radius 9.4 + half the outline 1.6 + margin
+function _initHands(meta) {
+    const h = (meta && meta.hand) || {};
+    _HAND.r = h.radius || 9.4;
+    _HAND.inner = h.innerRadius || 6.6;
+    _HAND.line = h.outline || 3.2;
+    const ang = (h.defaultAngleDeg ?? 34) * Math.PI / 180, dist = h.defaultDistance || 47;
+    const S = PLAYER_VISUAL_SCALE;
+    for (let i = 0; i < 2; i++) {
+        const a = Math.PI / 2 + (i ? ang : -ang);
+        _HAND.cx[i] = Math.cos(a) * dist * S;
+        _HAND.cy[i] = Math.sin(a) * dist * S;
+    }
+    _HAND.reach = (dist + _HAND.r + _HAND.line / 2) * S; // 49.3 units at 0.85
+}
+_initHands(null);
+function _disc(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); }
+// One hand centred on 0,0, bottom to top: dark disc, base disc up-left, small gloss, outline
+function _paintHand(g, base, dark) {
+    _disc(g, 0, 0, _HAND.r);         g.fillStyle = dark; g.fill();
+    _disc(g, -1, -1.2, _HAND.inner); g.fillStyle = base; g.fill();
+    _disc(g, -2.6, -3.4, 1.8);       g.fillStyle = 'rgba(255,255,255,.45)'; g.fill();
+    _disc(g, 0, 0, _HAND.r);         g.strokeStyle = SKIN_OUTLINE; g.lineWidth = _HAND.line; g.stroke();
+}
+// A small sprite (half size `box` units) at the on-screen scale, remade like _skinSprite when the zoom settles
+function _unitSprite(holder, key, scale, box, paint) {
+    let s = holder[key];
+    if (s && (s.scale === scale || !ARArena.isScaleStable())) return s;
+    if (s && !ARArena.takeBudget()) return s;
+    const px = Math.max(4, Math.ceil(box * 2 * scale));
+    const c = s ? s.c : document.createElement('canvas');
+    c.width = c.height = px; // also clears
+    const g = c.getContext('2d');
+    const k = px / (box * 2);
+    g.setTransform(k, 0, 0, k, px / 2, px / 2);
+    paint(g);
+    s = { c, scale };
+    holder[key] = s;
+    return s;
+}
+function _drawHands(ctx, entry, scale) {
+    const S = PLAYER_VISUAL_SCALE, box = HAND_BOX * S;
+    const s = _unitSprite(entry, 'hand', scale, box, g => { g.scale(S, S); _paintHand(g, entry.base, entry.dark); });
+    for (let i = 0; i < 2; i++) ctx.drawImage(s.c, _HAND.cx[i] - box, _HAND.cy[i] - box, box * 2, box * 2);
+}
+// Highlight: a small white ellipse at the top left of the body that never turns with the aim, one
+// sprite for every skin. It lies wholly inside the body (centre 21.4 units out + 8.2 radius < 36),
+// so it needs no clip.
+const _HL_ROT = -35 * Math.PI / 180;
+const HL_BOX = 9;
+const _hlHolder = {};
+function _drawSkinHighlight(ctx, x, y, scale) {
+    const S = PLAYER_VISUAL_SCALE, box = HL_BOX * S;
+    const s = _unitSprite(_hlHolder, 'hl', scale, box, g => {
+        g.scale(S, S);
+        g.beginPath();
+        g.ellipse(0, 0, 8.2, 3.8, _HL_ROT, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(255,255,255,.42)';
+        g.fill();
+    });
+    ctx.drawImage(s.c, x - 13 * S - box, y - 17 * S - box, box * 2, box * 2);
 }
 
 // ---------- INITIALIZARE ----------
@@ -1793,8 +1887,8 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     });
 
     const playerImages = {};
-    // Cache entry (inclusiv circleOC) dupa URL — mai multi jucatori cu acelasi personaj
-    // impart acelasi obiect; o singura incarcare de imagine si un singur OffscreenCanvas
+    // Cache entry (image, colours, sprite) dupa URL — mai multi jucatori cu acelasi skin
+    // impart acelasi obiect; o singura incarcare de imagine si un singur sprite (_skinSprite)
     const _playerEntryByUrl = {};
 
     socket.on('player-image', (data) => {
@@ -1810,28 +1904,13 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
             return;
         }
 
-        const img = new Image();
-        img.src = url;
-        const entry = { img, scale: 1.0, bulletImg: defaultBulletImg, bulletScale: 1.0, circleOC: null };
+        const entry = {
+            img: _getCharImg(url), sprite: null, hand: null,
+            base: charDef ? charDef.base : '#E7ECF3', dark: charDef ? charDef.dark : '#AEB8C8',
+            bulletImg: defaultBulletImg, bulletScale: 1.0,
+        };
         playerImages[data.id] = entry;
         _playerEntryByUrl[url] = entry; // inregistrat dupa URL pentru reutilizare
-        img.onload = () => {
-            const sz = PLAYER_SPRITE_SIZE;
-            const res = sz * 2; // 2× resolution so DPR=2 displays crisply
-            try {
-                const oc = new OffscreenCanvas(res, res);
-                const oc2d = oc.getContext('2d');
-                oc2d.scale(2, 2); // draw at logical sz × sz, store at res × res
-                const iw = img.naturalWidth, ih = img.naturalHeight;
-                const srcSize = Math.min(iw, ih) / scale;
-                const sx = (iw - srcSize) / 2, sy = (ih - srcSize) / 2;
-                oc2d.beginPath();
-                oc2d.arc(sz / 2, sz / 2, sz / 2, 0, Math.PI * 2);
-                oc2d.clip();
-                oc2d.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, sz, sz);
-                entry.circleOC = oc; // toti jucatorii care impart acest entry beneficiaza automat
-            } catch (_) {}
-        };
     });
 
     socket.on('waiting-room', ({ players: playerList, hostId } = {}) => {
@@ -3934,6 +4013,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
 
         // --- JUCATORI ---
+        const _skinPivX = (SKIN_META ? SKIN_META.pivot[0] / SKIN_META.size : 0.5) * SKIN_DRAW_UNITS;
+        const _skinPivY = (SKIN_META ? SKIN_META.pivot[1] / SKIN_META.size : 0.4609375) * SKIN_DRAW_UNITS;
+        // The ring sits just outside the hands (its 3-unit stroke clears them) and the labels stack on it
+        const _ringR    = _HAND.reach + 2.5;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         for (const pid in rState.players) {
             const player = rState.players[pid];
             if (!player.alive || player.hp <= 0) continue;
@@ -3957,8 +4042,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
 
             if (!isMe && (px + 80 < visLeft || px - 80 > visRight || py + 80 < visTop || py - 80 > visBottom)) continue;
-            const sqSize = 90;
-            const ringR  = sqSize / 2 + 8;
+            const ringR  = _ringR;
             const ringColor = isMe ? '#46D17C' : '#FF4155';
             const ringFill  = isMe ? 'rgba(70,209,124,0.14)' : 'rgba(255,65,85,0.14)';
 
@@ -3973,21 +4057,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.stroke();
             ctx.globalAlpha = 1;
 
-            _setRotated(ctx, _wm, px, py, Math.cos(pangle), Math.sin(pangle));
+            // Hands under the body, then the skin sprite, both turned with the aim (see SKINS IN THE MATCH)
             const _entry = playerImages[player.id];
-            if (_entry && (_entry.circleOC || (_entry.img && _entry.img.complete && _entry.img.naturalWidth))) {
-                if (_entry.circleOC) {
-                    ctx.drawImage(_entry.circleOC, -sqSize / 2, -sqSize / 2, sqSize, sqSize);
-                } else {
-                    drawCircularCoverImage(ctx, _entry.img, sqSize, _entry.scale || 1);
-                }
+            _setRotated(ctx, _wm, px, py, Math.cos(pangle), Math.sin(pangle));
+            if (_entry) _drawHands(ctx, _entry, _lblScale);
+            const _spr = _entry ? _skinSprite(_entry, _lblScale) : null;
+            if (_spr) {
+                ctx.drawImage(_spr.c, -_skinPivX, -_skinPivY, SKIN_DRAW_UNITS, SKIN_DRAW_UNITS);
             } else {
-                ctx.fillStyle = ringColor;
-                ctx.globalAlpha = 0.85;
-                ctx.fillRect(-sqSize / 2, -sqSize / 2, sqSize, sqSize);
-                ctx.globalAlpha = 1;
+                // image still loading: the body as a plain disc in the skin colour
+                ctx.beginPath();
+                ctx.arc(0, 0, SKIN_BODY_R * PLAYER_VISUAL_SCALE, 0, Math.PI * 2);
+                ctx.fillStyle = _entry ? _entry.base : '#E7ECF3';
+                ctx.fill();
+                ctx.strokeStyle = SKIN_OUTLINE; ctx.lineWidth = 4.4 * PLAYER_VISUAL_SCALE; ctx.stroke();
             }
             ctx.setTransform(_wm);
+            _drawSkinHighlight(ctx, px, py, _lblScale);
 
             // Flash + Nume (name tag is a cached label: one drawImage instead of strokeText+fillText)
             const flashAge = flashTimers[player.id] !== undefined
@@ -3998,18 +4084,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (flashAge < 280) {
                 ctx.globalAlpha = (1 - flashAge / 280) * 0.7;
                 ctx.beginPath();
-                ctx.arc(px, py, sqSize / 2 + 2, 0, Math.PI * 2);
+                ctx.arc(px, py, (SKIN_BODY_R + 2) * PLAYER_VISUAL_SCALE, 0, Math.PI * 2);
                 ctx.fillStyle = '#ff2020';
                 ctx.fill();
                 ctx.globalAlpha = 1;
             }
-            _drawLabel(ctx, player.name, isMe ? 14 : 12, isMe ? '#66E287' : '#ffffff', INK, 4, 'alphabetic',
-                       px, py - ringR - (isMe ? 44 : 38), _lblScale);
-
             // Bara HP (toti jucatorii) — folosim latestHp pentru update instant, fara delay de interpolatie
+            // Yours ends with the ammo bar on the ring; the others' bar sits 6 units above it
             const hpRatio = Math.min(1, Math.max(0, (latestHp[player.id] ?? player.hp) / player.maxHp));
             const barX    = px - barW / 2;
-            const barY    = py - ringR - (isMe ? 32 : 28);
+            const barY    = py - ringR - barH - (isMe ? 4 + ammoH : 6);
+            _drawLabel(ctx, player.name, isMe ? 14 : 12, isMe ? '#66E287' : '#ffffff', INK, 4, 'alphabetic',
+                       px, barY - (isMe ? 12 : 10), _lblScale);
             _drawHpBar(ctx, barX, barY, barW, barH, hpRatio, isMe ? 2.5 : 2);
 
             // Text HP pe bara (cached label per value)
@@ -4032,6 +4118,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 _drawBadge(ctx, _wd, _wx, _wy, _wsz, _lblScale);
             }
         }
+        ctx.imageSmoothingQuality = 'low'; // back to the default for the rest of the frame
 
         // --- HIT EFFECTS ---
         if (hitEffects.length > 0) {
