@@ -944,7 +944,7 @@ function addPlayer(code, room, socket, data) {
         moveDir:  { x: 0, y: 0 },
         shootDir: { x: 0, y: 0 },
         shooting: false, shootCooldown: 0, aimTimer: 0, needsReleaseToShoot: false, hasReleasedSinceEmpty: false,
-        burstRemaining: 0, burstTimer: 0, burstDx: 0, burstDy: 0,
+        burstRemaining: 0, burstTimer: 0, burstDx: 0, burstDy: 0, inputQ: [],
         ammo: _ws.ammoMax, ammoMax: _ws.ammoMax,
         reloading: false, reloadProgress: 0, lastShotTime: 0,
         weaponReloadRate: _ws.reloadRate, bulletSpeed: _ws.bulletSpeed,
@@ -985,6 +985,36 @@ const _r3 = (v) => Math.round(v * 1000) / 1000; // 3 decimals without toFixed st
 const _r2 = (v) => Math.round(v * 100) / 100;
 const _r1 = (v) => Math.round(v * 10) / 10;
 
+// ---------- INPUTS ----------
+// Clients send one input per tick (game.js input clock). They are queued on arrival and applied by the
+// game loop one per tick, in order, so each input moves the player exactly one tick, as the client's
+// prediction replays it; a second one is applied in the same tick only to work off a backlog (a burst
+// after a network pause). Past INPUT_QUEUE_MAX the oldest is applied straight away.
+const INPUT_QUEUE_MAX = 6;
+function applyInput(p, data) {
+    if (data.dx !== undefined) {
+        p.moveDir.x = Math.max(-1, Math.min(1, +data.dx || 0));
+        p.moveDir.y = Math.max(-1, Math.min(1, +data.dy || 0));
+    }
+    if (data.angle !== undefined) p.angle = +data.angle || 0;
+    if (data.shooting !== undefined) {
+        const _wasShooting = p.shooting;
+        if (!data.shooting) p.hasReleasedSinceEmpty = true;
+        if (p.needsReleaseToShoot && p.hasReleasedSinceEmpty && !!data.shooting && p.ammo > 0) {
+            p.needsReleaseToShoot = false;
+            p.hasReleasedSinceEmpty = false;
+        }
+        p.shooting = p.needsReleaseToShoot ? false : !!data.shooting;
+        if (p.shooting && !_wasShooting) p.aimTimer = WEAPON_RULES.aimDelay;
+        if (!p.shooting) p.aimTimer = 0;
+        if (data.shooting && data.sdx !== undefined) {
+            p.shootDir.x = +data.sdx || 0;
+            p.shootDir.y = +data.sdy || 0;
+        }
+    }
+    if (data.seq !== undefined) p.pendingAckSeq = +data.seq;
+}
+
 function startRoomLoop(code, room) {
     const INTERVAL_MS = Math.round(1000 / TICK_RATE);
     room.lastTick = Date.now();
@@ -1016,8 +1046,14 @@ function startRoomLoop(code, room) {
             const allPlayers = room._playerArr;
 
             allPlayers.forEach(player => {
-                if (!player.alive || room.gameEnded || room.countdownActive) return;
-                if (room.pveWaveBreak) { player.moveDir.x = 0; player.moveDir.y = 0; player.shooting = false; return; }
+                if (!player.alive || room.gameEnded || room.countdownActive) { player.inputQ.length = 0; return; }
+                if (room.pveWaveBreak) { player.moveDir.x = 0; player.moveDir.y = 0; player.shooting = false; player.inputQ.length = 0; return; }
+
+                // inputs: one per tick in arrival order, a second one only to catch up on a backlog
+                if (player.inputQ.length) {
+                    applyInput(player, player.inputQ.shift());
+                    if (player.inputQ.length >= 2) applyInput(player, player.inputQ.shift());
+                }
 
                 player.x = Math.max(20, Math.min(ARENA_W - 20, player.x + player.moveDir.x * player.speed * dt));
                 player.y = Math.max(20, Math.min(ARENA_H - 20, player.y + player.moveDir.y * player.speed * dt));
@@ -1835,27 +1871,10 @@ io.on('connection', (socket) => {
         const p = r.room.players[socket.id];
         if (!p.alive || r.room.gameEnded || r.room.countdownActive) return;
         if (r.room.pveWaveBreak) return;
-        if (data.dx !== undefined) {
-            p.moveDir.x = Math.max(-1, Math.min(1, +data.dx || 0));
-            p.moveDir.y = Math.max(-1, Math.min(1, +data.dy || 0));
-        }
-        if (data.angle !== undefined) p.angle = +data.angle || 0;
-        if (data.shooting !== undefined) {
-            const _wasShooting = p.shooting;
-            if (!data.shooting) p.hasReleasedSinceEmpty = true;
-            if (p.needsReleaseToShoot && p.hasReleasedSinceEmpty && !!data.shooting && p.ammo > 0) {
-                p.needsReleaseToShoot = false;
-                p.hasReleasedSinceEmpty = false;
-            }
-            p.shooting = p.needsReleaseToShoot ? false : !!data.shooting;
-            if (p.shooting && !_wasShooting) p.aimTimer = WEAPON_RULES.aimDelay;
-            if (!p.shooting) p.aimTimer = 0;
-            if (data.shooting && data.sdx !== undefined) {
-                p.shootDir.x = +data.sdx || 0;
-                p.shootDir.y = +data.sdy || 0;
-            }
-        }
-        if (data.seq !== undefined) p.pendingAckSeq = +data.seq;
+        if (!data || typeof data !== 'object') return;
+        // applied by the game loop, one per tick (see INPUT_QUEUE_MAX)
+        p.inputQ.push(data);
+        if (p.inputQ.length > INPUT_QUEUE_MAX) applyInput(p, p.inputQ.shift());
     });
 
     socket.on('rematch', () => {

@@ -2787,6 +2787,45 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     let _lastInputSend   = 0;
     const _pendingInputs = []; // [{seq, dx, dy, dt}] — replay buffer for CSP
 
+    // ── Input clock ──────────────────────────────────────────────────────────
+    // One input per server tick (17 ms) on its own timer, whatever the frame rate: sent from the frame
+    // loop, 60/120/144 fps frames never lined up with the server's ticks and many ticks got 0 or 2 inputs.
+    // The server queues them and applies one per tick (server.js applyInput), so each input moves the
+    // player exactly one tick: that is also what the prediction replays (dt below).
+    const INPUT_MS = ARShared.TICK_S * 1000;
+    let _inputTimer = null, _nextInputAt = 0;
+    function _sendInput() {
+        if (gameEnded || gameControl.countdownActive || _selfDead || _pveState.waveBreak) return;
+        _lastInputSend = performance.now();
+        const seq = ++_inputSeq;
+        socket.emit('input', {
+            seq,
+            dx: moveDir.x,  dy: moveDir.y,
+            angle: myAngle,
+            shooting: isShooting,
+            sdx: (isShooting || _aimActive) ? -Math.sin(myAngle) : 0,
+            sdy: (isShooting || _aimActive) ?  Math.cos(myAngle) : 0,
+        });
+        _dbgPktSent++;
+        // Record for CSP replay (limit buffer to ~3s worth of inputs)
+        if (predX !== null) {
+            _pendingInputs.push({ seq, dx: moveDir.x, dy: moveDir.y, dt: ARShared.TICK_S });
+            if (_pendingInputs.length > 180) _pendingInputs.shift();
+        }
+    }
+    function _inputClock() {
+        const now = performance.now();
+        _sendInput();
+        _nextInputAt += INPUT_MS;
+        if (_nextInputAt < now) _nextInputAt = now + INPUT_MS; // fell behind (tab hidden): start over
+        _inputTimer = setTimeout(_inputClock, Math.max(0, _nextInputAt - performance.now()));
+    }
+    function _startInputClock() {
+        clearTimeout(_inputTimer);
+        _nextInputAt = performance.now() + INPUT_MS;
+        _inputTimer = setTimeout(_inputClock, INPUT_MS);
+    }
+
     // Debug: track packets sent/sec
     let _dbgPktSent = 0, _dbgPktSentWindow = 0, _dbgPktPs = 0;
 
@@ -2864,11 +2903,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (ammoState.ammo > 0) _shootMustRelease = false;
         if (isShooting) { isShooting = false; aimStartTime = null; }
         if (!mouseActive && (moveDir.x !== 0 || moveDir.y !== 0)) myAngle = moveAngle;
-        // Emit imediat stop-shoot pentru a minimiza fereastra in care serverul trage dar clientul nu
-        if (!gameEnded && !_selfDead) {
-            socket.emit('input', { seq: ++_inputSeq, dx: moveDir.x, dy: moveDir.y, angle: myAngle, shooting: false });
-            _lastInputSend = performance.now();
-        }
+        // the stop goes out with the next input clock tick (<= 17 ms)
     });
 
     // ---------- WASD + MOUSE ----------
@@ -2946,11 +2981,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         isShooting = false;
         aimStartTime = null;
         if (moveDir.x !== 0 || moveDir.y !== 0) myAngle = moveAngle;
-        // Emit imediat pentru a nu astepta urmatorul ciclu 30Hz
-        if (!gameEnded && !_selfDead) {
-            socket.emit('input', { seq: ++_inputSeq, dx: moveDir.x, dy: moveDir.y, angle: myAngle, shooting: false });
-            _lastInputSend = performance.now();
-        }
+        // the stop goes out with the next input clock tick (<= 17 ms)
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -2975,6 +3006,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         canvas.removeEventListener('pointerdown',  onPointerDown);
         canvas.removeEventListener('pointerup',    onPointerUp);
         if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        clearTimeout(_inputTimer); _inputTimer = null;
         clearInterval(_pingInterval);
         moveDir.x = 0; moveDir.y = 0;
         isShooting = false;
@@ -3938,35 +3970,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
         }
 
-        // ── Unified 60Hz input send ───────────────────────────────────────────
-        // Sends one compact packet per server tick interval: move+angle+shoot bundled.
-        // Inputs are recorded with their dt for CSP replay on server ack.
+        // Inputs go out on their own clock (_inputClock), not from here
         const _nowI = performance.now();
-        // Threshold a bit under the tick: with exactly 17 ms a 60 Hz screen (16.7 ms frames) only
-        // sent on some frames (30-50 inputs/s) while the replay below assumed 17 ms per input.
-        if (!gameEnded && !gameControl.countdownActive && !_selfDead && !_pveState.waveBreak && _nowI - _lastInputSend >= EMIT_MS - 4) {
-            // Real time since the previous input: how long the server applies the previous one
-            const _inDt = (_nowI - _lastInputSend) < 100 ? (_nowI - _lastInputSend) / 1000 : EMIT_MS / 1000;
-            _lastInputSend = _nowI;
-            const seq = ++_inputSeq;
-            socket.emit('input', {
-                seq,
-                dx: moveDir.x,  dy: moveDir.y,
-                angle: myAngle,
-                shooting: isShooting,
-                sdx: (isShooting || _aimActive) ? -Math.sin(myAngle) : 0,
-                sdy: (isShooting || _aimActive) ?  Math.cos(myAngle) : 0,
-            });
-            _dbgPktSent++;
-            // Record for CSP replay (limit buffer to ~3s worth of inputs at 60Hz)
-            if (predX !== null) {
-                // dt = real interval between inputs (not the rAF frame time, and not a fixed 17 ms):
-                // the server keeps applying an input every tick until the next one lands, so the
-                // replay must cover the same wall time or it under-predicts and pulls you back.
-                _pendingInputs.push({ seq, dx: moveDir.x, dy: moveDir.y, dt: _inDt });
-                if (_pendingInputs.length > 180) _pendingInputs.shift();
-            }
-        }
 
         // ── Packets/sec counter ───────────────────────────────────────────────
         if (_nowI - _dbgPktSentWindow >= 1000) {
@@ -4750,6 +4755,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
 
     draw();
+    _startInputClock();
 }
 
 // ─── Friend Invite System ─────────────────────────────────────────────────────
