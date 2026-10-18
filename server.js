@@ -23,9 +23,47 @@ const io     = new Server(server, {
 });
 
 app.use(express.json({ limit: '5mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/leaderboard', (req, res) => res.sendFile(path.join(__dirname, 'public', 'leaderboard.html')));
+
+// ---------- STATIC FILES + CACHE BUSTING ----------
+// BUILD is a hash of everything in public/, taken at start: it changes exactly when a served file changes.
+// The HTML pages carry it (<meta name="ar-build">, ?v=BUILD on their local scripts, styles and images) and
+// are always revalidated; JS adds it to the URLs it builds (arAsset in ui-fx.js). A file asked for with
+// the current ?v= is cached for a year; anything else is revalidated every time (ETag -> 304), so a
+// browser never mixes old and new files after a deploy.
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const BUILD = (() => {
+    const h = crypto.createHash('sha1');
+    (function walk(dir) {
+        for (const name of fs.readdirSync(dir).sort()) {
+            const p = path.join(dir, name);
+            if (fs.statSync(p).isDirectory()) { walk(p); continue; }
+            h.update(path.relative(PUBLIC_DIR, p).split(path.sep).join('/') + '\0');
+            h.update(fs.readFileSync(p));
+        }
+    })(PUBLIC_DIR);
+    return h.digest('hex').slice(0, 10);
+})();
+// src="..." / href="..." of a local file (not a page link, not socket.io's own script, not a template)
+const ASSET_ATTR = /\b(src|href)="((?!https?:|\/\/|\/socket\.io\/)[^"?#$]+\.(?:js|css|json|png|svg|webp|jpe?g|mp3|ico))"/g;
+const _stampedHtml = new Map();
+function stampedHtml(file) {
+    if (!_stampedHtml.has(file)) {
+        const html = fs.readFileSync(path.join(PUBLIC_DIR, file), 'utf8')
+            .replace(/<head>/i, '<head>\n    <meta name="ar-build" content="' + BUILD + '">')
+            .replace(ASSET_ATTR, (_m, attr, url) => attr + '="' + url + '?v=' + BUILD + '"');
+        _stampedHtml.set(file, html);
+    }
+    return _stampedHtml.get(file);
+}
+const sendPage = file => (req, res) => { res.set('Cache-Control', 'no-cache'); res.type('html').send(stampedHtml(file)); };
+app.get(['/', '/index.html'], sendPage('index.html'));
+app.get(['/leaderboard', '/leaderboard.html'], sendPage('leaderboard.html'));
+app.get('/admin.html', sendPage('admin.html'));
+app.get('/api/build', (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ build: BUILD }); });
+app.use(express.static(PUBLIC_DIR, {
+    index: false,
+    setHeaders: res => res.setHeader('Cache-Control', res.req.query.v === BUILD ? 'public, max-age=31536000, immutable' : 'no-cache'),
+}));
 
 // ---------- SUPABASE ----------
 const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)
@@ -1662,6 +1700,8 @@ function closeRoom(code, room) {
 
 // ---------- CONEXIUNI ----------
 io.on('connection', (socket) => {
+    // the page build this server serves: a client on another build reloads (game.js _checkBuild)
+    socket.emit('build', BUILD);
 
     socket.on('authenticate', ({ nickname, token } = {}) => {
         if (!nickname || !token) return;

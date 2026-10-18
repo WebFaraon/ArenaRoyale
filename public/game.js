@@ -149,11 +149,12 @@ const _ambParts = Array.from({ length: 20 }, () => ({
 let CHARACTERS = [];
 let SKIN_META  = null; // pivot, bodyRadius, hand, defaultSkin
 const DEFAULT_SKIN = 'rookie';
-const SKINS_READY = fetch('/data/skins.json')
+const SKINS_READY = fetch(arAsset('/data/skins.json'))
     .then(r => { if (!r.ok) throw new Error('skins.json ' + r.status); return r.json(); })
     .then(data => {
         SKIN_META  = data;
-        CHARACTERS = data.skins.map(s => ({ ...s, img: s.svg }));
+        // image URLs carry the build (arAsset) so a deploy never mixes old and new art
+        CHARACTERS = data.skins.map(s => ({ ...s, png: arAsset(s.png), svg: arAsset(s.svg), img: arAsset(s.svg) }));
         _initHands(data);
         CHARACTERS.forEach(c => _getCharImg(c.png));
         // the lobby previews nest each skin's SVG (skinPreviewSvg); ~57 KB for all of them
@@ -718,12 +719,45 @@ function showForceLogout(msg) {
     document.body.appendChild(overlay);
 }
 
+// ---------- NEW BUILD ----------
+// The server sends every new socket its build (server.js BUILD, the same one stamped into this page as
+// AR_BUILD). On another build the page reloads, so it never runs old code against new files. A server
+// restart drops the socket (no auto-reconnect), so after an unexpected disconnect we ask /api/build until
+// the server answers.
+let _buildReloading = false;
+function _checkBuild(build) {
+    if (!build || !AR_BUILD || build === AR_BUILD || _buildReloading) return;
+    // a page that still has the old build after reloading for this one (an HTML cache in between): stop, no loop
+    try {
+        if (sessionStorage.getItem('ar_reload_for') === build) return;
+        sessionStorage.setItem('ar_reload_for', build);
+    } catch (e) { /* storage blocked: reload anyway */ }
+    _buildReloading = true;
+    const overlay = document.createElement('div');
+    overlay.className = 'ar-forcelogout ar-newbuild';
+    overlay.innerHTML = `<div class="ar-forcelogout-title">${ico('refresh-cw')}Versiune nouă, se reîncarcă...</div>`;
+    document.body.appendChild(overlay);
+    setTimeout(() => location.reload(), 2000);
+}
+function _watchBuild(socket) {
+    socket.on('build', _checkBuild);
+    socket.on('disconnect', reason => {
+        if (reason === 'io client disconnect') return; // we closed it ourselves
+        let tries = 0;
+        const probe = () => fetch('/api/build', { cache: 'no-store' })
+            .then(r => r.json()).then(d => _checkBuild(d.build))
+            .catch(() => { if (++tries < 40) setTimeout(probe, 3000); }); // server still down: try for ~2 min
+        setTimeout(probe, 1500);
+    });
+    return socket;
+}
+
 function createSessionSocket() {
     if (_sessionSocket) { _sessionSocket.disconnect(); }
     const _ioOpts = typeof msgpackParser !== 'undefined'
         ? { parser: msgpackParser, transports: ['websocket'], reconnection: false }
         : { transports: ['websocket'], reconnection: false };
-    _sessionSocket = io(_ioOpts);
+    _sessionSocket = _watchBuild(io(_ioOpts));
     _sessionSocket.emit('authenticate', { nickname: currentNickname, token: sessionToken });
     _sessionSocket.on('force-logout', showForceLogout);
 
@@ -1919,7 +1953,7 @@ function _drawSkinHighlight(ctx, x, y, scale) {
 // the body centre with the aim pointing down (the same frame as the skins); every sprite shares one frame
 // (weapons.json "sprite"). All of it is multiplied by PLAYER_VISUAL_SCALE.
 const WEAPON_ART = { ready: false, tl: null, size: null, byId: {} };
-const WEAPONS_ART_READY = fetch('/data/weapons.json')
+const WEAPONS_ART_READY = fetch(arAsset('/data/weapons.json'))
     .then(r => { if (!r.ok) throw new Error('weapons.json ' + r.status); return r.json(); })
     .then(data => {
         const errs = ARShared.checkWeapons(data);
@@ -1940,7 +1974,7 @@ const WEAPONS_ART_READY = fetch('/data/weapons.json')
         WEAPON_ART.size = sp.size.map(v => v * S);
         for (const [id, w] of Object.entries(data.weapons)) {
             const img = new Image();
-            img.src = w.sprite;
+            img.src = arAsset(w.sprite);
             const stats = _WEAPON_DATA[id];
             const muzzleDist = ARShared.muzzleDistance(w);
             WEAPON_ART.byId[id] = {
@@ -2142,7 +2176,7 @@ function _bulletSprite(weaponId, scale) {
 try {
     if (new URLSearchParams(location.search).get('dev') === 'weapons') {
         const s = document.createElement('script');
-        s.src = 'dev-weapons.js';
+        s.src = arAsset('/dev-weapons.js');
         document.head.appendChild(s);
     }
 } catch (e) { /* no URL API */ }
@@ -2170,7 +2204,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     const _ioFallbackOpts = typeof msgpackParser !== 'undefined'
         ? { parser: msgpackParser, transports: ['websocket'], reconnection: false }
         : { transports: ['websocket'], reconnection: false };
-    const socket = _sessionSocket || io(_ioFallbackOpts);
+    const socket = _sessionSocket || _watchBuild(io(_ioFallbackOpts));
     _sessionSocket = null;
 
     const playerData = { name: playerName, skin: playerSkin, stats: playerStats, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode || 'br' };
@@ -4814,7 +4848,7 @@ function acceptRoomInvite() {
     const _invIoOpts = typeof msgpackParser !== 'undefined'
         ? { parser: msgpackParser, transports: ['websocket'] }
         : { transports: ['websocket'] };
-    _sessionSocket = io(_invIoOpts);
+    _sessionSocket = _watchBuild(io(_invIoOpts));
     _sessionSocket.emit('authenticate', { nickname: currentNickname, token: sessionToken });
     const char = getSelectedCharacter();
     initGame(currentNickname, char.id, stats, pendingRoom);

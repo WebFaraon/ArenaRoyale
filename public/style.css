@@ -4388,3 +4388,6 @@ button:disabled { cursor: not-allowed; }
 @media (max-width: 700px) {
     .weapon-select-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* "new version, reloading" (game.js _checkBuild): the force-logout card, no button, a calm colour */
+.ar-forcelogout.ar-newbuild .ar-forcelogout-title { color: var(--c-gold); }

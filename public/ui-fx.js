@@ -9,6 +9,15 @@
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
+    // ---------- cache busting ----------
+    // The server stamps each page with its build (<meta name="ar-build">) and caches files asked for with
+    // ?v=<build> for a year (server.js). arAsset() adds it to a local file URL built in JS.
+    window.AR_BUILD = (document.querySelector('meta[name="ar-build"]') || {}).content || '';
+    window.arAsset = function (url) {
+        if (!AR_BUILD || typeof url !== 'string' || url.charAt(0) !== '/' || url.indexOf('?') >= 0) return url;
+        return url + '?v=' + AR_BUILD;
+    };
+
     // ---------- icon markup for innerHTML templates ----------
     window.ico = function (name, cls) {
         return '<svg class="ic' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="#' + name + '"/></svg>';
@@ -23,12 +32,12 @@
         weapon: function (id, white) {
             const key = id + (white ? '-white' : '');
             let img = _wIcons[key];
-            if (!img) { img = new Image(); img.src = '/images/weapon-icons/' + key + '.png'; _wIcons[key] = img; }
+            if (!img) { img = new Image(); img.src = arAsset('/images/weapon-icons/' + key + '.png'); _wIcons[key] = img; }
             return img;
         },
         // The icon as markup for innerHTML templates
         weaponHtml: function (id, white, cls) {
-            return '<img class="wicon' + (cls ? ' ' + cls : '') + '" src="/images/weapon-icons/' + id + (white ? '-white' : '') + '.png" alt="" draggable="false">';
+            return '<img class="wicon' + (cls ? ' ' + cls : '') + '" src="' + arAsset('/images/weapon-icons/' + id + (white ? '-white' : '') + '.png') + '" alt="" draggable="false">';
         },
     };
 
@@ -64,10 +73,10 @@
         Object.keys(SFX).forEach(function (k) {
             const s = SFX[k];
             // HTML audio is the fallback when Web Audio or decoding is missing
-            s.el = new Audio(SFX_BASE + s.file);
+            s.el = new Audio(arAsset(SFX_BASE + s.file));
             s.el.preload = 'auto';
             if (!AudioCtx) return;
-            fetch(SFX_BASE + s.file)
+            fetch(arAsset(SFX_BASE + s.file))
                 .then(function (r) { return r.arrayBuffer(); })
                 .then(function (buf) {
                     actx = actx || new AudioCtx();
