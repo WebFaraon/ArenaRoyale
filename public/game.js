@@ -344,7 +344,7 @@ function _applyWeaponUI() {
     const nameEl = document.getElementById('weapon-name-display');
     const titleEl = document.getElementById('loadout-title');
     if (ring)  { ring.style.setProperty('--wc', w.color); }
-    if (icon)  icon.innerHTML = ico(w.icon);
+    if (icon)  icon.innerHTML = ARIcons.weaponHtml(w.id, false);
     if (nameEl) nameEl.textContent = w.name.toUpperCase();
     if (titleEl) titleEl.innerHTML = `<span>${w.name.toUpperCase()}</span> LOADOUT`;
 }
@@ -358,7 +358,7 @@ function openWeaponSelect() {
             <div class="weapon-card${w.id === selectedWeapon ? ' wc-selected' : ''}"
                  style="--wc:${w.color}"
                  onclick="selectWeapon('${w.id}')">
-                <span class="weapon-card-icon">${ico(w.icon)}</span>
+                <span class="weapon-card-icon">${ARIcons.weaponHtml(w.id, false)}</span>
                 <span class="weapon-card-name">${w.name.toUpperCase()}</span>
                 <span class="weapon-card-desc">${w.desc}</span>
             </div>`).join('');
@@ -1131,7 +1131,8 @@ function _renderMissionsFull(list) {
         const big = m.goal >= 100;
         // the tile says what kind of mission it is: weapon, mode, or general
         const kind = m.weapon ? 'wpn' : m.tag === 'pve' ? 'pve' : m.tag === 'br' ? 'br' : 'gen';
-        const tileIco = done ? 'check' : m.weapon ? 'w-' + m.weapon : kind === 'pve' ? 'biohazard' : kind === 'br' ? 'swords' : 'target';
+        const tileIco = done ? 'check' : kind === 'pve' ? 'biohazard' : kind === 'br' ? 'swords' : 'target';
+        const tileHtml = !done && m.weapon ? ARIcons.weaponHtml(m.weapon, true) : ico(tileIco);
         const tags = (m.tag === 'pve' ? '<span class="mm-tag mm-pve">PvE</span>' : m.tag === 'br' ? '<span class="mm-tag mm-br">BR</span>' : '')
             + (m.weapon ? '<span class="mm-tag mm-wpn">' + m.weapon.toUpperCase() + '</span>' : '')
             + (m.slot === 'hard' ? '<span class="mm-tag mm-hard">GREU</span>' : '');
@@ -1139,7 +1140,7 @@ function _renderMissionsFull(list) {
         const action = m.claimed ? '<span class="mm-claimed">' + ico('check') + 'Revendicat</span>'
             : done ? '<button class="mission-claim-btn mm-claim" onclick="claimMission(\'' + m.id + '\',this,' + m.coins + ',' + m.diamonds + ')">Revendica</button>' : '';
         return '<div class="mm-row mm-' + kind + (done ? ' is-done' : '') + (m.claimed ? ' is-claimed' : '') + '" id="mission-full-' + m.id + '">'
-            + '<span class="mm-tile">' + ico(tileIco) + '</span>'
+            + '<span class="mm-tile">' + tileHtml + '</span>'
             + '<span class="mm-title">' + m.title + '</span>'
             + '<span class="mm-reward">' + reward + '</span>'
             + '<span class="mm-tags">' + tags + '</span>'
@@ -1689,15 +1690,42 @@ function _drawLabel(ctx, text, sizePx, fill, stroke, strokeW, baseline, x, y, sc
     }
     ctx.drawImage(s.c, x - s.ax, y - s.ay, s.w, s.h);
 }
+// A weapon's white icon and the same shape in ink (for the drop under it), as canvases; null until loaded
+const _wIconInk = {};
+function _weaponIconPair(id) {
+    const white = ARIcons.weapon(id, true);
+    if (!white.complete || !white.naturalWidth) return null;
+    let ink = _wIconInk[id];
+    if (!ink) {
+        ink = document.createElement('canvas');
+        ink.width = white.naturalWidth; ink.height = white.naturalHeight;
+        const g = ink.getContext('2d');
+        g.drawImage(white, 0, 0);
+        g.globalCompositeOperation = 'source-in';
+        g.fillStyle = INK; g.fillRect(0, 0, ink.width, ink.height);
+        _wIconInk[id] = ink;
+    }
+    return { white, ink };
+}
+// Draws the icon fitted in a w x h box centred on (cx, cy), with its ink drop `drop` px below
+function _drawWeaponIcon(g, id, cx, cy, w, h, drop) {
+    const pair = _weaponIconPair(id);
+    if (!pair) return false;
+    const iw = pair.white.naturalWidth, ih = pair.white.naturalHeight;
+    const k = Math.min(w / iw, h / ih), dw = iw * k, dh = ih * k;
+    g.drawImage(pair.ink, cx - dw / 2, cy - dh / 2 + drop, dw, dh);
+    g.drawImage(pair.white, cx - dw / 2, cy - dh / 2, dw, dh);
+    return true;
+}
 function _drawBadge(ctx, wd, x, y, size, scale) {
-    const key = 'B2' + wd.id + '|' + size;
+    const ready = !!_weaponIconPair(wd.id);
+    const key = 'B3' + wd.id + '|' + size + (ready ? '' : '|wait');
     const pad = 1;
     const s = _labelSprite(key, scale, size + pad * 2, size + pad * 2 + 3, (g) => {
         g.translate(pad, pad);
         const ol = Math.max(1.6, size * 0.11);
         _drawBlock(g, 0, 0, size, size, size * 0.26, '#2A3A45', '#18232A', ol, size * 0.16, 2.5);
-        g.save(); g.translate(0, 1.2); ARIcons.drawWeapon(g, wd.id, size / 2, size * 0.45, size * 0.64, INK); g.restore();
-        ARIcons.drawWeapon(g, wd.id, size / 2, size * 0.45 - 0.4, size * 0.64, '#FFFFFF');
+        _drawWeaponIcon(g, wd.id, size / 2, size * 0.43, size * 0.78, size * 0.52, 1.2);
     });
     ctx.drawImage(s.c, x - pad, y - pad, s.w, s.h);
 }
@@ -1866,11 +1894,12 @@ function _unitSprite(holder, key, scale, box, paint) {
     return s;
 }
 // pts: two [x, y] points in the rotated frame, already scaled (a gun's grip); omitted = the default spot
-function _drawHands(ctx, entry, scale, pts) {
+// dy: shift along the aim (negative = back, the recoil)
+function _drawHands(ctx, entry, scale, pts, dy = 0) {
     const S = PLAYER_VISUAL_SCALE, box = HAND_BOX * S;
     const s = _unitSprite(entry, 'hand', scale, box, g => { g.scale(S, S); _paintHand(g, entry.base, entry.dark); });
     for (let i = 0; i < 2; i++) {
-        const hx = pts ? pts[i][0] : _HAND.cx[i], hy = pts ? pts[i][1] : _HAND.cy[i];
+        const hx = pts ? pts[i][0] : _HAND.cx[i], hy = (pts ? pts[i][1] : _HAND.cy[i]) + dy;
         ctx.drawImage(s.c, hx - box, hy - box, box * 2, box * 2);
     }
 }
@@ -1913,6 +1942,10 @@ const WEAPONS_ART_READY = fetch('/data/weapons.json')
                 hands:  w.hands.map(p => [p[0] * S, p[1] * S]),
                 muzzle: [w.muzzle[0] * S, w.muzzle[1] * S],
                 hands0: w.hands, muzzle0: w.muzzle, // unscaled, for the dev view readout
+                recoil: (w.recoil || 0) * S,
+                flashLen: ((w.flash && w.flash.length) || 14) * S,
+                flashWid: ((w.flash && w.flash.width) || 7) * S,
+                flashSprite: null, trail: null,
                 // where bullets start and how long they live (server.js GUN_FIRE uses the same functions)
                 muzzleDist,
                 bulletLife: stats ? ARShared.bulletLife(stats.bulletLife, stats.bulletSpeed, muzzleDist, ARShared.TICK_S) : 0.5,
@@ -1932,15 +1965,93 @@ function _makeSkinEntry(skinId) {
     };
 }
 
+// ---------- SHOT EFFECTS ----------
+// Per player: when the last kick started and when the last flash fired. Every bullet kicks: the gun
+// and hands go back by the gun's "recoil" in RECOIL_UP_MS (ease-out), then return in RECOIL_BACK_MS.
+// A kick during an earlier one rises from where the gun already is, so fast guns never go past the
+// maximum. Bullets of one shot (shotgun pellets) fire within a few ms and count once.
+const RECOIL_UP_MS = 50, RECOIL_BACK_MS = 120, FLASH_MS = 70;
+function _newShotFx() { return { kick: -1e9, flash: -1e9 }; }
+function _shotRecoil(fx, now) {
+    const t = now - fx.kick;
+    if (t < 0 || t >= RECOIL_UP_MS + RECOIL_BACK_MS) return 0;
+    if (t < RECOIL_UP_MS) { const u = 1 - t / RECOIL_UP_MS; return 1 - u * u; }
+    const u = 1 - (t - RECOIL_UP_MS) / RECOIL_BACK_MS;
+    return u * u;
+}
+function _shotKick(fx, now) {
+    if (now - fx.flash < 25) return; // the other pellets of the same shot
+    const cur = _shotRecoil(fx, now);
+    fx.kick = now - RECOIL_UP_MS * (1 - Math.sqrt(1 - Math.min(1, cur)));
+    fx.flash = now;
+}
+
+// Muzzle flash: a star stretched along the shot (+y here, the aim), the gun's accent with a white core
+// and a thin ink outline; one sprite per gun at the on-screen scale, drawn shrinking and fading.
+function _starPath(g, len, wid, k) {
+    // five tips: forward, two forward diagonals, two sides; a solid core between them.
+    // Polar around the muzzle, angle 0 = forward (+y)
+    const inner = Math.max(len * 0.12, wid * 0.24) * k;
+    const tips = [[0, len * 0.82], [0.7, Math.max(wid * 0.62, len * 0.42)], [1.75, wid * 0.5], [-1.75, wid * 0.5], [-0.7, Math.max(wid * 0.62, len * 0.42)]];
+    const order = [0, 1, 2, 3, 4];
+    g.beginPath();
+    for (let i = 0; i < order.length; i++) {
+        const [a0, r0] = tips[order[i]], [a1] = tips[order[(i + 1) % order.length]];
+        const x = Math.sin(a0) * r0 * k, y = Math.cos(a0) * r0 * k;
+        if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+        let am = (a0 + a1) / 2;
+        if (order[i] === 2) am = Math.PI; // between the two side tips: across the back
+        g.lineTo(Math.sin(am) * inner, Math.cos(am) * inner);
+    }
+    g.closePath();
+}
+function _flashSprite(gun, scale) {
+    const box = gun.flashLen;
+    const s = _unitSprite(gun, 'flashSprite', scale, box, g => {
+        _starPath(g, gun.flashLen, gun.flashWid, 1);
+        g.fillStyle = gun.accent || '#FFC53D'; g.fill();
+        g.lineWidth = 0.7; g.strokeStyle = SKIN_OUTLINE; g.lineJoin = 'round'; g.stroke();
+        _starPath(g, gun.flashLen, gun.flashWid, 0.48);
+        g.fillStyle = '#FFFFFF'; g.fill();
+    });
+    s.box = box;
+    return s;
+}
+
+// Bullet trail in the gun's accent: fades in from the tail, a lighter core line; one per gun
+function _trailSpriteFor(weaponId) {
+    const gun = WEAPON_ART.byId[weaponId] || WEAPON_ART.byId.pistol;
+    if (!gun) return _getTrailSprite();
+    if (gun.trail) return gun.trail;
+    const hex = (gun.accent || '#FFC53D').replace('#', '');
+    const r = parseInt(hex.slice(0, 2), 16), gr = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+    const rgba = a => 'rgba(' + r + ',' + gr + ',' + b + ',' + a + ')';
+    const lr = Math.round(r + (255 - r) * 0.55), lg = Math.round(gr + (255 - gr) * 0.55), lb = Math.round(b + (255 - b) * 0.55);
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 12;
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 256, 0);
+    grad.addColorStop(0, rgba(0)); grad.addColorStop(0.6, rgba(0.14)); grad.addColorStop(1, rgba(0.42));
+    g.fillStyle = grad;
+    g.beginPath(); g.moveTo(0, 6); g.lineTo(256, 1.5); g.lineTo(256, 10.5); g.closePath(); g.fill();
+    const core = g.createLinearGradient(0, 0, 256, 0);
+    core.addColorStop(0, 'rgba(' + lr + ',' + lg + ',' + lb + ',0)'); core.addColorStop(1, 'rgba(' + lr + ',' + lg + ',' + lb + ',0.5)');
+    g.strokeStyle = core; g.lineWidth = 1.8;
+    g.beginPath(); g.moveTo(0, 6); g.lineTo(256, 6); g.stroke();
+    gun.trail = c;
+    return c;
+}
+
 // The ring under a player: just outside the default hands (its 3-unit stroke clears them)
 function _playerRingR() { return _HAND.reach + 2.5; }
 
 // One player as the match draws it, used by the match loop and the ?dev=weapons view.
 // ctx's transform is `wm` (world -> device) on entry and on exit; x, y, angle in world units / player.angle
 // (0 = aim down); scale = device px per world unit (dpr × ZOOM) for the sprite caches.
-// Order: ring, then with a gun: body, gun, hands on the gun, fixed highlight;
+// Order: ring, then with a gun: body, gun, hands on the gun, muzzle flash, fixed highlight;
 // without one (dev view only): hands at the default spot under the body, body, highlight.
-function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStroke, ringFill) {
+// fx (optional): the player's shot effects (_newShotFx), drawn as of `now` (performance.now()).
+function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStroke, ringFill, fx, now) {
     const ringR = _playerRingR();
     ctx.beginPath();
     ctx.arc(x, y, ringR, 0, Math.PI * 2);
@@ -1969,9 +2080,19 @@ function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStr
         ctx.strokeStyle = SKIN_OUTLINE; ctx.lineWidth = 4.4 * PLAYER_VISUAL_SCALE; ctx.stroke();
     }
     if (gun) {
+        // recoil: the gun and hands go back along the aim (the body stays)
+        const back = fx ? gun.recoil * _shotRecoil(fx, now) : 0;
         const gs = _imageSprite(gun, 'sprite', gun.img, scale, WEAPON_ART.size[0], WEAPON_ART.size[1]);
-        if (gs) ctx.drawImage(gs.c, WEAPON_ART.tl[0], WEAPON_ART.tl[1], WEAPON_ART.size[0], WEAPON_ART.size[1]);
-        if (entry) _drawHands(ctx, entry, scale, gun.hands);
+        if (gs) ctx.drawImage(gs.c, WEAPON_ART.tl[0], WEAPON_ART.tl[1] - back, WEAPON_ART.size[0], WEAPON_ART.size[1]);
+        if (entry) _drawHands(ctx, entry, scale, gun.hands, -back);
+        const fage = fx ? now - fx.flash : Infinity;
+        if (fage >= 0 && fage < FLASH_MS) {
+            const a = fage / FLASH_MS, k = 1 - 0.4 * a;
+            const fs = _flashSprite(gun, scale), half = fs.box * k;
+            ctx.globalAlpha = 1 - a;
+            ctx.drawImage(fs.c, gun.muzzle[0] - half, gun.muzzle[1] - back - half, half * 2, half * 2);
+            ctx.globalAlpha = 1;
+        }
     }
     ctx.setTransform(wm);
     _drawSkinHighlight(ctx, x, y, scale);
@@ -2301,6 +2422,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _footSide     = {}; // pid → 0|1
     const _prevPlayerPos = {};
     const _srvBulletSeen = new Map(); // bullet id → first-seen timestamp
+    const _playerFx = new Map(); // socketId → shot effects (_newShotFx): recoil + muzzle flash
+    const _fxFor = id => { let f = _playerFx.get(id); if (!f) { f = _newShotFx(); _playerFx.set(id, f); } return f; };
     const prevHp         = {};
     const latestHp       = {}; // hp instantaneu din gs, fara delay de interpolatie
     const damageNumbers  = [];
@@ -2400,6 +2523,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 _clientBullets.push(g);
                 _ownLinked.set(b.id, g);
                 _bDiag.ghosts++;
+                _shotKick(_fxFor(myId), now);
                 if (_bDiag.ghostLog) {
                     const cands = _clientBullets.filter(c => c !== g).map(c => ({ age: Math.round(now - c.spawnTime), sid: c.sid, dead: c.dead, ghost: !!c.ghost,
                         dot: +((c.dx * ux + c.dy * uy) / (Math.hypot(c.dx, c.dy) || 1)).toFixed(3) }));
@@ -2441,6 +2565,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // x, y: the muzzle; ox, oy: the shooter's centre, where the first swept hit test starts (server.js sx, sy)
     function _newClientBullet(x, y, dx, dy, life, now, ox, oy) {
         _bDiag.predicted++;
+        _shotKick(_fxFor(socket.id), now);
         if (_bDiag.spawnLog && _bDiag.spawnLog.length < 300) { _bDiag.spawnLog.push(Math.round(now)); _bDiag.spawnPos.push([+x.toFixed(2), +y.toFixed(2), +ox.toFixed(2), +oy.toFixed(2), +(dx / Math.hypot(dx, dy)).toFixed(4), +(dy / Math.hypot(dx, dy)).toFixed(4)]); }
         return { x, y, dx, dy, life, spawnTime: now, sid: null, seenGen: 0, px: ox, py: oy, hiddenAt: 0, dead: false, noPredict: false };
     }
@@ -2955,7 +3080,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _srvSeenGen++;
         for (const b of entry.bullets) {
             const _s = _srvBulletSeen.get(b.id);
-            if (_s) _s.gen = _srvSeenGen; else _srvBulletSeen.set(b.id, { t: now, gen: _srvSeenGen });
+            if (_s) _s.gen = _srvSeenGen;
+            else {
+                _srvBulletSeen.set(b.id, { t: now, gen: _srvSeenGen });
+                if (b.ownerId !== socket.id) _shotKick(_fxFor(b.ownerId), now);
+            }
         }
         for (const [_sid, _s] of _srvBulletSeen) { if (_s.gen !== _srvSeenGen) _srvBulletSeen.delete(_sid); }
 
@@ -3924,7 +4053,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // _clientBullets (predicted + reconciled with the server, see _reconcileOwnBullets).
         const _bulletNow = performance.now();
         const _bulletAge = Math.min((_bulletNow - lastGameStateTime) / 1000, 0.05);
-        const _trailSprite = _getTrailSprite();
         ctx.fillStyle = '#ffffff';
         for (const b of rState.bullets) {
             if (b.ownerId === socket.id) continue;
@@ -3936,15 +4064,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _seen = _srvBulletSeen.get(b.id);
             const _bAge = _seen ? (_bulletNow - _seen.t) / 1000 : 0;
             const _trail = Math.min(_bAge * 480, 110);
-            const _bs = _bulletSprite(_playerWeapons.get(b.ownerId) || 'pistol', _lblScale);
+            const _bw = _playerWeapons.get(b.ownerId) || 'pistol';
+            const _bs = _bulletSprite(_bw, _lblScale);
             _setRotated(ctx, _wm, _bx, _by, b.dx, b.dy);
-            if (_trail > 4) ctx.drawImage(_trailSprite, -_trail, -4, _trail, 8);
+            if (_trail > 4) ctx.drawImage(_trailSpriteFor(_bw), -_trail, -3, _trail, 6);
             if (_bs) ctx.drawImage(_bs.c, -_bs.box, -_bs.box, _bs.box * 2, _bs.box * 2);
             else { ctx.beginPath(); ctx.arc(0, 0, b.radius || 6, 0, Math.PI * 2); ctx.fill(); }
         }
         ctx.setTransform(_wm);
         // Own bullets — fade-out in the last 20% of their lifetime; hidden ones hit something
         const _myBs = _bulletSprite(selectedWeapon, _lblScale);
+        const _myTrail = _trailSpriteFor(selectedWeapon);
         for (const cb of _clientBullets) {
             if (cb.hiddenAt || cb.dead) continue;
             const _cAgeFull = (_bulletNow - cb.spawnTime) / 1000;
@@ -3958,7 +4088,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _trail = Math.min(_cAgeFull * 480, 110);
             ctx.globalAlpha = _cAlpha;
             _setRotated(ctx, _wm, _cbx, _cby, cb.dx, cb.dy);
-            if (_trail > 4) ctx.drawImage(_trailSprite, -_trail, -4, _trail, 8);
+            if (_trail > 4) ctx.drawImage(_myTrail, -_trail, -3, _trail, 6);
             if (_myBs) ctx.drawImage(_myBs.c, -_myBs.box, -_myBs.box, _myBs.box * 2, _myBs.box * 2);
             else { ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill(); }
         }
@@ -4238,7 +4368,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const ringFill  = isMe ? 'rgba(70,209,124,0.14)' : 'rgba(255,65,85,0.14)';
             // Ring, body, gun, hands on the gun, fixed highlight (see GUNS IN HAND)
             const _pWeapon = isMe ? (_playerWeapons.get(socket.id) || selectedWeapon) : (_playerWeapons.get(player.id) || 'pistol');
-            _drawPlayerFigure(ctx, _wm, px, py, pangle, playerImages[player.id], _pWeapon, _lblScale, ringColor, ringFill);
+            _drawPlayerFigure(ctx, _wm, px, py, pangle, playerImages[player.id], _pWeapon, _lblScale, ringColor, ringFill, _playerFx.get(player.id), _bulletNow);
 
             // Flash + Nume (name tag is a cached label: one drawImage instead of strokeText+fillText)
             const flashAge = flashTimers[player.id] !== undefined
@@ -4430,8 +4560,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _slip = Math.round(_bSz * 0.1);
             // Weapon block: orange, white pictogram with an ink drop
             _drawBlock(ctx, _wX, _wY, _wSz, _wSz, Math.round(_wSz * 0.24), TOY.orange[0], TOY.orange[1], _sol, _slip, 5);
-            ARIcons.drawWeapon(ctx, _myWd.id, _wX + _wSz / 2, _wY + _wSz / 2 - _slip / 2 + 1.5, _wSz * 0.62, INK);
-            ARIcons.drawWeapon(ctx, _myWd.id, _wX + _wSz / 2, _wY + _wSz / 2 - _slip / 2, _wSz * 0.62, '#FFFFFF');
+            _drawWeaponIcon(ctx, _myWd.id, _wX + _wSz / 2, _wY + _wSz / 2 - _slip / 2, _wSz * 0.74, _wSz * 0.5, 1.5);
             ctx.restore();
         }
 

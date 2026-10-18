@@ -98,12 +98,6 @@
 <symbol id="settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /><circle cx="12" cy="12" r="3" /></symbol>
 <symbol id="minimize" viewBox="0 0 24 24"><path d="M8 3v3a2 2 0 0 1-2 2H3" /><path d="M21 8h-3a2 2 0 0 1-2-2V3" /><path d="M3 16h3a2 2 0 0 1 2 2v3" /><path d="M16 21v-3a2 2 0 0 1 2-2h3" /></symbol>
 <symbol id="mark" viewBox="0 0 24 24"><path d="M1 1h17l5 5v17H1z" fill="currentColor" stroke="none"/><path d="M5.5 19 12 5.5 18.5 19M8.2 14.6h7.6" fill="none" stroke="#0B1417" stroke-width="2.6" stroke-linecap="square" stroke-linejoin="miter"/></symbol>
-<symbol id="w-pistol" viewBox="0 0 24 24"><path d="M3 7h17v5h-8.5L10 14.2V19H6.5l.8-7H3z"/><path d="M14 12v2.5"/></symbol>
-<symbol id="w-assault" viewBox="0 0 24 24"><path d="M2 10.5h4.5L8 9h8.5l1 1.5H22V13h-8l-1 1.5h-2L10.2 19H7.2L8 14.5H6.5L5 13H2z"/><path d="M19.5 8v2.5"/></symbol>
-<symbol id="w-sniper" viewBox="0 0 24 24"><path d="M2 11.5h5l1-1.5h7.5l.5 1.5H22V13h-6.5l-1 1.5H11l-1 4.5H7l1-4.5H7L5.5 13H2z"/><path d="M9 6.5h6v2.5H9z"/></symbol>
-<symbol id="w-shotgun" viewBox="0 0 24 24"><path d="M2 10.5l4-1.5h16v3H12l-1.5 2H9l-.7 4.5H5.3L6.5 14 2 12.5z"/><path d="M13.5 14.5h4"/></symbol>
-<symbol id="w-burst" viewBox="0 0 24 24"><path d="M2 10.5H17.5V11H22V12.5H17.5V13.5H13.5L12.6 18.5H10L10.6 13.5H7.2V17.8H4.2V13.5H2Z"/><path d="M5.5 10.5V7.5H15L17 10.5"/><path d="M20.5 10v3"/></symbol>
-<symbol id="w-smg" viewBox="0 0 24 24"><path d="M3 8.5h13l1 1.5h5v3H11.5l-1 1.5H9V20H6v-6H3z"/><path d="M14 13v3"/></symbol>
 
 <symbol id="ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 7.6l4.2 3-1.6 4.9H9.4l-1.6-4.9z"/><path d="M12 7.6V2.2M16.2 10.6l4.9-1.7M14.6 15.5l3 4.3M9.4 15.5l-3 4.3M7.8 10.6L2.9 8.9"/></symbol></defs></svg>
 <canvas id="lobby-bg-canvas"></canvas>
@@ -302,7 +296,7 @@
                     <span class="hw-text"><span class="hw-kick">SKIN <b id="hero-skin-idx">1</b> / <span id="hero-skin-total">30</span></span><span class="hw-name">PERSONAJE</span></span>
                 </button>
                 <button type="button" class="hero-weapon hero-arms" id="weapon-ring" onclick="openWeaponSelect()" aria-label="Alege arma">
-                    <span class="weapon-preview-icon" id="weapon-preview-icon"><svg class="ic" aria-hidden="true"><use href="#w-pistol"/></svg></span>
+                    <span class="weapon-preview-icon" id="weapon-preview-icon"><img class="wicon" src="/images/weapon-icons/pistol.png" alt="" draggable="false"></span>
                     <span class="hw-text"><span class="hw-kick">ARMA</span><span class="hw-name" id="weapon-name-display">PISTOL</span></span>
                 </button>
             </div>

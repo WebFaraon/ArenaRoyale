@@ -18,5 +18,8 @@
     "express": "^5.2.1",
     "socket.io": "^4.8.3",
     "socket.io-msgpack-parser": "^3.0.2"
+  },
+  "devDependencies": {
+    "pngjs": "^7.0.0"
   }
 }

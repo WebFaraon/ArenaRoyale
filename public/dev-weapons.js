@@ -14,6 +14,26 @@
         hitbox: true, muzzle: true, hands: true, frame: false, labels: false,
     };
     const entries = {};
+    // shots: per figure (gun id) its effects, pending shots (burst) and live bullets
+    const fxBy = {}, pending = [], bullets = [];
+    let nextAuto = 0;
+    const fxFor = id => fxBy[id] || (fxBy[id] = _newShotFx());
+    // one trigger pull of gun `wid` at (x, y), aiming at `angle` (0 = down); bursts fire 3 times
+    function pull(wid, x, y, angle, now) {
+        const w = _WEAPON_DATA[wid] || _WEAPON_DATA.pistol;
+        for (let i = 0; i < (w.burst || 1); i++) pending.push({ at: now + i * (w.burstDelay || 0.08) * 1000, wid, x, y, angle });
+    }
+    function shoot(s, now) {
+        const w = _WEAPON_DATA[s.wid] || _WEAPON_DATA.pistol, gun = WEAPON_ART.byId[s.wid];
+        const dx = -Math.sin(s.angle), dy = Math.cos(s.angle);
+        const n = w.pellets || 1, spread = w.spread || 0;
+        for (let i = 0; i < n; i++) {
+            const a = n === 1 ? 0 : -spread / 2 + i * spread / (n - 1), c = Math.cos(a), sn = Math.sin(a);
+            bullets.push({ wid: s.wid, x: s.x + dx * gun.muzzleDist, y: s.y + dy * gun.muzzleDist,
+                vx: (dx * c - dy * sn) * w.bulletSpeed, vy: (dx * sn + dy * c) * w.bulletSpeed, t0: now, life: gun.bulletLife });
+        }
+        _shotKick(fxFor(s.wid), now);
+    }
     const entryFor = id => entries[id] || (entries[id] = _makeSkinEntry(id));
 
     let overlay, canvas, ctx, readout, raf = 0, last = 0;
@@ -51,6 +71,8 @@
             + '<label><input type="radio" name="dw-v" value="all"> toate 6</label></div>'
             + box('hitbox', 'hitbox (raza 30)') + box('muzzle', 'punct muzzle') + box('hands', 'punctele mainilor')
             + box('frame', 'cadrul sprite-ului (80 x 144)') + box('labels', 'nume + bara HP')
+            + '<div style="display:flex;gap:8px;align-items:center"><button id="dw-fire" style="padding:6px 14px;font-weight:800">Trage</button>'
+            + '<label style="display:flex;gap:6px"><input type="checkbox" data-k="autoFire">trage continuu</label></div>'
             + '<div id="dw-read" style="font:500 12px/1.4 monospace;color:#C9D4DA;white-space:pre"></div>'
             + '<div style="font-weight:500;color:#9FB0B8">Sageti stanga/dreapta: unghi. Esc: inchide.</div>';
         overlay.appendChild(panel);
@@ -67,6 +89,7 @@
         zoom.addEventListener('input', () => { st.zoom = +zoom.value; panel.querySelector('#dw-zoom-v').textContent = st.zoom; });
         panel.querySelectorAll('input[type="checkbox"]').forEach(c => c.addEventListener('change', () => { st[c.dataset.k] = c.checked; }));
         panel.querySelector('#dw-close').addEventListener('click', close);
+        panel.querySelector('#dw-fire').addEventListener('click', () => { st.fireReq = true; });
         document.addEventListener('keydown', onKey);
         raf = requestAnimationFrame(frame);
     }
@@ -159,6 +182,28 @@
         const wm = ctx.getTransform();
         const l = WORLD_C - cw / 2 / px, t = WORLD_C - ch / 2 / px, r = WORLD_C + cw / 2 / px, b = WORLD_C + ch / 2 / px;
         ARArena.drawGround(ctx, l, t, r, b, 2600, 2600);
+        const where = (i) => [grid ? WORLD_C + ((i % 3) - 1) * GRID_DX : WORLD_C, grid ? WORLD_C + (Math.floor(i / 3) - 0.5) * GRID_DY : WORLD_C];
+        const angNow = st.angle * Math.PI / 180;
+        const guns = grid ? GUNS : (st.weapon === 'none' ? [] : [st.weapon]);
+        // trigger: the button, or the gun's cadence while "trage continuu" is on
+        const autoCd = guns.length ? Math.max(...guns.map(g => { const w = _WEAPON_DATA[g]; return (w.shootCd + ((w.burst || 1) - 1) * (w.burstDelay || 0.08)) * 1000; })) : 0;
+        if (st.fireReq || (st.autoFire && now >= nextAuto && guns.length)) {
+            guns.forEach((g, i) => { const p = where(i); pull(g, p[0], p[1], angNow, now); });
+            st.fireReq = false;
+            nextAuto = now + (grid ? autoCd : (_WEAPON_DATA[guns[0]] ? (_WEAPON_DATA[guns[0]].shootCd + ((_WEAPON_DATA[guns[0]].burst || 1) - 1) * (_WEAPON_DATA[guns[0]].burstDelay || 0.08)) * 1000 : 500));
+        }
+        for (let i = pending.length - 1; i >= 0; i--) if (pending[i].at <= now) { shoot(pending[i], now); pending.splice(i, 1); }
+        // bullets with their trails, under the players as in the match
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const bl = bullets[i], age = (now - bl.t0) / 1000;
+            if (age > bl.life) { bullets.splice(i, 1); continue; }
+            const bx = bl.x + bl.vx * age, by = bl.y + bl.vy * age, trail = Math.min(age * 480, 110);
+            _setRotated(ctx, wm, bx, by, bl.vx, bl.vy);
+            if (trail > 4) ctx.drawImage(_trailSpriteFor(bl.wid), -trail, -3, trail, 6);
+            const bs = _bulletSprite(bl.wid, px);
+            if (bs) ctx.drawImage(bs.c, -bs.box, -bs.box, bs.box * 2, bs.box * 2);
+            ctx.setTransform(wm);
+        }
 
         const angle = st.angle * Math.PI / 180; // player.angle: 0 = aim down
         const entry = entryFor(st.skin);
@@ -168,7 +213,7 @@
         items.forEach((wid, i) => {
             const x = grid ? WORLD_C + ((i % 3) - 1) * GRID_DX : WORLD_C;
             const y = grid ? WORLD_C + (Math.floor(i / 3) - 0.5) * GRID_DY : WORLD_C;
-            _drawPlayerFigure(ctx, wm, x, y, angle, entry, wid, px, '#46D17C', 'rgba(70,209,124,0.14)');
+            _drawPlayerFigure(ctx, wm, x, y, angle, entry, wid, px, '#46D17C', 'rgba(70,209,124,0.14)', wid ? fxFor(wid) : null, now);
             drawOverlays(wm, x, y, angle, wid ? WEAPON_ART.byId[wid] : null, px);
             if (st.labels) drawLabels(x, y, px);
             if (grid) _drawLabel(ctx, WEAPON_ART.byId[wid].name.toUpperCase(), 16, '#FFFFFF', INK, 4, 'alphabetic', x, y + 150, px);

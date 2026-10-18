@@ -31,6 +31,10 @@
     72
    ],
    "recoil": 4,
+   "flash": {
+    "length": 14,
+    "width": 7
+   },
    "accent": "#FFC53D"
   },
   "smg": {
@@ -51,7 +55,11 @@
     0,
     84
    ],
-   "recoil": 4,
+   "recoil": 2.5,
+   "flash": {
+    "length": 14,
+    "width": 7
+   },
    "accent": "#8BD62A"
   },
   "assault": {
@@ -72,7 +80,11 @@
     0,
     104
    ],
-   "recoil": 4,
+   "recoil": 3,
+   "flash": {
+    "length": 18,
+    "width": 8
+   },
    "accent": "#FF7A1A"
   },
   "sniper": {
@@ -93,7 +105,11 @@
     0,
     126
    ],
-   "recoil": 4,
+   "recoil": 7,
+   "flash": {
+    "length": 28,
+    "width": 9
+   },
    "accent": "#35C8FF"
   },
   "shotgun": {
@@ -114,7 +130,11 @@
     0,
     106
    ],
-   "recoil": 4,
+   "recoil": 8,
+   "flash": {
+    "length": 24,
+    "width": 15
+   },
    "accent": "#E5384B"
   },
   "burst": {
@@ -135,7 +155,11 @@
     0,
     96
    ],
-   "recoil": 4,
+   "recoil": 3,
+   "flash": {
+    "length": 16,
+    "width": 7.5
+   },
    "accent": "#8A4BE0"
   }
  }

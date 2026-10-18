@@ -14,31 +14,21 @@
         return '<svg class="ic' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="#' + name + '"/></svg>';
     };
 
-    // ---------- weapon pictograms for canvas (same paths as the SVG sprite) ----------
-    const WEAPON_PATHS = {
-        pistol:  ['M3 7h17v5h-8.5L10 14.2V19H6.5l.8-7H3z', 'M14 12v2.5'],
-        assault: ['M2 10.5h4.5L8 9h8.5l1 1.5H22V13h-8l-1 1.5h-2L10.2 19H7.2L8 14.5H6.5L5 13H2z', 'M19.5 8v2.5'],
-        sniper:  ['M2 11.5h5l1-1.5h7.5l.5 1.5H22V13h-6.5l-1 1.5H11l-1 4.5H7l1-4.5H7L5.5 13H2z', 'M9 6.5h6v2.5H9z'],
-        shotgun: ['M2 10.5l4-1.5h16v3H12l-1.5 2H9l-.7 4.5H5.3L6.5 14 2 12.5z', 'M13.5 14.5h4'],
-        // FAMAS: bullpup body, carry handle along the top, magazine behind the grip, flash hider
-        burst:   ['M2 10.5H17.5V11H22V12.5H17.5V13.5H13.5L12.6 18.5H10L10.6 13.5H7.2V17.8H4.2V13.5H2Z', 'M5.5 10.5V7.5H15L17 10.5', 'M20.5 10v3'],
-        smg:     ['M3 8.5h13l1 1.5h5v3H11.5l-1 1.5H9V20H6v-6H3z', 'M14 13v3'],
-    };
-    const _p2d = {};
+    // ---------- weapon icons ----------
+    // Built from the in-hand gun sprites by tools/build-weapon-icons.js: <id>.png in colour (lobby) and
+    // <id>-white.png as a white silhouette (on the coloured blocks in the match). Barrel to the right.
+    const _wIcons = {};
     window.ARIcons = {
-        // Strokes a weapon pictogram centered at (cx, cy) inside a size x size box.
-        drawWeapon: function (ctx, id, cx, cy, size, color) {
-            const defs = WEAPON_PATHS[id] || WEAPON_PATHS.pistol;
-            const paths = _p2d[id] || (_p2d[id] = defs.map(function (d) { return new Path2D(d); }));
-            ctx.save();
-            ctx.translate(cx - size / 2, cy - size / 2);
-            ctx.scale(size / 24, size / 24);
-            ctx.strokeStyle = color || '#F2EFE6';
-            ctx.lineWidth = 2.2;
-            ctx.lineJoin = 'miter';
-            ctx.lineCap = 'square';
-            for (let i = 0; i < paths.length; i++) ctx.stroke(paths[i]);
-            ctx.restore();
+        // The icon as an Image (cached); check .complete before drawing it on a canvas
+        weapon: function (id, white) {
+            const key = id + (white ? '-white' : '');
+            let img = _wIcons[key];
+            if (!img) { img = new Image(); img.src = '/images/weapon-icons/' + key + '.png'; _wIcons[key] = img; }
+            return img;
+        },
+        // The icon as markup for innerHTML templates
+        weaponHtml: function (id, white, cls) {
+            return '<img class="wicon' + (cls ? ' ' + cls : '') + '" src="/images/weapon-icons/' + id + (white ? '-white' : '') + '.png" alt="" draggable="false">';
         },
     };
 
