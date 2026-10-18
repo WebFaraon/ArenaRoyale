@@ -609,7 +609,7 @@ async function broadcastLeaderboard() {
 // ---------- CONSTANTE ----------
 const ARENA_W          = 2600;
 const ARENA_H          = 2600;
-const TICK_RATE        = 60;
+const TICK_RATE        = ARShared.TICK_RATE; // exactly 60 ticks/s (startRoomLoop)
 
 // ---------- WEAPONS ----------
 // One source for every gun: public/data/weapons.json (stats, fire mode, loadout, art; the client loads
@@ -632,12 +632,11 @@ for (const [id, w] of Object.entries(WEAPON_DATA.weapons)) {
 // Where each gun's bullets start and how long they live (weapons.json "muzzle", public/combat-shared.js):
 // the same numbers the client predicts with. The range from the player centre stays what it was when
 // bullets started 25 units out.
-const SERVER_DT = Math.round(1000 / TICK_RATE) / 1000; // = INTERVAL_MS / 1000 in startRoomLoop
-if (Math.abs(SERVER_DT - ARShared.TICK_S) > 1e-9) console.warn('[Weapons] tick differs from combat-shared TICK_S; client bullet lifetimes will drift');
+const SERVER_DT = 1 / TICK_RATE; // the dt of every tick (startRoomLoop), = ARShared.TICK_S
 const GUN_FIRE = {};
 for (const [id, ws] of Object.entries(WEAPON_STATS)) {
     const muzzle = ARShared.muzzleDistance(WEAPON_DATA.weapons[id]);
-    GUN_FIRE[id] = { muzzle, life: ARShared.bulletLife(ws.bulletLife, ws.bulletSpeed, muzzle, SERVER_DT) };
+    GUN_FIRE[id] = { muzzle, life: ARShared.bulletLife(ws.bulletLife, ws.bulletSpeed, muzzle) };
 }
 // Weapon ids the weapon stats accept (WEAPON STATS): the guns in weapons.json and the fists
 const STAT_WEAPON_IDS = new Set([...Object.keys(WEAPON_STATS), MELEE_WEAPON]);
@@ -1138,10 +1137,11 @@ const _r3 = (v) => Math.round(v * 1000) / 1000; // 3 decimals without toFixed st
 const _r1 = (v) => Math.round(v * 10) / 10;
 
 // ---------- INPUTS ----------
-// Clients send one input per tick (game.js input clock). They are queued on arrival and applied by the
-// game loop one per tick, in order, so each input moves the player exactly one tick, as the client's
-// prediction replays it; a second one is applied in the same tick only to work off a backlog (a burst
-// after a network pause). Past INPUT_QUEUE_MAX the oldest is applied straight away.
+// Clients send one input per server tick (game.js: one per state packet received). They are queued on
+// arrival and applied by the game loop one per tick, in order, so each input moves the player exactly one
+// tick, as the client's prediction replays it. After a tick at most one input is left waiting: the rest of
+// a burst (a network pause) is applied in that same tick, so the delay never exceeds one tick and no
+// queue can build up whatever the client's frame rate. Past INPUT_QUEUE_MAX the oldest is applied at once.
 const INPUT_QUEUE_MAX = 6;
 function applyInput(p, data) {
     if (data.dx !== undefined) {
@@ -1168,7 +1168,11 @@ function applyInput(p, data) {
 }
 
 function startRoomLoop(code, room) {
-    const INTERVAL_MS = Math.round(1000 / TICK_RATE);
+    // Ticks are due every 1000/60 ms on a monotonic clock; each one advances the world by exactly
+    // SERVER_DT. A late tick runs as soon as possible and the ones after it catch up (one per event loop
+    // turn, so inputs still get in between); more than MAX_CATCHUP behind, the backlog is dropped.
+    const INTERVAL_MS = 1000 / TICK_RATE;
+    const MAX_CATCHUP = 10;
     room.lastTick = Date.now();
 
     const _pScratch       = [];
@@ -1185,15 +1189,15 @@ function startRoomLoop(code, room) {
     // Simulation clock: every tick advances the world by exactly INTERVAL_MS, whenever it actually runs.
     // Sent with each state packet so clients place snapshots on it (game.js interpolation).
     let tickNo = 0;
-    let expected = Date.now() + INTERVAL_MS;
+    let next = performance.now() + INTERVAL_MS; // when the next tick is due
 
-    function tick() {
+    function tick(lateMs) {
         const tickStart = Date.now();
-        if (PERF) PERF.tickStart(room, tickStart - expected);
+        if (PERF) PERF.tickStart(room, lateMs);
         try {
             if (!room.gameStarted || !rooms.has(code)) return;
             const now = tickStart;
-            const dt  = INTERVAL_MS / 1000;
+            const dt  = SERVER_DT;
             room.lastTick = now;
 
             const allPlayers = room._playerArr;
@@ -1202,11 +1206,11 @@ function startRoomLoop(code, room) {
                 if (!player.alive || room.gameEnded || room.countdownActive) { player.inputQ.length = 0; return; }
                 if (room.pveWaveBreak) { player.moveDir.x = 0; player.moveDir.y = 0; player.shooting = false; player.inputQ.length = 0; return; }
 
-                // inputs: one per tick in arrival order, a second one only to catch up on a backlog
+                // inputs: one per tick in arrival order; any beyond one more waiting are applied now as
+                // well, so an input never waits more than one tick (no queue can build up)
                 let _applied = 0;
-                if (player.inputQ.length) {
-                    applyInput(player, player.inputQ.shift()); _applied = 1;
-                    if (player.inputQ.length >= 2) { applyInput(player, player.inputQ.shift()); _applied = 2; }
+                while (player.inputQ.length && (_applied === 0 || player.inputQ.length > 1)) {
+                    applyInput(player, player.inputQ.shift()); _applied++;
                 }
                 if (PERF) PERF.applied(room, player.id, _applied);
 
@@ -1329,7 +1333,7 @@ function startRoomLoop(code, room) {
                         } else {
                             // += keeps the part of a tick the timer overshot (it is <= 0 here), so the
                             // average rate is exactly shootCd instead of being rounded up to whole
-                            // 17 ms ticks (SMG fired every 136 ms instead of 120).
+                            // ticks (SMG fired every 136 ms instead of 120 when ticks were 17 ms).
                             player.shootCooldown = Math.min(0, player.shootCooldown) + _wsCur.shootCd;
                             if (_wsCur.fireMode === 'semi') { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
                             if (player.ammo === 0) { player.shooting = false; player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
@@ -1800,24 +1804,23 @@ function startRoomLoop(code, room) {
 
         } catch (err) {
             console.error(`[${code}] Game loop error:`, err.stack || err);
-        } finally {
-            if (room.gameStarted && rooms.has(code) && !room.gameEnded) {
-                expected += INTERVAL_MS;
-                const remaining = expected - Date.now();
-                // Hybrid: sleep with setTimeout until ~4ms before target, then
-                // spin with setImmediate for sub-ms precision. Eliminates the
-                // ~15ms Windows timer quantisation that causes visible stutter.
-                if (remaining > 4) {
-                    room.gameLoop = setTimeout(tick, remaining - 4);
-                } else {
-                    room.gameLoop = setImmediate(tick);
-                }
-            }
         }
     }
 
-    expected = Date.now() + INTERVAL_MS;
-    room.gameLoop = setImmediate(tick);
+    function loop() {
+        if (!room.gameStarted || !rooms.has(code) || room.gameEnded) return;
+        const now = performance.now();
+        if (now - next > INTERVAL_MS * MAX_CATCHUP) next = now;   // far behind (a long stall): drop the backlog
+        if (now >= next) { tick(now - next); next += INTERVAL_MS; }
+        if (!room.gameStarted || !rooms.has(code) || room.gameEnded) return;
+        // Hybrid: sleep with setTimeout until ~4 ms before the tick is due, then spin with setImmediate
+        // for sub-ms precision (Windows timers are ~15 ms coarse)
+        const remaining = next - performance.now();
+        room.gameLoop = remaining > 4 ? setTimeout(loop, remaining - 4) : setImmediate(loop);
+    }
+
+    next = performance.now() + INTERVAL_MS;
+    room.gameLoop = setImmediate(loop);
 }
 
 // weaponId: the weapon of the bullet that made the kill (credited in the killer's weapon stats)

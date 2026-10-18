@@ -1989,7 +1989,7 @@ const WEAPONS_ART_READY = fetch(arAsset('/data/weapons.json'))
                 flashSprite: null, trail: null,
                 // where bullets start and how long they live (server.js GUN_FIRE uses the same functions)
                 muzzleDist,
-                bulletLife: ARShared.bulletLife(stats.bulletLife, stats.bulletSpeed, muzzleDist, ARShared.TICK_S),
+                bulletLife: ARShared.bulletLife(stats.bulletLife, stats.bulletSpeed, muzzleDist),
                 bulletSprite: null,
             };
         }
@@ -2513,11 +2513,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _rttMs = () => (_pingRtt > 0 ? _pingRtt : 120);
     // Fire timing mirrors server.js. Cooldowns and burst delays carry their sub-tick remainder on
     // the server, so their average length is exact (SMG 120 ms, Burst cycle 800 ms); a real shot
-    // lands up to one 17 ms tick after its due time, which keeps our prediction slightly ahead.
-    // The aim delay (weapons.json rules.aimDelay, 0.3 s) is armed by the input handler between ticks and first counted down on the
-    // next tick, so the server fires 289-306 ms after the input lands. Use the earliest: a
-    // prediction a few ms early links fine, one a few ms late races the server bullet.
-    const _AIM_MS = (() => { let c = WEAPON_RULES.aimDelay, k = 0; while (c > 0) { c -= 0.017; k++; } return (k - 1) * 17; })();
+    // lands up to one tick after its due time, which keeps our prediction slightly ahead.
+    // The aim delay (weapons.json rules.aimDelay, 0.3 s) is armed when the server applies the input, on
+    // the first tick after it lands, and counted down from that same tick, so the server fires between
+    // (k-1) and k ticks after the input lands (k = ticks to count the delay down, the server's own
+    // arithmetic). Use the earliest: a prediction a few ms early links fine, one a few ms late races the
+    // server bullet.
+    const _AIM_MS = (() => { let c = WEAPON_RULES.aimDelay, k = 0; while (c > 0) { c -= ARShared.TICK_S; k++; } return (k - 1) * ARShared.TICK_S * 1000; })();
 
     function _reconcileOwnBullets(bullets, now) {
         const myId = socket.id;
@@ -2736,9 +2738,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     // Input send rate matches server tick (60Hz = 17ms).
     // All input (move + rotate + shoot) goes through one unified packet from rAF.
-    const EMIT_MS         = 17;
+    const EMIT_MS         = ARShared.TICK_S * 1000; // one server tick (16.7 ms)
     // ── Interpolation clock ──────────────────────────────────────────────────
-    // Snapshots sit on the server's simulation timeline (tick number x 17 ms, entry.st), so neither
+    // Snapshots sit on the server's simulation timeline (tick number x tick length, entry.st), so neither
     // network jitter nor a server tick that runs a little late bunches them up. The render delay covers
     // how late packets arrive: the 95th percentile over the last ~3 s plus one tick and a small margin,
     // between 26 and 70 ms (~28 on a clean line). A delivery pause shows up as one late packet followed
@@ -2778,7 +2780,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let i = 0; i < _offN; i++) _lateSort[i] = _offWin[i] - offMin;
         const late = _lateSort.subarray(0, _offN).sort();
         const p95 = late[Math.min(_offN - 1, Math.floor(_offN * 0.95))];
-        const delay = Math.max(INTERP_MIN_MS, Math.min(INTERP_MAX_MS, p95 + 17 + 6));
+        const delay = Math.max(INTERP_MIN_MS, Math.min(INTERP_MAX_MS, p95 + EMIT_MS + 6));
         const target = offMin + delay;
         if (_clockLag === null || Math.abs(target - _clockLag) > 250) _clockLag = target;  // first packet / tab resumed
         else _clockLag += Math.max(-CLOCK_STEP_MS, Math.min(CLOCK_STEP_MS, target - _clockLag));
@@ -2790,16 +2792,21 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     let _lastInputSend   = 0;
     const _pendingInputs = []; // [{seq, dx, dy, dt}] — replay buffer for CSP
 
-    // ── Input clock ──────────────────────────────────────────────────────────
-    // One input per server tick (17 ms) on its own timer, whatever the frame rate: sent from the frame
-    // loop, 60/120/144 fps frames never lined up with the server's ticks and many ticks got 0 or 2 inputs.
-    // The server queues them and applies one per tick (server.js applyInput), so each input moves the
-    // player exactly one tick: that is also what the prediction replays (dt below).
-    const INPUT_MS = ARShared.TICK_S * 1000;
-    let _inputTimer = null, _nextInputAt = 0;
-    function _sendInput() {
+    // ── Inputs: one per server tick ──────────────────────────────────────────
+    // An input goes out for every state packet the server sends (one per tick), so the client can never
+    // send faster or slower than the server ticks: no drift, whatever the frame rate or timer precision.
+    // A burst of packets (after a network pause) sends one input, not one per packet. The server applies
+    // them one per tick (server.js applyInput), so each input moves the player exactly one tick: that is
+    // also what the prediction replays (dt below).
+    function _sendInputForTick(now) {
+        // same burst as the previous packet (bursts after a pause arrive < 1 ms apart; a server tick that
+        // ran a little late can be followed by one ~5 ms later, which still gets its own input)
+        if (now - _lastInputSend < EMIT_MS / 4) return;
+        _sendInput(now);
+    }
+    function _sendInput(now) {
         if (gameEnded || gameControl.countdownActive || _selfDead || _pveState.waveBreak) return;
-        _lastInputSend = performance.now();
+        _lastInputSend = now;
         const seq = ++_inputSeq;
         socket.emit('input', {
             seq,
@@ -2815,18 +2822,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             _pendingInputs.push({ seq, dx: moveDir.x, dy: moveDir.y, dt: ARShared.TICK_S });
             if (_pendingInputs.length > 180) _pendingInputs.shift();
         }
-    }
-    function _inputClock() {
-        const now = performance.now();
-        _sendInput();
-        _nextInputAt += INPUT_MS;
-        if (_nextInputAt < now) _nextInputAt = now + INPUT_MS; // fell behind (tab hidden): start over
-        _inputTimer = setTimeout(_inputClock, Math.max(0, _nextInputAt - performance.now()));
-    }
-    function _startInputClock() {
-        clearTimeout(_inputTimer);
-        _nextInputAt = performance.now() + INPUT_MS;
-        _inputTimer = setTimeout(_inputClock, INPUT_MS);
     }
 
     // Debug: track packets sent/sec
@@ -2906,7 +2901,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (ammoState.ammo > 0) _shootMustRelease = false;
         if (isShooting) { isShooting = false; aimStartTime = null; }
         if (!mouseActive && (moveDir.x !== 0 || moveDir.y !== 0)) myAngle = moveAngle;
-        // the stop goes out with the next input clock tick (<= 17 ms)
+        // the stop goes out with the next input (one per server tick)
     });
 
     // ---------- WASD + MOUSE ----------
@@ -2984,7 +2979,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         isShooting = false;
         aimStartTime = null;
         if (moveDir.x !== 0 || moveDir.y !== 0) myAngle = moveAngle;
-        // the stop goes out with the next input clock tick (<= 17 ms)
+        // the stop goes out with the next input (one per server tick)
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -3009,7 +3004,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         canvas.removeEventListener('pointerdown',  onPointerDown);
         canvas.removeEventListener('pointerup',    onPointerUp);
         if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-        clearTimeout(_inputTimer); _inputTimer = null;
         clearInterval(_pingInterval);
         moveDir.x = 0; moveDir.y = 0;
         isShooting = false;
@@ -3070,6 +3064,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         _dbgGsCount++;
         const now = performance.now();
+        _sendInputForTick(now); // one input per server tick (see _sendInputForTick)
         // One packet per tick for the whole room: pick this client's private row
         // [id, ammo, ammoMax, reloading, reloadProgress, ackSeq, coins] out of the flat array.
         let ammoArr = null, _myCoins = 0;
@@ -3904,7 +3899,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _burstDelay = _myWdSpawn.burstDelay;
             // Holding the trigger: count from when the shot was due, not from this frame, or every
             // shot lands up to a frame later than the server's (the server cadence is exact).
-            const _shotBase = (_shotNow - _clientNextShotAt < 34) ? _clientNextShotAt : _shotNow;
+            const _shotBase = (_shotNow - _clientNextShotAt < 2 * EMIT_MS) ? _clientNextShotAt : _shotNow;
             for (let _bi = 1; _bi < _burstCount; _bi++) {
                 _pendingBurstShots.push({
                     spawnAt: _shotBase + _bi * _burstDelay * 1000,
@@ -4772,7 +4767,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
 
     draw();
-    _startInputClock();
 }
 
 // ─── Friend Invite System ─────────────────────────────────────────────────────

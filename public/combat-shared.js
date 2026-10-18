@@ -16,8 +16,11 @@
     // the gun sprites and the muzzle (so also where bullets start); the hitbox (30) does not change.
     const PLAYER_VISUAL_SCALE = 0.85;
 
-    // Server tick length in seconds (server.js TICK_RATE 60 -> INTERVAL_MS 17)
-    const TICK_S = 0.017;
+    // Server ticks: exactly 60 per second (server.js runs them on an accumulator clock)
+    const TICK_RATE = 60;
+    const TICK_S = 1 / TICK_RATE;
+    // The tick the game used before (17 ms): bullet ranges are still worked out from it (bulletLife)
+    const LEGACY_TICK_S = 0.017;
 
     // Bullets used to start 25 units in front of the player centre. Ranges are kept as they were then.
     const LEGACY_MUZZLE = 25;
@@ -36,10 +39,11 @@
     }
 
     // Lifetime of a bullet starting at the muzzle, so its farthest point from the player centre is the
-    // same as before: 25 + speed × (ticks × dt) = muzzle + speed × life. The server moves the bullet by
-    // only the lifetime left on its last tick, which makes this exact.
-    function bulletLife(oldLife, speed, muzzleDist, dt) {
-        return legacyTicks(oldLife, dt) * dt - (muzzleDist - LEGACY_MUZZLE) / speed;
+    // same as before: 25 + speed × (ticks × 17 ms) = muzzle + speed × life. Worked out with the old 17 ms
+    // tick whatever the tick is now; the server moves a bullet by only the lifetime left on its last
+    // tick, so the range is exact at any tick length.
+    function bulletLife(oldLife, speed, muzzleDist) {
+        return legacyTicks(oldLife, LEGACY_TICK_S) * LEGACY_TICK_S - (muzzleDist - LEGACY_MUZZLE) / speed;
     }
 
     // Bullet velocities in the server's gs packet are divided by this, rounded, and multiplied back
@@ -88,5 +92,5 @@
         return errs;
     }
 
-    return { PLAYER_VISUAL_SCALE, TICK_S, LEGACY_MUZZLE, NET_BULLET_SPEED, muzzleDistance, legacyTicks, bulletLife, weaponStats, checkWeapons };
+    return { PLAYER_VISUAL_SCALE, TICK_RATE, TICK_S, LEGACY_TICK_S, LEGACY_MUZZLE, NET_BULLET_SPEED, muzzleDistance, legacyTicks, bulletLife, weaponStats, checkWeapons };
 });
