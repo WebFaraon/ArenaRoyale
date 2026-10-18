@@ -982,7 +982,6 @@ function broadcastWaiting(code, room) {
 const _pveZombieRadius = (z) => (PVE_ZOMBIE_DEFS[z.type] || PVE_ZOMBIE_DEFS.normal).r;
 const _brZombieRadius  = () => ZOMBIE_R;
 const _r3 = (v) => Math.round(v * 1000) / 1000; // 3 decimals without toFixed string allocation
-const _r2 = (v) => Math.round(v * 100) / 100;
 const _r1 = (v) => Math.round(v * 10) / 10;
 
 // ---------- INPUTS ----------
@@ -1578,20 +1577,25 @@ function startRoomLoop(code, room) {
             // Per-player private values (ammo, reload, ack seq, coins) travel together in a flat
             // array [id, ammo, ammoMax, reloading, reloadProgress, ackSeq, coins, ...]; each client
             // picks its own row. Before, the shared arrays were re-encoded once per player per tick.
+            // Fractions travel as scaled integers (1-3 bytes in msgpack instead of 9 for a float); the
+            // client divides them back to the exact same values: player angle x1000, bullet direction
+            // (velocity / NET_BULLET_SPEED) x1000, zombie angle x100. Only live zombies are sent, with
+            // their id: one missing from the packet has died (game.js).
             _pScratch.length = 0;
             for (const p of allPlayers) {
-                _pScratch.push([p.id, Math.round(p.x), Math.round(p.y), _r3(p.angle), Math.round(p.hp), p.alive ? 1 : 0, p.kills]);
+                _pScratch.push([p.id, Math.round(p.x), Math.round(p.y), Math.round(p.angle * 1000), Math.round(p.hp), p.alive ? 1 : 0, p.kills]);
             }
             _bScratch.length = 0;
             for (const b of room.bullets) {
-                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), _r3(b.dx / ARShared.NET_BULLET_SPEED), _r3(b.dy / ARShared.NET_BULLET_SPEED), b.ownerId]);
+                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), Math.round(b.dx / ARShared.NET_BULLET_SPEED * 1000), Math.round(b.dy / ARShared.NET_BULLET_SPEED * 1000), b.ownerId]);
             }
             for (const b of _expiredBullets) {
-                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), _r3(b.dx / ARShared.NET_BULLET_SPEED), _r3(b.dy / ARShared.NET_BULLET_SPEED), b.ownerId]);
+                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), Math.round(b.dx / ARShared.NET_BULLET_SPEED * 1000), Math.round(b.dy / ARShared.NET_BULLET_SPEED * 1000), b.ownerId]);
             }
             _zScratch.length = 0;
             for (const z of room.zombies) {
-                _zScratch.push(Math.round(z.x), Math.round(z.y), _r2(z.angle), z.alive ? Math.round(z.hp) : -1, PVE_TYPE_IDX[z.type] || 0);
+                if (!z.alive) continue;
+                _zScratch.push(z.id, Math.round(z.x), Math.round(z.y), Math.round(z.angle * 100), Math.round(z.hp), PVE_TYPE_IDX[z.type] || 0);
             }
             _kScratch.length = 0;
             for (const k of room.healthKits) {

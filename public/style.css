@@ -4391,3 +4391,7 @@ button:disabled { cursor: not-allowed; }
 
 /* "new version, reloading" (game.js _checkBuild): the force-logout card, no button, a calm colour */
 .ar-forcelogout.ar-newbuild .ar-forcelogout-title { color: var(--c-gold); }
+
+/* PvE break timer: the bar slides out of its track with a transform (game.js), so the break panel is not
+   laid out and repainted every frame */
+.pve-upg-timer-bar { width: 100%; transition: none; will-change: transform; }

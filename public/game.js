@@ -2446,7 +2446,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _gameMode = gameControl.mode || 'br'; delete gameControl.mode;
     let _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
     let _zoneTimerAlpha = 0;
-    const _zombies        = [];
+    const _zombies        = [];  // by zombie id (server.js), hp -1 = dead / not drawn
+    let   _zSeenGen       = 0;   // state packet counter, to spot zombies missing from the latest one
     const _zombieDeathFx  = [];
     const _pveState = { baseHp: 1000, baseMaxHp: 1000, wave: 0, waveBreak: false, breakTimer: 0, breakTimerMax: 15, myCoins: 0 };
     const _playerDeathFx  = [];  // { x, y, startTime, shards }
@@ -3125,24 +3126,32 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             updatePveHud();
         }
         if (zArr) {
-            for (let _zi = 0; _zi < zArr.length; _zi += 5) {
-                const _zid = _zi / 5;
-                if (!_zombies[_zid]) _zombies[_zid] = { hp: -1 };
-                const _zPrevHp = _zombies[_zid].hp;
-                _zombies[_zid].x = zArr[_zi]; _zombies[_zid].y = zArr[_zi+1];
-                _zombies[_zid].angle = zArr[_zi+2]; _zombies[_zid].hp = zArr[_zi+3];
-                _zombies[_zid].type = zArr[_zi+4] || 0;
-                // Death + damage feedback
-                if (_zPrevHp > 0 && _zombies[_zid].hp <= 0) {
+            // Live zombies only, 6 values each: id, x, y, angle x100, hp, type. One that is no longer
+            // listed has died (its last position is kept for the death effect; hp -1 = not drawn).
+            const _zGen = ++_zSeenGen;
+            for (let _zi = 0; _zi < zArr.length; _zi += 6) {
+                const _zid = zArr[_zi];
+                const _zb = _zombies[_zid] || (_zombies[_zid] = { hp: -1 });
+                const _zPrevHp = _zb.hp;
+                _zb.x = zArr[_zi + 1]; _zb.y = zArr[_zi + 2];
+                _zb.angle = zArr[_zi + 3] / 100; _zb.hp = zArr[_zi + 4];
+                _zb.type = zArr[_zi + 5] || 0;
+                _zb.seen = _zGen;
+                if (_zPrevHp > 0 && _zPrevHp - _zb.hp > 0.5) {
+                    hitEffects.push({ x: _zb.x, y: _zb.y, life: 2.0 });
+                }
+            }
+            for (let _zi = 0; _zi < _zombies.length; _zi++) {
+                const _zb = _zombies[_zi];
+                if (!_zb || _zb.seen === _zGen || _zb.hp < 0) continue;
+                if (_zb.hp > 0) { // death effect
                     const _shards = [];
                     for (let _si = 0; _si < 7; _si++) {
                         _shards.push({ angle: (_si / 7) * Math.PI * 2 + Math.random() * 0.4, speed: 35 + Math.random() * 45, rot: Math.random() * Math.PI, rotSpeed: (Math.random() - 0.5) * 8 });
                     }
-                    _zombieDeathFx.push({ x: _zombies[_zid].x, y: _zombies[_zid].y, startTime: performance.now(), shards: _shards });
+                    _zombieDeathFx.push({ x: _zb.x, y: _zb.y, startTime: performance.now(), shards: _shards });
                 }
-                if (_zPrevHp > 0 && _zombies[_zid].hp >= 0 && _zPrevHp - _zombies[_zid].hp > 0.5) {
-                    hitEffects.push({ x: _zombies[_zid].x, y: _zombies[_zid].y, life: 2.0 });
-                }
+                _zb.hp = -1;
             }
         }
         if (kArr) {
@@ -3164,7 +3173,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // the server's simulation time: tick number x tick length (older servers: the tick's wall clock)
             st:      tickNo ? tickNo * ARShared.TICK_S * 1000 : (serverTime || now),
             players: {},
-            bullets: bArr.map(([id, x, y, dx, dy, ownerId]) => ({ id, x, y, dx: dx * ARShared.NET_BULLET_SPEED, dy: dy * ARShared.NET_BULLET_SPEED, ownerId, radius: WEAPON_RULES.bulletRadius })),
+            // direction arrives x1000 (server.js state packet)
+            bullets: bArr.map(([id, x, y, dx, dy, ownerId]) => ({ id, x, y, dx: dx / 1000 * ARShared.NET_BULLET_SPEED, dy: dy / 1000 * ARShared.NET_BULLET_SPEED, ownerId, radius: WEAPON_RULES.bulletRadius })),
         };
         _reconcileOwnBullets(entry.bullets, now);
         // Trail age bookkeeping for other players' bullets: once per packet, not per frame
@@ -3180,6 +3190,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const [_sid, _s] of _srvBulletSeen) { if (_s.gen !== _srvSeenGen) _srvBulletSeen.delete(_sid); }
 
         pArr.forEach(([id, x, y, angle, hp, alive, kills]) => {
+            angle /= 1000; // sent x1000
             const meta = playerMeta[id] || {};
             if (!alive) _hiddenPlayers.delete(id);
             // Detectie moarte jucator → efect vizual
@@ -3635,10 +3646,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Animare timer bar porneaza de la starea curenta a timerului
             const timerBar = document.getElementById('pve-upg-timer-bar');
             if (timerBar) {
-                timerBar.style.transition = 'none'; timerBar.style.width = '100%';
+                // slides out of its track (transform: compositor only); animating width re-laid out and
+                // repainted the panel every frame for the whole break
+                timerBar.style.transition = 'none'; timerBar.style.transform = 'translateX(0)';
                 requestAnimationFrame(() => requestAnimationFrame(() => {
-                    timerBar.style.transition = `width ${_effectiveTimer}s linear`;
-                    timerBar.style.width = '0%';
+                    timerBar.style.transition = `transform ${_effectiveTimer}s linear`;
+                    timerBar.style.transform = 'translateX(-100%)';
                 }));
             }
         }, _panelDelay);
