@@ -11,12 +11,21 @@ const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
 const Missions = require('./missions');
 const ARShared = require('./public/combat-shared');
+// PERF=1: per-second game loop stats to perf.jsonl (tools/perf-probe.js); nothing runs without it
+const PERF = process.env.PERF === '1' ? require('./tools/perf-probe') : null;
 
 const app    = express();
 const server = http.createServer(app);
+// Game traffic: WebSocket only (no HTTP polling, no transport upgrade), no per-message compression (it
+// costs CPU and latency for ~0.3-1 KB packets sent 59 times a second), Nagle off on every TCP socket
+// (ws does it for WebSockets too) so small packets leave at once.
+server.on('connection', s => s.setNoDelay(true));
 const io     = new Server(server, {
     parser: msgpackParser,
     transports: ['websocket'],
+    allowUpgrades: false,
+    perMessageDeflate: false,
+    httpCompression: false,
     pingInterval: 10000,   // ping la fiecare 10s (default 25s)
     pingTimeout:  60000,   // asteapta pong 60s (default 20s) — tolereaza iOS throttling
     connectTimeout: 45000,
@@ -372,14 +381,19 @@ app.post('/api/missions/claim', async (req, res) => {
     }
 });
 
+// Test accounts (the live checks after a deploy) never show on the leaderboard. TEST_ACCOUNTS in .env
+// overrides the list (comma separated).
+const HIDDEN_FROM_LEADERBOARD = (process.env.TEST_ACCOUNTS || 'qa_live_test').split(',').map(s => s.trim()).filter(s => /^[a-zA-Z0-9_]{3,15}$/.test(s));
+function leaderboardQuery() {
+    let q = supabase.from('players').select('nickname, kills_total, wins_total, games_played, xp');
+    if (HIDDEN_FROM_LEADERBOARD.length) q = q.not('nickname', 'in', '(' + HIDDEN_FROM_LEADERBOARD.join(',') + ')');
+    return q.order('wins_total', { ascending: false }).order('kills_total', { ascending: false }).limit(50);
+}
+
 app.get('/api/leaderboard', async (req, res) => {
     if (!supabase) return res.json([]);
     try {
-        const { data } = await supabase.from('players')
-            .select('nickname, kills_total, wins_total, games_played, xp')
-            .order('wins_total',   { ascending: false })
-            .order('kills_total',  { ascending: false })
-            .limit(50);
+        const { data } = await leaderboardQuery();
         res.json(data || []);
     } catch { res.json([]); }
 });
@@ -444,11 +458,7 @@ async function broadcastLeaderboard() {
     _lbDebounceTimer = setTimeout(async () => {
         _lbDebounceTimer = null;
         try {
-            const { data } = await supabase.from('players')
-                .select('nickname, kills_total, wins_total, games_played, xp')
-                .order('wins_total',  { ascending: false })
-                .order('kills_total', { ascending: false })
-                .limit(50);
+            const { data } = await leaderboardQuery();
             io.emit('leaderboard-update', data || []);
         } catch (err) {
             console.error('[Supabase] broadcastLeaderboard error:', err);
@@ -1036,6 +1046,7 @@ function startRoomLoop(code, room) {
 
     function tick() {
         const tickStart = Date.now();
+        if (PERF) PERF.tickStart(room, tickStart - expected);
         try {
             if (!room.gameStarted || !rooms.has(code)) return;
             const now = tickStart;
@@ -1049,10 +1060,12 @@ function startRoomLoop(code, room) {
                 if (room.pveWaveBreak) { player.moveDir.x = 0; player.moveDir.y = 0; player.shooting = false; player.inputQ.length = 0; return; }
 
                 // inputs: one per tick in arrival order, a second one only to catch up on a backlog
+                let _applied = 0;
                 if (player.inputQ.length) {
-                    applyInput(player, player.inputQ.shift());
-                    if (player.inputQ.length >= 2) applyInput(player, player.inputQ.shift());
+                    applyInput(player, player.inputQ.shift()); _applied = 1;
+                    if (player.inputQ.length >= 2) { applyInput(player, player.inputQ.shift()); _applied = 2; }
                 }
+                if (PERF) PERF.applied(room, player.id, _applied);
 
                 player.x = Math.max(20, Math.min(ARENA_W - 20, player.x + player.moveDir.x * player.speed * dt));
                 player.y = Math.max(20, Math.min(ARENA_H - 20, player.y + player.moveDir.y * player.speed * dt));
@@ -1179,6 +1192,7 @@ function startRoomLoop(code, room) {
 
                 if (player.pendingAckSeq > player.lastAckSeq) player.lastAckSeq = player.pendingAckSeq;
             });
+            if (PERF) PERF.mark(room, 'players');
 
             // Coliziune jucator-jucator
             _aliveScratch.length = 0;
@@ -1201,6 +1215,8 @@ function startRoomLoop(code, room) {
                 }
             }
 
+            if (PERF) PERF.mark(room, 'pvp');
+
             // Zona (BR only)
             const zone = room.zone;
             if (room.mode !== 'pve') {
@@ -1221,6 +1237,8 @@ function startRoomLoop(code, room) {
                     }
                 }
             }
+
+            if (PERF) PERF.mark(room, 'zone');
 
             // Zombi AI — BR
             if (room.mode !== 'pve') {
@@ -1468,6 +1486,8 @@ function startRoomLoop(code, room) {
                 }
             }
 
+            if (PERF) PERF.mark(room, 'zombies');
+
             // Gloante: miscare + coliziune continua (swept). Pe segmentul parcurs in acest tick
             // se cauta PRIMUL lucru atins (obstacol, zombi sau jucator); glontul se opreste acolo.
             // Asa un glont rapid nu mai poate sari peste un zombi mic sau trece printr-un obstacol,
@@ -1539,6 +1559,7 @@ function startRoomLoop(code, room) {
                 if (keep) room.bullets[_bKeep++] = b;
             }
             room.bullets.length = _bKeep;
+            if (PERF) PERF.mark(room, 'bullets');
 
             _tpsCount++;
             if (now - _tpsWindowStart >= 2000) {
@@ -1572,6 +1593,7 @@ function startRoomLoop(code, room) {
                 }
                 kits.length = kKeep;
             }
+            if (PERF) PERF.mark(room, 'kits');
 
             // ── State packet: built and encoded ONCE per tick for the whole room ──
             // Per-player private values (ammo, reload, ack seq, coins) travel together in a flat
@@ -1609,8 +1631,22 @@ function startRoomLoop(code, room) {
             const pveArr  = room.mode === 'pve' && room.base
                 ? [Math.round(room.base.hp), room.base.maxHp, room.pveWave, room.pveWaveBreak ? 1 : 0, _r1(room.pveBreakTimer)]
                 : null;
+            if (PERF) PERF.mark(room, 'snapshot');
             tickNo++;
             io.to(code).emit('gs', [_pScratch, _bScratch, _privScratch, tickStart, zoneArr, _zScratch, _kScratch, pveArr, tickNo]);
+            if (PERF) {
+                PERF.mark(room, 'emit');
+                PERF.tickEnd(room, code, [_pScratch, _bScratch, _privScratch, tickStart, zoneArr, _zScratch, _kScratch, pveArr, tickNo], allPlayers.map(p => p.id), () => {
+                    let zAlive = 0;
+                    for (const z of room.zombies) if (z.alive) zAlive++;
+                    return {
+                        mode: room.mode,
+                        zone: room.mode === 'pve' ? null : { startDelay: _r1(zone.startDelay), wait: _r1(zone.waitTimer), r: Math.round(zone.r), shrinking: zone.startDelay <= 0 && zone.waitTimer <= 0 && zone.r > 0 },
+                        pve: room.mode === 'pve' ? { wave: room.pveWave, active: !!room.pveWaveActive, break: !!room.pveWaveBreak, queued: (room.pveSpawnQueue || []).length } : null,
+                        n: { players: allPlayers.length, zAlive, zTotal: room.zombies.length, bullets: room.bullets.length, kits: room.healthKits.length },
+                    };
+                });
+            }
 
         } catch (err) {
             console.error(`[${code}] Game loop error:`, err.stack || err);
@@ -1875,6 +1911,7 @@ io.on('connection', (socket) => {
         const p = r.room.players[socket.id];
         if (!p.alive || r.room.gameEnded || r.room.countdownActive) return;
         if (r.room.pveWaveBreak) return;
+        if (PERF) PERF.input(r.room, socket.id);
         if (!data || typeof data !== 'object') return;
         // applied by the game loop, one per tick (see INPUT_QUEUE_MAX)
         p.inputQ.push(data);
