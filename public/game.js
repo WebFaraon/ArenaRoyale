@@ -313,36 +313,22 @@ function selectCharacter(id) {
 }
 
 // ── WEAPON SELECTION ─────────────────────────────────────────────────────────
-const WEAPONS = [
-    { id: 'pistol',  name: 'Pistol',  icon: 'w-pistol', color: '#F2EFE6', desc: 'Echilibrat, versatil',       bulletLife: 0.38, bulletSpeed: 1000, shootCd: 0.50 },
-    { id: 'assault', name: 'Assault', icon: 'w-assault', color: '#F2EFE6', desc: 'Rata mare de tragere',       bulletLife: 0.50, bulletSpeed: 1100, shootCd: 0.25 },
-    { id: 'sniper',  name: 'Sniper',  icon: 'w-sniper', color: '#F2EFE6', desc: 'Precis, letal la distanta',  bulletLife: 0.50, bulletSpeed: 1500, shootCd: 1.00 },
-    { id: 'shotgun', name: 'Shotgun', icon: 'w-shotgun', color: '#F2EFE6', desc: 'Devastator de aproape',      bulletLife: 0.244, bulletSpeed:  900, shootCd: 0.85, pellets: 5, spread: 0.85 },
-    { id: 'burst',   name: 'Burst',   icon: 'w-burst', color: '#F2EFE6', desc: 'Rafala de 3 gloante',        bulletLife: 0.518, bulletSpeed: 1100, shootCd: 0.60, burst: 3, burstDelay: 0.10 },
-    { id: 'smg',     name: 'SMG',     icon: 'w-smg', color: '#F2EFE6', desc: 'Ultra rapid, damage mic',    bulletLife: 0.50, bulletSpeed: 1000, shootCd: 0.12 },
-];
-// Loadout stats per weapon (minim + crestere per punct)
-const WEAPON_LOADOUT = {
-    pistol:  { baseHp: 350, baseDmg: 25, baseSpd: 2.0, hpPer: 40, dmgPer: 3, spdPer: 0.2 },
-    assault: { baseHp: 350, baseDmg: 10, baseSpd: 2.0, hpPer: 40, dmgPer: 2, spdPer: 0.2 },
-    sniper:  { baseHp: 250, baseDmg: 50, baseSpd: 1.7, hpPer: 30, dmgPer: 5, spdPer: 0.2 },
-    shotgun: { baseHp: 400, baseDmg: 13, baseSpd: 1.9, hpPer: 40, dmgPer: 2, spdPer: 0.2 },
-    burst:   { baseHp: 350, baseDmg: 18, baseSpd: 2.0, hpPer: 40, dmgPer: 2, spdPer: 0.2 },
-    smg:     { baseHp: 350, baseDmg:  7, baseSpd: 2.1, hpPer: 40, dmgPer: 1, spdPer: 0.2 },
-};
-// Lookup rapid pentru rendering arma (referinta la WEAPONS entries)
-const _WEAPON_DATA = Object.fromEntries(WEAPONS.map(w => [w.id, w]));
+// Filled from public/data/weapons.json when it loads (WEAPONS_ART_READY), the file the server reads too
+const WEAPONS = [];        // { id, name, desc, class, fireModeLabel, ...ARShared.weaponStats } in file order
+const WEAPON_CLASSES = []; // { id, name } in menu order
+const WEAPON_LOADOUT = {}; // id -> loadout base values and growth per point (HP/DMG/SPD)
+const _WEAPON_DATA = {};   // id -> its WEAPONS entry
+let WEAPON_RULES = null;   // aimDelay, reloadDelay, bulletRadius: the same for every gun
+let DEFAULT_WEAPON = null;
 // Per-jucator: socketId → weaponId (populat din player-image si playersMeta)
 const _playerWeapons = new Map();
-let selectedWeapon = localStorage.getItem('selectedWeapon') || 'pistol';
+let selectedWeapon = localStorage.getItem('selectedWeapon'); // checked once weapons.json is in
 
 function _applyWeaponUI() {
-    const w = WEAPONS.find(x => x.id === selectedWeapon) || WEAPONS[0];
-    const ring  = document.getElementById('weapon-ring');
+    const w = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON];
     const icon  = document.getElementById('weapon-preview-icon');
     const nameEl = document.getElementById('weapon-name-display');
     const titleEl = document.getElementById('loadout-title');
-    if (ring)  { ring.style.setProperty('--wc', w.color); }
     if (icon)  icon.innerHTML = ARIcons.weaponHtml(w.id, false);
     if (nameEl) nameEl.textContent = w.name.toUpperCase();
     if (titleEl) titleEl.innerHTML = `<span>${w.name.toUpperCase()}</span> LOADOUT`;
@@ -353,14 +339,21 @@ function openWeaponSelect() {
     if (!overlay) return;
     const grid = document.getElementById('weapon-select-grid');
     if (grid) {
-        grid.innerHTML = WEAPONS.map(w => `
-            <div class="weapon-card${w.id === selectedWeapon ? ' wc-selected' : ''}"
-                 style="--wc:${w.color}"
-                 onclick="selectWeapon('${w.id}')">
-                <span class="weapon-card-icon">${ARIcons.weaponHtml(w.id, false)}</span>
-                <span class="weapon-card-name">${w.name.toUpperCase()}</span>
-                <span class="weapon-card-desc">${w.desc}</span>
-            </div>`).join('');
+        // one group per class (weapons.json "classes"), the fire mode under each name
+        grid.innerHTML = WEAPON_CLASSES.map(c => {
+            const guns = WEAPONS.filter(w => w.class === c.id);
+            if (!guns.length) return '';
+            return `<section class="wsel-group" style="--n:${guns.length}">
+                <h3 class="wsel-group-title">${c.name}</h3>
+                <div class="wsel-group-cards">${guns.map(w => `
+                    <div class="weapon-card${w.id === selectedWeapon ? ' wc-selected' : ''}" onclick="selectWeapon('${w.id}')">
+                        <span class="weapon-card-icon">${ARIcons.weaponHtml(w.id, false)}</span>
+                        <span class="weapon-card-name">${w.name.toUpperCase()}</span>
+                        <span class="weapon-card-mode" data-mode="${w.fireMode}">${w.fireModeLabel}</span>
+                        <span class="weapon-card-desc">${w.desc}</span>
+                    </div>`).join('')}</div>
+            </section>`;
+        }).join('');
     }
     overlay.style.display = 'flex';
 }
@@ -1575,7 +1568,8 @@ function updateStatsUI() {
     const barHp  = document.getElementById('bar-hp');
     const barDmg = document.getElementById('bar-dmg');
     const barSpd = document.getElementById('bar-spd');
-    const _wl = WEAPON_LOADOUT[selectedWeapon] || WEAPON_LOADOUT.pistol;
+    const _wl = WEAPON_LOADOUT[selectedWeapon] || WEAPON_LOADOUT[DEFAULT_WEAPON];
+    if (!_wl) return; // weapons.json not in yet
     if (valHp)  valHp.textContent  = (_wl.baseHp  + stats.hp  * _wl.hpPer)  + ' HP';
     if (valDmg) valDmg.textContent = (_wl.baseDmg + stats.dmg * _wl.dmgPer) + ' DMG';
     if (valSpd) valSpd.textContent = (_wl.baseSpd + stats.spd * _wl.spdPer).toFixed(1) + ' SPD';
@@ -1923,15 +1917,28 @@ function _drawSkinHighlight(ctx, x, y, scale) {
 // ---------- GUNS IN HAND ----------
 // public/data/weapons.json: per gun the sprite, the two hand points and the muzzle, in world units from
 // the body centre with the aim pointing down (the same frame as the skins); every sprite shares one frame
-// (top left at -40,6, 80 × 144 units). All of it is multiplied by PLAYER_VISUAL_SCALE.
-const WEAPON_ART = { ready: false, tl: [-40, 6], size: [80, 144], byId: {} };
+// (weapons.json "sprite"). All of it is multiplied by PLAYER_VISUAL_SCALE.
+const WEAPON_ART = { ready: false, tl: null, size: null, byId: {} };
 const WEAPONS_ART_READY = fetch('/data/weapons.json')
     .then(r => { if (!r.ok) throw new Error('weapons.json ' + r.status); return r.json(); })
     .then(data => {
-        const S = PLAYER_VISUAL_SCALE, sp = data.sprite || {};
-        WEAPON_ART.tl = (sp.topLeft || [-40, 6]).map(v => v * S);
-        WEAPON_ART.size = (sp.size || [80, 144]).map(v => v * S);
-        for (const [id, w] of Object.entries(data.weapons || {})) {
+        const errs = ARShared.checkWeapons(data);
+        if (errs.length) throw new Error(errs.join('; '));
+        // stats, loadout, classes, rules (the same values server.js reads)
+        WEAPON_RULES = data.rules;
+        DEFAULT_WEAPON = data.defaultWeapon;
+        WEAPON_CLASSES.push(...data.classes);
+        for (const [id, w] of Object.entries(data.weapons)) {
+            const entry = { id, name: w.name, desc: w.desc, class: w.class, fireModeLabel: w.fireModeLabel, cameraZoom: w.cameraZoom || 1, ...ARShared.weaponStats(w) };
+            WEAPONS.push(entry);
+            _WEAPON_DATA[id] = entry;
+            WEAPON_LOADOUT[id] = w.loadout;
+        }
+        if (!_WEAPON_DATA[selectedWeapon]) selectedWeapon = DEFAULT_WEAPON;
+        const S = PLAYER_VISUAL_SCALE, sp = data.sprite;
+        WEAPON_ART.tl = sp.topLeft.map(v => v * S);
+        WEAPON_ART.size = sp.size.map(v => v * S);
+        for (const [id, w] of Object.entries(data.weapons)) {
             const img = new Image();
             img.src = w.sprite;
             const stats = _WEAPON_DATA[id];
@@ -1942,12 +1949,12 @@ const WEAPONS_ART_READY = fetch('/data/weapons.json')
                 muzzle: [w.muzzle[0] * S, w.muzzle[1] * S],
                 hands0: w.hands, muzzle0: w.muzzle, // unscaled, for the dev view readout
                 recoil: (w.recoil || 0) * S,
-                flashLen: ((w.flash && w.flash.length) || 14) * S,
-                flashWid: ((w.flash && w.flash.width) || 7) * S,
+                flashLen: w.flash.length * S,
+                flashWid: w.flash.width * S,
                 flashSprite: null, trail: null,
                 // where bullets start and how long they live (server.js GUN_FIRE uses the same functions)
                 muzzleDist,
-                bulletLife: stats ? ARShared.bulletLife(stats.bulletLife, stats.bulletSpeed, muzzleDist, ARShared.TICK_S) : 0.5,
+                bulletLife: ARShared.bulletLife(stats.bulletLife, stats.bulletSpeed, muzzleDist, ARShared.TICK_S),
                 bulletSprite: null,
             };
         }
@@ -2019,7 +2026,7 @@ function _flashSprite(gun, scale) {
 
 // Bullet trail in the gun's accent: fades in from the tail, a lighter core line; one per gun
 function _trailSpriteFor(weaponId) {
-    const gun = WEAPON_ART.byId[weaponId] || WEAPON_ART.byId.pistol;
+    const gun = WEAPON_ART.byId[weaponId] || WEAPON_ART.byId[DEFAULT_WEAPON];
     if (!gun) return _getTrailSprite();
     if (gun.trail) return gun.trail;
     const hex = (gun.accent || '#FFC53D').replace('#', '');
@@ -2101,11 +2108,11 @@ function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStr
 // white glint, painted once per gun at the on-screen scale and rotated per bullet. Visual only: the
 // hit radius stays the server's BULLET_RADIUS (6).
 const BULLET_LOOK = { len: 14, wid: 5 };
-const PELLET_LOOK = { len: 8, wid: 4 };   // shotgun
+const PELLET_LOOK = { len: 8, wid: 4 };   // guns that fire pellets (shotgun)
 function _bulletSprite(weaponId, scale) {
-    const gun = WEAPON_ART.byId[weaponId] || WEAPON_ART.byId.pistol;
+    const gun = WEAPON_ART.byId[weaponId] || WEAPON_ART.byId[DEFAULT_WEAPON];
     if (!gun) return null;
-    const look = weaponId === 'shotgun' ? PELLET_LOOK : BULLET_LOOK;
+    const look = (_WEAPON_DATA[weaponId] || {}).pellets > 1 ? PELLET_LOOK : BULLET_LOOK;
     const box = look.len / 2 + 1.5;
     const s = _unitSprite(gun, 'bulletSprite', scale, box, g => {
         const hl = look.len / 2, r = look.wid / 2;
@@ -2461,7 +2468,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     let   _clientNextShotAt = 0;  // performance.now() timestamp of the next allowed local shot
     let   _ammoHoldUntil    = 0;  // keep the locally predicted ammo until the server confirms it
     const _ammoRow          = [0, 0, 0, 0, 0];
-    const SRV_BULLET_SPEED  = 1000; // server BULLET_SPEED: velocity normaliser in the gs packet
     const _ownLinked        = new Map(); // server bullet id -> client bullet
     const _ownUnmatched     = new Map(); // server bullet id -> first time seen without a prediction
     const _GHOST_GRACE_MS   = 50;
@@ -2472,10 +2478,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // Fire timing mirrors server.js. Cooldowns and burst delays carry their sub-tick remainder on
     // the server, so their average length is exact (SMG 120 ms, Burst cycle 800 ms); a real shot
     // lands up to one 17 ms tick after its due time, which keeps our prediction slightly ahead.
-    // AIM_DELAY (0.3 s) is armed by the input handler between ticks and first counted down on the
+    // The aim delay (weapons.json rules.aimDelay, 0.3 s) is armed by the input handler between ticks and first counted down on the
     // next tick, so the server fires 289-306 ms after the input lands. Use the earliest: a
     // prediction a few ms early links fine, one a few ms late races the server bullet.
-    const _AIM_MS = (() => { let c = 0.3, k = 0; while (c > 0) { c -= 0.017; k++; } return (k - 1) * 17; })();
+    const _AIM_MS = (() => { let c = WEAPON_RULES.aimDelay, k = 0; while (c > 0) { c -= 0.017; k++; } return (k - 1) * 17; })();
 
     function _reconcileOwnBullets(bullets, now) {
         const myId = socket.id;
@@ -2570,8 +2576,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     // The equipped gun's muzzle distance and bullet lifetime (WEAPON_ART, same formula as server.js)
     function _myGunFire() {
-        const g = WEAPON_ART.byId[selectedWeapon] || WEAPON_ART.byId.pistol;
-        return g ? g : { muzzleDist: ARShared.LEGACY_MUZZLE, bulletLife: (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA.pistol).bulletLife };
+        const g = WEAPON_ART.byId[selectedWeapon] || WEAPON_ART.byId[DEFAULT_WEAPON];
+        return g ? g : { muzzleDist: ARShared.LEGACY_MUZZLE, bulletLife: (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON]).bulletLife };
     }
     function _removeClientBullet(i) {
         const c = _clientBullets[i];
@@ -3014,7 +3020,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // AIM_DELAY (server.js reload branch + input handler). Mirror it, or those shots are
             // never predicted and only show up late, from server data.
             if (_shootMustRelease && isShooting && _prevAmmo < ammoState.max && ammoState.ammo >= ammoState.max &&
-                !ammoState.reloading && !(_WEAPON_DATA[selectedWeapon] || {}).semiAuto) {
+                !ammoState.reloading && (_WEAPON_DATA[selectedWeapon] || {}).fireMode !== 'semi') {
                 _shootMustRelease = false;
                 _clientHasReleased = true;
                 aimStartTime = now;
@@ -3066,13 +3072,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 if (!_kSeen.has(_kid)) { _healthKits.delete(_kid); _kitDropAnim.delete(_kid); }
             }
         }
-        // Server sends velocity normalised by its BULLET_SPEED (1000 px/s). The old 1400 factor made
+        // Server sends velocity normalised by ARShared.NET_BULLET_SPEED (1000 px/s). The old 1400 factor made
         // every enemy bullet extrapolate 40% too fast, then snap back on the next packet (jitter).
         const entry = {
             t:       now,
             st:      serverTime || now,
             players: {},
-            bullets: bArr.map(([id, x, y, dx, dy, ownerId]) => ({ id, x, y, dx: dx * SRV_BULLET_SPEED, dy: dy * SRV_BULLET_SPEED, ownerId, radius: 6 })),
+            bullets: bArr.map(([id, x, y, dx, dy, ownerId]) => ({ id, x, y, dx: dx * ARShared.NET_BULLET_SPEED, dy: dy * ARShared.NET_BULLET_SPEED, ownerId, radius: WEAPON_RULES.bulletRadius })),
         };
         _reconcileOwnBullets(entry.bullets, now);
         // Trail age bookkeeping for other players' bullets: once per packet, not per frame
@@ -3738,8 +3744,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const dtSec = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.05) : 0.016;
         lastTime = timestamp;
 
-        // Zoom out per arma: sniper vede 1.25x mai mult din mapa, tranzitie lina
-        const _targetZoom = (selectedWeapon === 'sniper') ? 1.15 : 1.0;
+        // Zoom out per arma (weapons.json cameraZoom: sniper vede mai mult din mapa), tranzitie lina
+        const _targetZoom = (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON]).cameraZoom;
         _zoomFactor += (_targetZoom - _zoomFactor) * Math.min(1, dtSec * 4);
         ZOOM = Math.min(W / (VIEW_W * _zoomFactor), H / (VIEW_H * _zoomFactor));
 
@@ -3759,12 +3765,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (isShooting && !_shootMustRelease && !_selfDead && !gameControl.countdownActive &&
             _shotNow >= _clientNextShotAt && ammoState.ammo > 0 && predX !== null &&
             aimStartTime !== null && _shotNow - aimStartTime >= _AIM_MS) {
-            const _myWdSpawn = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA.pistol;
-            const _cbspd  = _myWdSpawn.bulletSpeed || 1000;
+            const _myWdSpawn = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON];
+            const _cbspd  = _myWdSpawn.bulletSpeed;
             const _fire   = _myGunFire();
             const _cblife = _fire.bulletLife;
-            const _cbPellets = _myWdSpawn.pellets || 1;
-            const _cbSpread  = _myWdSpawn.spread  || 0;
+            const _cbPellets = _myWdSpawn.pellets;
+            const _cbSpread  = _myWdSpawn.spread;
             const _bcdx = -Math.sin(myAngle), _bcdy = Math.cos(myAngle);
             const _mx = predX + _bcdx * _fire.muzzleDist, _my = predY + _bcdy * _fire.muzzleDist;
             for (let _pi = 0; _pi < _cbPellets; _pi++) {
@@ -3774,8 +3780,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const _pdy = _bcdx * _sin + _bcdy * _cos;
                 _clientBullets.push(_newClientBullet(_mx, _my, _pdx * _cbspd, _pdy * _cbspd, _cblife, _shotNow, predX, predY));
             }
-            const _burstCount = _myWdSpawn.burst || 1;
-            const _burstDelay = _myWdSpawn.burstDelay || 0.08;
+            const _burstCount = _myWdSpawn.fireMode === 'burst' ? _myWdSpawn.burstCount : 1;
+            const _burstDelay = _myWdSpawn.burstDelay;
             // Holding the trigger: count from when the shot was due, not from this frame, or every
             // shot lands up to a frame later than the server's (the server cadence is exact).
             const _shotBase = (_shotNow - _clientNextShotAt < 34) ? _clientNextShotAt : _shotNow;
@@ -3789,12 +3795,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // The server allows the next trigger only after the whole burst AND the cooldown.
             // Using only the cooldown (0.6 s instead of 0.8 s for Burst) made the client fire bursts
             // the server never fired, and miss the ones it did: the "invisible bullets".
-            _clientNextShotAt = _shotBase + ((_myWdSpawn.shootCd || 0.25) + (_burstCount - 1) * _burstDelay) * 1000;
+            _clientNextShotAt = _shotBase + (_myWdSpawn.shootCd + (_burstCount - 1) * _burstDelay) * 1000;
             // Spend the round locally right away; the server confirms it about one RTT later.
             ammoState.ammo = Math.max(0, ammoState.ammo - 1);
             _ammoHoldUntil = _shotNow + Math.max(160, _rttMs() + 100);
             if (ammoState.ammo === 0) { _shootMustRelease = true; _clientHasReleased = false; }
-            if (_myWdSpawn.semiAuto) { _shootMustRelease = true; _clientHasReleased = false; isShooting = false; }
+            if (_myWdSpawn.fireMode === 'semi') { _shootMustRelease = true; _clientHasReleased = false; isShooting = false; }
         }
         // Spawn pending burst bullets cu delay real
         const _cbNow = performance.now();
@@ -4005,16 +4011,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if ((_aimActive || isShooting || mouseActive) && me && me.alive && !gameEnded) {
             const dirX       = -Math.sin(myAngle);
             const dirY       =  Math.cos(myAngle);
-            const _trajWd   = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA.pistol;
-            const TRAJ_START = 25;
-            const TRAJ_END   = 25 + (_trajWd.bulletSpeed || 1000) * (_trajWd.bulletLife || 0.60);
+            const _trajWd   = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON];
+            const TRAJ_START = ARShared.LEGACY_MUZZLE;
+            const TRAJ_END   = ARShared.LEGACY_MUZZLE + _trajWd.bulletSpeed * _trajWd.bulletLife;
             ctx.save();
             ctx.lineWidth = 2.5 / ZOOM;
             if (_lineDashZoom !== ZOOM) { _lineDashZoom = ZOOM; _lineDashArr = [6 / ZOOM, 24 / ZOOM]; }
             ctx.setLineDash(_lineDashArr);
             ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-            if (_trajWd.pellets && _trajWd.pellets > 1) {
-                const _tSpread = _trajWd.spread || 0;
+            if (_trajWd.pellets > 1) {
+                const _tSpread = _trajWd.spread;
                 const _cosL = Math.cos(-_tSpread / 2), _sinL = Math.sin(-_tSpread / 2);
                 const _pdxL = dirX * _cosL - dirY * _sinL, _pdyL = dirX * _sinL + dirY * _cosL;
                 const _cosR = Math.cos( _tSpread / 2), _sinR = Math.sin( _tSpread / 2);
@@ -4063,7 +4069,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _seen = _srvBulletSeen.get(b.id);
             const _bAge = _seen ? (_bulletNow - _seen.t) / 1000 : 0;
             const _trail = Math.min(_bAge * 480, 110);
-            const _bw = _playerWeapons.get(b.ownerId) || 'pistol';
+            const _bw = _playerWeapons.get(b.ownerId) || DEFAULT_WEAPON;
             const _bs = _bulletSprite(_bw, _lblScale);
             _setRotated(ctx, _wm, _bx, _by, b.dx, b.dy);
             if (_trail > 4) ctx.drawImage(_trailSpriteFor(_bw), -_trail, -3, _trail, 6);
@@ -4366,7 +4372,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const ringColor = isMe ? '#46D17C' : '#FF4155';
             const ringFill  = isMe ? 'rgba(70,209,124,0.14)' : 'rgba(255,65,85,0.14)';
             // Ring, body, gun, hands on the gun, fixed highlight (see GUNS IN HAND)
-            const _pWeapon = isMe ? (_playerWeapons.get(socket.id) || selectedWeapon) : (_playerWeapons.get(player.id) || 'pistol');
+            const _pWeapon = isMe ? (_playerWeapons.get(socket.id) || selectedWeapon) : (_playerWeapons.get(player.id) || DEFAULT_WEAPON);
             _drawPlayerFigure(ctx, _wm, px, py, pangle, playerImages[player.id], _pWeapon, _lblScale, ringColor, ringFill, _playerFx.get(player.id), _bulletNow);
 
             // Flash + Nume (name tag is a cached label: one drawImage instead of strokeText+fillText)
@@ -4403,9 +4409,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Weapon type badge — vizibil pentru toti jucatorii (eu + altii)
             {
                 const _wid = isMe
-                    ? (selectedWeapon || 'pistol')
-                    : (_playerWeapons.get(player.id) || 'pistol');
-                const _wd  = _WEAPON_DATA[_wid] || _WEAPON_DATA.pistol;
+                    ? (selectedWeapon || DEFAULT_WEAPON)
+                    : (_playerWeapons.get(player.id) || DEFAULT_WEAPON);
+                const _wd  = _WEAPON_DATA[_wid] || _WEAPON_DATA[DEFAULT_WEAPON];
                 const _wsz = barH;
                 const _wx  = barX + barW + 4;
                 const _wy  = barY;
@@ -4548,7 +4554,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // --- WEAPON BLOCK (jos-centru, screen space) ---
         if (!gameEnded && !isSpectating) {
             const _myWid  = _playerWeapons.get(socket.id) || selectedWeapon;
-            const _myWd   = _WEAPON_DATA[_myWid] || _WEAPON_DATA.pistol;
+            const _myWd   = _WEAPON_DATA[_myWid] || _WEAPON_DATA[DEFAULT_WEAPON];
             ctx.save();
             ctx.scale(dpr, dpr);
             const _bSz  = Math.round(H < 520 ? Math.min(44, Math.max(30, H * 0.105)) : Math.min(86, Math.max(40, Math.min(W * 0.056, H * 0.095))));

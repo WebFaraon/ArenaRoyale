@@ -5,12 +5,12 @@
 // ============================================
 (function () {
     'use strict';
-    const GUNS = ['pistol', 'smg', 'assault', 'sniper', 'shotgun', 'burst'];
+    let GUNS = []; // weapons.json order, filled when it loads
     const WORLD_C = 1300;          // the view is centred in the middle of the arena, on the turf
     const GRID_DX = 300, GRID_DY = 330;
 
     const st = {
-        skin: 'rookie', weapon: 'pistol', angle: 0, auto: false, zoom: 3, view: 'one',
+        skin: 'rookie', weapon: null, angle: 0, auto: false, zoom: 3, view: 'one',
         hitbox: true, muzzle: true, hands: true, frame: false, labels: false,
     };
     const entries = {};
@@ -18,15 +18,18 @@
     const fxBy = {}, pending = [], bullets = [];
     let nextAuto = 0;
     const fxFor = id => fxBy[id] || (fxBy[id] = _newShotFx());
-    // one trigger pull of gun `wid` at (x, y), aiming at `angle` (0 = down); bursts fire 3 times
+    // bullets per trigger pull and the time until the next pull (as the match: the whole burst, then shootCd)
+    const shotsPerPull = w => (w.fireMode === 'burst' ? w.burstCount : 1);
+    const pullCycleMs = w => (w.shootCd + (shotsPerPull(w) - 1) * w.burstDelay) * 1000;
+    // one trigger pull of gun `wid` at (x, y), aiming at `angle` (0 = down)
     function pull(wid, x, y, angle, now) {
-        const w = _WEAPON_DATA[wid] || _WEAPON_DATA.pistol;
-        for (let i = 0; i < (w.burst || 1); i++) pending.push({ at: now + i * (w.burstDelay || 0.08) * 1000, wid, x, y, angle });
+        const w = _WEAPON_DATA[wid];
+        for (let i = 0; i < shotsPerPull(w); i++) pending.push({ at: now + i * w.burstDelay * 1000, wid, x, y, angle });
     }
     function shoot(s, now) {
-        const w = _WEAPON_DATA[s.wid] || _WEAPON_DATA.pistol, gun = WEAPON_ART.byId[s.wid];
+        const w = _WEAPON_DATA[s.wid], gun = WEAPON_ART.byId[s.wid];
         const dx = -Math.sin(s.angle), dy = Math.cos(s.angle);
-        const n = w.pellets || 1, spread = w.spread || 0;
+        const n = w.pellets, spread = w.spread;
         for (let i = 0; i < n; i++) {
             const a = n === 1 ? 0 : -spread / 2 + i * spread / (n - 1), c = Math.cos(a), sn = Math.sin(a);
             bullets.push({ wid: s.wid, x: s.x + dx * gun.muzzleDist, y: s.y + dy * gun.muzzleDist,
@@ -186,11 +189,11 @@
         const angNow = st.angle * Math.PI / 180;
         const guns = grid ? GUNS : (st.weapon === 'none' ? [] : [st.weapon]);
         // trigger: the button, or the gun's cadence while "trage continuu" is on
-        const autoCd = guns.length ? Math.max(...guns.map(g => { const w = _WEAPON_DATA[g]; return (w.shootCd + ((w.burst || 1) - 1) * (w.burstDelay || 0.08)) * 1000; })) : 0;
+        const autoCd = guns.length ? Math.max(...guns.map(g => pullCycleMs(_WEAPON_DATA[g]))) : 0;
         if (st.fireReq || (st.autoFire && now >= nextAuto && guns.length)) {
             guns.forEach((g, i) => { const p = where(i); pull(g, p[0], p[1], angNow, now); });
             st.fireReq = false;
-            nextAuto = now + (grid ? autoCd : (_WEAPON_DATA[guns[0]] ? (_WEAPON_DATA[guns[0]].shootCd + ((_WEAPON_DATA[guns[0]].burst || 1) - 1) * (_WEAPON_DATA[guns[0]].burstDelay || 0.08)) * 1000 : 500));
+            nextAuto = now + autoCd;
         }
         for (let i = pending.length - 1; i >= 0; i--) if (pending[i].at <= now) { shoot(pending[i], now); pending.splice(i, 1); }
         // bullets with their trails, under the players as in the match
@@ -228,6 +231,8 @@
     }
 
     Promise.all([SKINS_READY, WEAPONS_ART_READY]).then(() => {
+        GUNS = WEAPONS.map(w => w.id);
+        st.weapon = DEFAULT_WEAPON;
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
         else build();
     });

@@ -422,46 +422,35 @@ async function broadcastLeaderboard() {
 const ARENA_W          = 2600;
 const ARENA_H          = 2600;
 const TICK_RATE        = 60;
-const BULLET_SPEED     = 1000;
-const BULLET_RADIUS    = 6;
-const BULLET_LIFE      = 0.60; // default (Pistol)
-const AIM_DELAY        = 0.3;
-const SHOOT_CD         = 0.25;
-const AMMO_MAX          = 10;
-const AMMO_RELOAD_DELAY = 0.5;
-const AMMO_RELOAD_RATE  = AMMO_MAX / 5.0;
 
-// Statistici per tip de arma
-const WEAPON_STATS = {
-    pistol:  { bulletLife: 0.38, bulletSpeed: 1000, shootCd: 0.50, ammoMax:  8, reloadRate:  8/4.0 },
-    assault: { bulletLife: 0.50, bulletSpeed: 1100, shootCd: 0.25, ammoMax: 10, reloadRate: 10/5.0 },
-    sniper:  { bulletLife: 0.50, bulletSpeed: 1500, shootCd: 1.00, ammoMax:  3, reloadRate:  1/3.0 },
-    shotgun: { bulletLife: 0.244, bulletSpeed:  900, shootCd: 0.85, ammoMax:  6, reloadRate:  1/2.0, pellets: 5, spread: 0.85 },
-    burst:   { bulletLife: 0.518, bulletSpeed: 1100, shootCd: 0.60, ammoMax:  3, reloadRate:  1/2.0, burst: 3, burstDelay: 0.10 },
-    smg:     { bulletLife: 0.50, bulletSpeed: 1000, shootCd: 0.12, ammoMax: 20, reloadRate: 20/4.0 },
-};
-// Where each gun's bullets start and how long they live (public/data/weapons.json "muzzle",
-// public/combat-shared.js): the same numbers the client predicts with. The range from the player
-// centre stays what it was when bullets started 25 units out.
-const WEAPON_ART = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'data', 'weapons.json'), 'utf8')).weapons;
+// ---------- WEAPONS ----------
+// One source for every gun: public/data/weapons.json (stats, fire mode, loadout, art; the client loads
+// the same file). The server refuses to start when the file has a problem (ARShared.checkWeapons).
+const WEAPON_DATA = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'data', 'weapons.json'), 'utf8'));
+{
+    const errs = ARShared.checkWeapons(WEAPON_DATA);
+    if (errs.length) throw new Error('public/data/weapons.json: ' + errs.join('; '));
+}
+const WEAPON_RULES   = WEAPON_DATA.rules; // aimDelay, reloadDelay, bulletRadius: the same for every gun
+const DEFAULT_WEAPON = WEAPON_DATA.defaultWeapon;
+// id -> how the gun fires (fireMode, bulletSpeed, bulletLife, shootCd, ammoMax, reloadRate, pellets, spread, burstCount, burstDelay)
+const WEAPON_STATS   = {};
+// id -> loadout base values and growth per point (HP/DMG/SPD)
+const WEAPON_LOADOUT = {};
+for (const [id, w] of Object.entries(WEAPON_DATA.weapons)) {
+    WEAPON_STATS[id]   = ARShared.weaponStats(w);
+    WEAPON_LOADOUT[id] = w.loadout;
+}
+// Where each gun's bullets start and how long they live (weapons.json "muzzle", public/combat-shared.js):
+// the same numbers the client predicts with. The range from the player centre stays what it was when
+// bullets started 25 units out.
 const SERVER_DT = Math.round(1000 / TICK_RATE) / 1000; // = INTERVAL_MS / 1000 in startRoomLoop
 if (Math.abs(SERVER_DT - ARShared.TICK_S) > 1e-9) console.warn('[Weapons] tick differs from combat-shared TICK_S; client bullet lifetimes will drift');
 const GUN_FIRE = {};
 for (const [id, ws] of Object.entries(WEAPON_STATS)) {
-    const art = WEAPON_ART[id];
-    if (!art) throw new Error('public/data/weapons.json has no "' + id + '"');
-    const muzzle = ARShared.muzzleDistance(art);
+    const muzzle = ARShared.muzzleDistance(WEAPON_DATA.weapons[id]);
     GUN_FIRE[id] = { muzzle, life: ARShared.bulletLife(ws.bulletLife, ws.bulletSpeed, muzzle, SERVER_DT) };
 }
-// Valorile de baza ale loadout-ului per arma (HP/DMG/SPD minim + crestere per punct)
-const WEAPON_LOADOUT = {
-    pistol:  { baseHp: 350, baseDmg: 25, baseSpd: 2.0, hpPer: 40, dmgPer: 3, spdPer: 0.2 },
-    assault: { baseHp: 350, baseDmg: 10, baseSpd: 2.0, hpPer: 40, dmgPer: 2, spdPer: 0.2 },
-    sniper:  { baseHp: 250, baseDmg: 50, baseSpd: 1.7, hpPer: 30, dmgPer: 5, spdPer: 0.2 },
-    shotgun: { baseHp: 400, baseDmg: 13, baseSpd: 1.9, hpPer: 40, dmgPer: 2, spdPer: 0.2 },
-    burst:   { baseHp: 350, baseDmg: 18, baseSpd: 2.0, hpPer: 40, dmgPer: 2, spdPer: 0.2 },
-    smg:     { baseHp: 350, baseDmg:  7, baseSpd: 2.1, hpPer: 40, dmgPer: 1, spdPer: 0.2 },
-};
 const PLAYER_SIZE      = 60;
 const ZONE_INITIAL_R   = 1650;
 const ZONE_WAIT        = 30;
@@ -896,10 +885,9 @@ function addPlayer(code, room, socket, data) {
     const total = hp + dmg + spd;
     const scale = total > 10 ? 10 / total : 1;
 
-    const _allowedWeapons = ['pistol','assault','sniper','shotgun','burst','smg'];
-    const weapon = _allowedWeapons.includes(data.weapon) ? data.weapon : 'pistol';
-    const _wl = WEAPON_LOADOUT[weapon] || WEAPON_LOADOUT.pistol;
-    const _ws = WEAPON_STATS[weapon]   || WEAPON_STATS.pistol;
+    const weapon = typeof data.weapon === 'string' && Object.hasOwn(WEAPON_STATS, data.weapon) ? data.weapon : DEFAULT_WEAPON;
+    const _wl = WEAPON_LOADOUT[weapon];
+    const _ws = WEAPON_STATS[weapon];
 
     const maxHp  = _wl.baseHp  + Math.round(hp  * scale) * _wl.hpPer;
     const damage = _wl.baseDmg + Math.round(dmg * scale) * _wl.dmgPer;
@@ -932,7 +920,7 @@ function addPlayer(code, room, socket, data) {
 
     io.to(code).emit('player-image', { id: socket.id, skin, weapon });
     Object.values(room.players).forEach(p => {
-        if (p.id !== socket.id) socket.emit('player-image', { id: p.id, skin: p.skin, weapon: p.weapon || 'pistol' });
+        if (p.id !== socket.id) socket.emit('player-image', { id: p.id, skin: p.skin, weapon: p.weapon || DEFAULT_WEAPON });
     });
 }
 
@@ -1020,12 +1008,12 @@ function startRoomLoop(code, room) {
                 if (player.aimTimer > 0) player.aimTimer -= dt;
 
                 // Reload progresiv per-weapon
-                const _pAmmoMax = player.ammoMax || AMMO_MAX;
+                const _pAmmoMax = player.ammoMax;
                 if (player.ammo < _pAmmoMax && (!player.shooting || player.ammo === 0)) {
                     const idleSec = (now - player.lastShotTime) / 1000;
-                    if (idleSec >= AMMO_RELOAD_DELAY) {
+                    if (idleSec >= WEAPON_RULES.reloadDelay) {
                         player.reloading = true;
-                        player.reloadProgress += (player.weaponReloadRate || AMMO_RELOAD_RATE) * dt;
+                        player.reloadProgress += player.weaponReloadRate * dt;
                         while (player.reloadProgress >= 1.0 && player.ammo < _pAmmoMax) {
                             player.reloadProgress -= 1.0;
                             player.ammo++;
@@ -1045,26 +1033,26 @@ function startRoomLoop(code, room) {
                 if (player.burstRemaining > 0) {
                     player.burstTimer -= dt;
                     if (player.burstTimer <= 0) {
-                        const _bwsCur = WEAPON_STATS[player.weapon] || WEAPON_STATS.pistol;
-                        const _bfire  = GUN_FIRE[player.weapon] || GUN_FIRE.pistol;
+                        const _bwsCur = WEAPON_STATS[player.weapon] || WEAPON_STATS[DEFAULT_WEAPON];
+                        const _bfire  = GUN_FIRE[player.weapon] || GUN_FIRE[DEFAULT_WEAPON];
                         // from the muzzle where the player is now; the hit test starts at the centre (sx, sy)
                         room.bullets.push({
                             id: room.nextBulletId++, ownerId: player.id,
                             x: player.x + player.burstDx * _bfire.muzzle, y: player.y + player.burstDy * _bfire.muzzle,
                             sx: player.x, sy: player.y,
-                            dx: player.burstDx * (player.bulletSpeed || BULLET_SPEED),
-                            dy: player.burstDy * (player.bulletSpeed || BULLET_SPEED),
-                            damage: player.damage, radius: BULLET_RADIUS,
-                            lifetime: _bfire.life, speed: player.bulletSpeed || BULLET_SPEED
+                            dx: player.burstDx * player.bulletSpeed,
+                            dy: player.burstDy * player.bulletSpeed,
+                            damage: player.damage, radius: WEAPON_RULES.bulletRadius,
+                            lifetime: _bfire.life, speed: player.bulletSpeed
                         });
                         player.burstRemaining--;
                         if (player.burstRemaining > 0) {
-                            player.burstTimer += _bwsCur.burstDelay || 0.08; // keep the sub-tick remainder
+                            player.burstTimer += _bwsCur.burstDelay; // keep the sub-tick remainder
                         } else {
                             player.burstRemaining = 0;
                             player.shootCooldown = _bwsCur.shootCd + Math.min(0, player.burstTimer);
                             player.lastShotTime  = now;
-                            if (_bwsCur.semiAuto) { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
+                            if (_bwsCur.fireMode === 'semi') { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
                             if (player.ammo === 0) { player.shooting = false; player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
                         }
                     }
@@ -1075,13 +1063,13 @@ function startRoomLoop(code, room) {
                     const dl = Math.hypot(player.shootDir.x || 0, player.shootDir.y || 0);
                     if (dl >= 0.1) {
                         const dx = player.shootDir.x / dl, dy = player.shootDir.y / dl;
-                        const _bspd = player.bulletSpeed || BULLET_SPEED;
-                        const _wsCur = WEAPON_STATS[player.weapon] || WEAPON_STATS.pistol;
-                        const _fire  = GUN_FIRE[player.weapon] || GUN_FIRE.pistol;
+                        const _bspd = player.bulletSpeed;
+                        const _wsCur = WEAPON_STATS[player.weapon] || WEAPON_STATS[DEFAULT_WEAPON];
+                        const _fire  = GUN_FIRE[player.weapon] || GUN_FIRE[DEFAULT_WEAPON];
                         const _blife = _fire.life;
                         const _mx = player.x + dx * _fire.muzzle, _my = player.y + dy * _fire.muzzle;
-                        const _pellets = _wsCur.pellets || 1;
-                        const _spread = _wsCur.spread || 0;
+                        const _pellets = _wsCur.pellets;
+                        const _spread = _wsCur.spread;
                         for (let _pi = 0; _pi < _pellets; _pi++) {
                             const _ang = _pellets === 1 ? 0 : -_spread / 2 + _pi * _spread / (_pellets - 1);
                             const _cos = Math.cos(_ang), _sin = Math.sin(_ang);
@@ -1091,23 +1079,23 @@ function startRoomLoop(code, room) {
                                 id: room.nextBulletId++, ownerId: player.id,
                                 x: _mx, y: _my, sx: player.x, sy: player.y,
                                 dx: _pdx * _bspd, dy: _pdy * _bspd,
-                                damage: player.damage, radius: BULLET_RADIUS, lifetime: _blife,
+                                damage: player.damage, radius: WEAPON_RULES.bulletRadius, lifetime: _blife,
                                 speed: _bspd
                             });
                         }
                         player.ammo--;
                         player.reloading = false;
                         player.lastShotTime = now;
-                        if (_wsCur.burst && _wsCur.burst > 1) {
-                            player.burstRemaining = _wsCur.burst - 1;
-                            player.burstTimer     = (_wsCur.burstDelay || 0.08) + Math.min(0, player.shootCooldown);
+                        if (_wsCur.fireMode === 'burst') {
+                            player.burstRemaining = _wsCur.burstCount - 1;
+                            player.burstTimer     = _wsCur.burstDelay + Math.min(0, player.shootCooldown);
                             player.burstDx = dx; player.burstDy = dy;
                         } else {
                             // += keeps the part of a tick the timer overshot (it is <= 0 here), so the
                             // average rate is exactly shootCd instead of being rounded up to whole
                             // 17 ms ticks (SMG fired every 136 ms instead of 120).
                             player.shootCooldown = Math.min(0, player.shootCooldown) + _wsCur.shootCd;
-                            if (_wsCur.semiAuto) { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
+                            if (_wsCur.fireMode === 'semi') { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
                             if (player.ammo === 0) { player.shooting = false; player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
                         }
                     }
@@ -1437,7 +1425,7 @@ function startRoomLoop(code, room) {
                     if (zombie.hp <= 0) {
                         zombie.hp = 0; zombie.alive = false;
                         if (_zOwner && _zOwner.rs) {
-                            const rs = _zOwner.rs, w = _zOwner.weapon || 'pistol';
+                            const rs = _zOwner.rs, w = _zOwner.weapon || DEFAULT_WEAPON;
                             rs.zKills++;
                             if (room.mode === 'pve') { rs.pveKills++; rs.wk[w] = (rs.wk[w] || 0) + 1; rs.pwk[w] = (rs.pwk[w] || 0) + 1; }
                         }
@@ -1519,10 +1507,10 @@ function startRoomLoop(code, room) {
             }
             _bScratch.length = 0;
             for (const b of room.bullets) {
-                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), _r3(b.dx / BULLET_SPEED), _r3(b.dy / BULLET_SPEED), b.ownerId]);
+                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), _r3(b.dx / ARShared.NET_BULLET_SPEED), _r3(b.dy / ARShared.NET_BULLET_SPEED), b.ownerId]);
             }
             for (const b of _expiredBullets) {
-                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), _r3(b.dx / BULLET_SPEED), _r3(b.dy / BULLET_SPEED), b.ownerId]);
+                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), _r3(b.dx / ARShared.NET_BULLET_SPEED), _r3(b.dy / ARShared.NET_BULLET_SPEED), b.ownerId]);
             }
             _zScratch.length = 0;
             for (const z of room.zombies) {
@@ -1534,7 +1522,7 @@ function startRoomLoop(code, room) {
             }
             _privScratch.length = 0;
             for (const p of allPlayers) {
-                _privScratch.push(p.id, p.ammo, p.ammoMax || AMMO_MAX, p.reloading ? 1 : 0, _r3(Math.min(1, p.reloadProgress || 0)), p.lastAckSeq, p.coins || 0);
+                _privScratch.push(p.id, p.ammo, p.ammoMax, p.reloading ? 1 : 0, _r3(Math.min(1, p.reloadProgress || 0)), p.lastAckSeq, p.coins || 0);
             }
             const zoneArr = [Math.round(zone.cx), Math.round(zone.cy), Math.round(zone.r), _r1(zone.waitTimer)];
             const pveArr  = room.mode === 'pve' && room.base
@@ -1573,7 +1561,7 @@ function eliminatePlayer(code, room, player, killerId) {
     if (killerPlayer) {
         killerPlayer.kills++;
         if (killerPlayer.rs && room.mode === 'br') {
-            const rs = killerPlayer.rs, w = killerPlayer.weapon || 'pistol';
+            const rs = killerPlayer.rs, w = killerPlayer.weapon || DEFAULT_WEAPON;
             rs.brKills++; rs.wk[w] = (rs.wk[w] || 0) + 1; rs.bwk[w] = (rs.bwk[w] || 0) + 1;
         }
     }
@@ -1657,7 +1645,7 @@ function triggerRematch(code, room) {
         p.lastDamageTime = 0; p.lastAckSeq = 0; p.pendingAckSeq = 0;
     });
     const rematchMeta = {};
-    room._playerArr.forEach(p => { rematchMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || 'pistol' }; });
+    room._playerArr.forEach(p => { rematchMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON }; });
     Object.keys(room.players).forEach(pid => {
         io.to(pid).emit('game-rematch', { isHost: room.hostId === pid, playersMeta: rematchMeta });
     });
@@ -1778,14 +1766,14 @@ io.on('connection', (socket) => {
             room.zombies = generateZombies(room.obstacles, room._playerArr);
         }
         room._playerArr.forEach(p => {
-            p.ammo = p.ammoMax || AMMO_MAX; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
+            p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
             p.shooting = false; p.shootCooldown = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
             p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
             p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0;
         });
 
         const playersMeta = {};
-        room._playerArr.forEach(p => { playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || 'pistol' }; });
+        room._playerArr.forEach(p => { playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON }; });
         io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles, mode: room.mode });
         console.log(`[${code}] Joc pornit cu ${room._playerArr.length} jucatori (${room.mode})`);
 
@@ -1816,7 +1804,7 @@ io.on('connection', (socket) => {
                 p.hasReleasedSinceEmpty = false;
             }
             p.shooting = p.needsReleaseToShoot ? false : !!data.shooting;
-            if (p.shooting && !_wasShooting) p.aimTimer = AIM_DELAY;
+            if (p.shooting && !_wasShooting) p.aimTimer = WEAPON_RULES.aimDelay;
             if (!p.shooting) p.aimTimer = 0;
             if (data.shooting && data.sdx !== undefined) {
                 p.shootDir.x = +data.sdx || 0;

@@ -1,166 +1,147 @@
 {
- "units": "unitati-lume; corpul are raza 36; directia de tintire 0 = in jos; originea = centrul corpului",
- "sprite": {
-  "topLeft": [
-   -40,
-   6
+  "units": "unitati-lume; corpul are raza 36; directia de tintire 0 = in jos; originea = centrul corpului",
+  "defaultWeapon": "pistol",
+  "rules": {
+    "aimDelay": 0.3,
+    "reloadDelay": 0.5,
+    "bulletRadius": 6
+  },
+  "classes": [
+    {"id": "pistol", "name": "Pistol"},
+    {"id": "smg", "name": "SMG"},
+    {"id": "assault", "name": "Assault"},
+    {"id": "shotgun", "name": "Shotgun"},
+    {"id": "sniper", "name": "Sniper"}
   ],
-  "size": [
-   80,
-   144
-  ],
-  "pixelsPerUnit": 4
- },
- "weapons": {
-  "pistol": {
-   "type": "gun",
-   "name": "Pistol",
-   "sprite": "/images/weapons/pistol.png",
-   "hands": [
-    [
-     -9,
-     38
-    ],
-    [
-     9,
-     41
-    ]
-   ],
-   "muzzle": [
-    0,
-    72
-   ],
-   "recoil": 4,
-   "flash": {
-    "length": 14,
-    "width": 7
-   },
-   "accent": "#FFC53D"
+  "sprite": {
+    "topLeft": [-40, 6],
+    "size": [80, 144],
+    "pixelsPerUnit": 4
   },
-  "smg": {
-   "type": "gun",
-   "name": "SMG",
-   "sprite": "/images/weapons/smg.png",
-   "hands": [
-    [
-     -12,
-     36
-    ],
-    [
-     12,
-     62
-    ]
-   ],
-   "muzzle": [
-    0,
-    84
-   ],
-   "recoil": 2.5,
-   "flash": {
-    "length": 14,
-    "width": 7
-   },
-   "accent": "#8BD62A"
-  },
-  "assault": {
-   "type": "gun",
-   "name": "Assault",
-   "sprite": "/images/weapons/assault.png",
-   "hands": [
-    [
-     -12,
-     38
-    ],
-    [
-     13.5,
-     68
-    ]
-   ],
-   "muzzle": [
-    0,
-    104
-   ],
-   "recoil": 3,
-   "flash": {
-    "length": 18,
-    "width": 8
-   },
-   "accent": "#FF7A1A"
-  },
-  "sniper": {
-   "type": "gun",
-   "name": "Sniper",
-   "sprite": "/images/weapons/sniper.png",
-   "hands": [
-    [
-     -12,
-     39
-    ],
-    [
-     10.5,
-     72
-    ]
-   ],
-   "muzzle": [
-    0,
-    126
-   ],
-   "recoil": 7,
-   "flash": {
-    "length": 28,
-    "width": 9
-   },
-   "accent": "#35C8FF"
-  },
-  "shotgun": {
-   "type": "gun",
-   "name": "Shotgun",
-   "sprite": "/images/weapons/shotgun.png",
-   "hands": [
-    [
-     -12,
-     38
-    ],
-    [
-     15,
-     64
-    ]
-   ],
-   "muzzle": [
-    0,
-    106
-   ],
-   "recoil": 8,
-   "flash": {
-    "length": 24,
-    "width": 15
-   },
-   "accent": "#E5384B"
-  },
-  "burst": {
-   "type": "gun",
-   "name": "Burst",
-   "sprite": "/images/weapons/burst.png",
-   "hands": [
-    [
-     -12,
-     38
-    ],
-    [
-     12,
-     66
-    ]
-   ],
-   "muzzle": [
-    0,
-    96
-   ],
-   "recoil": 3,
-   "flash": {
-    "length": 16,
-    "width": 7.5
-   },
-   "accent": "#8A4BE0"
+  "weapons": {
+    "pistol": {
+      "type": "gun",
+      "name": "Pistol",
+      "class": "pistol",
+      "fireMode": "auto",
+      "fireModeLabel": "Automat",
+      "desc": "Echilibrat, versatil",
+      "bulletSpeed": 1000,
+      "bulletLife": 0.38,
+      "shootCd": 0.5,
+      "ammoMax": 8,
+      "reload": {"rounds": 8, "seconds": 4},
+      "loadout": {"baseHp": 350, "baseDmg": 25, "baseSpd": 2, "hpPer": 40, "dmgPer": 3, "spdPer": 0.2},
+      "sprite": "/images/weapons/pistol.png",
+      "hands": [[-9, 38], [9, 41]],
+      "muzzle": [0, 72],
+      "recoil": 4,
+      "flash": {"length": 14, "width": 7},
+      "accent": "#FFC53D"
+    },
+    "smg": {
+      "type": "gun",
+      "name": "SMG",
+      "class": "smg",
+      "fireMode": "auto",
+      "fireModeLabel": "Automat",
+      "desc": "Ultra rapid, damage mic",
+      "bulletSpeed": 1000,
+      "bulletLife": 0.5,
+      "shootCd": 0.12,
+      "ammoMax": 20,
+      "reload": {"rounds": 20, "seconds": 4},
+      "loadout": {"baseHp": 350, "baseDmg": 7, "baseSpd": 2.1, "hpPer": 40, "dmgPer": 1, "spdPer": 0.2},
+      "sprite": "/images/weapons/smg.png",
+      "hands": [[-12, 36], [12, 62]],
+      "muzzle": [0, 84],
+      "recoil": 2.5,
+      "flash": {"length": 14, "width": 7},
+      "accent": "#8BD62A"
+    },
+    "assault": {
+      "type": "gun",
+      "name": "Assault",
+      "class": "assault",
+      "fireMode": "auto",
+      "fireModeLabel": "Automat",
+      "desc": "Rata mare de tragere",
+      "bulletSpeed": 1100,
+      "bulletLife": 0.5,
+      "shootCd": 0.25,
+      "ammoMax": 10,
+      "reload": {"rounds": 10, "seconds": 5},
+      "loadout": {"baseHp": 350, "baseDmg": 10, "baseSpd": 2, "hpPer": 40, "dmgPer": 2, "spdPer": 0.2},
+      "sprite": "/images/weapons/assault.png",
+      "hands": [[-12, 38], [13.5, 68]],
+      "muzzle": [0, 104],
+      "recoil": 3,
+      "flash": {"length": 18, "width": 8},
+      "accent": "#FF7A1A"
+    },
+    "sniper": {
+      "type": "gun",
+      "name": "Sniper",
+      "class": "sniper",
+      "fireMode": "auto",
+      "fireModeLabel": "Automat",
+      "desc": "Precis, letal la distanta",
+      "bulletSpeed": 1500,
+      "bulletLife": 0.5,
+      "shootCd": 1,
+      "ammoMax": 3,
+      "reload": {"rounds": 1, "seconds": 3},
+      "loadout": {"baseHp": 250, "baseDmg": 50, "baseSpd": 1.7, "hpPer": 30, "dmgPer": 5, "spdPer": 0.2},
+      "cameraZoom": 1.15,
+      "sprite": "/images/weapons/sniper.png",
+      "hands": [[-12, 39], [10.5, 72]],
+      "muzzle": [0, 126],
+      "recoil": 7,
+      "flash": {"length": 28, "width": 9},
+      "accent": "#35C8FF"
+    },
+    "shotgun": {
+      "type": "gun",
+      "name": "Shotgun",
+      "class": "shotgun",
+      "fireMode": "auto",
+      "fireModeLabel": "Automat",
+      "desc": "Devastator de aproape",
+      "bulletSpeed": 900,
+      "bulletLife": 0.244,
+      "shootCd": 0.85,
+      "pellets": 5,
+      "spread": 0.85,
+      "ammoMax": 6,
+      "reload": {"rounds": 1, "seconds": 2},
+      "loadout": {"baseHp": 400, "baseDmg": 13, "baseSpd": 1.9, "hpPer": 40, "dmgPer": 2, "spdPer": 0.2},
+      "sprite": "/images/weapons/shotgun.png",
+      "hands": [[-12, 38], [15, 64]],
+      "muzzle": [0, 106],
+      "recoil": 8,
+      "flash": {"length": 24, "width": 15},
+      "accent": "#E5384B"
+    },
+    "burst": {
+      "type": "gun",
+      "name": "Burst",
+      "class": "assault",
+      "fireMode": "burst",
+      "fireModeLabel": "Rafala de 3",
+      "burst": {"count": 3, "delay": 0.1},
+      "desc": "Rafala de 3 gloante",
+      "bulletSpeed": 1100,
+      "bulletLife": 0.518,
+      "shootCd": 0.6,
+      "ammoMax": 3,
+      "reload": {"rounds": 1, "seconds": 2},
+      "loadout": {"baseHp": 350, "baseDmg": 18, "baseSpd": 2, "hpPer": 40, "dmgPer": 2, "spdPer": 0.2},
+      "sprite": "/images/weapons/burst.png",
+      "hands": [[-12, 38], [12, 66]],
+      "muzzle": [0, 96],
+      "recoil": 3,
+      "flash": {"length": 16, "width": 7.5},
+      "accent": "#8A4BE0"
+    }
   }
- }
 }
