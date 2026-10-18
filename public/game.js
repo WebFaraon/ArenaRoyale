@@ -327,6 +327,7 @@ let selectedWeapon = localStorage.getItem('selectedWeapon'); // checked once wea
 
 function _applyWeaponUI() {
     const w = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON];
+    if (!w) return; // weapons.json not in yet
     const icon  = document.getElementById('weapon-preview-icon');
     const nameEl = document.getElementById('weapon-name-display');
     const titleEl = document.getElementById('loadout-title');
@@ -375,8 +376,8 @@ function selectWeapon(id) {
     closeWeaponSelect();
 }
 
-// Initializeaza weapon UI la incarcare
-document.addEventListener('DOMContentLoaded', () => setTimeout(_applyWeaponUI, 50));
+// Initializeaza weapon UI la incarcare, once weapons.json is in (it arrives after DOMContentLoaded)
+document.addEventListener('DOMContentLoaded', () => WEAPONS_ART_READY.then(_applyWeaponUI));
 // ─────────────────────────────────────────────────────────────────────────────
 
 function openCharacterShop() {
@@ -3406,6 +3407,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         currentProfile.coins        = data.coins        ?? 1000;
         currentProfile.diamonds     = data.diamonds     || 0;
         if (data.missions) currentProfile.missions = data.missions;
+        // totals per weapon after this match (server.js WEAPON STATS); no UI yet, see ?dev=weapons
+        if (data.weaponStats) currentProfile.weapon_stats = data.weaponStats;
     });
 
     // ---------- RESET PENTRU REMATCH ----------

@@ -184,7 +184,7 @@ app.post('/api/auth/login', async (req, res) => {
         sessionTokens.set(nickname, token);
         if (!ownedSkins.has(nickname)) ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
         const skin = skinFromAvatar(memAvatars.get(nickname), nickname);
-        return res.json({ ok: true, token, player: { nickname, avatar: skin, skin, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname) } });
+        return res.json({ ok: true, token, player: { nickname, avatar: skin, skin, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname), weapon_stats: sanitizeWeaponStats(weaponStatsMem.get(nickname)) } });
     }
 
     try {
@@ -226,7 +226,9 @@ app.post('/api/auth/login', async (req, res) => {
             xp:       existing.xp       || 0,
             coins:    existing.coins    ?? 1000,
             diamonds: existing.diamonds || 0,
-            missions
+            missions,
+            // totals per weapon ('weapon_stats' is not in the row until the migration ran)
+            weapon_stats: sanitizeWeaponStats('weapon_stats' in existing ? existing.weapon_stats : weaponStatsMem.get(existing.nickname)),
         }});
     } catch (err) {
         console.error('[Auth/Login] Error:', err);
@@ -339,6 +341,14 @@ app.post('/api/profile/avatar', async (req, res) => {
     }
 });
 
+// Totals per weapon for one account (public, like the leaderboard)
+app.get('/api/weapon-stats', async (req, res) => {
+    const nickname = String(req.query.nickname || '');
+    if (!/^[a-zA-Z0-9_]{3,15}$/.test(nickname)) return res.json({ ok: false, error: 'nickname' });
+    try { res.json({ ok: true, nickname, weaponStats: await loadWeaponStats(nickname) }); }
+    catch (err) { console.error('[WeaponStats] read error:', err.message || err); res.json({ ok: false }); }
+});
+
 app.post('/api/profile/stats', async (req, res) => {
     const { nickname, password, stat_hp, stat_dmg, stat_spd } = req.body || {};
     if (!nickname || !password || !supabase) return res.json({ ok: false });
@@ -398,10 +408,116 @@ app.get('/api/leaderboard', async (req, res) => {
     } catch { res.json([]); }
 });
 
+// ---------- WEAPON STATS ----------
+// Per player and weapon: kills (players), zombieKills, damage (dealt, to players and zombies), shots (bullets
+// fired: a shotgun blast is 5) and hits (bullets that hit a player or a zombie). A bullet carries the id of
+// the weapon that fired it and that weapon gets the credit, whatever the shooter holds when it lands.
+// Counted in memory during a match (player.ws); never written per event. When the player's match ends
+// (BR: eliminated or winner, PvE: end of the game) the counts are added to the account's totals in the same
+// write as the other round stats; what comes in after that (a bullet still in the air) or from a player
+// who leaves early is added on its own at the next flush point (game end, disconnect, rematch).
+// Totals: players.weapon_stats (jsonb, supabase-migration-weapon-stats.sql). Without that column, or
+// without Supabase, they are kept in memory (lost on restart) and the server says so once.
+const MELEE_WEAPON    = 'fists';  // the fist hit to come: counted like a gun when it exists
+const WS_FIELDS       = ['kills', 'zombieKills', 'damage', 'shots', 'hits'];
+const WS_MAX          = 2e9;     // keeps every value an exact integer
+const weaponStatsMem  = new Map(); // nickname -> totals, while the column / Supabase is missing
+let weaponStatsColumn = true;
+// Only known weapon ids, only whole non-negative numbers; anything else is dropped
+function sanitizeWeaponStats(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    for (const id of Object.keys(raw)) {
+        if (!STAT_WEAPON_IDS.has(id)) continue;
+        const r = raw[id];
+        if (!r || typeof r !== 'object') continue;
+        const e = {}; let any = false;
+        for (const f of WS_FIELDS) { const v = Math.round(Number(r[f])); e[f] = Number.isFinite(v) && v > 0 ? Math.min(v, WS_MAX) : 0; if (e[f]) any = true; }
+        if (any) out[id] = e;
+    }
+    return out;
+}
+function addWeaponStats(total, round) {
+    const out = sanitizeWeaponStats(total);
+    for (const [id, r] of Object.entries(sanitizeWeaponStats(round))) {
+        const e = out[id] || (out[id] = { kills: 0, zombieKills: 0, damage: 0, shots: 0, hits: 0 });
+        for (const f of WS_FIELDS) e[f] = Math.min(WS_MAX, e[f] + r[f]);
+    }
+    return out;
+}
+const hasWeaponStats = ws => Object.keys(sanitizeWeaponStats(ws)).length > 0;
+// The counters of one weapon for a player in the current match
+function wsFor(p, weaponId) {
+    const id = STAT_WEAPON_IDS.has(weaponId) ? weaponId : DEFAULT_WEAPON;
+    return p.ws[id] || (p.ws[id] = { kills: 0, zombieKills: 0, damage: 0, shots: 0, hits: 0 });
+}
+// Hands over what the player counted so far and starts again from zero (no count is ever written twice)
+function takeWeaponStats(p) { const ws = p.ws; p.ws = {}; return ws; }
+function _weaponStatsMissing(error) { return !!error && /weapon_stats/.test(error.message || ''); }
+function _noWeaponStatsColumn() {
+    if (!weaponStatsColumn) return;
+    weaponStatsColumn = false;
+    console.warn('[WeaponStats] Coloana players.weapon_stats lipseste: statisticile pe arme se pastreaza doar in memorie. Ruleaza supabase-migration-weapon-stats.sql in Supabase.');
+}
+async function loadWeaponStats(nickname) {
+    if (supabase && weaponStatsColumn) {
+        const { data, error } = await supabase.from('players').select('weapon_stats').eq('nickname', nickname).maybeSingle();
+        if (!error) return sanitizeWeaponStats(data && data.weapon_stats);
+        if (_weaponStatsMissing(error)) _noWeaponStatsColumn(); else throw error;
+    }
+    return sanitizeWeaponStats(weaponStatsMem.get(nickname));
+}
+// Writes for one account run one after the other, so two close together cannot overwrite each other
+const _statWrites = new Map();
+function serialStatWrite(nickname, fn) {
+    const run = (_statWrites.get(nickname) || Promise.resolve()).then(fn, fn);
+    const done = run.catch(() => {});
+    _statWrites.set(nickname, done);
+    done.then(() => { if (_statWrites.get(nickname) === done) _statWrites.delete(nickname); });
+    return run;
+}
+// Weapon counts on their own (left early, a late bullet, a rematch): one read, one write
+function addWeaponStatsOnly(nickname, roundWs) {
+    if (!hasWeaponStats(roundWs)) return Promise.resolve();
+    return serialStatWrite(nickname, async () => {
+        const total = addWeaponStats(await loadWeaponStats(nickname), roundWs);
+        if (supabase && weaponStatsColumn) {
+            const { error } = await supabase.from('players').update({ weapon_stats: total }).eq('nickname', nickname);
+            if (!error) return total;
+            if (_weaponStatsMissing(error)) _noWeaponStatsColumn(); else throw error;
+        }
+        weaponStatsMem.set(nickname, total);
+        return total;
+    }).catch(err => console.error('[WeaponStats] save error:', err.message || err));
+}
+// What a player still has counted goes to the totals (the DB work starts after the current tick)
+function flushWeaponStats(p) {
+    const ws = takeWeaponStats(p);
+    if (hasWeaponStats(ws)) setImmediate(() => addWeaponStatsOnly(p.name, ws));
+}
+// The end of a player's match: round stats, missions and weapon totals, in one write (after the tick)
+function endPlayerRound(p, isWinner, info) {
+    const ws = takeWeaponStats(p), id = p.id, name = p.name, kills = p.kills;
+    setImmediate(() => updatePlayerRoundEnd(id, name, kills, isWinner, { ...info, ws }));
+}
+// Weapon missions read the same counts: BR player kills and PvE zombie kills per weapon
+function missionWeaponKills(rs, ws, mode) {
+    rs.wk = {}; rs.bwk = {}; rs.pwk = {};
+    for (const [w, e] of Object.entries(sanitizeWeaponStats(ws))) {
+        if (mode === 'br' && e.kills) { rs.bwk[w] = e.kills; rs.wk[w] = e.kills; }
+        if (mode === 'pve' && e.zombieKills) { rs.pwk[w] = e.zombieKills; rs.wk[w] = (rs.wk[w] || 0) + e.zombieKills; }
+    }
+}
+
 // ---------- STAT HELPERS ----------
-// info: { mode: 'br' | 'pve', rs: per-round stats (missions.newRoundStats), wave: PvE wave reached }
-async function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner, info = {}) {
+// info: { mode: 'br' | 'pve', rs: per-round stats (missions.newRoundStats), wave: PvE wave reached,
+//         ws: the player's weapon counts for this match (see WEAPON STATS) }
+function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner, info = {}) {
+    return serialStatWrite(nickname, () => _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner, info));
+}
+async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner, info = {}) {
     const k = killsThisRound || 0;
+    if (info.rs) missionWeaponKills(info.rs, info.ws, info.mode || 'br');
     let missions;
     try {
         const ms = Missions.applyRound(await loadMissions(nickname), { mode: info.mode || 'br', rs: info.rs, wave: info.wave, isWinner });
@@ -418,12 +534,27 @@ async function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner
         earnedXP, earnedCoins, earnedDiamonds,
         xp: earnedXP, coins: 1000 + earnedCoins, diamonds: earnedDiamonds, missions
     };
-    if (!supabase) { io.to(socketId).emit('round-stats', basic); return; }
+    if (!supabase) {
+        basic.weaponStats = addWeaponStats(weaponStatsMem.get(nickname), info.ws);
+        weaponStatsMem.set(nickname, basic.weaponStats);
+        io.to(socketId).emit('round-stats', basic);
+        return;
+    }
     try {
-        const { data } = await supabase.from('players')
-            .select('kills_total, wins_total, games_played, xp, coins, diamonds')
+        const STAT_COLS = 'kills_total, wins_total, games_played, xp, coins, diamonds';
+        let { data, error } = await supabase.from('players')
+            .select(STAT_COLS + (weaponStatsColumn ? ', weapon_stats' : ''))
             .eq('nickname', nickname).maybeSingle();
-        if (!data) { io.to(socketId).emit('round-stats', basic); return; }
+        if (error && _weaponStatsMissing(error)) {
+            _noWeaponStatsColumn();
+            ({ data, error } = await supabase.from('players').select(STAT_COLS).eq('nickname', nickname).maybeSingle());
+        }
+        if (!data) {
+            if (hasWeaponStats(info.ws)) addWeaponStatsOnly(nickname, info.ws);
+            io.to(socketId).emit('round-stats', basic);
+            return;
+        }
+        const weaponTotals = addWeaponStats(weaponStatsColumn ? data.weapon_stats : weaponStatsMem.get(nickname), info.ws);
 
         const newKills    = (data.kills_total  || 0) + k;
         const newWins     = (data.wins_total   || 0) + (isWinner ? 1 : 0);
@@ -432,18 +563,27 @@ async function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner
         const newCoins    = (data.coins        ?? 1000) + earnedCoins;
         const newDiamonds = (data.diamonds     || 0) + earnedDiamonds;
 
-        await supabase.from('players').update({
+        const row = {
             kills_total:  newKills, wins_total: newWins, games_played: newGames,
             xp: newXP, coins: newCoins, diamonds: newDiamonds,
             updated_at: new Date().toISOString()
-        }).eq('nickname', nickname);
+        };
+        if (weaponStatsColumn) row.weapon_stats = weaponTotals;
+        let { error: upErr } = await supabase.from('players').update(row).eq('nickname', nickname);
+        if (upErr && _weaponStatsMissing(upErr)) {
+            _noWeaponStatsColumn();
+            delete row.weapon_stats;
+            ({ error: upErr } = await supabase.from('players').update(row).eq('nickname', nickname));
+        }
+        if (!weaponStatsColumn) weaponStatsMem.set(nickname, weaponTotals);
 
         io.to(socketId).emit('round-stats', {
             killsThisRound: k, killsTotal: newKills, winsTotal: newWins,
             gamesPlayed: newGames,
             killRate: newGames > 0 ? (newKills / newGames).toFixed(1) : '0.0',
             isWinner, earnedXP, earnedCoins, earnedDiamonds,
-            xp: newXP, coins: newCoins, diamonds: newDiamonds, missions
+            xp: newXP, coins: newCoins, diamonds: newDiamonds, missions,
+            weaponStats: weaponTotals
         });
         broadcastLeaderboard();
     } catch (err) {
@@ -499,6 +639,8 @@ for (const [id, ws] of Object.entries(WEAPON_STATS)) {
     const muzzle = ARShared.muzzleDistance(WEAPON_DATA.weapons[id]);
     GUN_FIRE[id] = { muzzle, life: ARShared.bulletLife(ws.bulletLife, ws.bulletSpeed, muzzle, SERVER_DT) };
 }
+// Weapon ids the weapon stats accept (WEAPON STATS): the guns in weapons.json and the fists
+const STAT_WEAPON_IDS = new Set([...Object.keys(WEAPON_STATS), MELEE_WEAPON]);
 const PLAYER_SIZE      = 60;
 const ZONE_INITIAL_R   = 1650;
 const ZONE_WAIT        = 30;
@@ -868,7 +1010,7 @@ function pveVictory(code, room) {
     room.gameEnded = true;
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
     io.to(code).emit('pve-end', { result: 'victory', wavesCleared: room.pveWave });
-    room._playerArr.forEach(p => updatePlayerRoundEnd(p.id, p.name, p.kills, true, { mode: 'pve', rs: p.rs, wave: room.pveWave }));
+    room._playerArr.forEach(p => endPlayerRound(p, true, { mode: 'pve', rs: p.rs, wave: room.pveWave }));
     setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
     console.log(`[${code}] PvE Victorie!`);
 }
@@ -878,7 +1020,7 @@ function pveDefeat(code, room) {
     room.gameEnded = true;
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
     io.to(code).emit('pve-end', { result: 'defeat', wavesCleared: room.pveWave > 0 ? room.pveWave - 1 : 0 });
-    room._playerArr.forEach(p => updatePlayerRoundEnd(p.id, p.name, p.kills, false, { mode: 'pve', rs: p.rs, wave: room.pveWave }));
+    room._playerArr.forEach(p => endPlayerRound(p, false, { mode: 'pve', rs: p.rs, wave: room.pveWave }));
     setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
     console.log(`[${code}] PvE Infrangere (baza distrusa la wave ${room.pveWave})`);
 }
@@ -954,7 +1096,8 @@ function addPlayer(code, room, socket, data) {
         moveDir:  { x: 0, y: 0 },
         shootDir: { x: 0, y: 0 },
         shooting: false, shootCooldown: 0, aimTimer: 0, needsReleaseToShoot: false, hasReleasedSinceEmpty: false,
-        burstRemaining: 0, burstTimer: 0, burstDx: 0, burstDy: 0, inputQ: [],
+        burstRemaining: 0, burstTimer: 0, burstDx: 0, burstDy: 0, burstWeapon: null, inputQ: [],
+        ws: {}, // weapon stats of this match (WEAPON STATS)
         ammo: _ws.ammoMax, ammoMax: _ws.ammoMax,
         reloading: false, reloadProgress: 0, lastShotTime: 0,
         weaponReloadRate: _ws.reloadRate, bulletSpeed: _ws.bulletSpeed,
@@ -1122,11 +1265,14 @@ function startRoomLoop(code, room) {
                 if (player.burstRemaining > 0) {
                     player.burstTimer -= dt;
                     if (player.burstTimer <= 0) {
-                        const _bwsCur = WEAPON_STATS[player.weapon] || WEAPON_STATS[DEFAULT_WEAPON];
-                        const _bfire  = GUN_FIRE[player.weapon] || GUN_FIRE[DEFAULT_WEAPON];
+                        // the rest of a burst belongs to the weapon that started it
+                        const _bw     = player.burstWeapon || player.weapon;
+                        const _bwsCur = WEAPON_STATS[_bw] || WEAPON_STATS[DEFAULT_WEAPON];
+                        const _bfire  = GUN_FIRE[_bw] || GUN_FIRE[DEFAULT_WEAPON];
+                        wsFor(player, _bw).shots++;
                         // from the muzzle where the player is now; the hit test starts at the centre (sx, sy)
                         room.bullets.push({
-                            id: room.nextBulletId++, ownerId: player.id,
+                            id: room.nextBulletId++, ownerId: player.id, weapon: _bw,
                             x: player.x + player.burstDx * _bfire.muzzle, y: player.y + player.burstDy * _bfire.muzzle,
                             sx: player.x, sy: player.y,
                             dx: player.burstDx * player.bulletSpeed,
@@ -1165,20 +1311,21 @@ function startRoomLoop(code, room) {
                             const _pdx = dx * _cos - dy * _sin;
                             const _pdy = dx * _sin + dy * _cos;
                             room.bullets.push({
-                                id: room.nextBulletId++, ownerId: player.id,
+                                id: room.nextBulletId++, ownerId: player.id, weapon: player.weapon,
                                 x: _mx, y: _my, sx: player.x, sy: player.y,
                                 dx: _pdx * _bspd, dy: _pdy * _bspd,
                                 damage: player.damage, radius: WEAPON_RULES.bulletRadius, lifetime: _blife,
                                 speed: _bspd
                             });
                         }
+                        wsFor(player, player.weapon).shots += _pellets; // every pellet is a shot
                         player.ammo--;
                         player.reloading = false;
                         player.lastShotTime = now;
                         if (_wsCur.fireMode === 'burst') {
                             player.burstRemaining = _wsCur.burstCount - 1;
                             player.burstTimer     = _wsCur.burstDelay + Math.min(0, player.shootCooldown);
-                            player.burstDx = dx; player.burstDy = dy;
+                            player.burstDx = dx; player.burstDy = dy; player.burstWeapon = player.weapon;
                         } else {
                             // += keeps the part of a tick the timer overshot (it is <= 0 here), so the
                             // average rate is exactly shootCd instead of being rounded up to whole
@@ -1517,13 +1664,15 @@ function startRoomLoop(code, room) {
                     zombie.hp -= b.damage;
                     const _zOwner = room.players[b.ownerId];
                     if (_zOwner && _zOwner.rs) _zOwner.rs.dmg += Math.min(b.damage, _zPrevHp);
+                    const _zws = _zOwner ? wsFor(_zOwner, b.weapon) : null;
+                    if (_zws) { _zws.hits++; _zws.damage += Math.min(b.damage, _zPrevHp); }
                     io.to(b.ownerId).emit('hit', { amount: Math.round(Math.min(b.damage, _zPrevHp)), x: zombie.x, y: zombie.y, bid: b.id });
                     if (zombie.hp <= 0) {
                         zombie.hp = 0; zombie.alive = false;
+                        if (_zws) _zws.zombieKills++; // weapon missions read this (missionWeaponKills)
                         if (_zOwner && _zOwner.rs) {
-                            const rs = _zOwner.rs, w = _zOwner.weapon || DEFAULT_WEAPON;
-                            rs.zKills++;
-                            if (room.mode === 'pve') { rs.pveKills++; rs.wk[w] = (rs.wk[w] || 0) + 1; rs.pwk[w] = (rs.pwk[w] || 0) + 1; }
+                            _zOwner.rs.zKills++;
+                            if (room.mode === 'pve') _zOwner.rs.pveKills++;
                         }
                         if (room.mode === 'pve') {
                             const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
@@ -1544,8 +1693,9 @@ function startRoomLoop(code, room) {
                     p.hp -= b.damage; p.lastDamageTime = now;
                     const _pOwner = room.players[b.ownerId];
                     if (_pOwner && _pOwner.rs) _pOwner.rs.dmg += Math.min(b.damage, _pPrevHp);
+                    if (_pOwner) { const _pws = wsFor(_pOwner, b.weapon); _pws.hits++; _pws.damage += Math.min(b.damage, _pPrevHp); }
                     io.to(b.ownerId).emit('hit', { amount: Math.round(Math.min(b.damage, _pPrevHp)), x: p.x, y: p.y, bid: b.id });
-                    if (p.hp <= 0) eliminatePlayer(code, room, p, b.ownerId);
+                    if (p.hp <= 0) eliminatePlayer(code, room, p, b.ownerId, b.weapon);
                     keep = false;
                 } else {
                     b.x = x1; b.y = y1;
@@ -1670,7 +1820,8 @@ function startRoomLoop(code, room) {
     room.gameLoop = setImmediate(tick);
 }
 
-function eliminatePlayer(code, room, player, killerId) {
+// weaponId: the weapon of the bullet that made the kill (credited in the killer's weapon stats)
+function eliminatePlayer(code, room, player, killerId, weaponId) {
     player.alive = false;
     player.hp    = 0;
 
@@ -1678,10 +1829,8 @@ function eliminatePlayer(code, room, player, killerId) {
     const killerPlayer  = (killerId && !isZombieKill) ? room.players[killerId] : null;
     if (killerPlayer) {
         killerPlayer.kills++;
-        if (killerPlayer.rs && room.mode === 'br') {
-            const rs = killerPlayer.rs, w = killerPlayer.weapon || DEFAULT_WEAPON;
-            rs.brKills++; rs.wk[w] = (rs.wk[w] || 0) + 1; rs.bwk[w] = (rs.bwk[w] || 0) + 1;
-        }
+        wsFor(killerPlayer, weaponId || killerPlayer.weapon).kills++; // weapon missions read this too
+        if (killerPlayer.rs && room.mode === 'br') killerPlayer.rs.brKills++;
     }
 
     // Use _playerArr cache — avoids Object.values()+filter() allocations
@@ -1715,15 +1864,17 @@ function eliminatePlayer(code, room, player, killerId) {
         room.gameEnded = true;
         if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
 
-        updatePlayerRoundEnd(player.id, player.name, player.kills, false, { mode: 'br', rs: player.rs });
-        updatePlayerRoundEnd(winner.id, winner.name, winner.kills, true, { mode: 'br', rs: winner.rs });
+        endPlayerRound(player, false, { mode: 'br', rs: player.rs });
+        endPlayerRound(winner, true, { mode: 'br', rs: winner.rs });
+        for (const p of room._playerArr) flushWeaponStats(p); // late bullets of players eliminated earlier
     } else {
-        updatePlayerRoundEnd(player.id, player.name, player.kills, false, { mode: 'br', rs: player.rs });
+        endPlayerRound(player, false, { mode: 'br', rs: player.rs });
     }
 
     if (_aliveN === 0) {
         io.to(code).emit('game-ended', { winnerName: null });
         room.gameEnded = true;
+        for (const p of room._playerArr) flushWeaponStats(p);
         if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
         setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
     }
@@ -1755,6 +1906,7 @@ function triggerRematch(code, room) {
         p.ammoMax = p.baseAmmoMax || p.ammoMax;
         p.pveUpgrades = { dmg: 0, spd: 0, hp: 0, ammo: 0 };
         p.coins = 0;
+        flushWeaponStats(p); // anything not saved yet from the last match
         p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0; p.rs = Missions.newRoundStats();
         p.moveDir = { x: 0, y: 0 }; p.shootDir = { x: 0, y: 0 };
         p.shooting = false; p.shootCooldown = 0; p.aimTimer = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
@@ -1974,6 +2126,7 @@ io.on('connection', (socket) => {
         const { code, room } = result;
         room.rematchVotes.delete(socket.id);
         const _leavingP = room.players[socket.id];
+        if (_leavingP) flushWeaponStats(_leavingP); // left early: the weapon counts so far still count
         if (_leavingP) {
             const _pidx = room._playerArr.indexOf(_leavingP);
             if (_pidx !== -1) room._playerArr.splice(_pidx, 1);

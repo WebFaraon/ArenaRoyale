@@ -77,6 +77,10 @@
             + '<div style="display:flex;gap:8px;align-items:center"><button id="dw-fire" style="padding:6px 14px;font-weight:800">Trage</button>'
             + '<label style="display:flex;gap:6px"><input type="checkbox" data-k="autoFire">trage continuu</label></div>'
             + '<div id="dw-read" style="font:500 12px/1.4 monospace;color:#C9D4DA;white-space:pre"></div>'
+            + '<div style="border-top:1px solid #2A3A45;padding-top:8px"><b>Statistici pe arme</b><br>'
+            + '<div style="display:flex;gap:6px;margin-top:4px"><input id="dw-ws-nick" placeholder="nickname" style="flex:1;min-width:0;color:#0A1013;background:#F2EFE6;font:600 12px Sen,Arial">'
+            + '<button id="dw-ws-load" style="padding:2px 8px">Incarca</button></div>'
+            + '<div id="dw-ws" style="font:500 9.5px/1.45 monospace;color:#C9D4DA;white-space:pre;margin-top:6px;overflow-x:auto"></div></div>'
             + '<div style="font-weight:500;color:#9FB0B8">Sageti stanga/dreapta: unghi. Esc: inchide.</div>';
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
@@ -93,8 +97,31 @@
         panel.querySelectorAll('input[type="checkbox"]').forEach(c => c.addEventListener('change', () => { st[c.dataset.k] = c.checked; }));
         panel.querySelector('#dw-close').addEventListener('click', close);
         panel.querySelector('#dw-fire').addEventListener('click', () => { st.fireReq = true; });
+        const wsNick = panel.querySelector('#dw-ws-nick');
+        wsNick.value = (typeof currentNickname === 'string' && currentNickname) || '';
+        panel.querySelector('#dw-ws-load').addEventListener('click', () => loadWeaponStats(wsNick.value.trim()));
+        if (wsNick.value) loadWeaponStats(wsNick.value);
         document.addEventListener('keydown', onKey);
         raf = requestAnimationFrame(frame);
+    }
+
+    // totals per weapon of an account (server.js WEAPON STATS): one row per gun plus the fists
+    async function loadWeaponStats(nick) {
+        const box = overlay.querySelector('#dw-ws');
+        if (!nick) { box.textContent = 'scrie un nickname'; return; }
+        box.textContent = '...';
+        try {
+            const r = await fetch('/api/weapon-stats?nickname=' + encodeURIComponent(nick), { cache: 'no-store' }).then(x => x.json());
+            if (!r.ok) { box.textContent = 'eroare'; return; }
+            const pad = (v, n) => String(v).padStart(n);
+            const row = c => c[0].padEnd(8) + pad(c[1], 4) + pad(c[2], 4) + pad(c[3], 7) + pad(c[4], 5) + pad(c[5], 5) + pad(c[6], 5);
+            const rows = GUNS.concat(['fists']).map(id => {
+                const e = r.weaponStats[id] || { kills: 0, zombieKills: 0, damage: 0, shots: 0, hits: 0 };
+                const acc = e.shots ? Math.round(e.hits / e.shots * 100) + '%' : '-';
+                return row([id, e.kills, e.zombieKills, e.damage, e.shots, e.hits, acc]);
+            });
+            box.textContent = [row(['arma', 'kil', 'zom', 'damage', 'shot', 'hit', 'prec'])].concat(rows).join('\n');
+        } catch (err) { box.textContent = 'eroare: ' + err.message; }
     }
 
     function onKey(e) {
