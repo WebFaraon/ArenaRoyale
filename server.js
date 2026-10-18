@@ -1000,6 +1000,9 @@ function startRoomLoop(code, room) {
     const _hitTargets = { obstacles: null, zombies: null, zombieRadius: null, players: null, playerRadius: PLAYER_R, ownerId: null, hitPlayers: true };
     const _hitOut     = { kind: 0, target: null, t: -1 };
     let _tpsCount = 0, _tpsWindowStart = Date.now();
+    // Simulation clock: every tick advances the world by exactly INTERVAL_MS, whenever it actually runs.
+    // Sent with each state packet so clients place snapshots on it (game.js interpolation).
+    let tickNo = 0;
     let expected = Date.now() + INTERVAL_MS;
 
     function tick() {
@@ -1566,7 +1569,8 @@ function startRoomLoop(code, room) {
             const pveArr  = room.mode === 'pve' && room.base
                 ? [Math.round(room.base.hp), room.base.maxHp, room.pveWave, room.pveWaveBreak ? 1 : 0, _r1(room.pveBreakTimer)]
                 : null;
-            io.to(code).emit('gs', [_pScratch, _bScratch, _privScratch, tickStart, zoneArr, _zScratch, _kScratch, pveArr]);
+            tickNo++;
+            io.to(code).emit('gs', [_pScratch, _bScratch, _privScratch, tickStart, zoneArr, _zScratch, _kScratch, pveArr, tickNo]);
 
         } catch (err) {
             console.error(`[${code}] Game loop error:`, err.stack || err);

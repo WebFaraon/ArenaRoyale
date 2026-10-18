@@ -2735,34 +2735,53 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // All input (move + rotate + shoot) goes through one unified packet from rAF.
     const EMIT_MS         = 17;
     // ── Interpolation clock ──────────────────────────────────────────────────
-    // Snapshots are placed on the server's own timeline (its tick timestamp), not on arrival time,
-    // so network jitter no longer bunches them up or leaves gaps. The render delay covers how late
-    // packets actually arrive (99th percentile over ~3 s) plus one tick: ~26 ms on a clean line,
-    // more on a jittery one. It grows quickly when the line gets worse and shrinks slowly, and every
-    // change is spread over many frames (a few % slow-motion / fast-forward, never a jump back).
-    const INTERP_MIN_MS = 26, INTERP_MAX_MS = 200, CLOCK_WIN = 180;
+    // Snapshots sit on the server's simulation timeline (tick number x 17 ms, entry.st), so neither
+    // network jitter nor a server tick that runs a little late bunches them up. The render delay covers
+    // how late packets arrive: the 95th percentile over the last ~3 s plus one tick and a small margin,
+    // between 26 and 70 ms (~28 on a clean line). A delivery pause shows up as one late packet followed
+    // by the queued ones arriving soon after; only the first counts (the rest are late only because they
+    // waited behind it), so a pause now and then does not move the delay at all. The delay moves at
+    // most 1.5 ms per packet in either direction (about 9 % slow-motion or fast-forward), so whatever it
+    // climbs on a bad line it gives back just as fast. During a pause the other players are
+    // extrapolated for a short while (getInterpolatedState) instead of freezing.
+    const INTERP_MIN_MS = 26, INTERP_MAX_MS = 70, CLOCK_WIN = 180;
+    const CLOCK_STEP_MS = 1.5;  // per packet, both ways
+    const EXTRAP_MS     = 100;  // how far past the newest snapshot other players keep moving in a pause
+    const CORRECT_MS    = 60;   // time constant for blending out the guess once real data is back
+    const PAUSE_LATE_MS = 30;   // a packet this late starts a delivery pause...
+    const PAUSE_WIN_MS  = 300;  // ...and the less late ones within this time are its queue draining
     const _offWin   = new Float64Array(CLOCK_WIN);  // arrival time - server time, per packet
     const _lateSort = new Float64Array(CLOCK_WIN);
-    let _offN = 0, _offI = 0;
+    let _offN = 0, _offI = 0, _pauseEnd = -1, _pauseLate = 0;
     let _clockLag   = null; // render server-time = performance.now() - _clockLag (a large negative number: clocks differ)
     let _interpShow = 34;   // current delay, for the debug overlay
     function _noteSnapshotClock(now, st) {
-        _offWin[_offI] = now - st;
-        _offI = (_offI + 1) % CLOCK_WIN;
-        if (_offN < CLOCK_WIN) _offN++;
+        // A delivery pause: the first late packet counts, the ones draining the queue behind it do not
+        let count = true;
+        if (_offN > 0) {
+            let m = Infinity;
+            for (let i = 0; i < _offN; i++) if (_offWin[i] < m) m = _offWin[i];
+            const lateNow = now - st - m;
+            if (now < _pauseEnd && lateNow < _pauseLate) count = false;
+            else if (lateNow > PAUSE_LATE_MS) { _pauseEnd = now + PAUSE_WIN_MS; _pauseLate = lateNow; }
+        }
+        if (count) {
+            _offWin[_offI] = now - st;
+            _offI = (_offI + 1) % CLOCK_WIN;
+            if (_offN < CLOCK_WIN) _offN++;
+        }
         let offMin = Infinity;
         for (let i = 0; i < _offN; i++) if (_offWin[i] < offMin) offMin = _offWin[i];
         for (let i = 0; i < _offN; i++) _lateSort[i] = _offWin[i] - offMin;
         const late = _lateSort.subarray(0, _offN).sort();
-        const p99 = late[Math.min(_offN - 1, Math.floor(_offN * 0.99))];
-        const delay = Math.max(INTERP_MIN_MS, Math.min(INTERP_MAX_MS, p99 + 17 + 6));
+        const p95 = late[Math.min(_offN - 1, Math.floor(_offN * 0.95))];
+        const delay = Math.max(INTERP_MIN_MS, Math.min(INTERP_MAX_MS, p95 + 17 + 6));
         const target = offMin + delay;
         if (_clockLag === null || Math.abs(target - _clockLag) > 250) _clockLag = target;  // first packet / tab resumed
-        else if (target > _clockLag) _clockLag = Math.min(target, _clockLag + 1.5);   // <= 9% slower
-        else _clockLag = Math.max(target, _clockLag - 0.5);                           // <= 3% faster
+        else _clockLag += Math.max(-CLOCK_STEP_MS, Math.min(CLOCK_STEP_MS, target - _clockLag));
         _interpShow = _clockLag - offMin;
     }
-    function _resetSnapshotClock() { _offN = 0; _offI = 0; _clockLag = null; }
+    function _resetSnapshotClock() { _offN = 0; _offI = 0; _pauseEnd = -1; _clockLag = null; }
 
     let _inputSeq        = 0;
     let _lastInputSend   = 0;
@@ -3012,7 +3031,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _dbgSrvPickups = pickups || 0;
     });
 
-    socket.on('gs', ([pArr, bArr, privArr, serverTime = 0, zoneArr, zArr, kArr, pveShared]) => {
+    socket.on('gs', ([pArr, bArr, privArr, serverTime = 0, zoneArr, zArr, kArr, pveShared, tickNo]) => {
 
         _dbgGsCount++;
         const now = performance.now();
@@ -3110,7 +3129,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // every enemy bullet extrapolate 40% too fast, then snap back on the next packet (jitter).
         const entry = {
             t:       now,
-            st:      serverTime || now,
+            // the server's simulation time: tick number x tick length (older servers: the tick's wall clock)
+            st:      tickNo ? tickNo * ARShared.TICK_S * 1000 : (serverTime || now),
             players: {},
             bullets: bArr.map(([id, x, y, dx, dy, ownerId]) => ({ id, x, y, dx: dx * ARShared.NET_BULLET_SPEED, dy: dy * ARShared.NET_BULLET_SPEED, ownerId, radius: WEAPON_RULES.bulletRadius })),
         };
@@ -3665,7 +3685,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // renderTime is before ALL buffered snapshots — not enough history yet, use oldest
             sOld = sNew = stateBuffer[0];
         } else if (iOld >= stateBuffer.length - 1) {
-            // renderTime is past the newest snapshot — extrapolate slightly from last two
+            // renderTime is past the newest snapshot (a delivery pause): carry on along the last motion
             sOld = stateBuffer[Math.max(0, stateBuffer.length - 2)];
             sNew = stateBuffer[stateBuffer.length - 1];
         } else {
@@ -3674,8 +3694,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
 
         const span = sNew.st - sOld.st;
-        // t in [0,1] for normal interpolation; allow up to 1.5 for slight extrapolation
-        const t = span > 0 ? Math.max(0, Math.min(1.0, (renderTime - sOld.st) / span)) : 0;
+        // t in [0,1] between two snapshots; past the newest one, extrapolate up to EXTRAP_MS beyond it
+        const t = span > 0 ? Math.max(0, Math.min(1 + EXTRAP_MS / span, (renderTime - sOld.st) / span)) : 0;
+        const extrapolating = t > 1;
+        const nowMs = performance.now();
 
         _ISActiveIds.clear();
         for (const id in sOld.players) {
@@ -3695,19 +3717,34 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             out.alive = np ? np.alive : op.alive;
             out.kills = np ? np.kills : op.kills;
 
+            let tx, ty;
             if (np && t > 0) {
-                out.x = op.x + (np.x - op.x) * t;
-                out.y = op.y + (np.y - op.y) * t;
-                // Shortest-path angle lerp — handles the 0/2π wraparound
+                tx = op.x + (np.x - op.x) * t;
+                ty = op.y + (np.y - op.y) * t;
+                // Shortest-path angle lerp — handles the 0/2π wraparound (no extrapolation for the angle)
                 let da = np.angle - op.angle;
                 if (da >  Math.PI) da -= Math.PI * 2;
                 if (da < -Math.PI) da += Math.PI * 2;
-                out.angle = op.angle + da * t;
+                out.angle = op.angle + da * Math.min(1, t);
             } else {
-                out.x     = op.x;
-                out.y     = op.y;
+                tx = op.x; ty = op.y;
                 out.angle = op.angle;
             }
+            // After an extrapolation the real data can differ a little from the guess: spread that
+            // correction over ~CORRECT_MS instead of jumping (a big gap, e.g. a respawn, still snaps).
+            if (out.extrap && !extrapolating && out.x !== undefined) {
+                out.ex = out.x - tx; out.ey = out.y - ty;
+                if (out.ex * out.ex + out.ey * out.ey > 80 * 80) { out.ex = 0; out.ey = 0; }
+            }
+            if (out.ex || out.ey) {
+                const k = Math.exp(-Math.max(0, nowMs - (out.tDraw || nowMs)) / CORRECT_MS);
+                out.ex *= k; out.ey *= k;
+                if (Math.abs(out.ex) < 0.05 && Math.abs(out.ey) < 0.05) { out.ex = 0; out.ey = 0; }
+            }
+            out.x = tx + (out.ex || 0);
+            out.y = ty + (out.ey || 0);
+            out.extrap = extrapolating;
+            out.tDraw  = nowMs;
         }
         for (const id in _IS.players) {
             if (!_ISActiveIds.has(id)) delete _IS.players[id];
