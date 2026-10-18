@@ -1161,7 +1161,7 @@ function _renderMissionsFull(list) {
         const tileIco = done ? 'check' : kind === 'pve' ? 'biohazard' : kind === 'br' ? 'swords' : 'target';
         const tileHtml = !done && m.weapon ? ARIcons.weaponHtml(m.weapon, true) : ico(tileIco);
         const tags = (m.tag === 'pve' ? '<span class="mm-tag mm-pve">PvE</span>' : m.tag === 'br' ? '<span class="mm-tag mm-br">BR</span>' : '')
-            + (m.weapon ? '<span class="mm-tag mm-wpn">' + m.weapon.toUpperCase() + '</span>' : '')
+            + (m.weapon ? '<span class="mm-tag mm-wpn">' + ((_WEAPON_DATA[m.weapon] && _WEAPON_DATA[m.weapon].name) || m.weapon).toUpperCase() + '</span>' : '')
             + (m.slot === 'hard' ? '<span class="mm-tag mm-hard">GREU</span>' : '');
         const reward = '<span class="rw rw-coin">+' + m.coins + ico('coins') + '</span>' + (m.diamonds ? '<span class="rw rw-gem">+' + m.diamonds + ico('gem') + '</span>' : '');
         const action = m.claimed ? '<span class="mm-claimed">' + ico('check') + 'Revendicat</span>'

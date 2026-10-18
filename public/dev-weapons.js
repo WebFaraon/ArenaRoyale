@@ -118,7 +118,7 @@
             const rows = GUNS.concat(['fists']).map(id => {
                 const e = r.weaponStats[id] || { kills: 0, zombieKills: 0, damage: 0, shots: 0, hits: 0 };
                 const acc = e.shots ? Math.round(e.hits / e.shots * 100) + '%' : '-';
-                return row([id, e.kills, e.zombieKills, e.damage, e.shots, e.hits, acc]);
+                return row([(WEAPON_ART.byId[id] && WEAPON_ART.byId[id].name) || id, e.kills, e.zombieKills, e.damage, e.shots, e.hits, acc]);
             });
             box.textContent = [row(['arma', 'kil', 'zom', 'damage', 'shot', 'hit', 'prec'])].concat(rows).join('\n');
         } catch (err) { box.textContent = 'eroare: ' + err.message; }

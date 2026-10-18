@@ -21,7 +21,7 @@
   "weapons": {
     "pistol": {
       "type": "gun",
-      "name": "Pistol",
+      "name": "Scout",
       "class": "pistol",
       "fireMode": "auto",
       "fireModeLabel": "Automat",
@@ -41,7 +41,7 @@
     },
     "smg": {
       "type": "gun",
-      "name": "SMG",
+      "name": "Stinger",
       "class": "smg",
       "fireMode": "auto",
       "fireModeLabel": "Automat",
@@ -61,7 +61,7 @@
     },
     "assault": {
       "type": "gun",
-      "name": "Assault",
+      "name": "Vanguard",
       "class": "assault",
       "fireMode": "auto",
       "fireModeLabel": "Automat",
@@ -81,7 +81,7 @@
     },
     "sniper": {
       "type": "gun",
-      "name": "Sniper",
+      "name": "Hawkeye",
       "class": "sniper",
       "fireMode": "auto",
       "fireModeLabel": "Automat",
@@ -102,7 +102,7 @@
     },
     "shotgun": {
       "type": "gun",
-      "name": "Shotgun",
+      "name": "Boomer",
       "class": "shotgun",
       "fireMode": "auto",
       "fireModeLabel": "Automat",
@@ -124,7 +124,7 @@
     },
     "burst": {
       "type": "gun",
-      "name": "Burst",
+      "name": "Falcon",
       "class": "assault",
       "fireMode": "burst",
       "fireModeLabel": "Rafala de 3",

@@ -7,8 +7,12 @@
 // State per player and day: { date, list: [{ id, prog, claimed }] }, stored as JSON in the
 // players.missions_state column (see supabase-migration-missions.sql).
 
-const WEAPONS = ['pistol', 'assault', 'sniper', 'shotgun', 'burst', 'smg'];
-const WNAME = { pistol: 'PISTOL', assault: 'ASSAULT', sniper: 'SNIPER', shotgun: 'SHOTGUN', burst: 'BURST', smg: 'SMG' };
+// Weapons: ids (stats, saved missions) and the names players see, from public/data/weapons.json
+const WEAPON_DATA = require('./public/data/weapons.json').weapons;
+const WEAPONS = Object.keys(WEAPON_DATA);
+const WNAME = Object.fromEntries(WEAPONS.map(id => [id, WEAPON_DATA[id].name.toUpperCase()]));
+// e.g. wtitle(3, 'burst') -> 'Fa 3 killuri cu FALCON'
+const wtitle = (n, id, where = '') => 'Fa ' + n + ' killuri cu ' + WNAME[id] + where;
 
 // stat: which round value counts. tag: what the lobby shows next to it (mode or weapon).
 const POOL = [
@@ -27,19 +31,19 @@ const POOL = [
     { id: 'pvekills20', slot: 'pve',    title: 'Elimina 20 de zombi in PvE',         stat: 'pveKills', kind: 'sum', goal: 20,   coins: 50,  diamonds: 0, tag: 'pve' },
     { id: 'pvegames2', slot: 'pve',     title: 'Joaca 2 meciuri PvE',                stat: 'pveGames', kind: 'sum', goal: 2,    coins: 25,  diamonds: 0, tag: 'pve' },
     // weapon, any mode
-    { id: 'w_burst3',   slot: 'weapon', title: 'Fa 3 killuri cu BURST',   stat: 'wk_burst',   kind: 'sum', goal: 3, coins: 40, diamonds: 0, weapon: 'burst' },
-    { id: 'w_smg5',     slot: 'weapon', title: 'Fa 5 killuri cu SMG',     stat: 'wk_smg',     kind: 'sum', goal: 5, coins: 40, diamonds: 0, weapon: 'smg' },
-    { id: 'w_sniper3',  slot: 'weapon', title: 'Fa 3 killuri cu SNIPER',  stat: 'wk_sniper',  kind: 'sum', goal: 3, coins: 50, diamonds: 0, weapon: 'sniper' },
-    { id: 'w_pistol5',  slot: 'weapon', title: 'Fa 5 killuri cu PISTOL',  stat: 'wk_pistol',  kind: 'sum', goal: 5, coins: 40, diamonds: 0, weapon: 'pistol' },
-    { id: 'w_assault4', slot: 'weapon', title: 'Fa 4 killuri cu ASSAULT', stat: 'wk_assault', kind: 'sum', goal: 4, coins: 40, diamonds: 0, weapon: 'assault' },
-    { id: 'w_shotgun4', slot: 'weapon', title: 'Fa 4 killuri cu SHOTGUN', stat: 'wk_shotgun', kind: 'sum', goal: 4, coins: 40, diamonds: 0, weapon: 'shotgun' },
+    { id: 'w_burst3',   slot: 'weapon', title: wtitle(3, 'burst'),   stat: 'wk_burst',   kind: 'sum', goal: 3, coins: 40, diamonds: 0, weapon: 'burst' },
+    { id: 'w_smg5',     slot: 'weapon', title: wtitle(5, 'smg'),     stat: 'wk_smg',     kind: 'sum', goal: 5, coins: 40, diamonds: 0, weapon: 'smg' },
+    { id: 'w_sniper3',  slot: 'weapon', title: wtitle(3, 'sniper'),  stat: 'wk_sniper',  kind: 'sum', goal: 3, coins: 50, diamonds: 0, weapon: 'sniper' },
+    { id: 'w_pistol5',  slot: 'weapon', title: wtitle(5, 'pistol'),  stat: 'wk_pistol',  kind: 'sum', goal: 5, coins: 40, diamonds: 0, weapon: 'pistol' },
+    { id: 'w_assault4', slot: 'weapon', title: wtitle(4, 'assault'), stat: 'wk_assault', kind: 'sum', goal: 4, coins: 40, diamonds: 0, weapon: 'assault' },
+    { id: 'w_shotgun4', slot: 'weapon', title: wtitle(4, 'shotgun'), stat: 'wk_shotgun', kind: 'sum', goal: 4, coins: 40, diamonds: 0, weapon: 'shotgun' },
     // weapon in a specific mode
-    { id: 'pw_shotgun15', slot: 'modeweapon', title: 'Fa 15 killuri cu SHOTGUN in PvE', stat: 'pwk_shotgun', kind: 'sum', goal: 15, coins: 70, diamonds: 0, weapon: 'shotgun', tag: 'pve' },
-    { id: 'pw_smg10',     slot: 'modeweapon', title: 'Fa 10 killuri cu SMG in PvE',     stat: 'pwk_smg',     kind: 'sum', goal: 10, coins: 60, diamonds: 0, weapon: 'smg',     tag: 'pve' },
-    { id: 'pw_burst8',    slot: 'modeweapon', title: 'Fa 8 killuri cu BURST in PvE',    stat: 'pwk_burst',   kind: 'sum', goal: 8,  coins: 60, diamonds: 0, weapon: 'burst',   tag: 'pve' },
-    { id: 'pw_sniper6',   slot: 'modeweapon', title: 'Fa 6 killuri cu SNIPER in PvE',   stat: 'pwk_sniper',  kind: 'sum', goal: 6,  coins: 60, diamonds: 0, weapon: 'sniper',  tag: 'pve' },
-    { id: 'bw_shotgun2',  slot: 'modeweapon', title: 'Fa 2 killuri cu SHOTGUN in Battle Royale', stat: 'bwk_shotgun', kind: 'sum', goal: 2, coins: 60, diamonds: 0, weapon: 'shotgun', tag: 'br' },
-    { id: 'bw_sniper2',   slot: 'modeweapon', title: 'Fa 2 killuri cu SNIPER in Battle Royale',  stat: 'bwk_sniper',  kind: 'sum', goal: 2, coins: 60, diamonds: 0, weapon: 'sniper',  tag: 'br' },
+    { id: 'pw_shotgun15', slot: 'modeweapon', title: wtitle(15, 'shotgun', ' in PvE'), stat: 'pwk_shotgun', kind: 'sum', goal: 15, coins: 70, diamonds: 0, weapon: 'shotgun', tag: 'pve' },
+    { id: 'pw_smg10',     slot: 'modeweapon', title: wtitle(10, 'smg', ' in PvE'),     stat: 'pwk_smg',     kind: 'sum', goal: 10, coins: 60, diamonds: 0, weapon: 'smg',     tag: 'pve' },
+    { id: 'pw_burst8',    slot: 'modeweapon', title: wtitle(8, 'burst', ' in PvE'),    stat: 'pwk_burst',   kind: 'sum', goal: 8,  coins: 60, diamonds: 0, weapon: 'burst',   tag: 'pve' },
+    { id: 'pw_sniper6',   slot: 'modeweapon', title: wtitle(6, 'sniper', ' in PvE'),   stat: 'pwk_sniper',  kind: 'sum', goal: 6,  coins: 60, diamonds: 0, weapon: 'sniper',  tag: 'pve' },
+    { id: 'bw_shotgun2',  slot: 'modeweapon', title: wtitle(2, 'shotgun', ' in Battle Royale'), stat: 'bwk_shotgun', kind: 'sum', goal: 2, coins: 60, diamonds: 0, weapon: 'shotgun', tag: 'br' },
+    { id: 'bw_sniper2',   slot: 'modeweapon', title: wtitle(2, 'sniper', ' in Battle Royale'),  stat: 'bwk_sniper',  kind: 'sum', goal: 2, coins: 60, diamonds: 0, weapon: 'sniper',  tag: 'br' },
     // hard
     { id: 'pvewave10',  slot: 'hard', title: 'Ajungi la runda 10 in PvE',    stat: 'pveWave',  kind: 'max', goal: 10, coins: 150, diamonds: 2, tag: 'pve' },
     { id: 'pvekills50', slot: 'hard', title: 'Elimina 50 de zombi in PvE',   stat: 'pveKills', kind: 'sum', goal: 50, coins: 120, diamonds: 1, tag: 'pve' },
