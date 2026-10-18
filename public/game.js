@@ -241,8 +241,7 @@ function getTier(level) {
 }
 
 let selectedCharacterId = DEFAULT_SKIN;
-// Owned skins, sent by the server at login. While "unlockAllForTesting" is true in public/data/skins.json
-// the server sends every skin. TODO: SCOATE INAINTE DE LANSARE (flagul din skins.json).
+// Owned skins, sent by the server at login (every skin when the server runs with UNLOCK_ALL=1).
 let unlockedCharacters  = [DEFAULT_SKIN];
 let _currentShopFilter  = 'all';
 

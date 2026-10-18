@@ -1,6 +1,4 @@
 {
- "_TODO": "unlockAllForTesting: SCOATE INAINTE DE LANSARE (pune false). Cand e true, serverul da toate skinurile tuturor.",
- "unlockAllForTesting": true,
  "defaultSkin": "rookie",
  "size": 256,
  "pivot": [

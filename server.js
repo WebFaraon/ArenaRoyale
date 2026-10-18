@@ -43,8 +43,9 @@ if (!supabase) console.warn('[Supabase] Nu e configurat — statisticile nu se s
 const SKIN_DATA    = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'data', 'skins.json'), 'utf8'));
 const SKINS        = new Map(SKIN_DATA.skins.map(s => [s.id, s]));
 const DEFAULT_SKIN = SKIN_DATA.defaultSkin;
-// TODO: SCOATE INAINTE DE LANSARE — "unlockAllForTesting" in public/data/skins.json gives every skin to everyone
-const UNLOCK_ALL_FOR_TESTING = SKIN_DATA.unlockAllForTesting === true;
+// Testing only: UNLOCK_ALL=1 in the environment (local .env) gives every skin to everyone. Off when unset.
+const UNLOCK_ALL_FOR_TESTING = process.env.UNLOCK_ALL === '1';
+if (UNLOCK_ALL_FOR_TESTING) console.warn('[Skins] UNLOCK_ALL=1: toate skinurile sunt deblocate pentru toti jucatorii (doar pentru teste).');
 // Ids of the old set that also exist in the new one and carry over to whoever owned them. Ninja is
 // left out on purpose: it was the old free default, so it does not carry over.
 const LEGACY_CARRY = new Set(['robot', 'wizard', 'tiger', 'viking', 'samurai', 'pharaoh']);
