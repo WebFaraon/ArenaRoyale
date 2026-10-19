@@ -381,6 +381,393 @@ function selectWeapon(id) {
 
 // Initializeaza weapon UI la incarcare, once weapons.json is in (it arrives after DOMContentLoaded)
 document.addEventListener('DOMContentLoaded', () => WEAPONS_ART_READY.then(_applyWeaponUI));
+
+// ---------- ARSENAL ----------
+// A screen over the lobby (index.html #screen-arsenal): the guns on the left, the chosen gun with its
+// numbers and its look in the middle, your stats with it and its skins on the right. Everything comes from
+// the game's data: weapons.json (WEAPONS, WEAPON_ART), weapon-skins.json (WEAPON_SKIN_CATALOG: names,
+// rarity, price, unlock), weapon-skin-sprites.json (WEAPON_ART.skins: accent) and the profile
+// (weapon_stats, owned_weapon_skins, equipped_weapon_skins). Buying and equipping go only through the
+// server (/api/weapon-skins/buy, /equip); the screen changes after its answer, never before.
+// "Vezi in mana" draws the player the way the match does (_drawPlayerFigure: same hands, same muzzle).
+const ARS_RARITY = {
+    rare:      { label: 'RAR',      title: 'Rar',      color: 'var(--c-sky)' },
+    epic:      { label: 'EPIC',     title: 'Epic',     color: 'var(--c-purple)' },
+    legendary: { label: 'LEGENDAR', title: 'Legendar', color: 'var(--c-gold)' },
+};
+const NO_WSKIN = 'default';
+// weapon: the gun shown; skin: the skin previewed on it (NO_WSKIN = the gun as it is); inHand: the figure
+// view; busy: a request is out (one at a time, so a double click cannot send two)
+const _ars = { weapon: null, skin: NO_WSKIN, inHand: false, busy: false, buy: null, raf: 0, fx: _newShotFx(), entries: {} };
+
+const _arsOwned    = () => new Set((currentProfile && currentProfile.owned_weapon_skins) || []);
+const _arsStats    = id => ((currentProfile && currentProfile.weapon_stats) || {})[id] || { kills: 0, zombieKills: 0, damage: 0, shots: 0, hits: 0 };
+const _arsSkinsOf  = wid => WEAPON_SKIN_CATALOG.list.filter(s => s.weapon === wid);
+const _arsSkin     = id => (id && id !== NO_WSKIN ? WEAPON_SKIN_CATALOG.byId[id] || null : null);
+// the skin on a gun as the server last said (and still owned), otherwise none
+function _arsEquippedSkin(wid) {
+    const id = ((currentProfile && currentProfile.equipped_weapon_skins) || {})[wid];
+    const s = _arsSkin(id);
+    return s && s.weapon === wid && _arsOwned().has(id) ? id : NO_WSKIN;
+}
+function _arsAccent(wid, skinId) {
+    const sk = skinId !== NO_WSKIN && WEAPON_ART.skins[skinId];
+    return (sk && sk.accent) || (WEAPON_ART.byId[wid] && WEAPON_ART.byId[wid].accent) || '#FFC53D';
+}
+// The gun lying down, barrel to the right. A skin: its icons/ SVG (a strip of the match frame 48 units tall,
+// from y = 2 to past the muzzle). The base gun: the same strip cut from its match sprite (.ars-fi, --len =
+// the strip's length), so Standard and the skins of a gun come out at one scale.
+function _arsIcon(wid, skinId) {
+    if (skinId !== NO_WSKIN) return `<img class="wicon" src="${arAsset(WEAPON_SKIN_DIR + 'icons/' + skinId + '.svg')}" alt="" draggable="false">`;
+    const gun = WEAPON_ART.byId[wid];
+    if (!gun) return ARIcons.weaponHtml(wid, false);
+    return `<span class="ars-fi" style="--len:${gun.muzzle0[1] + 10}"><img src="${gun.img.src}" alt="" draggable="false"></span>`;
+}
+// the big preview: the match frame (80 x 144 units, barrel down) turned barrel-right, a skin's svg/ or the
+// base gun's sprite, so every gun sits at the same place and scale
+function _arsGunPreview(wid, skinId) {
+    const src = skinId !== NO_WSKIN ? arAsset(WEAPON_SKIN_DIR + 'svg/' + skinId + '.svg') : WEAPON_ART.byId[wid].img.src;
+    return `<div class="ars-gun"><img src="${src}" alt="" draggable="false"></div>`;
+}
+// The name of a bullet colour, from its hue
+function _arsColorName(hex) {
+    const n = parseInt(String(hex).replace('#', ''), 16);
+    const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    let h = 0;
+    if (d) { h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
+    if (s < 0.2) return l > 0.7 ? 'Alb' : l < 0.25 ? 'Negru' : 'Gri';
+    if (l > 0.72) return h >= 235 && h < 300 ? 'Lila' : h >= 160 && h < 235 ? 'Bleu' : h >= 40 && h < 160 ? 'Verde deschis' : 'Roz';
+    if (h < 12 || h >= 345) return 'Rosu';
+    if (h < 40) return l < 0.55 && s < 0.65 ? 'Bronz' : 'Portocaliu';
+    if (h < 52) return 'Auriu';
+    if (h < 70) return 'Galben';
+    if (h < 160) return 'Verde';
+    if (h < 195) return 'Turcoaz';
+    if (h < 250) return 'Albastru';
+    if (h < 290) return 'Mov';
+    return 'Roz';
+}
+// The bars: each gun's raw value, shown relative to the best gun (0..1). Damage is one shot (every pellet),
+// fire rate is bullets per second (a burst counts all its bullets), range is speed x lifetime, accuracy
+// drops with the spread (radians), reload is the time to fill the magazine (faster = longer bar).
+function _arsBars(wid) {
+    const raw = {};
+    for (const w of WEAPONS) {
+        const rate = w.fireMode === 'burst' ? w.burstCount / (w.shootCd + (w.burstCount - 1) * w.burstDelay) : 1 / w.shootCd;
+        raw[w.id] = {
+            dmg: WEAPON_LOADOUT[w.id].baseDmg * (w.pellets || 1), rate, range: w.bulletSpeed * w.bulletLife,
+            acc: Math.max(0.05, 1 - (w.spread || 0)), ammo: w.ammoMax, reload: w.ammoMax / w.reloadRate,
+        };
+    }
+    const all = Object.values(raw), me = raw[wid];
+    const rel = k => me[k] / Math.max(...all.map(v => v[k]));
+    const level = v => v >= 0.8 ? 'Foarte mare' : v >= 0.6 ? 'Mare' : v >= 0.4 ? 'Medie' : v >= 0.2 ? 'Mica' : 'Foarte mica';
+    const speed = v => v >= 0.8 ? 'Foarte rapida' : v >= 0.6 ? 'Rapida' : v >= 0.4 ? 'Medie' : v >= 0.2 ? 'Lenta' : 'Foarte lenta';
+    const w = _WEAPON_DATA[wid];
+    const reload = Math.min(...all.map(v => v.reload)) / me.reload;
+    return [
+        ['DAMAGE', rel('dmg'), level(rel('dmg'))],
+        ['CADENTA', rel('rate'), level(rel('rate'))],
+        ['BATAIE', rel('range'), level(rel('range'))],
+        ['PRECIZIE', rel('acc'), level(rel('acc'))],
+        ['INCARCATOR', rel('ammo'), me.ammo + (w.fireMode === 'burst' ? ' rafale' : ' gloante')],
+        ['REINCARCARE', reload, speed(reload)],
+    ];
+}
+
+function _arsSetMoney() {
+    const p = currentProfile || {};
+    const coins = (p.coins ?? 1000).toLocaleString(), diamonds = String(p.diamonds || 0);
+    for (const [id, v] of [['ars-coins', coins], ['ars-diamonds', diamonds], ['lp-coins', coins], ['lp-crystals', diamonds], ['shop-coins', coins], ['shop-diamonds', diamonds]]) {
+        const el = document.getElementById(id); if (el) el.textContent = v;
+    }
+}
+
+function _arsRenderList() {
+    const box = document.getElementById('ars-weapons');
+    const order = WEAPON_CLASSES.flatMap(c => WEAPONS.filter(w => w.class === c.id));
+    box.innerHTML = order.map(w => {
+        const sk = _arsEquippedSkin(w.id), cls = WEAPON_CLASSES.find(c => c.id === w.class);
+        const sel = w.id === _ars.weapon;
+        return `<button type="button" class="ars-wrow${sel ? ' is-sel' : ''}" data-w="${w.id}" aria-pressed="${sel}" onclick="arsSelectWeapon('${w.id}')">
+            <span class="ars-wrow-icon">${_arsIcon(w.id, sk)}</span>
+            <span class="ars-wrow-text">
+                <span class="ars-wrow-name"><i class="ars-dot" style="--ac:${_arsAccent(w.id, sk)}"></i><span class="ars-wrow-nm">${w.name}</span></span>
+                <span class="ars-wrow-sub">${cls ? cls.name : ''} · ${w.fireModeLabel}</span>
+            </span>
+            <span class="ars-wrow-end">
+                <span class="ars-wrow-kills" title="kill-uri">${ico('skull')}${_arsStats(w.id).kills.toLocaleString()}</span>
+                ${w.id === selectedWeapon ? '<span class="ars-wrow-tag">IN MECI</span>' : ''}
+            </span>
+        </button>`;
+    }).join('');
+}
+
+function _arsRenderMain() {
+    const wid = _ars.weapon, w = _WEAPON_DATA[wid], cls = WEAPON_CLASSES.find(c => c.id === w.class);
+    const sk = _arsSkin(_ars.skin), eq = _arsEquippedSkin(wid), accent = _arsAccent(wid, _ars.skin);
+    const shown = sk ? `${sk.name} · ${ARS_RARITY[sk.rarity].title}` : 'Standard';
+    const skinLine = _ars.skin === eq ? `Skin: <b>${shown}</b>` : `Previzualizare: <b>${shown}</b>`;
+    const inMatch = selectedWeapon === wid;
+    document.getElementById('ars-main').innerHTML = `
+        <div class="ars-main-head">
+            <div class="ars-main-id">
+                <span class="ars-pill">${(cls ? cls.name : '').toUpperCase()} · ${w.fireModeLabel.toUpperCase()}</span>
+                <h2 class="ars-main-name">${w.name}</h2>
+                <span class="ars-main-skin">${skinLine}</span>
+            </div>
+            <div class="ars-bullet">
+                <span class="ars-bullet-kick">CULOAREA GLONTULUI</span>
+                <span class="ars-bullet-val"><i class="ars-bullet-chip" style="--ac:${accent}"></i>${_arsColorName(accent)}</span>
+            </div>
+        </div>
+        <div class="ars-stage${_ars.inHand ? ' is-hand' : ''}" ${_ars.inHand ? 'title="Click: trage"' : ''}>
+            ${_ars.inHand ? '<canvas id="ars-hand" aria-label="Personajul tau tinand arma"></canvas>' : _arsGunPreview(wid, _ars.skin)}
+        </div>
+        <div class="ars-bars">${_arsBars(wid).map(([label, v, txt]) => `
+            <div class="ars-bar-row">
+                <span class="ars-bar-label">${label}</span>
+                <span class="ars-bar"><span class="ars-bar-fill" style="width:${Math.max(4, Math.round(v * 100))}%"></span></span>
+                <span class="ars-bar-val">${txt}</span>
+            </div>`).join('')}
+        </div>
+        <div class="ars-actions">
+            <button type="button" class="ars-blk ars-btn-green ars-use" id="ars-use" onclick="arsUseInMatch()" ${inMatch ? 'aria-pressed="true"' : ''}>
+                ${inMatch ? ico('check') + 'ARMA TA IN MECI' : 'FOLOSESTE IN MECI'}</button>
+            <button type="button" class="ars-blk ars-btn-slate ars-hand-btn" id="ars-hand-btn" onclick="arsToggleHand()" aria-pressed="${_ars.inHand}">
+                ${_ars.inHand ? 'VEZI ARMA' : 'VEZI IN MANA'}</button>
+        </div>`;
+    if (_ars.inHand) {
+        const c = document.getElementById('ars-hand');
+        c.addEventListener('pointerdown', () => _shotKick(_ars.fx, performance.now()));
+        if (!_ars.raf) _ars.raf = requestAnimationFrame(_arsHandLoop);
+    }
+}
+
+function _arsRenderSide() {
+    const wid = _ars.weapon, w = _WEAPON_DATA[wid], st = _arsStats(wid), owned = _arsOwned(), eq = _arsEquippedSkin(wid);
+    const acc = st.shots ? Math.round(st.hits / st.shots * 100) + '%' : '-';
+    const unlock = _arsSkinsOf(wid).find(s => s.unlock);
+    let progress = '';
+    if (unlock && !owned.has(unlock.id)) {
+        const need = unlock.unlock.kills, have = Math.min(st.kills, need);
+        progress = `<div class="ars-unlock">
+            <span class="ars-unlock-icon">${_arsIcon(wid, unlock.id)}</span>
+            <div class="ars-unlock-body">
+                <div class="ars-unlock-line"><span>${have >= need
+                    ? `<b>${unlock.name}</b> e al tau la finalul urmatorului meci`   // granted at the next round-end save
+                    : `Deblochezi <b>${unlock.name}</b> la ${need} de kill-uri`}</span><span class="ars-unlock-n">${have} / ${need}</span></div>
+                <div class="ars-bar"><span class="ars-bar-fill ars-fill-gold" style="width:${Math.max(3, Math.round(have / need * 100))}%"></span></div>
+            </div>
+        </div>`;
+    } else if (unlock) {
+        progress = `<div class="ars-unlock ars-unlock-done">${ico('badge-check')}<span>Toate skin-urile cu deblocare obtinute</span></div>`;
+    }
+    const box = (label, val, cls = '') => `<div class="ars-stat${cls}"><span class="ars-stat-label">${label}</span><span class="ars-stat-val">${val}</span></div>`;
+    document.getElementById('ars-stats').innerHTML = `
+        <h3 class="ars-tray-title">STATISTICILE TALE CU ${w.name.toUpperCase()}</h3>
+        <div class="ars-stat-grid">
+            ${box('KILL-URI', st.kills.toLocaleString(), ' ars-stat-kills')}${box('ZOMBI UCISI', st.zombieKills.toLocaleString())}
+            ${box('PRECIZIE', acc)}${box('DAMAGE TOTAL', st.damage.toLocaleString())}
+        </div>
+        ${progress}`;
+
+    const p = currentProfile || {};
+    const cards = [{ id: NO_WSKIN, name: 'Standard' }].concat(_arsSkinsOf(wid)).map(s => {
+        const isStd = s.id === NO_WSKIN, has = isStd || owned.has(s.id), isEq = s.id === eq;
+        const rar = isStd ? { label: 'STANDARD', color: '#C9D4DA' } : ARS_RARITY[s.rarity];
+        let foot;
+        if (isEq) foot = `<span class="ars-badge ars-badge-gold">${ico('check')}ECHIPAT</span>`;
+        else if (has) foot = `<button type="button" class="ars-blk ars-btn-green ars-mini" onclick="arsEquip('${s.id}')">ECHIPEAZA</button>`;
+        else if (s.unlock) foot = `<span class="ars-badge ars-badge-lock">${ico('lock')}${s.unlock.kills} kill-uri</span>`;
+        else {
+            const gem = !!s.price.diamonds, cost = gem ? s.price.diamonds : s.price.coins;
+            const short = (gem ? (p.diamonds || 0) : (p.coins ?? 1000)) < cost;
+            foot = `<button type="button" class="ars-blk ars-btn-gold ars-mini${short ? ' is-short' : ''}" onclick="arsAskBuy('${s.id}')" aria-label="Cumpara ${s.name} cu ${cost} ${gem ? 'diamante' : 'monede'}">${ico('lock')}${ico(gem ? 'gem' : 'coins')}${cost.toLocaleString()}</button>`;
+        }
+        return `<div class="ars-skin${s.id === _ars.skin ? ' is-sel' : ''}${isEq ? ' is-eq' : ''}${has ? '' : ' is-locked'}" data-skin="${s.id}" style="--rc:${rar.color}">
+            <button type="button" class="ars-skin-face" onclick="arsPreviewSkin('${s.id}')" aria-label="Previzualizeaza ${s.name}" aria-pressed="${s.id === _ars.skin}">
+                <span class="ars-skin-rar">${rar.label}</span>
+                <span class="ars-skin-icon">${_arsIcon(wid, s.id)}</span>
+                <span class="ars-skin-name">${s.name}</span>
+            </button>
+            <div class="ars-skin-foot">${foot}</div>
+        </div>`;
+    });
+    const nOwned = 1 + _arsSkinsOf(wid).filter(s => owned.has(s.id)).length;
+    document.getElementById('ars-skins').innerHTML = `
+        <div class="ars-tray-head"><h3 class="ars-tray-title">SKINURI ${w.name.toUpperCase()}</h3><span class="ars-tray-note">${nOwned} / ${cards.length} detinute</span></div>
+        <div class="ars-skin-grid">${cards.join('')}</div>`;
+}
+
+function _arsRender() { _arsRenderList(); _arsRenderMain(); _arsRenderSide(); }
+
+async function openArsenal(weaponId, skinId) {
+    await Promise.all([WEAPONS_ART_READY, WEAPON_SKIN_ART_READY, WEAPON_SKIN_CATALOG_READY]);
+    if (!WEAPONS.length) return;
+    _ars.weapon = _WEAPON_DATA[weaponId] ? weaponId : (_WEAPON_DATA[selectedWeapon] ? selectedWeapon : DEFAULT_WEAPON);
+    const sk = _arsSkin(skinId);
+    _ars.skin = sk && sk.weapon === _ars.weapon ? skinId : _arsEquippedSkin(_ars.weapon);
+    _ars.inHand = false;
+    _arsSetMoney();
+    _arsRender();
+    const scr = document.getElementById('screen-arsenal');
+    scr.style.display = 'flex';
+    document.body.classList.add('arsenal-open');
+    document.addEventListener('keydown', _arsKey);
+    const back = scr.querySelector('.ars-back'); if (back) back.focus({ preventScroll: true, focusVisible: false });
+}
+function closeArsenal() {
+    closeArsConfirm();
+    document.getElementById('screen-arsenal').style.display = 'none';
+    document.body.classList.remove('arsenal-open');
+    document.removeEventListener('keydown', _arsKey);
+    if (_ars.raf) { cancelAnimationFrame(_ars.raf); _ars.raf = 0; }
+    _applyWeaponUI();
+    const ring = document.getElementById('weapon-ring'); if (ring) ring.focus({ preventScroll: true });
+}
+function _arsKey(e) {
+    if (e.key !== 'Escape') return;
+    if (!document.getElementById('ars-confirm').hidden) closeArsConfirm(); else closeArsenal();
+}
+function arsSelectWeapon(id) {
+    if (!_WEAPON_DATA[id]) return;
+    _ars.weapon = id;
+    _ars.skin = _arsEquippedSkin(id);
+    _arsRender();
+}
+function arsPreviewSkin(id) {
+    const sk = _arsSkin(id);
+    if (id !== NO_WSKIN && (!sk || sk.weapon !== _ars.weapon)) return;
+    _ars.skin = id;
+    _arsRenderMain(); _arsRenderSide();
+}
+// the same as picking the gun in the weapon menu (the loadout points start again for the new gun)
+function arsUseInMatch() {
+    if (selectedWeapon === _ars.weapon) return;
+    selectWeapon(_ars.weapon);
+    _arsRenderList(); _arsRenderMain();
+}
+function arsToggleHand() {
+    _ars.inHand = !_ars.inHand;
+    if (!_ars.inHand && _ars.raf) { cancelAnimationFrame(_ars.raf); _ars.raf = 0; }
+    _arsRenderMain();
+}
+// The player holding the gun, the match's own drawing: the character skin they have on, the weapon skin
+// previewed, aiming right. A click fires (recoil and the muzzle flash at the skin's barrel).
+function _arsHandLoop(now) {
+    _ars.raf = 0;
+    const c = document.getElementById('ars-hand');
+    if (!c || !_ars.inHand || document.getElementById('screen-arsenal').style.display === 'none') return;
+    _ars.raf = requestAnimationFrame(_arsHandLoop);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cw = Math.max(1, Math.round(c.clientWidth * dpr)), ch = Math.max(1, Math.round(c.clientHeight * dpr));
+    if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+    const ctx = c.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, cw, ch);
+    const skin = _ars.skin === NO_WSKIN ? null : _ars.skin;
+    const look = _gunLook(_ars.weapon, skin);
+    const back = _playerRingR() + 8, front = (look ? look.muzzle[1] : 60) + 22, half = _playerRingR() + 10;
+    const px = Math.min(cw / (back + front), ch / (half * 2)); // device px per world unit
+    ARArena.beginFrame(px, now);
+    ctx.setTransform(px, 0, 0, px, (cw - (back + front) * px) / 2 + back * px, ch / 2);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    const entry = _ars.entries[selectedCharacterId] || (_ars.entries[selectedCharacterId] = _makeSkinEntry(selectedCharacterId));
+    _drawPlayerFigure(ctx, ctx.getTransform(), 0, 0, -Math.PI / 2, entry, _ars.weapon, px, '#46D17C', 'rgba(70,209,124,0.14)', _ars.fx, now, skin);
+}
+
+async function _arsPost(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ nickname: currentNickname, token: sessionToken }, body)) }).then(r => r.json());
+}
+async function arsEquip(skinId) {
+    if (_ars.busy || !currentNickname) return;
+    _ars.busy = true;
+    const wid = _ars.weapon;
+    try {
+        const r = await _arsPost('/api/weapon-skins/equip', { weapon: wid, skinId });
+        if (!r.ok) { showToast(r.error || 'Nu s-a putut echipa skinul'); return; }
+        if (currentProfile) currentProfile.equipped_weapon_skins = r.equipped || {};
+        if (_ars.weapon === wid) _ars.skin = skinId;
+        _arsRender();
+    } catch { showToast('Eroare de retea. Incearca din nou.'); }
+    finally { _ars.busy = false; }
+}
+// Buying asks first. Not enough money: a short note, no request.
+function arsAskBuy(skinId) {
+    const s = _arsSkin(skinId);
+    if (!s || !s.price || _ars.busy) return;
+    const p = currentProfile || {}, gem = !!s.price.diamonds, cost = gem ? s.price.diamonds : s.price.coins;
+    const have = gem ? (p.diamonds || 0) : (p.coins ?? 1000);
+    if (have < cost) { showToast(`Iti mai trebuie ${(cost - have).toLocaleString()} ${gem ? 'diamante' : 'monede'} pentru ${s.name}`); return; }
+    _ars.buy = skinId;
+    _ars.skin = skinId; _arsRenderMain(); _arsRenderSide();
+    document.getElementById('ars-confirm-icon').innerHTML = _arsIcon(s.weapon, skinId);
+    document.getElementById('ars-confirm-title').textContent = `CUMPERI ${s.name.toUpperCase()}?`;
+    document.getElementById('ars-confirm-text').innerHTML =
+        `Skin ${ARS_RARITY[s.rarity].title.toLowerCase()} pentru ${WEAPON_ART.byId[s.weapon].name}. Costa <b>${ico(gem ? 'gem' : 'coins')}${cost.toLocaleString()}</b> ${gem ? 'diamante' : 'monede'}; iti raman ${(have - cost).toLocaleString()}.`;
+    const btn = document.getElementById('ars-confirm-buy');
+    btn.disabled = false; btn.textContent = 'CUMPARA';
+    document.getElementById('ars-confirm').hidden = false;
+    btn.focus({ preventScroll: true });
+}
+function closeArsConfirm() {
+    const el = document.getElementById('ars-confirm');
+    if (el) el.hidden = true;
+    _ars.buy = null;
+}
+async function confirmArsBuy() {
+    const skinId = _ars.buy, s = _arsSkin(skinId);
+    if (!s || _ars.busy) return;
+    _ars.busy = true;
+    const btn = document.getElementById('ars-confirm-buy');
+    btn.disabled = true; btn.textContent = '...';
+    try {
+        const r = await _arsPost('/api/weapon-skins/buy', { skinId });
+        closeArsConfirm();
+        if (!r.ok) { showToast(r.error || 'Nu s-a putut cumpara skinul'); return; }
+        if (currentProfile) {
+            currentProfile.coins = r.coins; currentProfile.diamonds = r.diamonds;
+            if (Array.isArray(r.owned)) currentProfile.owned_weapon_skins = r.owned;
+        }
+        _arsSetMoney();
+        if (_ars.weapon === s.weapon) _ars.skin = skinId;
+        _arsRender();
+        showToast(`Ai cumparat ${s.name}. Apasa ECHIPEAZA ca sa-l folosesti.`);
+    } catch { closeArsConfirm(); showToast('Eroare de retea. Incearca din nou.'); }
+    finally { _ars.busy = false; }
+}
+
+// "Skin deblocat": the server says so at the end of a match (weapon-skin-unlocked); the notice waits for the
+// lobby and opens the Arsenal on that skin
+const _wskinNotices = [];
+function queueWeaponSkinNotice(skins) {
+    for (const s of skins || []) if (s && s.id && !_wskinNotices.some(n => n.id === s.id)) _wskinNotices.push(s);
+    showWeaponSkinNotice();
+}
+function showWeaponSkinNotice() {
+    const el = document.getElementById('wskin-notice');
+    const lobby = document.getElementById('screen-lobby');
+    if (!el || !lobby || lobby.style.display === 'none' || !_wskinNotices.length) { if (el && !_wskinNotices.length) el.hidden = true; return; }
+    const s = _wskinNotices[0], gun = WEAPON_ART.byId[s.weapon];
+    document.getElementById('wskin-notice-icon').innerHTML = _arsIcon(s.weapon, s.id);
+    document.getElementById('wskin-notice-name').textContent = `${s.name}${gun ? ' pentru ' + gun.name : ''}`;
+    el.hidden = false;
+}
+function openWeaponSkinNotice() {
+    const s = _wskinNotices.shift();
+    document.getElementById('wskin-notice').hidden = true;
+    if (s) openArsenal(s.weapon, s.id);
+}
+function dismissWeaponSkinNotice() {
+    _wskinNotices.shift();
+    document.getElementById('wskin-notice').hidden = true;
+    showWeaponSkinNotice();
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 function openCharacterShop() {
@@ -1108,6 +1495,7 @@ function prepopulateLobby() {
 
     startEventTimer();
     switchLobbyTab('center');
+    showWeaponSkinNotice(); // a skin unlocked in the last match (ARSENAL)
 }
 
 // Daily missions come from the server (missions.js): six per day, drawn from a varied pool.
@@ -2031,6 +2419,13 @@ const WEAPON_SKIN_ART_READY = Promise.all([WEAPONS_ART_READY, fetch(arAsset(WEAP
             };
         }
     })
+    .catch(e => console.warn('[weapon skins]', e.message));
+// The weapon skin catalog: public/data/weapon-skins.json, the file server.js reads (ARShared.weaponSkins
+// works out the prices). For the Arsenal: names, rarity, price, unlock.
+const WEAPON_SKIN_CATALOG = { byId: {}, list: [] };
+const WEAPON_SKIN_CATALOG_READY = fetch(arAsset('/data/weapon-skins.json'))
+    .then(r => { if (!r.ok) throw new Error('weapon-skins.json ' + r.status); return r.json(); })
+    .then(data => { for (const s of ARShared.weaponSkins(data)) { WEAPON_SKIN_CATALOG.byId[s.id] = s; WEAPON_SKIN_CATALOG.list.push(s); } })
     .catch(e => console.warn('[weapon skins]', e.message));
 // What a gun looks like in a player's hands: the skin's look (sprite, hands, muzzle flash, accent for the
 // flash, the bullet and the trail) when skinId is a skin of that gun whose sprite is in; otherwise all of the base gun
@@ -3459,13 +3854,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (data.weaponStats) currentProfile.weapon_stats = data.weaponStats;
     });
 
-    // A weapon skin unlocked with kills (server.js WEAPON SKINS). The lobby notice comes with the shop UI;
-    // until then it is kept here for it.
+    // A weapon skin unlocked with kills (server.js WEAPON SKINS): a notice in the lobby leads to the Arsenal
     socket.on('weapon-skin-unlocked', (data) => {
         if (!data || !Array.isArray(data.skins) || !currentProfile) return;
         if (Array.isArray(data.owned)) currentProfile.owned_weapon_skins = data.owned;
-        currentProfile.weapon_skins_new = (currentProfile.weapon_skins_new || []).concat(data.skins.map(s => s.id));
-        console.log('[WeaponSkins] deblocat:', data.skins.map(s => s.name).join(', '));
+        queueWeaponSkinNotice(data.skins);
     });
 
     // ---------- RESET PENTRU REMATCH ----------

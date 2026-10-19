@@ -4395,3 +4395,508 @@ button:disabled { cursor: not-allowed; }
 /* PvE break timer: the bar slides out of its track with a transform (game.js), so the break panel is not
    laid out and repainted every frame */
 .pve-upg-timer-bar { width: 100%; transition: none; will-change: transform; }
+
+/* ==========================================================================
+   ARSENAL (game.js ARSENAL, index.html #screen-arsenal)
+   The guns, their skins and your numbers with them, built from the toy blocks: trays for the sections,
+   chunky blocks for every control, outlined lettering. Three columns from 1100px wide; below that, or on
+   a short landscape screen, everything stacks and the gun list becomes a sideways row.
+   ========================================================================== */
+.arsenal-open #screen-lobby { visibility: hidden; }
+
+#screen-arsenal {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: #fff;
+    font-family: var(--f);
+    background: linear-gradient(rgba(5, 8, 10, .5), rgba(5, 8, 10, .2) 140px), rgba(5, 8, 10, .34);
+    touch-action: manipulation;
+    animation: arsIn .32s var(--settle);
+}
+@keyframes arsIn { from { opacity: 0; transform: translateY(10px); } }
+
+/* ---------- blocks ---------- */
+.ars-blk {
+    --c: var(--c-slate); --cl: var(--l-slate); --ch: var(--h-slate);
+    --sh-rest:  inset 0 -5px 0 var(--cl), inset 0 3px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45), 0 10px 18px -6px rgba(0, 0, 0, .55);
+    --sh-lift:  inset 0 -5px 0 var(--cl), inset 0 3px 0 rgba(255, 255, 255, .36), 0 6px 0 rgba(0, 0, 0, .45), 0 16px 24px -8px rgba(0, 0, 0, .6);
+    --sh-press: inset 0 -2px 0 var(--cl), inset 0 2px 0 rgba(255, 255, 255, .18), 0 1px 0 rgba(0, 0, 0, .45), 0 3px 6px -2px rgba(0, 0, 0, .5);
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: var(--o) solid var(--ink-line);
+    border-radius: var(--r-blk);
+    background: var(--c);
+    color: #fff;
+    font: 800 .9rem/1 var(--f);
+    letter-spacing: .07em;
+    text-shadow: var(--stroke-sm);
+    box-shadow: var(--sh-rest);
+    padding: 0 14px 3px;
+    cursor: pointer;
+    transform: translateY(0);
+    transition: transform .28s var(--spring), box-shadow .28s var(--spring), background-color .18s ease;
+    touch-action: manipulation;
+}
+.ars-blk .ic { width: 1.2em; height: 1.2em; filter: drop-shadow(0 2px 0 var(--ink-line)); }
+.ars-btn-green  { --c: var(--c-green);  --cl: var(--l-green);  --ch: var(--h-green); }
+.ars-btn-gold   { --c: var(--c-gold);   --cl: var(--l-gold);   --ch: var(--h-gold); }
+.ars-btn-orange { --c: var(--c-orange); --cl: var(--l-orange); --ch: var(--h-orange); }
+.ars-btn-slate  { --c: var(--c-slate);  --cl: var(--l-slate);  --ch: var(--h-slate); }
+@media (hover: hover) and (pointer: fine) {
+    .ars-blk:not(:disabled):hover { background: var(--ch); box-shadow: var(--sh-lift); transform: translateY(-2px); }
+}
+.ars-blk:not(:disabled):active { background: var(--c); box-shadow: var(--sh-press); transform: translateY(3px) scale(.985); transition-duration: 0s; }
+.ars-blk:disabled { --c: #34424B; --cl: #222C33; --ch: #34424B; color: rgba(255, 255, 255, .55); cursor: default; }
+
+/* ---------- top bar ---------- */
+.ars-top {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: calc(var(--bar-h) + 10px + var(--safe-t));
+    padding: calc(var(--safe-t) + 6px) calc(var(--safe-r) + 24px) 0 calc(var(--safe-l) + 24px);
+}
+.ars-back { width: 46px; height: 46px; padding: 0 0 3px; font-size: 1.15rem; }
+.ars-back .ic { width: 1.35em; height: 1.35em; stroke-width: 3; }
+.ars-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font: 800 clamp(1.4rem, 2.6vw, 2.1rem)/1 var(--f);
+    letter-spacing: .04em;
+    text-shadow: var(--stroke-lg);
+    transform: rotate(-2deg);
+    transform-origin: left center;
+}
+.ars-title .ic { width: 1.05em; height: 1.05em; color: var(--c-orange); stroke-width: 2.6; filter: drop-shadow(0 3px 0 var(--ink-line)); }
+.ars-wallet { margin-left: auto; display: flex; gap: 8px; }
+.ars-cur {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 14px 3px 10px;
+    background: var(--c-slate);
+    border: var(--o) solid var(--ink-line);
+    border-radius: 12px;
+    font-weight: 800;
+    font-size: 1.05rem;
+    text-shadow: var(--stroke-sm);
+    box-shadow: inset 0 -4px 0 var(--l-slate), inset 0 3px 0 rgba(255, 255, 255, .1), 0 4px 0 rgba(0, 0, 0, .4);
+}
+.ars-cur .ic { width: 1.35em; height: 1.35em; filter: drop-shadow(0 2px 0 var(--ink-line)); }
+.ars-cur-gold .ic { color: var(--c-gold); }
+.ars-cur-gem .ic { color: var(--c-sky); }
+.ars-cur.is-bump { animation: badgeBump .4s var(--spring); }
+
+/* ---------- three columns ---------- */
+.ars-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(280px, 330px) minmax(0, 1fr) minmax(330px, 410px);
+    gap: 18px;
+    padding: 8px calc(var(--safe-r) + 24px) calc(var(--safe-b) + 22px) calc(var(--safe-l) + 24px);
+}
+.ars-col { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.ars-tray {
+    background: var(--tray);
+    border: var(--o) solid var(--tray-line);
+    border-radius: var(--r-tray);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, .07), inset 0 -4px 0 rgba(0, 0, 0, .28), 0 6px 0 rgba(0, 0, 0, .32), 0 14px 24px -12px rgba(0, 0, 0, .6);
+    padding: 16px 18px;
+}
+.ars-body > * { animation: trayDrop .62s var(--settle) calc(var(--n, 0) * 60ms + 60ms) backwards; }
+.ars-body > :nth-child(2) { --n: 1; }
+.ars-body > :nth-child(3) { --n: 2; }
+.ars-head, .ars-tray-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ars-head { padding: 0 4px 8px; }
+.ars-head-title, .ars-tray-title {
+    margin: 0;
+    font-weight: 800;
+    font-size: .8rem;
+    letter-spacing: .1em;
+    color: #fff;
+    text-shadow: var(--stroke-sm);
+}
+.ars-head-note, .ars-tray-note { font-weight: 800; font-size: .74rem; letter-spacing: .04em; color: #C9D4DA; text-shadow: var(--stroke-sm); }
+
+/* ---------- gun icons ---------- */
+/* every icon box is a size container: the base gun strip (.ars-fi, game.js _arsIcon) fits it both ways,
+   like the skins' icons/ SVGs do with object-fit */
+.ars-wrow-icon, .ars-skin-icon, .ars-unlock-icon, .ars-confirm-icon, .wskin-notice-icon { container-type: size; }
+.ars-fi {
+    position: relative;
+    display: block;
+    flex: none;
+    width: min(100cqw, calc(100cqh * var(--len) / 48));
+    aspect-ratio: var(--len) / 48;
+    overflow: hidden;
+    filter: drop-shadow(0 2px 0 var(--ink-line));
+}
+/* the sprite is the match frame (80 x 144 units, its top at y = 6, barrel down) turned barrel-right: the
+   strip starts at y = 2 and is 48 units tall around the barrel line */
+.ars-fi img {
+    position: absolute;
+    left: calc(100% * 36 / var(--len));
+    top: -100%;
+    width: calc(100% * 80 / var(--len));
+    height: 300%;
+    transform: rotate(-90deg);
+    pointer-events: none;
+    -webkit-user-drag: none;
+}
+.ars-skin.is-locked .ars-fi { filter: drop-shadow(0 2px 0 var(--ink-line)) saturate(.55) brightness(.85); }
+
+/* ---------- left: the guns ---------- */
+.ars-weapons { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; padding: 2px 4px 8px; margin: 0 -4px; }
+.ars-wrow {
+    --c: var(--c-slate); --cl: var(--l-slate); --ch: var(--h-slate);
+    flex: none;
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 70px;
+    padding: 6px 12px 9px 8px;
+    text-align: left;
+    color: #fff;
+    font-family: var(--f);
+    background: var(--c);
+    border: var(--o) solid var(--ink-line);
+    border-radius: 14px;
+    box-shadow: inset 0 -5px 0 var(--cl), inset 0 3px 0 rgba(255, 255, 255, .14), 0 4px 0 rgba(0, 0, 0, .45);
+    cursor: pointer;
+    transition: transform .28s var(--spring), box-shadow .28s var(--spring), background-color .18s ease;
+    touch-action: manipulation;
+}
+@media (hover: hover) and (pointer: fine) {
+    .ars-wrow:hover { background: var(--ch); transform: translateY(-2px); box-shadow: inset 0 -5px 0 var(--cl), inset 0 3px 0 rgba(255, 255, 255, .18), 0 6px 0 rgba(0, 0, 0, .45); }
+}
+.ars-wrow:active { transform: translateY(3px) scale(.99); box-shadow: inset 0 -2px 0 var(--cl), 0 1px 0 rgba(0, 0, 0, .45); transition-duration: 0s; }
+.ars-wrow.is-sel { --c: var(--c-sky); --cl: var(--l-sky); --ch: var(--h-sky); }
+.ars-wrow-icon {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, .42);
+    box-shadow: inset 0 3px 0 rgba(0, 0, 0, .4);
+}
+.ars-wrow-icon .wicon { filter: drop-shadow(0 2px 0 var(--ink-line)); }
+.ars-wrow-text { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ars-wrow-name { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.12rem; line-height: 1.05; text-shadow: var(--stroke-sm); }
+.ars-wrow-name { min-width: 0; }
+.ars-wrow-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ars-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--ac); border: 2.5px solid var(--ink-line); box-shadow: 0 2px 0 rgba(0, 0, 0, .4); }
+.ars-wrow-sub { font-weight: 700; font-size: .74rem; color: #DCE4E8; text-shadow: var(--stroke-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ars-wrow-end { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.ars-wrow-kills { display: inline-flex; align-items: center; gap: 5px; font-weight: 800; font-size: 1.02rem; text-shadow: var(--stroke-sm); }
+.ars-wrow-kills .ic { width: 1.1em; height: 1.1em; color: #FF8A95; filter: drop-shadow(0 2px 0 var(--ink-line)); }
+.ars-wrow-tag {
+    padding: 1px 6px 2px;
+    border: 2px solid var(--ink-line);
+    border-radius: 7px;
+    background: var(--c-green);
+    font-weight: 800;
+    font-size: .7rem;
+    letter-spacing: .06em;
+    text-shadow: var(--stroke-sm);
+    white-space: nowrap;
+}
+
+/* ---------- center: the chosen gun ---------- */
+.ars-main { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; }
+.ars-main-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.ars-main-id { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.ars-pill {
+    padding: 2px 10px 4px;
+    border: 2.5px solid var(--ink-line);
+    border-radius: 999px;
+    background: var(--c-sky);
+    font-weight: 800;
+    font-size: .7rem;
+    letter-spacing: .12em;
+    text-shadow: var(--stroke-sm);
+    box-shadow: inset 0 -3px 0 var(--l-sky), 0 3px 0 rgba(0, 0, 0, .4);
+}
+.ars-main-name { margin: 2px 0 0; font: 800 clamp(2rem, 3.4vw, 3rem)/.95 var(--f); letter-spacing: .02em; text-shadow: var(--stroke-lg); }
+.ars-main-skin { font-weight: 700; font-size: .92rem; color: #DCE4E8; text-shadow: var(--stroke-sm); }
+.ars-main-skin b { color: var(--c-gold); font-weight: 800; }
+.ars-bullet { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-top: 4px; }
+.ars-bullet-kick { font-weight: 800; font-size: .7rem; letter-spacing: .12em; color: #C9D4DA; text-shadow: var(--stroke-sm); }
+.ars-bullet-val { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1rem; text-shadow: var(--stroke-sm); }
+.ars-bullet-chip { width: 34px; height: 12px; border-radius: 6px; background: var(--ac); border: 2.5px solid var(--ink-line); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .4), 0 2px 0 rgba(0, 0, 0, .4); }
+
+.ars-stage {
+    position: relative;
+    flex: 1 1 190px;
+    min-height: 130px;
+    max-height: 330px;
+    container-type: size;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border: var(--o) solid var(--ink-line);
+    border-radius: 14px;
+    background:
+        radial-gradient(60% 70% at 50% 58%, rgba(84, 170, 96, .34), rgba(84, 170, 96, 0) 72%),
+        rgba(0, 0, 0, .42);
+    box-shadow: inset 0 4px 0 rgba(0, 0, 0, .45);
+}
+/* the match frame (80 x 144 units, barrel down) turned barrel-right: the wrapper shows the middle 44 units
+   of its width, so all guns share one place and scale */
+.ars-gun { position: relative; width: min(92%, 560px); width: min(92cqw, 620px, calc((100cqh - 24px) * 144 / 44)); aspect-ratio: 144 / 44; overflow: hidden; }
+.ars-gun img {
+    position: absolute;
+    left: 22.2222%;            /* (100% - 80/144) / 2 */
+    top: -113.6364%;           /* (100% - 144/44) / 2, in wrapper heights */
+    width: 55.5556%;           /* 80 / 144 of the wrapper width */
+    height: 327.2727%;         /* 144 / 44 of the wrapper height */
+    transform: rotate(-90deg);
+    filter: drop-shadow(0 6px 0 rgba(0, 0, 0, .35));
+    pointer-events: none;
+    -webkit-user-drag: none;
+    animation: arsGunIn .42s var(--spring);
+}
+@keyframes arsGunIn { from { opacity: 0; transform: rotate(-90deg) translateY(-14px); } }
+.ars-stage.is-hand { cursor: crosshair; }
+#ars-hand { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.ars-bars { display: flex; flex-direction: column; gap: 9px; }
+.ars-bar-row { display: grid; grid-template-columns: 118px minmax(0, 1fr) 118px; align-items: center; gap: 12px; }
+.ars-bar-label { font-weight: 800; font-size: .76rem; letter-spacing: .07em; color: #DCE4E8; text-shadow: var(--stroke-sm); }
+.ars-bar {
+    position: relative;
+    display: block;
+    height: 16px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, .5);
+    border: 2px solid var(--ink-line);
+    border-radius: 999px;
+    box-shadow: inset 0 3px 0 rgba(0, 0, 0, .45);
+}
+.ars-bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--c-sky);
+    box-shadow: inset 0 3px 0 rgba(255, 255, 255, .38), inset 0 -2px 0 rgba(0, 0, 0, .18);
+    animation: arsFill .6s var(--spring) backwards;
+    transform-origin: left center;
+}
+.ars-fill-gold { background: var(--c-gold); }
+@keyframes arsFill { from { transform: scaleX(0); } }
+.ars-bar-val { text-align: right; font-weight: 800; font-size: .92rem; text-shadow: var(--stroke-sm); white-space: nowrap; }
+
+.ars-actions { display: flex; gap: 12px; margin-top: auto; padding-top: 4px; }
+.ars-use { flex: 1; min-height: 54px; font-size: 1.1rem; letter-spacing: .09em; text-shadow: var(--stroke); }
+.ars-use[aria-pressed="true"] { --c: var(--c-slate); --cl: var(--l-slate); --ch: var(--c-slate); cursor: default; color: #DFF7E5; }
+.ars-use[aria-pressed="true"] .ic { color: var(--c-green); stroke-width: 3.2; }
+.ars-hand-btn { min-width: 190px; min-height: 54px; font-size: .98rem; }
+
+/* ---------- right: your numbers, the skins ---------- */
+.ars-side { gap: 16px; min-height: 0; overflow-y: auto; }
+.ars-stats { display: flex; flex-direction: column; gap: 12px; }
+.ars-stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ars-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px 11px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, .3);
+    box-shadow: inset 0 2px 0 rgba(0, 0, 0, .3);
+}
+.ars-stat-label { font-weight: 800; font-size: .7rem; letter-spacing: .08em; color: #DCE4E8; text-shadow: var(--stroke-sm); }
+.ars-stat-val { font-weight: 800; font-size: 1.5rem; line-height: 1; text-shadow: var(--stroke-sm); }
+.ars-stat-kills .ars-stat-val { color: #FF8A95; }
+.ars-unlock {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, .3);
+    box-shadow: inset 0 2px 0 rgba(0, 0, 0, .3);
+    font-weight: 700;
+    font-size: .8rem;
+    text-shadow: var(--stroke-sm);
+}
+.ars-unlock-icon { flex: none; width: 64px; height: 34px; display: flex; align-items: center; justify-content: center; }
+.ars-unlock-icon .wicon { filter: drop-shadow(0 2px 0 var(--ink-line)) grayscale(.35); }
+.ars-unlock-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.ars-unlock-line { display: flex; justify-content: space-between; gap: 10px; }
+.ars-unlock-line b { color: var(--c-gold); }
+.ars-unlock-n { flex: none; color: #C9D4DA; font-weight: 800; }
+.ars-unlock .ars-bar { height: 13px; }
+.ars-unlock-done { color: #DFF7E5; }
+.ars-unlock-done .ic { width: 1.3em; height: 1.3em; color: var(--c-green); filter: drop-shadow(0 2px 0 var(--ink-line)); }
+
+.ars-skins { display: flex; flex-direction: column; gap: 12px; }
+.ars-skin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ars-skin {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border: var(--o) solid var(--ink-line);
+    border-radius: 14px;
+    background: var(--c-slate);
+    box-shadow: inset 0 -5px 0 var(--l-slate), inset 0 3px 0 rgba(255, 255, 255, .1), 0 4px 0 rgba(0, 0, 0, .45);
+    transition: transform .28s var(--spring), box-shadow .28s var(--spring);
+}
+.ars-skin.is-sel { box-shadow: inset 0 -5px 0 var(--l-slate), inset 0 3px 0 rgba(255, 255, 255, .1), 0 4px 0 rgba(0, 0, 0, .45), 0 0 0 3px var(--c-sky); }
+.ars-skin.is-eq { background: #3B3524; box-shadow: inset 0 -5px 0 #241F12, inset 0 3px 0 rgba(255, 255, 255, .1), 0 4px 0 rgba(0, 0, 0, .45), 0 0 0 3px var(--c-gold); }
+.ars-skin.is-eq.is-sel { box-shadow: inset 0 -5px 0 #241F12, inset 0 3px 0 rgba(255, 255, 255, .1), 0 4px 0 rgba(0, 0, 0, .45), 0 0 0 3px var(--c-gold), 0 0 0 6px var(--c-sky); }
+.ars-skin-face {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 6px 4px;
+    border: 0;
+    background: none;
+    color: #fff;
+    font-family: var(--f);
+    cursor: pointer;
+    border-radius: 11px 11px 0 0;
+}
+@media (hover: hover) and (pointer: fine) { .ars-skin:hover { transform: translateY(-2px); } }
+.ars-skin-face:active { transform: translateY(2px); }
+.ars-skin-rar { font-weight: 800; font-size: .7rem; letter-spacing: .13em; color: var(--rc); text-shadow: var(--stroke-sm); }
+.ars-skin-icon { width: 100%; height: 40px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+.ars-skin-icon .wicon { filter: drop-shadow(0 2px 0 var(--ink-line)); }
+.ars-skin.is-locked .ars-skin-icon .wicon { filter: drop-shadow(0 2px 0 var(--ink-line)) saturate(.55) brightness(.85); }
+.ars-skin-name { max-width: 100%; font-weight: 800; font-size: .9rem; line-height: 1.1; text-shadow: var(--stroke-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ars-skin-foot { display: flex; justify-content: center; padding: 2px 6px 11px; }
+.ars-mini { white-space: nowrap; min-height: 30px; padding: 0 9px 3px; font-size: .74rem; border-width: 2.5px; border-radius: 9px; gap: 4px; }
+.ars-mini .ic { width: 1.1em; height: 1.1em; }
+.ars-mini.is-short { --c: var(--c-slate); --cl: var(--l-slate); --ch: var(--h-slate); color: #FFB3BA; }
+.ars-mini .ic:first-child { opacity: .8; }
+.ars-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 26px;
+    padding: 1px 9px 3px;
+    border: 2.5px solid var(--ink-line);
+    border-radius: 9px;
+    font-weight: 800;
+    font-size: .7rem;
+    letter-spacing: .08em;
+    text-shadow: var(--stroke-sm);
+    white-space: nowrap;
+}
+.ars-badge .ic { width: 1.1em; height: 1.1em; filter: drop-shadow(0 1.5px 0 var(--ink-line)); }
+.ars-badge-gold { background: var(--c-gold); box-shadow: inset 0 -3px 0 var(--l-gold), 0 2px 0 rgba(0, 0, 0, .4); }
+.ars-badge-lock { background: rgba(0, 0, 0, .45); color: #DCE4E8; }
+
+/* ---------- buy confirm ---------- */
+.ars-confirm { position: fixed; inset: 0; z-index: 7; display: grid; place-items: center; padding: 16px; background: rgba(5, 8, 10, .62); }
+.ars-confirm[hidden] { display: none; }
+.ars-confirm-card {
+    width: min(100%, 420px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 20px 22px 22px;
+    text-align: center;
+    background: #18242C;
+    animation: arsPop .3s var(--spring);
+}
+@keyframes arsPop { from { opacity: 0; transform: scale(.94); } }
+.ars-confirm-icon { width: 170px; height: 54px; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; }
+.ars-confirm-icon .wicon { filter: drop-shadow(0 3px 0 var(--ink-line)); }
+.ars-confirm-title { margin: 0; font: 800 1.3rem/1.1 var(--f); letter-spacing: .04em; text-shadow: var(--stroke); }
+.ars-confirm-text { margin: 0; font-weight: 600; font-size: .92rem; line-height: 1.4; color: #DCE4E8; text-shadow: var(--stroke-sm); }
+.ars-confirm-text b { display: inline-flex; align-items: center; gap: 3px; color: #fff; }
+.ars-confirm-text .ic { width: 1.1em; height: 1.1em; color: var(--c-gold); filter: drop-shadow(0 1.5px 0 var(--ink-line)); }
+.ars-confirm-actions { display: flex; gap: 10px; width: 100%; margin-top: 6px; }
+.ars-confirm-actions .ars-blk { flex: 1; min-height: 48px; }
+
+/* ---------- "skin deblocat" in the lobby ---------- */
+.wskin-notice {
+    position: fixed;
+    z-index: 6;
+    top: calc(var(--safe-t) + 6px);   /* over the season banner: the trays below stay readable */
+    left: 50%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: calc(100% - 32px);
+    padding: 9px 10px 12px 12px;
+    background: var(--c-gold);
+    border: var(--o) solid var(--ink-line);
+    border-radius: 16px;
+    box-shadow: inset 0 -5px 0 var(--l-gold), inset 0 3px 0 rgba(255, 255, 255, .35), 0 5px 0 rgba(0, 0, 0, .45), 0 16px 26px -8px rgba(0, 0, 0, .6);
+    transform: translateX(-50%);
+    animation: noticeIn .5s var(--spring);
+}
+.wskin-notice[hidden] { display: none; }
+@keyframes noticeIn { from { opacity: 0; transform: translate(-50%, -16px) scale(.94); } }
+.arsenal-open .wskin-notice { display: none; }
+.wskin-notice-icon { flex: none; width: 92px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 10px; background: rgba(10, 16, 19, .55); }
+.wskin-notice-icon .wicon { filter: drop-shadow(0 2px 0 var(--ink-line)); }
+.wskin-notice-text { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.wskin-notice-kick { font-weight: 800; font-size: .7rem; letter-spacing: .16em; color: #fff; text-shadow: var(--stroke-sm); }
+.wskin-notice-name { font-weight: 800; font-size: 1.05rem; color: #fff; text-shadow: var(--stroke-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wskin-notice-go { --c: var(--c-orange); --cl: var(--l-orange); --ch: var(--h-orange); min-height: 42px; white-space: nowrap; }
+.wskin-notice-x {
+    flex: none; width: 32px; height: 32px; display: grid; place-items: center; padding: 0;
+    border: 2.5px solid var(--ink-line); border-radius: 9px; background: rgba(10, 16, 19, .45); color: #fff; cursor: pointer;
+}
+.wskin-notice-x .ic { width: 1.05em; height: 1.05em; stroke-width: 3; }
+
+/* ---------- stacked: below 1100px wide or on a short landscape screen (phones) ---------- */
+@media (max-width: 1099px), (max-height: 620px) {
+    .ars-top { gap: 10px; padding-left: calc(var(--safe-l) + 14px); padding-right: calc(var(--safe-r) + 14px); }
+    .ars-back { width: 42px; height: 42px; }
+    .ars-cur { min-height: 38px; font-size: .95rem; padding: 0 11px 3px 8px; }
+    .ars-body {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 6px calc(var(--safe-r) + 14px) calc(var(--safe-b) + 18px) calc(var(--safe-l) + 14px);
+    }
+    .ars-col, .ars-main, .ars-side { flex: none; overflow: visible; min-height: auto; }
+    /* the guns: one sideways row */
+    .ars-head { padding-bottom: 6px; }
+    .ars-weapons { flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 8px; padding: 2px 4px 10px; scroll-snap-type: x proximity; }
+    .ars-wrow { flex: 0 0 auto; width: 240px; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; min-height: 60px; scroll-snap-align: start; }
+    .ars-wrow-icon { height: 38px; padding: 3px 5px; }
+    .ars-wrow-name { font-size: .98rem; }
+    .ars-main-name { font-size: 2rem; }
+    .ars-stage { flex: none; height: 150px; }
+    .ars-stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .ars-skin-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .ars-bar-row { grid-template-columns: 104px minmax(0, 1fr) 104px; gap: 10px; }
+    .ars-actions { margin-top: 2px; }
+    .ars-hand-btn { min-width: 160px; }
+}
+@media (max-width: 560px) {
+    .ars-wallet { gap: 6px; }
+    .ars-bar-row { grid-template-columns: 92px minmax(0, 1fr) 92px; }
+    .ars-actions { flex-direction: column; }
+    .ars-hand-btn { min-width: 0; }
+    .ars-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ars-skin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .wskin-notice { flex-wrap: wrap; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #screen-arsenal, .ars-body > *, .ars-gun img, .ars-bar-fill, .ars-confirm-card, .wskin-notice { animation: none; }
+}

@@ -295,9 +295,9 @@
                     <span class="weapon-preview-icon hc-icon"><svg class="ic" aria-hidden="true"><use href="#users"/></svg></span>
                     <span class="hw-text"><span class="hw-kick">SKIN <b id="hero-skin-idx">1</b> / <span id="hero-skin-total">30</span></span><span class="hw-name">PERSONAJE</span></span>
                 </button>
-                <button type="button" class="hero-weapon hero-arms" id="weapon-ring" onclick="openWeaponSelect()" aria-label="Alege arma">
+                <button type="button" class="hero-weapon hero-arms" id="weapon-ring" onclick="openArsenal()" aria-label="Arsenal: armele si skin-urile lor">
                     <span class="weapon-preview-icon" id="weapon-preview-icon"><img class="wicon" src="/images/weapon-icons/pistol.png" alt="" draggable="false"></span>
-                    <span class="hw-text"><span class="hw-kick">ARMA</span><span class="hw-name" id="weapon-name-display">SCOUT</span></span>
+                    <span class="hw-text"><span class="hw-kick">ARSENAL</span><span class="hw-name" id="weapon-name-display">SCOUT</span></span>
                 </button>
             </div>
         </section>
@@ -470,6 +470,52 @@
         </div>
     </div>
 
+</div>
+
+<!-- ========== ARSENAL: armele, skin-urile si statisticile pe arma (game.js ARSENAL) ========== -->
+<div id="screen-arsenal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="ars-title">
+    <header class="ars-top">
+        <button type="button" class="ars-blk ars-back" onclick="closeArsenal()" aria-label="Inapoi in lobby"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+        <h1 class="ars-title" id="ars-title"><svg class="ic" aria-hidden="true"><use href="#crosshair"/></svg><span>ARSENAL</span></h1>
+        <div class="ars-wallet">
+            <span class="ars-cur ars-cur-gold"><svg class="ic" aria-hidden="true"><use href="#coins"/></svg><span id="ars-coins">0</span></span>
+            <span class="ars-cur ars-cur-gem"><svg class="ic" aria-hidden="true"><use href="#gem"/></svg><span id="ars-diamonds">0</span></span>
+        </div>
+    </header>
+    <div class="ars-body">
+        <!-- left: the guns, in weapons.json class order -->
+        <section class="ars-col ars-list" aria-label="Armele tale">
+            <div class="ars-head"><span class="ars-head-title">ARMELE TALE</span><span class="ars-head-note">kill-uri</span></div>
+            <div class="ars-weapons" id="ars-weapons"></div>
+        </section>
+        <!-- center: the chosen gun -->
+        <section class="ars-col ars-tray ars-main" id="ars-main" aria-live="polite"></section>
+        <!-- right: your stats with it, its skins -->
+        <div class="ars-col ars-side">
+            <section class="ars-tray ars-stats" id="ars-stats"></section>
+            <section class="ars-tray ars-skins" id="ars-skins"></section>
+        </div>
+    </div>
+    <!-- buying asks first -->
+    <div class="ars-confirm" id="ars-confirm" hidden>
+        <div class="ars-confirm-card ars-tray" role="alertdialog" aria-modal="true" aria-labelledby="ars-confirm-title">
+            <div class="ars-confirm-icon" id="ars-confirm-icon"></div>
+            <h2 class="ars-confirm-title" id="ars-confirm-title">CUMPERI SKINUL?</h2>
+            <p class="ars-confirm-text" id="ars-confirm-text"></p>
+            <div class="ars-confirm-actions">
+                <button type="button" class="ars-blk ars-btn-slate" onclick="closeArsConfirm()">ANULEAZA</button>
+                <button type="button" class="ars-blk ars-btn-gold" id="ars-confirm-buy" onclick="confirmArsBuy()">CUMPARA</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== SKIN DEBLOCAT: notificarea din lobby, duce la Arsenal ========== -->
+<div id="wskin-notice" class="wskin-notice" hidden role="status">
+    <span class="wskin-notice-icon" id="wskin-notice-icon"></span>
+    <span class="wskin-notice-text"><span class="wskin-notice-kick">SKIN DEBLOCAT</span><span class="wskin-notice-name" id="wskin-notice-name"></span></span>
+    <button type="button" class="ars-blk ars-btn-gold wskin-notice-go" onclick="openWeaponSkinNotice()">VEZI IN ARSENAL</button>
+    <button type="button" class="wskin-notice-x" onclick="dismissWeaponSkinNotice()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
 </div>
 
 <!-- ========== ECRANUL DE ASTEPTARE ========== -->
