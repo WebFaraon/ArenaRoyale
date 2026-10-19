@@ -324,7 +324,7 @@ let DEFAULT_WEAPON = null;
 // Per-jucator: socketId → weaponId (populat din player-image si playersMeta)
 const _playerWeapons = new Map();
 // Per-jucator: socketId → id-ul skinului armei ("default" = fara skin), validat de server (player-image /
-// playersMeta). Nu se deseneaza inca; ?dev=weapons il arata.
+// playersMeta); se deseneaza in meci (_gunLook, WEAPON SKINS IN HAND)
 const _playerWeaponSkins = new Map();
 let selectedWeapon = localStorage.getItem('selectedWeapon'); // checked once weapons.json is in
 
@@ -1956,7 +1956,7 @@ function _drawSkinHighlight(ctx, x, y, scale) {
 // public/data/weapons.json: per gun the sprite, the two hand points and the muzzle, in world units from
 // the body centre with the aim pointing down (the same frame as the skins); every sprite shares one frame
 // (weapons.json "sprite"). All of it is multiplied by PLAYER_VISUAL_SCALE.
-const WEAPON_ART = { ready: false, tl: null, size: null, byId: {} };
+const WEAPON_ART = { ready: false, tl: null, size: null, byId: {}, skins: {} };
 const WEAPONS_ART_READY = fetch(arAsset('/data/weapons.json'))
     .then(r => { if (!r.ok) throw new Error('weapons.json ' + r.status); return r.json(); })
     .then(data => {
@@ -1999,6 +1999,52 @@ const WEAPONS_ART_READY = fetch(arAsset('/data/weapons.json'))
         WEAPON_ART.ready = true;
     })
     .catch(e => console.warn('[weapons]', e.message));
+
+// ---------- WEAPON SKINS IN HAND ----------
+// public/images/weapons/skins/weapon-skin-sprites.json: per skin (the ids of public/data/weapon-skins.json)
+// its sprite (the same frame as the base guns), hands, muzzle and accent. Only the look changes: the hands
+// sit on the skin, the muzzle flash comes out of the skin's barrel, the flash, the bullet and its trail take
+// the skin's accent. Bullets still start at the gun's own muzzle (server.js GUN_FIRE and the prediction use
+// muzzleDist of the base gun), so a longer barrel gives no advantage. A skin's sprite is loaded the first
+// time a player holding it is drawn, once; until it is in, or if it fails, the base gun is drawn.
+const WEAPON_SKIN_DIR = '/images/weapons/skins/';
+const WEAPON_SKIN_ART_READY = Promise.all([WEAPONS_ART_READY, fetch(arAsset(WEAPON_SKIN_DIR + 'weapon-skin-sprites.json'))
+    .then(r => { if (!r.ok) throw new Error('weapon-skin-sprites.json ' + r.status); return r.json(); })])
+    .then(([, data]) => {
+        const S = PLAYER_VISUAL_SCALE;
+        const pt = p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite);
+        for (const [id, k] of Object.entries(data.skins || {})) {
+            const base = k && WEAPON_ART.byId[k.weapon];
+            if (!base || !Array.isArray(k.hands) || k.hands.length !== 2 || !k.hands.every(pt) || !pt(k.muzzle) || typeof k.sprite !== 'string') {
+                console.warn('[weapon skins] ' + id + ': date invalide, se deseneaza arma de baza');
+                continue;
+            }
+            WEAPON_ART.skins[id] = {
+                id, weapon: k.weapon, name: base.name,
+                src: arAsset(WEAPON_SKIN_DIR + 'sprites/' + k.sprite), img: null, failed: false,
+                accent: /^#[0-9A-Fa-f]{6}$/.test(k.accent) ? k.accent : base.accent,
+                hands:  k.hands.map(p => [p[0] * S, p[1] * S]),
+                muzzle: [k.muzzle[0] * S, k.muzzle[1] * S],
+                hands0: k.hands, muzzle0: k.muzzle, // unscaled, for the dev view readout
+                recoil: base.recoil, flashLen: base.flashLen, flashWid: base.flashWid,
+                flashSprite: null, trail: null, bulletSprite: null,
+            };
+        }
+    })
+    .catch(e => console.warn('[weapon skins]', e.message));
+// What a gun looks like in a player's hands: the skin's look (sprite, hands, muzzle flash, accent for the
+// flash, the bullet and the trail) when skinId is a skin of that gun whose sprite is in; otherwise all of the base gun
+function _gunLook(weaponId, skinId) {
+    const base = WEAPON_ART.byId[weaponId];
+    const sk = skinId && skinId !== 'default' ? WEAPON_ART.skins[skinId] : null;
+    if (!base || !sk || sk.weapon !== weaponId || sk.failed) return base;
+    if (!sk.img) {
+        sk.img = new Image();
+        sk.img.onerror = () => { sk.failed = true; console.warn('[weapon skins] ' + sk.id + ': sprite-ul nu s-a incarcat, se deseneaza arma de baza'); };
+        sk.img.src = sk.src;
+    }
+    return sk.img.complete && sk.img.naturalWidth ? sk : base;
+}
 
 // A skin's draw cache: the image, its colours and the sprites made from it
 function _makeSkinEntry(skinId) {
@@ -2062,9 +2108,10 @@ function _flashSprite(gun, scale) {
     return s;
 }
 
-// Bullet trail in the gun's accent: fades in from the tail, a lighter core line; one per gun
-function _trailSpriteFor(weaponId) {
-    const gun = WEAPON_ART.byId[weaponId] || WEAPON_ART.byId[DEFAULT_WEAPON];
+// Bullet trail in the gun's accent (the skin's, with one equipped): fades in from the tail, a lighter core
+// line; one per gun / skin
+function _trailSpriteFor(weaponId, skinId) {
+    const gun = _gunLook(weaponId, skinId) || WEAPON_ART.byId[DEFAULT_WEAPON];
     if (!gun) return _getTrailSprite();
     if (gun.trail) return gun.trail;
     const hex = (gun.accent || '#FFC53D').replace('#', '');
@@ -2095,7 +2142,8 @@ function _playerRingR() { return _HAND.reach + 2.5; }
 // Order: ring, then with a gun: body, gun, hands on the gun, muzzle flash, fixed highlight;
 // without one (dev view only): hands at the default spot under the body, body, highlight.
 // fx (optional): the player's shot effects (_newShotFx), drawn as of `now` (performance.now()).
-function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStroke, ringFill, fx, now) {
+// weaponSkin (optional): the skin on the gun (server state); its sprite, hands and muzzle flash are drawn.
+function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStroke, ringFill, fx, now, weaponSkin) {
     const ringR = _playerRingR();
     ctx.beginPath();
     ctx.arc(x, y, ringR, 0, Math.PI * 2);
@@ -2107,7 +2155,7 @@ function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStr
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    const gun = weaponId ? WEAPON_ART.byId[weaponId] : null;
+    const gun = weaponId ? _gunLook(weaponId, weaponSkin) : null;
     _setRotated(ctx, wm, x, y, Math.cos(angle), Math.sin(angle));
     if (entry && !gun) _drawHands(ctx, entry, scale);
     const spr = entry ? _skinSprite(entry, scale) : null;
@@ -2142,13 +2190,13 @@ function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStr
     _drawSkinHighlight(ctx, x, y, scale);
 }
 
-// Bullets: a capsule along +x (the direction of travel) in the gun's accent, ink outline and a small
-// white glint, painted once per gun at the on-screen scale and rotated per bullet. Visual only: the
-// hit radius stays the server's BULLET_RADIUS (6).
+// Bullets: a capsule along +x (the direction of travel) in the gun's accent (the skin's, with one equipped),
+// ink outline and a small white glint, painted once per gun / skin at the on-screen scale and rotated per
+// bullet. Visual only: the hit radius stays the server's BULLET_RADIUS (6).
 const BULLET_LOOK = { len: 14, wid: 5 };
 const PELLET_LOOK = { len: 8, wid: 4 };   // guns that fire pellets (shotgun)
-function _bulletSprite(weaponId, scale) {
-    const gun = WEAPON_ART.byId[weaponId] || WEAPON_ART.byId[DEFAULT_WEAPON];
+function _bulletSprite(weaponId, scale, skinId) {
+    const gun = _gunLook(weaponId, skinId) || WEAPON_ART.byId[DEFAULT_WEAPON];
     if (!gun) return null;
     const look = (_WEAPON_DATA[weaponId] || {}).pellets > 1 ? PELLET_LOOK : BULLET_LOOK;
     const box = look.len / 2 + 1.5;
@@ -4173,16 +4221,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _bAge = _seen ? (_bulletNow - _seen.t) / 1000 : 0;
             const _trail = Math.min(_bAge * 480, 110);
             const _bw = _playerWeapons.get(b.ownerId) || DEFAULT_WEAPON;
-            const _bs = _bulletSprite(_bw, _lblScale);
+            const _bs = _bulletSprite(_bw, _lblScale, _playerWeaponSkins.get(b.ownerId));
             _setRotated(ctx, _wm, _bx, _by, b.dx, b.dy);
-            if (_trail > 4) ctx.drawImage(_trailSpriteFor(_bw), -_trail, -3, _trail, 6);
+            if (_trail > 4) ctx.drawImage(_trailSpriteFor(_bw, _playerWeaponSkins.get(b.ownerId)), -_trail, -3, _trail, 6);
             if (_bs) ctx.drawImage(_bs.c, -_bs.box, -_bs.box, _bs.box * 2, _bs.box * 2);
             else { ctx.beginPath(); ctx.arc(0, 0, b.radius || 6, 0, Math.PI * 2); ctx.fill(); }
         }
         ctx.setTransform(_wm);
         // Own bullets — fade-out in the last 20% of their lifetime; hidden ones hit something
-        const _myBs = _bulletSprite(selectedWeapon, _lblScale);
-        const _myTrail = _trailSpriteFor(selectedWeapon);
+        const _myBs = _bulletSprite(selectedWeapon, _lblScale, _playerWeaponSkins.get(socket.id));
+        const _myTrail = _trailSpriteFor(selectedWeapon, _playerWeaponSkins.get(socket.id));
         for (const cb of _clientBullets) {
             if (cb.hiddenAt || cb.dead) continue;
             const _cAgeFull = (_bulletNow - cb.spawnTime) / 1000;
@@ -4476,7 +4524,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const ringFill  = isMe ? 'rgba(70,209,124,0.14)' : 'rgba(255,65,85,0.14)';
             // Ring, body, gun, hands on the gun, fixed highlight (see GUNS IN HAND)
             const _pWeapon = isMe ? (_playerWeapons.get(socket.id) || selectedWeapon) : (_playerWeapons.get(player.id) || DEFAULT_WEAPON);
-            _drawPlayerFigure(ctx, _wm, px, py, pangle, playerImages[player.id], _pWeapon, _lblScale, ringColor, ringFill, _playerFx.get(player.id), _bulletNow);
+            _drawPlayerFigure(ctx, _wm, px, py, pangle, playerImages[player.id], _pWeapon, _lblScale, ringColor, ringFill, _playerFx.get(player.id), _bulletNow, _playerWeaponSkins.get(player.id));
 
             // Flash + Nume (name tag is a cached label: one drawImage instead of strokeText+fillText)
             const flashAge = flashTimers[player.id] !== undefined

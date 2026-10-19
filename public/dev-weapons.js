@@ -15,32 +15,34 @@
     const GRID_DX = 300, GRID_DY = 330;
 
     const st = {
-        skin: 'rookie', weapon: null, angle: 0, auto: false, zoom: 3, view: 'one',
+        skin: 'rookie', weapon: null, weaponSkin: null, angle: 0, auto: false, zoom: 3, view: 'one',
         hitbox: true, muzzle: true, hands: true, frame: false, labels: false,
     };
     const entries = {};
-    // shots: per figure (gun id) its effects, pending shots (burst) and live bullets
+    // shots: per figure (gun id + skin) its effects, pending shots (burst) and live bullets
     const fxBy = {}, pending = [], bullets = [];
     let nextAuto = 0;
-    const fxFor = id => fxBy[id] || (fxBy[id] = _newShotFx());
+    const fxFor = key => fxBy[key] || (fxBy[key] = _newShotFx());
+    const figKey = it => it.wid + (it.skin ? ':' + it.skin : '');
     // bullets per trigger pull and the time until the next pull (as the match: the whole burst, then shootCd)
     const shotsPerPull = w => (w.fireMode === 'burst' ? w.burstCount : 1);
     const pullCycleMs = w => (w.shootCd + (shotsPerPull(w) - 1) * w.burstDelay) * 1000;
-    // one trigger pull of gun `wid` at (x, y), aiming at `angle` (0 = down)
-    function pull(wid, x, y, angle, now) {
-        const w = _WEAPON_DATA[wid];
-        for (let i = 0; i < shotsPerPull(w); i++) pending.push({ at: now + i * w.burstDelay * 1000, wid, x, y, angle });
+    // one trigger pull of figure `it` (gun it.wid, skin it.skin) at (it.x, it.y), aiming at `angle` (0 = down)
+    function pull(it, angle, now) {
+        const w = _WEAPON_DATA[it.wid];
+        for (let i = 0; i < shotsPerPull(w); i++) pending.push({ at: now + i * w.burstDelay * 1000, wid: it.wid, skin: it.skin, key: figKey(it), x: it.x, y: it.y, angle });
     }
+    // bullets start at the base gun's muzzle whatever the skin (as in the match); only the flash moves
     function shoot(s, now) {
         const w = _WEAPON_DATA[s.wid], gun = WEAPON_ART.byId[s.wid];
         const dx = -Math.sin(s.angle), dy = Math.cos(s.angle);
         const n = w.pellets, spread = w.spread;
         for (let i = 0; i < n; i++) {
             const a = n === 1 ? 0 : -spread / 2 + i * spread / (n - 1), c = Math.cos(a), sn = Math.sin(a);
-            bullets.push({ wid: s.wid, x: s.x + dx * gun.muzzleDist, y: s.y + dy * gun.muzzleDist,
+            bullets.push({ wid: s.wid, skin: s.skin, x: s.x + dx * gun.muzzleDist, y: s.y + dy * gun.muzzleDist,
                 vx: (dx * c - dy * sn) * w.bulletSpeed, vy: (dx * sn + dy * c) * w.bulletSpeed, t0: now, life: gun.bulletLife });
         }
-        _shotKick(fxFor(s.wid), now);
+        _shotKick(fxFor(s.key), now);
     }
     const entryFor = id => entries[id] || (entries[id] = _makeSkinEntry(id));
 
@@ -72,11 +74,13 @@
             + '<button id="dw-close" style="padding:2px 8px">X</button></div>'
             + '<label>Skin<br><select id="dw-skin" style="width:100%;color:#0A1013;background:#F2EFE6;opacity:1;font:600 13px Sen,Arial">' + skinOpts + '</select></label>'
             + '<div>Arma<br>' + gunBtns + '</div>'
+            + '<div>Skin arma <span id="dw-wsk-cur" style="color:#9FB0B8;font-weight:500"></span><div id="dw-wsk-list" style="margin-top:4px">' + skinListHtml() + '</div></div>'
             + '<label>Unghi <b id="dw-ang-v">0</b>&deg; (0 = jos, 90 = stanga)<br><input id="dw-ang" type="range" min="0" max="359" value="0" style="width:100%"></label>'
             + box('auto', 'rotire automata')
             + '<label>Zoom <b id="dw-zoom-v">3</b> px/unitate<br><input id="dw-zoom" type="range" min="1" max="8" step="0.25" value="3" style="width:100%"></label>'
             + '<div>Vedere<br><label style="margin-right:10px"><input type="radio" name="dw-v" value="one" checked> una</label>'
-            + '<label><input type="radio" name="dw-v" value="all"> toate 6</label></div>'
+            + '<label style="margin-right:10px"><input type="radio" name="dw-v" value="all"> toate 6</label>'
+            + '<label><input type="radio" name="dw-v" value="skins"> toate 24 skin-urile</label></div>'
             + box('hitbox', 'hitbox (raza 30)') + box('muzzle', 'punct muzzle') + box('hands', 'punctele mainilor')
             + box('frame', 'cadrul sprite-ului (80 x 144)') + box('labels', 'nume + bara HP')
             + '<div style="display:flex;gap:8px;align-items:center"><button id="dw-fire" style="padding:6px 14px;font-weight:800">Trage</button>'
@@ -97,7 +101,17 @@
 
         panel.querySelector('#dw-skin').value = st.skin;
         panel.querySelector('#dw-skin').addEventListener('change', e => { st.skin = e.target.value; });
-        panel.querySelectorAll('input[name="dw-w"]').forEach(r => r.addEventListener('change', e => { st.weapon = e.target.value; }));
+        panel.querySelectorAll('input[name="dw-w"]').forEach(r => r.addEventListener('change', e => {
+            st.weapon = e.target.value;
+            setWeaponSkin(st.weaponSkin && WSKINS[st.weaponSkin].weapon === st.weapon ? st.weaponSkin : null);
+        }));
+        panel.querySelectorAll('[data-wsk]').forEach(btn => btn.addEventListener('click', () => {
+            if (btn.dataset.wsk) { setWeaponSkin(btn.dataset.wsk); return; }
+            st.weapon = btn.dataset.wid; // fara skin: the gun as it is
+            const r = overlay.querySelector('input[name="dw-w"][value="' + st.weapon + '"]'); if (r) r.checked = true;
+            setWeaponSkin(null);
+        }));
+        setWeaponSkin(null);
         panel.querySelectorAll('input[name="dw-v"]').forEach(r => r.addEventListener('change', e => { st.view = e.target.value; }));
         const ang = panel.querySelector('#dw-ang');
         ang.addEventListener('input', () => { st.angle = +ang.value; });
@@ -169,6 +183,42 @@
                 + (skinId === 'default' ? '-' : wskinName(skinId));
         });
         box.textContent = rows.length ? rows.join('\n') : 'niciun meci inca';
+    }
+
+    // the weapon skin list: per gun "fara" and its skins (weapon-skins.json order)
+    function skinListHtml() {
+        const btn = (wid, id, label, title) => '<button data-wid="' + wid + '" data-wsk="' + id + '" title="' + title + '" style="margin:0 4px 4px 0;padding:2px 6px;font:600 11px Sen,Arial;border-radius:6px;border:2px solid #0A1013;background:#F2EFE6;color:#0A1013">' + label + '</button>';
+        return GUNS.map(w => '<div style="margin-bottom:2px"><span style="display:inline-block;width:64px;color:#9FB0B8">' + WEAPON_ART.byId[w].name + '</span>'
+            + btn(w, '', 'fara', 'fara skin')
+            + Object.values(WSKINS).filter(s => s.weapon === w).map(s => btn(w, s.id, s.name, s.id + ' (' + s.rarity + ')')).join('') + '</div>').join('');
+    }
+    // a click on a skin: its gun in hand, the view on one player
+    function setWeaponSkin(id) {
+        st.weaponSkin = id && WSKINS[id] ? id : null;
+        if (st.weaponSkin) {
+            st.weapon = WSKINS[id].weapon;
+            const r = overlay.querySelector('input[name="dw-w"][value="' + st.weapon + '"]'); if (r) r.checked = true;
+            st.view = 'one';
+            const v = overlay.querySelector('input[name="dw-v"][value="one"]'); if (v) v.checked = true;
+        }
+        overlay.querySelectorAll('[data-wsk]').forEach(b => {
+            const on = b.dataset.wsk ? b.dataset.wsk === st.weaponSkin : !st.weaponSkin && b.dataset.wid === st.weapon;
+            b.style.background = on ? '#46D17C' : '#F2EFE6';
+        });
+        overlay.querySelector('#dw-wsk-cur').textContent = st.weaponSkin ? '(' + WSKINS[st.weaponSkin].name + ')' : '';
+    }
+    // the figures to draw: [{ wid, skin, x, y, label }]
+    function figures() {
+        if (st.view === 'all') return GUNS.map((wid, i) => ({ wid, skin: null, x: WORLD_C + ((i % 3) - 1) * GRID_DX, y: WORLD_C + (Math.floor(i / 3) - 0.5) * GRID_DY, label: WEAPON_ART.byId[wid].name.toUpperCase() }));
+        if (st.view === 'skins') {
+            const out = [];
+            GUNS.forEach((wid, col) => Object.values(WSKINS).filter(s => s.weapon === wid).forEach((s, row) => out.push({
+                wid, skin: s.id, x: WORLD_C + (col - 2.5) * GRID_DX, y: WORLD_C + (row - 1.5) * GRID_DY, label: s.name.toUpperCase() })));
+            return out;
+        }
+        if (st.weapon === 'none') return [{ wid: null, skin: null, x: WORLD_C, y: WORLD_C }];
+        const skin = st.weaponSkin && WSKINS[st.weaponSkin].weapon === st.weapon ? st.weaponSkin : null;
+        return [{ wid: st.weapon, skin, x: WORLD_C, y: WORLD_C }];
     }
 
     function onKey(e) {
@@ -252,22 +302,24 @@
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         const cw = Math.floor(canvas.clientWidth * dpr), ch = Math.floor(canvas.clientHeight * dpr);
         if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
-        const grid = st.view === 'all';
+        const grid = st.view !== 'one';
         const cssW = cw / dpr, cssH = ch / dpr;
-        const zoom = grid ? Math.min(cssW / (3 * GRID_DX), cssH / (2 * GRID_DY + 60)) : st.zoom;
-        const px = zoom * dpr;
+        // the grids sit in the space right of the panel
+        const panelW = grid ? Math.min(280, cssW * 0.4) : 0, freeW = cssW - panelW;
+        const zoom = st.view === 'all' ? Math.min(freeW / (3 * GRID_DX), cssH / (2 * GRID_DY + 60))
+            : st.view === 'skins' ? Math.min(freeW / (6 * GRID_DX), cssH / (4 * GRID_DY + 60)) : st.zoom;
+        const px = zoom * dpr, cx = (panelW + freeW / 2) * dpr; // device x of the view centre
         ARArena.beginFrame(px, now);
-        ctx.setTransform(px, 0, 0, px, cw / 2 - WORLD_C * px, ch / 2 - WORLD_C * px);
+        ctx.setTransform(px, 0, 0, px, cx - WORLD_C * px, ch / 2 - WORLD_C * px);
         const wm = ctx.getTransform();
-        const l = WORLD_C - cw / 2 / px, t = WORLD_C - ch / 2 / px, r = WORLD_C + cw / 2 / px, b = WORLD_C + ch / 2 / px;
+        const l = WORLD_C - cx / px, t = WORLD_C - ch / 2 / px, r = WORLD_C + (cw - cx) / px, b = WORLD_C + ch / 2 / px;
         ARArena.drawGround(ctx, l, t, r, b, 2600, 2600);
-        const where = (i) => [grid ? WORLD_C + ((i % 3) - 1) * GRID_DX : WORLD_C, grid ? WORLD_C + (Math.floor(i / 3) - 0.5) * GRID_DY : WORLD_C];
         const angNow = st.angle * Math.PI / 180;
-        const guns = grid ? GUNS : (st.weapon === 'none' ? [] : [st.weapon]);
+        const figs = figures(), guns = figs.filter(f => f.wid);
         // trigger: the button, or the gun's cadence while "trage continuu" is on
-        const autoCd = guns.length ? Math.max(...guns.map(g => pullCycleMs(_WEAPON_DATA[g]))) : 0;
+        const autoCd = guns.length ? Math.max(...guns.map(f => pullCycleMs(_WEAPON_DATA[f.wid]))) : 0;
         if (st.fireReq || (st.autoFire && now >= nextAuto && guns.length)) {
-            guns.forEach((g, i) => { const p = where(i); pull(g, p[0], p[1], angNow, now); });
+            guns.forEach(f => pull(f, angNow, now));
             st.fireReq = false;
             nextAuto = now + autoCd;
         }
@@ -278,35 +330,40 @@
             if (age > bl.life) { bullets.splice(i, 1); continue; }
             const bx = bl.x + bl.vx * age, by = bl.y + bl.vy * age, trail = Math.min(age * 480, 110);
             _setRotated(ctx, wm, bx, by, bl.vx, bl.vy);
-            if (trail > 4) ctx.drawImage(_trailSpriteFor(bl.wid), -trail, -3, trail, 6);
-            const bs = _bulletSprite(bl.wid, px);
+            if (trail > 4) ctx.drawImage(_trailSpriteFor(bl.wid, bl.skin), -trail, -3, trail, 6);
+            const bs = _bulletSprite(bl.wid, px, bl.skin);
             if (bs) ctx.drawImage(bs.c, -bs.box, -bs.box, bs.box * 2, bs.box * 2);
             ctx.setTransform(wm);
         }
 
         const angle = st.angle * Math.PI / 180; // player.angle: 0 = aim down
         const entry = entryFor(st.skin);
-        const items = grid ? GUNS : [st.weapon === 'none' ? null : st.weapon];
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        items.forEach((wid, i) => {
-            const x = grid ? WORLD_C + ((i % 3) - 1) * GRID_DX : WORLD_C;
-            const y = grid ? WORLD_C + (Math.floor(i / 3) - 0.5) * GRID_DY : WORLD_C;
-            _drawPlayerFigure(ctx, wm, x, y, angle, entry, wid, px, '#46D17C', 'rgba(70,209,124,0.14)', wid ? fxFor(wid) : null, now);
-            drawOverlays(wm, x, y, angle, wid ? WEAPON_ART.byId[wid] : null, px);
+        figs.forEach(f => {
+            const { wid, skin, x, y } = f;
+            _drawPlayerFigure(ctx, wm, x, y, angle, entry, wid, px, '#46D17C', 'rgba(70,209,124,0.14)', wid ? fxFor(figKey(f)) : null, now, skin);
+            drawOverlays(wm, x, y, angle, wid ? _gunLook(wid, skin) : null, px);
             if (st.labels) drawLabels(x, y, px);
-            if (grid) _drawLabel(ctx, WEAPON_ART.byId[wid].name.toUpperCase(), 16, '#FFFFFF', INK, 4, 'alphabetic', x, y + 150, px);
+            if (grid) _drawLabel(ctx, f.label, 16, '#FFFFFF', INK, 4, 'alphabetic', x, y + 150, px);
         });
         ctx.imageSmoothingQuality = 'low';
         ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-        const g = !grid && st.weapon !== 'none' ? WEAPON_ART.byId[st.weapon] : null;
-        readout.textContent = 'scara vizuala ' + PLAYER_VISUAL_SCALE + '\n'
+        const one = !grid && figs[0].wid ? figs[0] : null;
+        const g = one ? _gunLook(one.wid, one.skin) : null, base = one ? WEAPON_ART.byId[one.wid] : null;
+        const sk = one && one.skin ? WEAPON_ART.skins[one.skin] : null;
+        const skinState = !one || !one.skin ? '' : !sk ? 'skin: fara date in weapon-skin-sprites.json, arma de baza\n'
+            : sk.failed ? 'skin: sprite lipsa, arma de baza\n' : g === sk ? 'skin: ' + WSKINS[one.skin].name + ' (' + one.skin + ')\n' : 'skin: se incarca...\n';
+        readout.textContent = 'scara vizuala ' + PLAYER_VISUAL_SCALE + '\n' + skinState
             + (g ? 'maini   ' + JSON.stringify(g.hands0) + '\nmuzzle  ' + JSON.stringify(g.muzzle0)
-                + '\n(x scara: muzzle la ' + (g.muzzle0[1] * PLAYER_VISUAL_SCALE).toFixed(1) + ' unitati)' : (grid ? 'toate armele' : 'fara arma: maini sub corp'));
+                + (g !== base ? '  (arma: ' + JSON.stringify(base.muzzle0) + ')' : '')
+                + '\n(x scara: muzzle la ' + (g.muzzle0[1] * PLAYER_VISUAL_SCALE).toFixed(1) + ' unitati)'
+                + (g !== base ? '\nglontul pleaca tot de la ' + (base.muzzleDist).toFixed(1) + ' (arma de baza)' : '')
+                : (st.view === 'all' ? 'toate armele' : st.view === 'skins' ? 'toate skin-urile' : 'fara arma: maini sub corp'));
     }
 
-    Promise.all([SKINS_READY, WEAPONS_ART_READY]).then(() => {
+    Promise.all([SKINS_READY, WEAPONS_ART_READY, WSKINS_READY, WEAPON_SKIN_ART_READY]).then(() => {
         GUNS = WEAPONS.map(w => w.id);
         st.weapon = DEFAULT_WEAPON;
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
