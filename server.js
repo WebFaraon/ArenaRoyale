@@ -31,6 +31,47 @@ const io     = new Server(server, {
     connectTimeout: 45000,
 });
 
+// ---------- EVENT LOOP LAG LOG ----------
+// Always on, almost free: a 25 ms timer (it measures how late it fires, so any block longer than LAG_LOG_MS shows) notices when the event loop was blocked (a GC pause, a slow handler, the
+// host taking the CPU away) and writes one line to the log when it was blocked for more than LAG_LOG_MS (25).
+// Rate limited: one line per LAG_LOG_EVERY_S (5) seconds, the stalls in between are counted in the next line.
+// LAG_LOG=0 turns it off. The line says when it ended, how long it lasted, what the server was doing (rooms,
+// players, zombies) and whether a GC pause overlapped it, which tells a GC from a stall of the machine.
+{
+    const LAG_MS = +process.env.LAG_LOG_MS || 25, EVERY_MS = (+process.env.LAG_LOG_EVERY_S || 5) * 1000, STEP = 25;
+    if (process.env.LAG_LOG !== '0') {
+        const gcs = [];   // [start, end] of recent GC pauses (performance.now clock)
+        try {
+            new PerformanceObserver(list => { for (const e of list.getEntries()) gcs.push([e.startTime, e.startTime + e.duration]); while (gcs.length > 40) gcs.shift(); }).observe({ entryTypes: ['gc'] });
+        } catch (e) { /* no gc entries on this runtime */ }
+        let last = performance.now(), lastLog = -Infinity, held = 0, heldWorst = 0;
+        const report = (endedAt, lag, wallIso) => {
+            let rooms = 0, players = 0, zombies = 0;
+            for (const r of (globalThis.__arRooms ? globalThis.__arRooms.values() : [])) {
+                if (!r.gameStarted || r.gameEnded) continue;
+                rooms++; players += r._playerArr.length;
+                for (const z of r.zombies) if (z.alive) zombies++;
+            }
+            const from = endedAt - lag - STEP;
+            let gc = 0; for (const [a, b] of gcs) if (b >= from && a <= endedAt) gc += b - a;
+            const more = held ? ' | +' + held + ' earlier stall' + (held > 1 ? 's' : '') + ' not logged (worst ' + heldWorst.toFixed(0) + ' ms)' : '';
+            held = 0; heldWorst = 0;
+            console.warn('[LAG] ' + wallIso + ' event loop blocked ' + lag.toFixed(0) + ' ms | rooms ' + rooms + ', players ' + players + ', zombies ' + zombies +
+                ' | gc ' + (gc ? gc.toFixed(1) + ' ms' : 'none') + ' | rss ' + (process.memoryUsage.rss() / 1048576).toFixed(0) + ' MB' + more);
+        };
+        const iv = setInterval(() => {
+            const now = performance.now(), lag = now - last - STEP;
+            last = now;
+            if (lag < LAG_MS) return;
+            if (now - lastLog < EVERY_MS) { held++; if (lag > heldWorst) heldWorst = lag; return; }
+            lastLog = now;
+            const iso = new Date().toISOString();
+            setTimeout(() => report(now, lag, iso), 20);   // the GC entry of a pause reaches the observer a moment later
+        }, STEP);
+        if (iv.unref) iv.unref();
+    }
+}
+
 app.use(express.json({ limit: '5mb' }));
 
 // ---------- STATIC FILES + CACHE BUSTING ----------
@@ -1057,6 +1098,7 @@ app.post('/api/friends/list', async (req, res) => {
 
 // ---------- ROOMURI ----------
 const rooms = new Map();
+globalThis.__arRooms = rooms; // read by the event loop lag log
 const connectedAccounts = new Map(); // nickname → socketId
 
 function randomSpawnPos() {
@@ -1342,6 +1384,7 @@ function addPlayer(code, room, socket, data) {
         alive: true, kills: 0, lastDamageTime: 0, rs: Missions.newRoundStats(),
         lastAckSeq: 0, pendingAckSeq: 0,
         coins: 0,
+        lastInputAt: 0, stalled: false, backlogged: false, nextKeepAt: 0,   // slow client detection (STALL_MS)
         baseMaxHp: maxHp, baseDamage: damage, baseSpeed: speed, baseAmmoMax: _ws.ammoMax,
         pveUpgrades: { dmg: 0, spd: 0, hp: 0, ammo: 0 },
     };
@@ -1382,6 +1425,7 @@ const _r1 = (v) => Math.round(v * 10) / 10;
 // a burst (a network pause) is applied in that same tick, so the delay never exceeds one tick and no
 // queue can build up whatever the client's frame rate. Past INPUT_QUEUE_MAX the oldest is applied at once.
 const INPUT_QUEUE_MAX = 6;
+const STALL_MS = 500, KEEPALIVE_MS = 100, BACKLOG_BYTES = 65536;   // see the slow clients block in startRoomLoop
 function applyInput(p, data) {
     if (data.dx !== undefined) {
         p.moveDir.x = Math.max(-1, Math.min(1, +data.dx || 0));
@@ -1412,6 +1456,9 @@ function startRoomLoop(code, room) {
     // turn, so inputs still get in between); more than MAX_CATCHUP behind, the backlog is dropped.
     const INTERVAL_MS = 1000 / TICK_RATE;
     const MAX_CATCHUP = 10;
+    // Windows timers are ~15 ms coarse, so there the loop sleeps until 4 ms before the tick and spins for the rest.
+    // Linux timers are 1 ms precise: a plain timer is enough, and the spin (LOOP_SPIN=1 forces it) cost ~20% of a CPU per room.
+    const SPIN = process.env.LOOP_SPIN ? process.env.LOOP_SPIN === '1' : process.platform === 'win32';
     room.lastTick = Date.now();
 
     const _pScratch       = [];
@@ -1421,6 +1468,7 @@ function startRoomLoop(code, room) {
     const _zScratch       = [];
     const _kScratch       = [];
     const _privScratch    = [];
+    const _skipIds        = [];
     // Reused per tick by the bullet sweep (no allocation per bullet)
     const _hitTargets = { obstacles: null, zombies: null, zombieRadius: null, players: null, playerRadius: PLAYER_R, ownerId: null, hitPlayers: true };
     const _hitOut     = { kind: 0, target: null, t: -1 };
@@ -2026,7 +2074,38 @@ function startRoomLoop(code, room) {
                 : null;
             if (PERF) PERF.mark(room, 'snapshot');
             tickNo++;
-            io.to(code).emit('gs', [_pScratch, _bScratch, _privScratch, tickStart, zoneArr, _zScratch, _kScratch, pveArr, tickNo]);
+            // Slow clients: the newest state only, never a queue of old ones. A client is skipped this tick when
+            //  - its connection has more than BACKLOG_BYTES waiting to be written (it is not reading fast enough), or
+            //  - it stopped answering: every client sends one input per state packet it receives, so no input for
+            //    STALL_MS means it is not receiving (a stalled phone or WiFi, a frozen tab). It then gets one packet
+            //    every KEEPALIVE_MS, so the first thing it sees on coming back is the latest state.
+            // (Dead players, the countdown and PvE breaks send no inputs: those are not counted as silence.)
+            _skipIds.length = 0;
+            for (const p of allPlayers) {
+                let skip = false;
+                if (!p.alive || room.countdownActive || room.pveWaveBreak || room.gameEnded || !p.lastInputAt) {
+                    if (p.lastInputAt) p.lastInputAt = tickStart;
+                    p.stalled = false;
+                } else {
+                    const silent = tickStart - p.lastInputAt;
+                    if (silent > STALL_MS) {
+                        if (!p.stalled) { p.stalled = true; p.nextKeepAt = tickStart + KEEPALIVE_MS; console.log('[' + code + '] ' + p.name + ': nu mai raspunde de ' + silent + ' ms, primeste doar ultima stare'); }
+                        skip = true;
+                    } else if (p.stalled) { p.stalled = false; console.log('[' + code + '] ' + p.name + ': raspunde din nou'); }
+                }
+                const sock = io.sockets.sockets.get(p.id), ws = sock && sock.conn && sock.conn.transport && sock.conn.transport.socket, raw = ws && ws._socket;
+                if (raw && raw.writableLength > BACKLOG_BYTES) {
+                    if (!p.backlogged) { p.backlogged = true; console.log('[' + code + '] ' + p.name + ': conexiune lenta (' + raw.writableLength + ' B in asteptare), primeste doar ultima stare'); }
+                    skip = true;
+                } else if (p.backlogged) { p.backlogged = false; console.log('[' + code + '] ' + p.name + ': conexiunea s-a eliberat'); }
+                if (skip) _skipIds.push(p.id);
+            }
+            const _gs = [_pScratch, _bScratch, _privScratch, tickStart, zoneArr, _zScratch, _kScratch, pveArr, tickNo];
+            if (_skipIds.length === 0) io.to(code).emit('gs', _gs);
+            else {
+                io.to(code).except(_skipIds).emit('gs', _gs);
+                for (const p of allPlayers) { if (p.stalled && tickStart >= p.nextKeepAt) { p.nextKeepAt = tickStart + KEEPALIVE_MS; io.to(p.id).emit('gs', _gs); } }
+            }
             if (PERF) {
                 PERF.mark(room, 'emit');
                 PERF.tickEnd(room, code, [_pScratch, _bScratch, _privScratch, tickStart, zoneArr, _zScratch, _kScratch, pveArr, tickNo], allPlayers.map(p => p.id), () => {
@@ -2052,10 +2131,14 @@ function startRoomLoop(code, room) {
         if (now - next > INTERVAL_MS * MAX_CATCHUP) next = now;   // far behind (a long stall): drop the backlog
         if (now >= next) { tick(now - next); next += INTERVAL_MS; }
         if (!room.gameStarted || !rooms.has(code) || room.gameEnded) return;
-        // Hybrid: sleep with setTimeout until ~4 ms before the tick is due, then spin with setImmediate
-        // for sub-ms precision (Windows timers are ~15 ms coarse)
         const remaining = next - performance.now();
-        room.gameLoop = remaining > 4 ? setTimeout(loop, remaining - 4) : setImmediate(loop);
+        if (SPIN) {
+            // sleep with setTimeout until ~4 ms before the tick is due, then spin with setImmediate for sub-ms precision
+            room.gameLoop = remaining > 4 ? setTimeout(loop, remaining - 4) : setImmediate(loop);
+        } else {
+            // never early (one wake-up per tick), at most ~1 ms late; the accumulator keeps the average exact
+            room.gameLoop = setTimeout(loop, Math.max(1, Math.ceil(remaining)));
+        }
     }
 
     next = performance.now() + INTERVAL_MS;
@@ -2286,7 +2369,7 @@ io.on('connection', (socket) => {
             p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
             p.shooting = false; p.shootCooldown = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
             p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
-            p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0;
+            p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0; p.lastInputAt = 0; p.stalled = false;
         });
 
         const playersMeta = {};
@@ -2311,6 +2394,7 @@ io.on('connection', (socket) => {
         const p = r.room.players[socket.id];
         if (!p.alive || r.room.gameEnded || r.room.countdownActive) return;
         if (r.room.pveWaveBreak) return;
+        p.lastInputAt = Date.now();
         if (PERF) PERF.input(r.room, socket.id);
         if (!data || typeof data !== 'object') return;
         // applied by the game loop, one per tick (see INPUT_QUEUE_MAX)
