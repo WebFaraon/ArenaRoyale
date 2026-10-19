@@ -55,7 +55,7 @@ exports.tickEnd = (room, code, payload, playerIds, info) => {
     const t = performance.now();
     s.ticks.push(t - s.t0);
     for (const k of SECTIONS) { const v = s.cur[k], a = s.sec[k]; a.sum += v; if (v > a.max) a.max = v; }
-    s.bytes.push(notepack.encode(['gs', payload]).length); // measured after the tick timer stopped
+    s.bytes.push(typeof payload === 'number' ? payload : notepack.encode(['gs', payload]).length); // measured after the tick timer stopped (a number: the bytes of the packet one client got)
     if (t - s.winStart < 1000) return;
     const n = s.ticks.length, sec = {};
     for (const k of SECTIONS) sec[k] = { avg: r2(s.sec[k].sum / n), max: r2(s.sec[k].max) };

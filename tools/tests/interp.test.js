@@ -125,6 +125,13 @@ test('zombies: spawn, death, jump and gaps in the id list', () => {
     I.zombies(old, null, 0.5, tg, 120);
 });
 
+test('zombies: positions sent x4 are divided back (netproto PQ)', () => {
+    const old = [0, 400, 400, 0, 100, 0], nw = [0, 440, 404, 0, 100, 0], tg = [{ x: 0, y: 0, angle: 0 }];
+    I.zombies(old, nw, 0.5, tg, 120, 4);
+    assert.equal(tg[0].x, 105); assert.equal(tg[0].y, 100.5);
+    I.zombies(old, [0, 4000, 400, 0, 100, 0], 0.5, tg, 120, 4); assert.equal(tg[0].x, 1000, 'a jump of 900 px is not blended');
+});
+
 test('lerpAngle takes the short way round', () => {
     assert.ok(Math.abs(I.lerpAngle(3.1, -3.1, 0.5) - (3.1 + (2 * Math.PI - 6.2) / 2)) < 1e-9);
     assert.equal(I.lerpAngle(1, 2, 0), 1); assert.equal(I.lerpAngle(1, 2, 1), 2);

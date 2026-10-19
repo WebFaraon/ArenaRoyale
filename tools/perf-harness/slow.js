@@ -8,12 +8,12 @@ const PORT = +process.argv[2] || 3100, N = 10, sleep = ms => new Promise(r => se
     const s = io(`http://127.0.0.1:${PORT}`, { parser, transports: ['websocket'], reconnection: false, forceNew: true });
     await new Promise(r => s.on('connect', r)); s.emit('authenticate', { nickname: nick, token: j.token }); bots.push(s);
   }
-  const data = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, mode: 'br', xp: 0 };
+  const data = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, mode: 'br', xp: 0, proto: 2 };
   const code = await new Promise(r => { bots[0].once('room-created', ({ code }) => r(code)); bots[0].emit('create-room', data); });
   for (let i = 1; i < N; i++) { bots[i].emit('join-room', { code, ...data }); await sleep(20); }
   await sleep(300); bots[0].emit('start-game'); await sleep(4500);
   const slow = bots[N - 1]; const log = []; let resumeAt = 0, bytes = 0;
-  bots.forEach((s, i) => { let t = 0; s.on('gs', pk => { t++; if (i === N - 1) log.push([performance.now(), pk[8]]); s.emit('input', { seq: t, dx: 0, dy: 0, angle: 0, shooting: false }); }); });
+  bots.forEach((s, i) => { let t = 0; s.on('gs2', pk => { t++; if (i === N - 1) log.push([performance.now(), pk[0]]); s.emit('input', { seq: t, dx: 0, dy: 0, angle: 0, shooting: false }); }); });
   slow.io.engine.on('data', d => { bytes += d.byteLength !== undefined ? d.byteLength : d.length; });
   await sleep(3000);
   const sock = slow.io.engine.transport.ws._socket; // the raw TCP socket under ws

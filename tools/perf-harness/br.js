@@ -126,7 +126,7 @@ async function main() {
     try { const si = await bcdp.send('SystemInfo.getInfo'); gpuInfo = { dev: (si.gpu.devices || []).slice(0, 2).map(d => d.deviceString), feat: si.gpu.featureStatus && { canvas: si.gpu.featureStatus.canvas_oop_rasterization, raster: si.gpu.featureStatus.gpu_rasterization, comp: si.gpu.featureStatus.gpu_compositing } }; } catch (e) { gpuInfo = String(e.message).slice(0, 80); }
 
     // ---- bots (a child process hosting the room; waits for START) ----
-    const botArgs = [path.join(BOTDIR, 'bots.js'), '--n', String(NB), '--mode', MODE, '--secs', String(SECS + 40), '--port', String(BOTPORT), '--hold', '--prefix', 'q' + Math.floor(Math.random() * 1000)];
+    const botArgs = [path.join(BOTDIR, String(arg('botfile', 'bots.js'))), '--n', String(NB), '--mode', MODE, '--secs', String(SECS + 40), '--port', String(BOTPORT), '--hold', '--prefix', 'q' + Math.floor(Math.random() * 1000)];
     const bots = spawn('node', botArgs, { cwd: BOTDIR, stdio: ['pipe', 'pipe', 'inherit'] });
     let code = null; let botOut = '';
     bots.stdout.on('data', d => { botOut += d.toString(); const m = botOut.match(/ROOM (\w{5})/); if (m) code = m[1]; });
@@ -163,7 +163,7 @@ async function main() {
     }
     await sleep(5500); // countdown + GO
 
-    if (GSLOG) await page.evaluate(() => { window.__gsLog = []; window._gameSocket.on('gs', pk => { if (window.__rec) window.__gsLog.push([performance.now(), pk[8], pk[1].map(b => [b[0], b[1], b[2], b[3], b[4], b[5]]), pk[0].length]); }); });
+    if (GSLOG) await page.evaluate(() => { window.__gsLog = []; window._gameSocket.on('gs2', pk => { if (window.__rec) { const bl = []; for (let i = 0; i < pk[2].length; i += 6) bl.push([pk[2][i], pk[2][i + 1] / 4, pk[2][i + 2] / 4, pk[2][i + 3], pk[2][i + 4], pk[2][i + 5]]); window.__gsLog.push([performance.now(), pk[0], bl, pk[1].length / 6]); } }); });
     if (ABL) await page.evaluate((abl) => { for (const n of abl.split(',')) { if (n.startsWith('ARArena.')) { window.ARArena[n.slice(8)] = function () {}; } else { window[n] = function () {}; } } }, ABL);
     if (DBG) await page.keyboard.press('`');
     if (CPU > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });

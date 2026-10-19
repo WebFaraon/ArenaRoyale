@@ -34,13 +34,13 @@ class Bot {
         // raw bytes per message (engine level)
         s.io.engine.on('data', d => { const n = d.byteLength !== undefined ? d.byteLength : d.length; this.stats.bytes += n; this.stats.msgs++; this.lastLen = n; });
         s.emit('authenticate', { nickname: this.nick, token });
-        s.on('gs', pk => {
+        s.on('gs2', pk => {
             const now = performance.now();
             const st = this.stats;
             st.gs++; st.gsBytes += this.lastLen; st.sizes.push(this.lastLen);
             if (this.lastGs) st.arr.push(now - this.lastGs);
             this.lastGs = now;
-            const tickNo = pk[8];
+            const tickNo = pk[0];
             if (this.lastTick !== null) { const d = tickNo - this.lastTick; if (d > 1) this.missed += d - 1; if (d <= 0) this.dup++; }
             this.lastTick = tickNo;
             st.lastPk = pk;
@@ -64,7 +64,7 @@ class Bot {
     const bots = [];
     for (let i = 0; i < N; i++) { const b = new Bot(i, true); await b.connect(); bots.push(b); }
     const host = bots[0];
-    const data = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, weapon: WEAPON, mode: MODE, xp: 0 };
+    const data = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, weapon: WEAPON, mode: MODE, xp: 0, proto: 2 };
     let code = JOIN;
     if (!code) {
         code = await new Promise(res => { host.s.once('room-created', ({ code }) => res(code)); host.s.emit('create-room', data); });
@@ -100,7 +100,7 @@ class Bot {
     if (OUT) require('fs').writeFileSync(OUT, JSON.stringify({ sum, per }, null, 1));
     // a sample packet decomposition
     const pk = host.stats.lastPk;
-    if (pk) console.log('SAMPLE players', pk[0].length, 'bullets', pk[1].length, 'priv', pk[2].length / 7, 'zombies', pk[5].length / 6, 'kits', pk[6].length / 4);
+    if (pk) console.log('SAMPLE players', pk[1].length / 6, 'bullets', pk[2].length / 6, 'zombies', pk[3].length / 6, 'kits', pk[4].length / 4);
     for (const b of bots) b.s.disconnect();
     process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });
