@@ -6,6 +6,11 @@
 (function () {
     'use strict';
     let GUNS = []; // weapons.json order, filled when it loads
+    // weapon skins (public/data/weapon-skins.json, the file the server reads): id -> skin with its price
+    const WSKINS = {};
+    const WSKINS_READY = fetch(arAsset('/data/weapon-skins.json')).then(r => r.json())
+        .then(d => { for (const s of ARShared.weaponSkins(d)) WSKINS[s.id] = s; })
+        .catch(err => console.warn('[dev-weapons] weapon-skins.json:', err.message));
     const WORLD_C = 1300;          // the view is centred in the middle of the arena, on the turf
     const GRID_DX = 300, GRID_DY = 330;
 
@@ -80,7 +85,11 @@
             + '<div style="border-top:1px solid #2A3A45;padding-top:8px"><b>Statistici pe arme</b><br>'
             + '<div style="display:flex;gap:6px;margin-top:4px"><input id="dw-ws-nick" placeholder="nickname" style="flex:1;min-width:0;color:#0A1013;background:#F2EFE6;font:600 12px Sen,Arial">'
             + '<button id="dw-ws-load" style="padding:2px 8px">Incarca</button></div>'
-            + '<div id="dw-ws" style="font:500 9.5px/1.45 monospace;color:#C9D4DA;white-space:pre;margin-top:6px;overflow-x:auto"></div></div>'
+            + '<div id="dw-ws" style="font:500 9.5px/1.45 monospace;color:#C9D4DA;white-space:pre;margin-top:6px;overflow-x:auto"></div>'
+            + '<b style="display:block;margin-top:8px">Skin-uri arme</b>'
+            + '<div id="dw-wskin" style="font:500 9.5px/1.45 monospace;color:#C9D4DA;white-space:pre;margin-top:4px;overflow-x:auto"></div>'
+            + '<b style="display:block;margin-top:8px">Skin-uri arme in meci</b>'
+            + '<div id="dw-wskin-match" style="font:500 9.5px/1.45 monospace;color:#C9D4DA;white-space:pre;margin-top:4px;overflow-x:auto"></div></div>'
             + '<div style="font-weight:500;color:#9FB0B8">Sageti stanga/dreapta: unghi. Esc: inchide.</div>';
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
@@ -99,8 +108,10 @@
         panel.querySelector('#dw-fire').addEventListener('click', () => { st.fireReq = true; });
         const wsNick = panel.querySelector('#dw-ws-nick');
         wsNick.value = (typeof currentNickname === 'string' && currentNickname) || '';
-        panel.querySelector('#dw-ws-load').addEventListener('click', () => loadWeaponStats(wsNick.value.trim()));
-        if (wsNick.value) loadWeaponStats(wsNick.value);
+        const loadNick = n => { loadWeaponStats(n); loadWeaponSkins(n); };
+        panel.querySelector('#dw-ws-load').addEventListener('click', () => loadNick(wsNick.value.trim()));
+        if (wsNick.value) loadNick(wsNick.value);
+        showMatchWeaponSkins();
         document.addEventListener('keydown', onKey);
         raf = requestAnimationFrame(frame);
     }
@@ -122,6 +133,42 @@
             });
             box.textContent = [row(['arma', 'kil', 'zom', 'damage', 'shot', 'hit', 'prec'])].concat(rows).join('\n');
         } catch (err) { box.textContent = 'eroare: ' + err.message; }
+    }
+
+    const wskinName = id => (WSKINS[id] ? WSKINS[id].name + ' (' + WSKINS[id].rarity + ')' : id);
+    // an account's weapon skins (server.js WEAPON SKINS): per gun the equipped one and how many it owns
+    async function loadWeaponSkins(nick) {
+        const box = overlay.querySelector('#dw-wskin');
+        if (!nick) { box.textContent = 'scrie un nickname'; return; }
+        box.textContent = '...';
+        try {
+            await WSKINS_READY;
+            const r = await fetch('/api/weapon-skins?nickname=' + encodeURIComponent(nick), { cache: 'no-store' }).then(x => x.json());
+            if (!r.ok) { box.textContent = 'eroare'; return; }
+            const owned = new Set(r.owned);
+            const rows = GUNS.map(id => {
+                const all = Object.values(WSKINS).filter(s => s.weapon === id);
+                const eq = r.equipped[id];
+                return WEAPON_ART.byId[id].name.padEnd(9) + (eq ? wskinName(eq) : '-').padEnd(22)
+                    + all.filter(s => owned.has(s.id)).length + '/' + all.length;
+            });
+            box.textContent = ['arma'.padEnd(9) + 'echipat'.padEnd(22) + 'detinute'].concat(rows).join('\n')
+                + (r.owned.length ? '\ndetinute: ' + r.owned.map(id => (WSKINS[id] ? WSKINS[id].name : id)).join(', ') : '')
+                + (r.unlockAll ? '\n(UNLOCK_ALL: toate sunt deblocate)' : '');
+        } catch (err) { box.textContent = 'eroare: ' + err.message; }
+    }
+    // what the server sent for each player of the current / last match (player-image, playersMeta)
+    function showMatchWeaponSkins() {
+        const box = overlay && overlay.querySelector('#dw-wskin-match');
+        if (!box) return;
+        const rows = [..._playerWeaponSkins].map(([id, skinId]) => {
+            const me = !!window._gameSocket && window._gameSocket.id === id;
+            const name = (window.__arPlayerName && window.__arPlayerName(id)) || (me && currentNickname) || id.slice(0, 6);
+            const wid = _playerWeapons.get(id);
+            return String(name).padEnd(12) + ((WEAPON_ART.byId[wid] && WEAPON_ART.byId[wid].name) || wid || '?').padEnd(9)
+                + (skinId === 'default' ? '-' : wskinName(skinId));
+        });
+        box.textContent = rows.length ? rows.join('\n') : 'niciun meci inca';
     }
 
     function onKey(e) {
@@ -189,9 +236,11 @@
         _drawLabel(ctx, 'Jucator', 14, '#66E287', INK, 4, 'alphabetic', x, barY - 12, px);
     }
 
+    let _lastMatchSkins = 0;
     function frame(now) {
         if (!overlay) return;
         raf = requestAnimationFrame(frame);
+        if (now - _lastMatchSkins > 1000) { _lastMatchSkins = now; showMatchWeaponSkins(); }
         const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
         last = now;
         if (st.auto) st.angle = (st.angle + dt * 45) % 360;

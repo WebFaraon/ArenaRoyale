@@ -323,6 +323,9 @@ let WEAPON_RULES = null;   // aimDelay, reloadDelay, bulletRadius: the same for 
 let DEFAULT_WEAPON = null;
 // Per-jucator: socketId → weaponId (populat din player-image si playersMeta)
 const _playerWeapons = new Map();
+// Per-jucator: socketId → id-ul skinului armei ("default" = fara skin), validat de server (player-image /
+// playersMeta). Nu se deseneaza inca; ?dev=weapons il arata.
+const _playerWeaponSkins = new Map();
 let selectedWeapon = localStorage.getItem('selectedWeapon'); // checked once weapons.json is in
 
 function _applyWeaponUI() {
@@ -2246,6 +2249,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
 
     socket.on('player-image', (data) => {
         if (data.weapon) _playerWeapons.set(data.id, data.weapon);
+        if (data.weaponSkin) _playerWeaponSkins.set(data.id, data.weaponSkin);
         if (playerImages[data.id]) return;
 
         // The server sends a skin id it has validated; the sprite comes from our own list
@@ -2437,10 +2441,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     let _zoomFactor = 1.0; // factor view per arma (1.0 = normal, >1 = zoom out)
     const stateBuffer  = []; // [{t, players:{id:{x,y,angle,hp,maxHp,alive,kills,name}}, bullets:[], zone:{}}]
     const playerMeta   = {}; // {id: {speed, maxHp, name}} — static per runda, trimis o data
+    window.__arPlayerName = id => (playerMeta[id] && playerMeta[id].name) || null; // ?dev=weapons
     // Aplica metadata trimisa de server inainte ca startGameLoop sa fie apelat
     if (gameControl.pendingMeta) {
         Object.assign(playerMeta, gameControl.pendingMeta);
-        for (const [id, m] of Object.entries(gameControl.pendingMeta)) { if (m.weapon) _playerWeapons.set(id, m.weapon); }
+        for (const [id, m] of Object.entries(gameControl.pendingMeta)) { if (m.weapon) _playerWeapons.set(id, m.weapon); if (m.weaponSkin) _playerWeaponSkins.set(id, m.weaponSkin); }
         delete gameControl.pendingMeta;
     }
     let _obstacles = gameControl.pendingObstacles || []; delete gameControl.pendingObstacles;
@@ -3406,6 +3411,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (data.weaponStats) currentProfile.weapon_stats = data.weaponStats;
     });
 
+    // A weapon skin unlocked with kills (server.js WEAPON SKINS). The lobby notice comes with the shop UI;
+    // until then it is kept here for it.
+    socket.on('weapon-skin-unlocked', (data) => {
+        if (!data || !Array.isArray(data.skins) || !currentProfile) return;
+        if (Array.isArray(data.owned)) currentProfile.owned_weapon_skins = data.owned;
+        currentProfile.weapon_skins_new = (currentProfile.weapon_skins_new || []).concat(data.skins.map(s => s.id));
+        console.log('[WeaponSkins] deblocat:', data.skins.map(s => s.name).join(', '));
+    });
+
     // ---------- RESET PENTRU REMATCH ----------
     function resetForNewGame() {
         _spriteBurst = true;
@@ -3413,8 +3427,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _selfDead  = false;
         _hiddenPlayers.clear();
         _playerWeapons.clear();
+        _playerWeaponSkins.clear();
         if (gameControl.pendingMeta) {
-            for (const [id, m] of Object.entries(gameControl.pendingMeta)) { if (m.weapon) _playerWeapons.set(id, m.weapon); }
+            for (const [id, m] of Object.entries(gameControl.pendingMeta)) { if (m.weapon) _playerWeapons.set(id, m.weapon); if (m.weaponSkin) _playerWeaponSkins.set(id, m.weaponSkin); }
         }
         predX      = null; predY = null;
         isShooting = false;
@@ -3677,7 +3692,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         resetForNewGame();
         if (playersMeta) {
             Object.assign(playerMeta, playersMeta);
-            for (const [id, m] of Object.entries(playersMeta)) { if (m.weapon) _playerWeapons.set(id, m.weapon); }
+            for (const [id, m] of Object.entries(playersMeta)) { if (m.weapon) _playerWeapons.set(id, m.weapon); if (m.weaponSkin) _playerWeaponSkins.set(id, m.weaponSkin); }
         }
         const btn = document.getElementById('btn-rematch');
         btn.disabled    = false;

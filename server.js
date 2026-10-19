@@ -184,7 +184,8 @@ app.post('/api/auth/login', async (req, res) => {
         sessionTokens.set(nickname, token);
         if (!ownedSkins.has(nickname)) ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
         const skin = skinFromAvatar(memAvatars.get(nickname), nickname);
-        return res.json({ ok: true, token, player: { nickname, avatar: skin, skin, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname), weapon_stats: sanitizeWeaponStats(weaponStatsMem.get(nickname)) } });
+        return res.json({ ok: true, token, player: { nickname, avatar: skin, skin, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname), weapon_stats: sanitizeWeaponStats(weaponStatsMem.get(nickname)),
+            owned_weapon_skins: ownedWeaponSkinList(nickname), equipped_weapon_skins: equippedWeaponSkinMap(nickname) } });
     }
 
     try {
@@ -207,6 +208,7 @@ app.post('/api/auth/login', async (req, res) => {
         // URL in players.avatar is turned into its id (or the default) and written back once.
         ownedSkins.set(existing.nickname, ownedFromList(parseUnlocked(existing.unlocked_characters)));
         const skin = skinFromAvatar(existing.avatar, existing.nickname);
+        loadWeaponSkinsFromRow(existing.nickname, existing);
         if (skin !== existing.avatar) {
             supabase.from('players').update({ avatar: skin }).eq('nickname', existing.nickname)
                 .then(({ error }) => { if (error) console.error('[Auth/Login] avatar update:', error.message); });
@@ -229,6 +231,9 @@ app.post('/api/auth/login', async (req, res) => {
             missions,
             // totals per weapon ('weapon_stats' is not in the row until the migration ran)
             weapon_stats: sanitizeWeaponStats('weapon_stats' in existing ? existing.weapon_stats : weaponStatsMem.get(existing.nickname)),
+            // weapon skins (WEAPON SKINS): ids owned, and the skin on each weapon that has one
+            owned_weapon_skins:    ownedWeaponSkinList(existing.nickname),
+            equipped_weapon_skins: equippedWeaponSkinMap(existing.nickname),
         }});
     } catch (err) {
         console.error('[Auth/Login] Error:', err);
@@ -249,7 +254,8 @@ app.post('/api/auth/register', async (req, res) => {
 
     if (!supabase) {
         ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
-        return res.json({ ok: true, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, missions: await missionsForLogin(nickname) } });
+        weaponSkinMem.delete(nickname);
+        return res.json({ ok: true, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, missions: await missionsForLogin(nickname), owned_weapon_skins: ownedWeaponSkinList(nickname), equipped_weapon_skins: {} } });
     }
 
     try {
@@ -271,7 +277,8 @@ app.post('/api/auth/register', async (req, res) => {
         sessionTokens.set(nickname, token);
         const missions = await missionsForLogin(nickname);
         ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
-        return res.json({ ok: true, token, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, missions } });
+        weaponSkinMem.delete(nickname);
+        return res.json({ ok: true, token, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, missions, owned_weapon_skins: ownedWeaponSkinList(nickname), equipped_weapon_skins: {} } });
     } catch (err) {
         console.error('[Auth/Register] Error:', err);
         return res.json({ ok: false, error: 'Eroare server. Incearca din nou.' });
@@ -537,17 +544,22 @@ async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinne
     if (!supabase) {
         basic.weaponStats = addWeaponStats(weaponStatsMem.get(nickname), info.ws);
         weaponStatsMem.set(nickname, basic.weaponStats);
+        const unlocked = weaponSkinsToUnlock(weaponSkinsOf(nickname).owned, basic.weaponStats);
+        for (const id of unlocked) weaponSkinState(nickname).owned.add(id);
         io.to(socketId).emit('round-stats', basic);
+        emitWeaponSkinsUnlocked(socketId, nickname, unlocked);
         return;
     }
     try {
+        // the columns of migrations that have not run are left out (each is logged once)
         const STAT_COLS = 'kills_total, wins_total, games_played, xp, coins, diamonds';
-        let { data, error } = await supabase.from('players')
-            .select(STAT_COLS + (weaponStatsColumn ? ', weapon_stats' : ''))
-            .eq('nickname', nickname).maybeSingle();
-        if (error && _weaponStatsMissing(error)) {
-            _noWeaponStatsColumn();
-            ({ data, error } = await supabase.from('players').select(STAT_COLS).eq('nickname', nickname).maybeSingle());
+        const statCols = () => STAT_COLS + (weaponStatsColumn ? ', weapon_stats' : '') + (weaponSkinsColumn ? ', owned_weapon_skins' : '');
+        let { data, error } = await supabase.from('players').select(statCols()).eq('nickname', nickname).maybeSingle();
+        for (let i = 0; i < 2 && error; i++) {
+            if (_weaponStatsMissing(error)) _noWeaponStatsColumn();
+            else if (_weaponSkinsMissing(error)) _noWeaponSkinsColumn();
+            else break;
+            ({ data, error } = await supabase.from('players').select(statCols()).eq('nickname', nickname).maybeSingle());
         }
         if (!data) {
             if (hasWeaponStats(info.ws)) addWeaponStatsOnly(nickname, info.ws);
@@ -555,6 +567,10 @@ async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinne
             return;
         }
         const weaponTotals = addWeaponStats(weaponStatsColumn ? data.weapon_stats : weaponStatsMem.get(nickname), info.ws);
+        // unlock skins reached with these totals (also by a player who was past the threshold already)
+        const ownedNow = weaponSkinsColumn && 'owned_weapon_skins' in data
+            ? sanitizeOwnedWeaponSkins(data.owned_weapon_skins) : [...weaponSkinsOf(nickname).owned];
+        const unlocked = weaponSkinsToUnlock(new Set(ownedNow), weaponTotals);
 
         const newKills    = (data.kills_total  || 0) + k;
         const newWins     = (data.wins_total   || 0) + (isWinner ? 1 : 0);
@@ -569,13 +585,18 @@ async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinne
             updated_at: new Date().toISOString()
         };
         if (weaponStatsColumn) row.weapon_stats = weaponTotals;
+        if (weaponSkinsColumn && unlocked.length) row.owned_weapon_skins = ownedNow.concat(unlocked);
         let { error: upErr } = await supabase.from('players').update(row).eq('nickname', nickname);
-        if (upErr && _weaponStatsMissing(upErr)) {
-            _noWeaponStatsColumn();
-            delete row.weapon_stats;
+        for (let i = 0; i < 2 && upErr; i++) {
+            if (_weaponStatsMissing(upErr)) { _noWeaponStatsColumn(); delete row.weapon_stats; }
+            else if (_weaponSkinsMissing(upErr)) { _noWeaponSkinsColumn(); delete row.owned_weapon_skins; }
+            else break;
             ({ error: upErr } = await supabase.from('players').update(row).eq('nickname', nickname));
         }
         if (!weaponStatsColumn) weaponStatsMem.set(nickname, weaponTotals);
+        // what the account owns now (without the columns: in memory only)
+        const unlockedNow = upErr ? [] : unlocked;
+        weaponSkinState(nickname).owned = new Set(ownedNow.concat(unlockedNow));
 
         io.to(socketId).emit('round-stats', {
             killsThisRound: k, killsTotal: newKills, winsTotal: newWins,
@@ -585,6 +606,7 @@ async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinne
             xp: newXP, coins: newCoins, diamonds: newDiamonds, missions,
             weaponStats: weaponTotals
         });
+        emitWeaponSkinsUnlocked(socketId, nickname, unlockedNow);
         broadcastLeaderboard();
     } catch (err) {
         console.error('[Stats] updatePlayerRoundEnd error:', err);
@@ -640,6 +662,199 @@ for (const [id, ws] of Object.entries(WEAPON_STATS)) {
 }
 // Weapon ids the weapon stats accept (WEAPON STATS): the guns in weapons.json and the fists
 const STAT_WEAPON_IDS = new Set([...Object.keys(WEAPON_STATS), MELEE_WEAPON]);
+
+// ---------- WEAPON SKINS ----------
+// One list for client and server: public/data/weapon-skins.json (ARShared.weaponSkins works out the
+// prices: a skin without its own price costs what its rarity costs). A skin only changes how a gun looks.
+// Per account: players.owned_weapon_skins (ids, bought or unlocked) and players.equipped_weapon_skins
+// ({ weaponId: skinId }; a weapon not in it has no skin, "default"), supabase-migration-weapon-skins.sql.
+// Without those columns, or without Supabase, owned and equipped skins live in memory only and purchases
+// are refused, so no money is ever taken for a skin a restart would lose; the server says so once.
+// Unlock skins ("unlock": { kills }) are never sold: a round-end save adds them once the account's kills
+// with that weapon (weapon_stats) reach the threshold. UNLOCK_ALL=1 gives every skin to everyone.
+const WEAPON_SKIN_DATA = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'data', 'weapon-skins.json'), 'utf8'));
+{
+    const errs = ARShared.checkWeaponSkins(WEAPON_SKIN_DATA, Object.keys(WEAPON_STATS));
+    if (errs.length) throw new Error('public/data/weapon-skins.json: ' + errs.join('; '));
+}
+const WEAPON_SKINS   = new Map(ARShared.weaponSkins(WEAPON_SKIN_DATA).map(s => [s.id, s]));
+const NO_WEAPON_SKIN = 'default';
+const NO_SKIN_STATE  = Object.freeze({ owned: new Set(), equipped: Object.freeze({}) });
+const weaponSkinMem  = new Map(); // nickname -> { owned: Set of ids, equipped: { weaponId: skinId } }, filled at login
+let weaponSkinsColumn = true;
+function _weaponSkinsMissing(error) { return !!error && /owned_weapon_skins|equipped_weapon_skins/.test(error.message || ''); }
+function _noWeaponSkinsColumn() {
+    if (!weaponSkinsColumn) return;
+    weaponSkinsColumn = false;
+    console.warn('[WeaponSkins] Coloanele players.owned_weapon_skins / equipped_weapon_skins lipsesc: skin-urile de arme se pastreaza doar in memorie si nu se pot cumpara. Ruleaza supabase-migration-weapon-skins.sql in Supabase.');
+}
+// Stored values: only known ids, each once; only a skin of that same weapon on a weapon
+function sanitizeOwnedWeaponSkins(raw) {
+    let a = raw;
+    if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = null; } }
+    return Array.isArray(a) ? [...new Set(a.filter(id => typeof id === 'string' && WEAPON_SKINS.has(id)))] : [];
+}
+function sanitizeEquippedWeaponSkins(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    for (const [w, id] of Object.entries(raw)) { const s = typeof id === 'string' && WEAPON_SKINS.get(id); if (s && s.weapon === w) out[w] = id; }
+    return out;
+}
+const weaponSkinsOf = nickname => weaponSkinMem.get(nickname) || NO_SKIN_STATE;
+function weaponSkinState(nickname) { // the entry to change
+    let s = weaponSkinMem.get(nickname);
+    if (!s) { s = { owned: new Set(), equipped: {} }; weaponSkinMem.set(nickname, s); }
+    return s;
+}
+function ownsWeaponSkin(nickname, id) {
+    return WEAPON_SKINS.has(id) && (UNLOCK_ALL_FOR_TESTING || weaponSkinsOf(nickname).owned.has(id));
+}
+function ownedWeaponSkinList(nickname) {
+    return UNLOCK_ALL_FOR_TESTING ? [...WEAPON_SKINS.keys()] : [...weaponSkinsOf(nickname).owned];
+}
+// The skin a player's weapon shows: the equipped one while it is still theirs, otherwise none
+function equippedWeaponSkin(nickname, weaponId) {
+    const id = weaponSkinsOf(nickname).equipped[weaponId];
+    return id && WEAPON_SKINS.get(id).weapon === weaponId && ownsWeaponSkin(nickname, id) ? id : NO_WEAPON_SKIN;
+}
+function equippedWeaponSkinMap(nickname) {
+    const out = {};
+    for (const w of Object.keys(WEAPON_STATS)) { const id = equippedWeaponSkin(nickname, w); if (id !== NO_WEAPON_SKIN) out[w] = id; }
+    return out;
+}
+// At login, from the account's row ('owned_weapon_skins' is not in it until the migration ran)
+function loadWeaponSkinsFromRow(nickname, row) {
+    if (!weaponSkinsColumn) return;
+    if (!('owned_weapon_skins' in row)) { _noWeaponSkinsColumn(); return; }
+    weaponSkinMem.set(nickname, { owned: new Set(sanitizeOwnedWeaponSkins(row.owned_weapon_skins)), equipped: sanitizeEquippedWeaponSkins(row.equipped_weapon_skins) });
+}
+async function loadWeaponSkins(nickname) {
+    if (supabase && weaponSkinsColumn) {
+        const { data, error } = await supabase.from('players').select('owned_weapon_skins, equipped_weapon_skins').eq('nickname', nickname).maybeSingle();
+        if (!error) return { owned: sanitizeOwnedWeaponSkins(data && data.owned_weapon_skins), equipped: sanitizeEquippedWeaponSkins(data && data.equipped_weapon_skins) };
+        if (_weaponSkinsMissing(error)) _noWeaponSkinsColumn(); else throw error;
+    }
+    const s = weaponSkinsOf(nickname);
+    return { owned: [...s.owned], equipped: { ...s.equipped } };
+}
+// Unlock skins an account has earned with these weapon totals and does not own yet
+function weaponSkinsToUnlock(owned, weaponTotals) {
+    if (UNLOCK_ALL_FOR_TESTING) return [];
+    const out = [];
+    for (const s of WEAPON_SKINS.values()) {
+        if (s.unlock && !owned.has(s.id) && ((weaponTotals[s.weapon] && weaponTotals[s.weapon].kills) || 0) >= s.unlock.kills) out.push(s.id);
+    }
+    return out;
+}
+// The lobby's "skin deblocat" notice
+function emitWeaponSkinsUnlocked(socketId, nickname, ids) {
+    if (!ids.length) return;
+    console.log(`[WeaponSkins] ${nickname} a deblocat ${ids.join(', ')}`);
+    io.to(socketId).emit('weapon-skin-unlocked', {
+        skins: ids.map(id => { const s = WEAPON_SKINS.get(id); return { id, weapon: s.weapon, name: s.name, rarity: s.rarity }; }),
+        owned: ownedWeaponSkinList(nickname),
+    });
+}
+// q filtered on col being v (null-safe: a column that was never set is NULL)
+const whereSame = (q, col, v) => (v === null || v === undefined) ? q.is(col, null) : q.eq(col, v);
+const WEAPON_SKIN_NEEDS_MIGRATION = 'Skin-urile de arme nu se pot cumpara inca (lipseste migrarea bazei de date)';
+// One purchase, run in the account's write queue (serialStatWrite): a second click waits for the first and
+// then finds the skin owned. The money and the skin go in one update, and only if the money is still what
+// was read (a reward or another purchase in between makes it read again), so it is never spent twice.
+async function _buyWeaponSkin(nickname, skin) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const { data, error } = await supabase.from('players')
+            .select('coins, diamonds, owned_weapon_skins').eq('nickname', nickname).maybeSingle();
+        if (error) {
+            if (_weaponSkinsMissing(error)) { _noWeaponSkinsColumn(); return { ok: false, error: WEAPON_SKIN_NEEDS_MIGRATION }; }
+            throw error;
+        }
+        if (!data) return { ok: false, error: 'Cont negasit' };
+        const owned = sanitizeOwnedWeaponSkins(data.owned_weapon_skins);
+        weaponSkinState(nickname).owned = new Set(owned);
+        if (owned.includes(skin.id)) return { ok: false, error: 'Deja detinut', owned: ownedWeaponSkinList(nickname) };
+        const coins    = data.coins    ?? 1000;
+        const diamonds = data.diamonds || 0;
+        const cCost = skin.price.coins || 0, dCost = skin.price.diamonds || 0;
+        if (coins    < cCost) return { ok: false, error: 'Monede insuficiente' };
+        if (diamonds < dCost) return { ok: false, error: 'Diamante insuficiente' };
+        const list = owned.concat(skin.id);
+        let q = supabase.from('players').update({
+            coins: coins - cCost, diamonds: diamonds - dCost,
+            owned_weapon_skins: list, updated_at: new Date().toISOString(),
+        }).eq('nickname', nickname);
+        q = whereSame(whereSame(q, 'coins', data.coins), 'diamonds', data.diamonds);
+        const { data: changed, error: upErr } = await q.select('nickname');
+        if (upErr) {
+            if (_weaponSkinsMissing(upErr)) { _noWeaponSkinsColumn(); return { ok: false, error: WEAPON_SKIN_NEEDS_MIGRATION }; }
+            throw upErr;
+        }
+        if (changed && changed.length) {
+            weaponSkinState(nickname).owned = new Set(list);
+            console.log(`[WeaponSkins] ${nickname} a cumparat ${skin.id} (${cCost ? cCost + ' monede' : dCost + ' diamante'})`);
+            return { ok: true, skinId: skin.id, coins: coins - cCost, diamonds: diamonds - dCost, owned: ownedWeaponSkinList(nickname) };
+        }
+        // the money changed after it was read: read it again
+    }
+    return { ok: false, error: 'Incearca din nou' };
+}
+
+app.post('/api/weapon-skins/buy', async (req, res) => {
+    const { nickname, token, skinId } = req.body || {};
+    if (!nickname || !token || !skinId) return res.json({ ok: false });
+    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Sesiune invalida' });
+    const skin = typeof skinId === 'string' && WEAPON_SKINS.get(skinId);
+    if (!skin) return res.json({ ok: false, error: 'Skin invalid' });
+    if (skin.unlock) return res.json({ ok: false, error: `Skinul nu se cumpara: se deblocheaza la ${skin.unlock.kills} de killuri cu ${WEAPON_DATA.weapons[skin.weapon].name}` });
+    if (ownsWeaponSkin(nickname, skin.id)) return res.json({ ok: false, error: 'Deja detinut', owned: ownedWeaponSkinList(nickname) });
+    if (!supabase) return res.json({ ok: false, error: 'Cumpararea are nevoie de baza de date' });
+    if (!weaponSkinsColumn) return res.json({ ok: false, error: WEAPON_SKIN_NEEDS_MIGRATION });
+    try { res.json(await serialStatWrite(nickname, () => _buyWeaponSkin(nickname, skin))); }
+    catch (err) {
+        console.error('[WeaponSkins/Buy]', err.message || err);
+        res.json({ ok: false, error: 'Eroare server' });
+    }
+});
+
+// skinId "default" takes the skin off. Only a skin the account owns, only on its own weapon.
+app.post('/api/weapon-skins/equip', async (req, res) => {
+    const { nickname, token, weapon, skinId } = req.body || {};
+    if (!nickname || !token || !weapon || !skinId) return res.json({ ok: false });
+    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Sesiune invalida' });
+    if (typeof weapon !== 'string' || !Object.hasOwn(WEAPON_STATS, weapon)) return res.json({ ok: false, error: 'Arma invalida' });
+    if (skinId !== NO_WEAPON_SKIN) {
+        const skin = typeof skinId === 'string' && WEAPON_SKINS.get(skinId);
+        if (!skin) return res.json({ ok: false, error: 'Skin invalid' });
+        if (skin.weapon !== weapon) return res.json({ ok: false, error: 'Skinul nu e pentru arma asta' });
+        if (!ownsWeaponSkin(nickname, skin.id)) return res.json({ ok: false, error: 'Nu detii skinul' });
+    }
+    try {
+        const equipped = await serialStatWrite(nickname, async () => {
+            const next = { ...weaponSkinsOf(nickname).equipped };
+            if (skinId === NO_WEAPON_SKIN) delete next[weapon]; else next[weapon] = skinId;
+            if (supabase && weaponSkinsColumn) {
+                const { error } = await supabase.from('players').update({ equipped_weapon_skins: next }).eq('nickname', nickname);
+                if (error) { if (_weaponSkinsMissing(error)) _noWeaponSkinsColumn(); else throw error; }
+            }
+            weaponSkinState(nickname).equipped = next;
+            return equippedWeaponSkinMap(nickname);
+        });
+        res.json({ ok: true, equipped });
+    } catch (err) {
+        console.error('[WeaponSkins/Equip]', err.message || err);
+        res.json({ ok: false, error: 'Eroare server' });
+    }
+});
+
+// What an account owns and has on each weapon (?dev=weapons)
+app.get('/api/weapon-skins', async (req, res) => {
+    const nickname = String(req.query.nickname || '');
+    if (!/^[a-zA-Z0-9_]{3,15}$/.test(nickname)) return res.json({ ok: false, error: 'nickname' });
+    try {
+        const s = await loadWeaponSkins(nickname);
+        res.json({ ok: true, nickname, owned: UNLOCK_ALL_FOR_TESTING ? [...WEAPON_SKINS.keys()] : s.owned, equipped: s.equipped, unlockAll: UNLOCK_ALL_FOR_TESTING });
+    } catch (err) { console.error('[WeaponSkins] read error:', err.message || err); res.json({ ok: false }); }
+});
 const PLAYER_SIZE      = 60;
 const ZONE_INITIAL_R   = 1650;
 const ZONE_WAIT        = 30;
@@ -1085,9 +1300,11 @@ function addPlayer(code, room, socket, data) {
     // The skin is an id from public/data/skins.json; one the account does not own becomes the default.
     // data.name is the authenticated socket's nickname (set by create-room / join-room).
     const skin = ownsSkin(data.name, data.skin) ? data.skin : DEFAULT_SKIN;
+    // The weapon skin is never taken from the client: the one the account has equipped on this weapon
+    const weaponSkin = equippedWeaponSkin(data.name, weapon);
 
     room.players[socket.id] = {
-        id: socket.id, name: data.name, skin, xp: data.xp || 0, weapon,
+        id: socket.id, name: data.name, skin, xp: data.xp || 0, weapon, weaponSkin,
         x: SPAWN_POINTS[room.spawnIndex % SPAWN_POINTS.length].x,
         y: SPAWN_POINTS[(room.spawnIndex++) % SPAWN_POINTS.length].y,
         angle: 0, size: PLAYER_SIZE,
@@ -1108,9 +1325,9 @@ function addPlayer(code, room, socket, data) {
     };
     room._playerArr.push(room.players[socket.id]);
 
-    io.to(code).emit('player-image', { id: socket.id, skin, weapon });
+    io.to(code).emit('player-image', { id: socket.id, skin, weapon, weaponSkin });
     Object.values(room.players).forEach(p => {
-        if (p.id !== socket.id) socket.emit('player-image', { id: p.id, skin: p.skin, weapon: p.weapon || DEFAULT_WEAPON });
+        if (p.id !== socket.id) socket.emit('player-image', { id: p.id, skin: p.skin, weapon: p.weapon || DEFAULT_WEAPON, weaponSkin: p.weaponSkin });
     });
 }
 
@@ -1918,7 +2135,10 @@ function triggerRematch(code, room) {
         p.lastDamageTime = 0; p.lastAckSeq = 0; p.pendingAckSeq = 0;
     });
     const rematchMeta = {};
-    room._playerArr.forEach(p => { rematchMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON }; });
+    room._playerArr.forEach(p => {
+        p.weaponSkin = equippedWeaponSkin(p.name, p.weapon); // may have been equipped in between
+        rematchMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON, weaponSkin: p.weaponSkin };
+    });
     Object.keys(room.players).forEach(pid => {
         io.to(pid).emit('game-rematch', { isHost: room.hostId === pid, playersMeta: rematchMeta });
     });
@@ -2048,7 +2268,10 @@ io.on('connection', (socket) => {
         });
 
         const playersMeta = {};
-        room._playerArr.forEach(p => { playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON }; });
+        room._playerArr.forEach(p => {
+            p.weaponSkin = equippedWeaponSkin(p.name, p.weapon); // may have been equipped while waiting
+            playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON, weaponSkin: p.weaponSkin };
+        });
         io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles, mode: room.mode });
         console.log(`[${code}] Joc pornit cu ${room._playerArr.length} jucatori (${room.mode})`);
 
