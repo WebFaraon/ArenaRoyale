@@ -13,3 +13,5 @@ Measurement tools used by the performance work (not part of the game, not deploy
 
 Setup: `npm i` in this folder (own package.json). Run a local server without Supabase: `SUPABASE_URL= SUPABASE_SERVICE_KEY= PORT=3100 node server.js` from the repo root, then `node suite.js --label before`.
 Notes: a headless pacer at 144/240 Hz on the GPU over-produces frames and shows fake multi-second stalls; use `--gpuoff` for pacer runs and `--headed --vsync` for real cadence.
+- `ana_bullets_rows.js` – enemy bullets as drawn (needs the page's `window.__arBullets`, present from G2; `br.js --pos` records it).
+- Unit tests of the interpolation (60/144/240 Hz simulated, no browser): `node --test tools/tests/interp.test.js` from the repo root.

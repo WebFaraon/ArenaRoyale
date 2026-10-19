@@ -2,7 +2,7 @@
 const fs = require('fs');
 const r = JSON.parse(fs.readFileSync(process.argv[2])); const rows = r.pos;
 const hz = r.args.HZ;
-function parse(row) { let i = 0; const t = row[i++]; const me = [row[i++], row[i++]]; const nz = row[i++]; const z = []; for (let k = 0; k < nz; k++) z.push([row[i++], row[i++]]); const np = row[i++]; const pl = []; for (let k = 0; k < np; k++) pl.push([row[i++], row[i++], row[i++]]); return { t, me, z, pl }; }
+function parse(row) { let i = 0; const t = row[i++]; const me = [row[i++], row[i++]]; const nz = row[i++]; const z = []; for (let k = 0; k < nz; k++) z.push([row[i++], row[i++]]); const np = row[i++]; const pl = []; for (let k = 0; k < np; k++) pl.push([row[i++], row[i++], row[i++]]); let nb = row[i++]; const bl = []; if (nb > 0) for (let k = 0; k < nb; k++) bl.push([row[i++], row[i++], row[i++]]); return { t, me, z, pl, bl, nb }; }
 const F = rows.map(parse);
 const med = a => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 const pct = (a, q) => { const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(s.length * q))]; };

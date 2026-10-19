@@ -40,6 +40,7 @@ function initScript(hz, withPos, decim) {
         const is = window.__arIS ? window.__arIS() : null; const pl = [];
         if (is) for (const id in is.players) { if (id === (window.__arMyId||'')) continue; const p = is.players[id]; pl.push(p.x, p.y, p.angle); }
         row.push(pl.length / 3); for (const v of pl) row.push(v);
+        const bl = window.__arBullets ? window.__arBullets() : null; row.push(bl ? bl.length / 3 : -1); if (bl) for (const v of bl) row.push(v);
         pos.push(row);
     }
     if (HZ > 0) {
