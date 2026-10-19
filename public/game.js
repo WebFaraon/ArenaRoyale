@@ -110,27 +110,9 @@ const VIEW_W  = 1300;
 const VIEW_H  =  730;
 const MAX_DPR = 2;   // cap pixelRatio - 2x acopera toate telefoanele moderne fara cost excesiv
 
-// Decoratiuni statice ale hartii (generate o singura data cu seed fix pentru reproducibilitate)
-const _mapDeco = (() => {
-    let s = 0x1337cafe;
-    const r = () => { s = (s ^ (s << 13)) >>> 0; s = (s ^ (s >> 7)) >>> 0; s = (s ^ (s << 17)) >>> 0; return s / 0xffffffff; };
-    const W = 2600, H = 2600;
-    const colorZones = [];
-    for (let i = 0; i < 14; i++) {
-        colorZones.push({ x: r()*W, y: r()*H, rx: 150+r()*280, ry: 100+r()*200,
-            c: `rgba(${30+(r()*25)|0},${90+(r()*40)|0},${5+(r()*18)|0},${(0.11+r()*0.10).toFixed(2)})` });
-    }
-    const FC = ['#ef4444','#fde93d','#ffffff','#c084fc','#ff9ff3','#74b9ff','#fdcb6e','#a8e063'];
-    const flowers = [];
-    for (let i = 0; i < 260; i++) {
-        flowers.push({ x: r()*W, y: r()*H, radius: 2.2+r()*2.8, c: FC[(r()*FC.length)|0] });
-    }
-    const grassTufts = [];
-    for (let i = 0; i < 420; i++) {
-        grassTufts.push({ x: r()*W, y: r()*H, angle: -0.45+r()*0.9, len: 8+r()*10, a: 0.22+r()*0.26, dark: r()>0.5 });
-    }
-    return { colorZones, flowers, grassTufts };
-})();
+// Decoratiuni statice ale hartii (seed fix, acelasi generator ca inainte): ground-layer.js
+const _mapDeco = ARGround.makeDeco();
+ARGround.setDeco(_mapDeco);
 
 // Particule ambient (screen space, animate)
 const _ambParts = Array.from({ length: 20 }, () => ({
@@ -2864,10 +2846,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     let _obstacles = gameControl.pendingObstacles || []; delete gameControl.pendingObstacles;
     // The look of the trees and rocks for this match (server.js MAP SEASON; summer when the server sends none)
-    ARArena.setMapSeason(gameControl.pendingSeason || 'vara'); delete gameControl.pendingSeason;
+    ARArena.setMapSeason(gameControl.pendingSeason || 'vara'); ARGround.setTheme(gameControl.pendingSeason || 'vara'); delete gameControl.pendingSeason;
     const _gameMode = gameControl.mode || 'br'; delete gameControl.mode;
     let _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
     let _zoneTimerAlpha = 0;
+    const _vig = { c: null, w: 0, h: 0, dpr: 0 };   // the cached zone vignette
+    const _zl = { sec: -1, st: -1, fs: 0, text: '', key: '', w: 0, h: 0 }; // the cached zone label (see TIMER ZONA)
     const _zombies        = [];  // by zombie id (server.js), hp -1 = dead / not drawn
     let   _zSeenGen       = 0;   // state packet counter, to spot zombies missing from the latest one
     const _zombieDeathFx  = [];
@@ -3892,7 +3876,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         myElimData = null;
         _ammoBarCache.key = '';
         if (gameControl.pendingObstacles) { _obstacles = gameControl.pendingObstacles; delete gameControl.pendingObstacles; }
-        if (gameControl.pendingSeason) { ARArena.setMapSeason(gameControl.pendingSeason); delete gameControl.pendingSeason; }
+        if (gameControl.pendingSeason) { ARArena.setMapSeason(gameControl.pendingSeason); ARGround.setTheme(gameControl.pendingSeason); delete gameControl.pendingSeason; }
         _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
         _zoneTimerAlpha = 0;
         _zombies.length = 0;
@@ -4462,8 +4446,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // First frame of a match: build every tree/rock bitmap now (normally 4 per frame). Before,
         // the props over budget were drawn as full vector paths on that first frame, which queued
         // a 100-200 ms GPU raster and made the countdown stutter.
+        const _spriteBurst0 = _spriteBurst;
         if (_spriteBurst && _obstacles.length) { ARArena.allowBurst(_obstacles.length + 8); _spriteBurst = false; }
-        ARArena.beginFrame(dpr * ZOOM, performance.now());
+        const _gNow = performance.now();
+        ARArena.beginFrame(dpr * ZOOM, _gNow);
+        ARGround.beginFrame(gameControl.countdownActive || _spriteBurst0);
         const _lblScale = dpr * ZOOM;
 
         const visLeft   = camX - W / (2 * ZOOM);
@@ -4471,25 +4458,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const visRight  = visLeft + W / ZOOM;
         const visBottom = visTop  + H / ZOOM;
 
-        // --- FUNDAL ---
-        ARArena.drawGround(ctx, visLeft, visTop, visRight, visBottom, ARENA_W, ARENA_H);
-
-        // --- DECORATIUNI HARTA ---
-        // Zone cu nuanta de verde usor diferita — clampate la limitele arenei
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, ARENA_W, ARENA_H);
-        ctx.clip();
-        for (const z of _mapDeco.colorZones) {
-            if (z.x + z.rx < visLeft || z.x - z.rx > visRight || z.y + z.ry < visTop || z.y - z.ry > visBottom) continue;
-            ctx.fillStyle = z.c;
-            ctx.beginPath();
-            ctx.ellipse(z.x, z.y, z.rx, z.ry, 0, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        ctx.restore();
-        // Tufisuri de iarba (batched: one stroke per colour/opacity step)
-        ARArena.drawGrass(ctx, _mapDeco.grassTufts, visLeft, visTop, visRight, visBottom);
+        // --- FUNDAL + DECORATIUNI + MARCAJE --- (iarba, zone de culoare, marcaje, chenar: dale din cache, ground-layer.js)
+        ARGround.draw(ctx, visLeft, visTop, visRight, visBottom, _lblScale, ARArena.isScaleStable(), _gNow);
         // (no flowers: the pitch stays clean)
         // Particule ambient (world-space, se misca independent de camera)
         {
@@ -4510,8 +4480,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ctx.globalAlpha = 1;
         ctx.lineCap     = 'butt';
 
-        // --- MARCAJE ---
-        ARArena.drawMarkings(ctx, visLeft, visTop, visRight, visBottom, ARENA_W, ARENA_H, ZOOM);
+        // (marcajele sunt in dalele din ground-layer.js)
 
         // --- OBSTACOLE ---
         const _obsNow = performance.now();
@@ -5052,30 +5021,37 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 _zoneTimerAlpha = Math.min(1, (performance.now() - gameControl.countdownEndTime) / 500);
             }
             if (_zoneTimerAlpha > 0) {
-                ctx.save();
-                ctx.scale(dpr, dpr);
-                ctx.globalAlpha = _zoneTimerAlpha;
-                ctx.textAlign = 'center';
+                // The label is a cached sprite: text, block and outline are painted again only when the text
+                // (whole seconds, or the phase) or the size changes, not 60-240 times a second
                 const _zFontSz = Math.max(13, Math.round(Math.min(W, H) * 0.03));
-                ctx.font = `800 ${_zFontSz}px Sen, Arial`;
                 const _zt = _zone.waitTimer;
-                const _zLabel = _zt > 0
-                    ? `Zona se restrange in ${Math.ceil(_zt)}s`
-                    : (_zone.r > 0 ? 'Zona se restrange!' : 'Zona inchisa!');
-                const _zc = _zt > 0 ? TOY.slate : TOY.red;
-                const _ztW = ctx.measureText(_zLabel).width + 34;
-                const _ztH = _zFontSz + 20;
-                const _ztX = W / 2, _ztTop = Math.round(H * 0.07);
-                const _zol = _zFontSz < 16 ? 2.5 : 3;
-                _drawBlock(ctx, _ztX - _ztW / 2, _ztTop, _ztW, _ztH, Math.round(_ztH * 0.3), _zc[0], _zc[1], _zol, 5, 4);
-                ctx.textBaseline = 'middle';
-                ctx.lineJoin = 'round';
-                ctx.lineWidth = Math.max(3, _zFontSz * 0.24);
-                ctx.strokeStyle = INK;
-                ctx.strokeText(_zLabel, _ztX, _ztTop + _ztH / 2 - 1);
-                ctx.fillStyle = _zt > 0 ? '#FFFFFF' : '#FFFFFF';
-                ctx.fillText(_zLabel, _ztX, _ztTop + _ztH / 2 - 1);
-                ctx.restore();
+                const _zSec = _zt > 0 ? Math.ceil(_zt) : 0;
+                const _zSt = _zt > 0 ? 0 : (_zone.r > 0 ? 1 : 2);
+                if (_zl.sec !== _zSec || _zl.st !== _zSt || _zl.fs !== _zFontSz) {
+                    _zl.sec = _zSec; _zl.st = _zSt; _zl.fs = _zFontSz;
+                    _zl.text = _zSt === 0 ? `Zona se restrange in ${_zSec}s` : (_zSt === 1 ? 'Zona se restrange!' : 'Zona inchisa!');
+                    if (!_labelMeasure) _labelMeasure = document.createElement('canvas').getContext('2d');
+                    _labelMeasure.font = `800 ${_zFontSz}px Sen, Arial`;
+                    _zl.w = _labelMeasure.measureText(_zl.text).width + 34;
+                    _zl.h = _zFontSz + 20;
+                    _zl.key = 'ZT|' + _zl.text + '|' + _zFontSz;
+                }
+                const _zPad = 8, _zw = _zl.w, _zh = _zl.h;
+                const _zs = _labelSprite(_zl.key, dpr, _zw + _zPad * 2, _zh + 4 + _zPad * 2, (g) => {
+                    const c = _zSt === 0 ? TOY.slate : TOY.red, ol = _zFontSz < 16 ? 2.5 : 3;
+                    g.translate(_zPad, _zPad);
+                    _drawBlock(g, 0, 0, _zw, _zh, Math.round(_zh * 0.3), c[0], c[1], ol, 5, 4);
+                    g.font = `800 ${_zFontSz}px Sen, Arial`;
+                    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+                    g.lineWidth = Math.max(3, _zFontSz * 0.24); g.strokeStyle = INK; g.fillStyle = '#FFFFFF';
+                    g.strokeText(_zl.text, _zw / 2, _zh / 2 - 1);
+                    g.fillText(_zl.text, _zw / 2, _zh / 2 - 1);
+                });
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                ctx.globalAlpha = _zoneTimerAlpha;
+                ctx.drawImage(_zs.c, W / 2 - _zw / 2 - _zPad, Math.round(H * 0.07) - _zPad, _zs.w, _zs.h);
+                ctx.globalAlpha = 1;
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
             }
         }
 
@@ -5083,15 +5059,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (!gameEnded && _gameMode !== 'pve' && _zone.r >= 0 && predX !== null) {
             const _distZ = Math.hypot(predX - _zone.cx, predY - _zone.cy);
             if (_zone.r === 0 || _distZ > _zone.r) {
-                ctx.save();
-                ctx.scale(dpr, dpr);
-                const _pulse = 0.25 + 0.15 * Math.sin(performance.now() / 160);
-                const _vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.75);
-                _vg.addColorStop(0, 'rgba(220,0,0,0)');
-                _vg.addColorStop(1, `rgba(220,0,0,${_pulse.toFixed(2)})`);
-                ctx.fillStyle = _vg;
-                ctx.fillRect(0, 0, W, H);
-                ctx.restore();
+                // a small pre-painted gradient (alpha 0 -> 1) stretched over the screen and faded by the pulse: no gradient
+                // object and no string per frame
+                if (_vig.w !== W || _vig.h !== H || _vig.dpr !== dpr) {
+                    const vw = Math.max(8, Math.ceil(W / 4)), vh = Math.max(8, Math.ceil(H / 4)), k = vw / W;
+                    if (!_vig.c) _vig.c = document.createElement('canvas');
+                    _vig.c.width = vw; _vig.c.height = vh;
+                    const vg = _vig.c.getContext('2d');
+                    const gr = vg.createRadialGradient(vw / 2, vh / 2, H * 0.25 * k, vw / 2, vh / 2, H * 0.75 * k);
+                    gr.addColorStop(0, 'rgba(220,0,0,0)'); gr.addColorStop(1, 'rgba(220,0,0,1)');
+                    vg.fillStyle = gr; vg.fillRect(0, 0, vw, vh);
+                    _vig.w = W; _vig.h = H; _vig.dpr = dpr;
+                }
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                ctx.globalAlpha = Math.round((0.25 + 0.15 * Math.sin(performance.now() / 160)) * 100) / 100;
+                ctx.drawImage(_vig.c, 0, 0, W, H);
+                ctx.globalAlpha = 1;
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
             }
         }
 
