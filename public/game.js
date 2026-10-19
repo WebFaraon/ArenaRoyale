@@ -3116,6 +3116,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             window.__arMe = () => [predX, predY];
             window.__arObs = () => _obstacles; // the obstacles as the client has them (map sprites tests)
             window.__arIS = () => _IS; // the other players as last rendered (interpolation)
+            window.__arBullets = () => { const o = [], bl = _IS.bullets, age = _IS.bulletAge || 0; if (bl) for (const b of bl) { if (b.ownerId !== socket.id) o.push(b.id, b.x + b.dx * age, b.y + b.dy * age); } return o; }; // enemy bullets as drawn (id, x, y)
         }
     } catch (e) { /* storage blocked */ }
 
@@ -3543,12 +3544,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const _zid = zArr[_zi];
                 const _zb = _zombies[_zid] || (_zombies[_zid] = { hp: -1 });
                 const _zPrevHp = _zb.hp;
-                _zb.x = zArr[_zi + 1]; _zb.y = zArr[_zi + 2];
-                _zb.angle = zArr[_zi + 3] / 100; _zb.hp = zArr[_zi + 4];
+                // sx, sy, sa: where the server has it now. What is drawn (x, y, angle) is blended between two
+                // snapshots in getInterpolatedState; a zombie seen for the first time starts at its server place.
+                _zb.sx = zArr[_zi + 1]; _zb.sy = zArr[_zi + 2]; _zb.sa = zArr[_zi + 3] / 100;
+                if (_zPrevHp < 0) { _zb.x = _zb.sx; _zb.y = _zb.sy; _zb.angle = _zb.sa; }
+                _zb.hp = zArr[_zi + 4];
                 _zb.type = zArr[_zi + 5] || 0;
                 _zb.seen = _zGen;
                 if (_zPrevHp > 0 && _zPrevHp - _zb.hp > 0.5) {
-                    hitEffects.push({ x: _zb.x, y: _zb.y, life: 2.0 });
+                    hitEffects.push({ x: _zb.sx, y: _zb.sy, life: 2.0 });
                 }
             }
             for (let _zi = 0; _zi < _zombies.length; _zi++) {
@@ -3583,6 +3587,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // the server's simulation time: tick number x tick length (older servers: the tick's wall clock)
             st:      tickNo ? tickNo * ARShared.TICK_S * 1000 : (serverTime || now),
             players: {},
+            z:       zArr || null,   // the packet's zombie list, blended per frame (ARInterp.zombies)
             // direction arrives x1000 (server.js state packet)
             bullets: bArr.map(([id, x, y, dx, dy, ownerId]) => ({ id, x, y, dx: dx / 1000 * ARShared.NET_BULLET_SPEED, dy: dy / 1000 * ARShared.NET_BULLET_SPEED, ownerId, radius: WEAPON_RULES.bulletRadius })),
         };
@@ -3594,7 +3599,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (_s) _s.gen = _srvSeenGen;
             else {
                 _srvBulletSeen.set(b.id, { t: now, gen: _srvSeenGen });
-                if (b.ownerId !== socket.id) _shotKick(_fxFor(b.ownerId), now);
             }
         }
         for (const [_sid, _s] of _srvBulletSeen) { if (_s.gen !== _srvSeenGen) _srvBulletSeen.delete(_sid); }
@@ -4132,6 +4136,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
 
     // ---------- INTERPOLARE STATE ----------
+    const _loc = { a: 0, b: 0, t: 0, extrap: false }, _bb = { base: 0, age: 0 };
+    const ZOMBIE_SNAP = 120;   // a zombie that moved further than this between two snapshots is not blended
     function getInterpolatedState() {
         if (stateBuffer.length === 0) return null;
 
@@ -4139,29 +4145,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_clockLag === null) return null;
         const renderTime = performance.now() - _clockLag;
 
-        // Find the two snapshots that bracket renderTime.
-        // stateBuffer is oldest-first; scan backwards for the last one <= renderTime.
-        let iOld = -1;
-        for (let i = stateBuffer.length - 1; i >= 0; i--) {
-            if (stateBuffer[i].st <= renderTime) { iOld = i; break; }
-        }
-
-        let sOld, sNew;
-        if (iOld < 0) {
-            // renderTime is before ALL buffered snapshots — not enough history yet, use oldest
-            sOld = sNew = stateBuffer[0];
-        } else if (iOld >= stateBuffer.length - 1) {
-            // renderTime is past the newest snapshot (a delivery pause): carry on along the last motion
-            sOld = stateBuffer[Math.max(0, stateBuffer.length - 2)];
-            sNew = stateBuffer[stateBuffer.length - 1];
-        } else {
-            sOld = stateBuffer[iOld];
-            sNew = stateBuffer[iOld + 1];
-        }
-
-        const span = sNew.st - sOld.st;
-        // t in [0,1] between two snapshots; past the newest one, extrapolate up to EXTRAP_MS beyond it
-        const t = span > 0 ? Math.max(0, Math.min(1 + EXTRAP_MS / span, (renderTime - sOld.st) / span)) : 0;
+        // The two snapshots that bracket renderTime (interp.js)
+        const loc = ARInterp.locate(stateBuffer, renderTime, EXTRAP_MS, _loc);
+        const sOld = stateBuffer[loc.a], sNew = stateBuffer[loc.b];
+        const t = loc.t;
         const extrapolating = t > 1;
         const nowMs = performance.now();
 
@@ -4216,8 +4203,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (!_ISActiveIds.has(id)) delete _IS.players[id];
         }
 
-        // Bullets always from the latest snapshot; extrapolated forward in the draw loop.
-        _IS.bullets = stateBuffer[stateBuffer.length - 1].bullets;
+        // Zombies: blended between the same two snapshots as the players (they used to jump to each packet's place)
+        ARInterp.zombies(sOld.z, sNew.z, t, _zombies, ZOMBIE_SNAP);
+
+        // Enemy bullets: straight lines, drawn from the snapshot at or before render time plus the exact time since it
+        ARInterp.bulletBase(stateBuffer, loc, renderTime, EXTRAP_MS, _bb);
+        _IS.bullets = stateBuffer[_bb.base].bullets;
+        _IS.bulletAge = _bb.age;
         return _IS;
     }
 
@@ -4386,8 +4378,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const _zb = _zombies[_zi];
                 if (!_zb || _zb.hp < 0) continue;
                 const _R = (_gameMode === 'pve' ? (_PVE_ZB_RADIUS[_zb.type || 0] || 20) : 20) + 6;
-                if (_zb.x + _R < _bMinX || _zb.x - _R > _bMaxX || _zb.y + _R < _bMinY || _zb.y - _R > _bMaxY) continue;
-                const _t = _segCircleT(_x0, _y0, _x1, _y1, _zb.x, _zb.y, _R);
+                const _zbx = _zb.sx, _zby = _zb.sy;   // the server's latest place, as the prediction always used
+                if (_zbx + _R < _bMinX || _zbx - _R > _bMaxX || _zby + _R < _bMinY || _zby - _R > _bMaxY) continue;
+                const _t = _segCircleT(_x0, _y0, _x1, _y1, _zbx, _zby, _R);
                 if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = -1; }
             }
             if (_predictEnemies) {
@@ -4546,7 +4539,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // Enemy bullets extrapolate forward from the latest snapshot; own bullets come from
         // _clientBullets (predicted + reconciled with the server, see _reconcileOwnBullets).
         const _bulletNow = performance.now();
-        const _bulletAge = Math.min((_bulletNow - lastGameStateTime) / 1000, 0.05);
+        const _bulletAge = rState.bulletAge;   // seconds since the snapshot the bullets are read from, on the server timeline
         ctx.fillStyle = '#ffffff';
         for (const b of rState.bullets) {
             if (b.ownerId === socket.id) continue;
@@ -4556,6 +4549,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // or a player it is about to hit (the server removes it on the next packet anyway)
             if (_bulletAge > 0 && _enemyBulletBlocked(b.x, b.y, _bx, _by, b.ownerId, rState)) continue;
             const _seen = _srvBulletSeen.get(b.id);
+            // the shot's flash and the trail start when the bullet is first drawn (it is drawn a little behind the packet)
+            if (_seen && !_seen.drawn) { _seen.drawn = true; _seen.t = _bulletNow; _shotKick(_fxFor(b.ownerId), _bulletNow); }
             const _bAge = _seen ? (_bulletNow - _seen.t) / 1000 : 0;
             const _trail = Math.min(_bAge * 480, 110);
             const _bw = _playerWeapons.get(b.ownerId) || DEFAULT_WEAPON;
