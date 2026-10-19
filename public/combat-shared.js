@@ -124,5 +124,25 @@
         return errs;
     }
 
-    return { PLAYER_VISUAL_SCALE, TICK_RATE, TICK_S, LEGACY_TICK_S, LEGACY_MUZZLE, NET_BULLET_SPEED, muzzleDistance, legacyTicks, bulletLife, weaponStats, checkWeapons, weaponSkins, checkWeaponSkins };
+    // Map objects (public/data/map-objects.json, sprites in public/images/map/<season>/<id>.png): what is wrong
+    // with the file (empty = fine). Used by the server at start and by the client before it draws the sprites.
+    // The ids the match draws (trees, pine, rocks) must be there; the others (bush, small stones) are kept for later.
+    const MAP_OBJECT_IDS = ['copac_mic', 'copac_mediu', 'copac_mare', 'brad', 'piatra_medie', 'piatra_mare'];
+    function checkMapObjects(data) {
+        const errs = [], num = v => typeof v === 'number' && isFinite(v) && v > 0;
+        if (!data || typeof data !== 'object') return ['not an object'];
+        if (!num(data.pxPerUnit)) errs.push('pxPerUnit');
+        if (!Array.isArray(data.seasons) || !data.seasons.length || !data.seasons.every(s => /^[a-z]{3,12}$/.test(s))) errs.push('seasons: a list of lowercase names');
+        const objs = data.objects || {};
+        for (const id of MAP_OBJECT_IDS) if (!objs[id]) errs.push(id + ': missing');
+        for (const [id, o] of Object.entries(objs)) {
+            if (!/^[a-z_]{3,20}$/.test(id)) { errs.push(id + ': id'); continue; }
+            if (!num(o.visualRadius) || !num(o.frameRadius) || !num(o.pngSize)) { errs.push(id + ': visualRadius, frameRadius, pngSize'); continue; }
+            if (o.frameRadius < o.visualRadius) errs.push(id + ': frameRadius < visualRadius');
+            if (Math.abs(o.pngSize - 2 * o.frameRadius * data.pxPerUnit) > 1) errs.push(id + ': pngSize != 2 x frameRadius x pxPerUnit');
+        }
+        return errs;
+    }
+
+    return { PLAYER_VISUAL_SCALE, TICK_RATE, TICK_S, LEGACY_TICK_S, LEGACY_MUZZLE, NET_BULLET_SPEED, muzzleDistance, legacyTicks, bulletLife, weaponStats, checkWeapons, weaponSkins, checkWeaponSkins, MAP_OBJECT_IDS, checkMapObjects };
 });

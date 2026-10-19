@@ -2766,6 +2766,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
         if (data && data.playersMeta)  gameControl.pendingMeta      = data.playersMeta;
         if (data && data.obstacles)    gameControl.pendingObstacles = data.obstacles;
         if (data && data.mode)         gameControl.mode             = data.mode;
+        if (data && data.season)       gameControl.pendingSeason    = data.season;
         stopLobbyBackground();
         document.getElementById('screen-waiting').style.display = 'none';
         document.getElementById('screen-game').style.display    = 'block';
@@ -2862,6 +2863,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         delete gameControl.pendingMeta;
     }
     let _obstacles = gameControl.pendingObstacles || []; delete gameControl.pendingObstacles;
+    // The look of the trees and rocks for this match (server.js MAP SEASON; summer when the server sends none)
+    ARArena.setMapSeason(gameControl.pendingSeason || 'vara'); delete gameControl.pendingSeason;
     const _gameMode = gameControl.mode || 'br'; delete gameControl.mode;
     let _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
     let _zoneTimerAlpha = 0;
@@ -2876,6 +2879,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _coinFloats   = [];        // { x, y, amount, startTime } — coin earn popup
     const _kitDropAnim  = new Map(); // id → dropStartTime (animatie de cadere la spawn)
     const _obsShake     = {};   // obstacle index → shake start ms
+    // The sideways offset of a shaking obstacle (hit by a bullet) at time now
+    function _obsShakeX(i, now) {
+        if (_obsShake[i] === undefined) return 0;
+        const sa = (now - _obsShake[i]) / 1000;
+        if (sa > 0.40) { delete _obsShake[i]; return 0; }
+        return Math.sin(sa * 26 * Math.PI * 2) * 2.2 * (1 - sa / 0.40);
+    }
     const hitEffects    = [];
     const _footsteps    = []; // { x, y, angle, t }
     const _footTimers   = {}; // pid → sec since last step
@@ -3120,6 +3130,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             window.__arDiag = () => ({ ..._bDiag, interp: _interpShow, buf: stateBuffer.length, active: _clientBullets.length, linkedNow: _ownLinked.size, rtt: _pingRtt, pktPs: _dbgPktPs, fps: _dbgFps, st: { isShooting, mustRelease: _shootMustRelease, ammo: ammoState.ammo, reloading: ammoState.reloading, aim: aimStartTime, cd: gameControl.countdownActive, dead: _selfDead, predX, next: _clientNextShotAt, now: performance.now(), ended: gameEnded } });
             window.__arZombies = () => _zombies.filter(z => z && z.hp > 0).map(z => [z.x, z.y]);
             window.__arMe = () => [predX, predY];
+            window.__arObs = () => _obstacles; // the obstacles as the client has them (map sprites tests)
             window.__arIS = () => _IS; // the other players as last rendered (interpolation)
         }
     } catch (e) { /* storage blocked */ }
@@ -3881,6 +3892,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         myElimData = null;
         _ammoBarCache.key = '';
         if (gameControl.pendingObstacles) { _obstacles = gameControl.pendingObstacles; delete gameControl.pendingObstacles; }
+        if (gameControl.pendingSeason) { ARArena.setMapSeason(gameControl.pendingSeason); delete gameControl.pendingSeason; }
         _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
         _zoneTimerAlpha = 0;
         _zombies.length = 0;
@@ -4264,6 +4276,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)
     const _zVisibleList  = [];
+    // players drawn this frame (figure first, tags after the tree crowns) and the bodies a crown can be over
+    const _plQ = [], _plQx = [], _plQy = [];
+    const _crX = [], _crY = [], _crR = [];
     let _spriteBurst     = true;
 
     // ---------- BUCLA DE RANDARE ----------
@@ -4500,22 +4515,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         // --- OBSTACOLE ---
         const _obsNow = performance.now();
+        // (trees drawn from sprites wait for the crown pass, above the players; rocks stay here, under them)
         for (let _oi = 0; _oi < _obstacles.length; _oi++) {
             const obs = _obstacles[_oi];
-            if (obs.x + obs.r < visLeft || obs.x - obs.r > visRight ||
-                obs.y + obs.r < visTop  || obs.y - obs.r > visBottom) continue;
-            // Shake offset
-            let _sox = 0, _soy = 0;
-            if (_obsShake[_oi] !== undefined) {
-                const _sa = (_obsNow - _obsShake[_oi]) / 1000;
-                if (_sa > 0.40) { delete _obsShake[_oi]; }
-                else {
-                    const _samp = 2.2 * (1 - _sa / 0.40);
-                    _sox = Math.sin(_sa * 26 * Math.PI * 2) * _samp;
-                }
-            }
-            const _ox = obs.x + _sox, _oy = obs.y + _soy;
-            ARArena.drawProp(ctx, obs, _ox, _oy); // cached bitmap per obstacle
+            const _om = obs.r * 1.6 + 12; // the sprite and its shadow reach past the collision radius
+            if (obs.x + _om < visLeft || obs.x - _om > visRight ||
+                obs.y + _om < visTop  || obs.y - _om > visBottom) continue;
+            ARArena.drawProp(ctx, obs, obs.x + _obsShakeX(_oi, _obsNow), obs.y); // cached bitmap
         }
 
         // --- ZONA --- (BR only)
@@ -4858,6 +4864,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const _ringR    = _playerRingR();
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
+        let _plN = 0;
         for (const pid in rState.players) {
             const player = rState.players[pid];
             if (!player.alive || player.hp <= 0) continue;
@@ -4882,19 +4889,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
             // 130: a long gun (up to ~128 units in front) must not vanish at the screen edge
             if (!isMe && (px + 130 < visLeft || px - 130 > visRight || py + 130 < visTop || py - 130 > visBottom)) continue;
-            const ringR  = _ringR;
             const ringColor = isMe ? '#46D17C' : '#FF4155';
             const ringFill  = isMe ? 'rgba(70,209,124,0.14)' : 'rgba(255,65,85,0.14)';
             // Ring, body, gun, hands on the gun, fixed highlight (see GUNS IN HAND)
             const _pWeapon = isMe ? (_playerWeapons.get(socket.id) || selectedWeapon) : (_playerWeapons.get(player.id) || DEFAULT_WEAPON);
             _drawPlayerFigure(ctx, _wm, px, py, pangle, playerImages[player.id], _pWeapon, _lblScale, ringColor, ringFill, _playerFx.get(player.id), _bulletNow, _playerWeaponSkins.get(player.id));
 
-            // Flash + Nume (name tag is a cached label: one drawImage instead of strokeText+fillText)
+            // Hit flash on the body; the tag and bars come after the tree crowns (below)
             const flashAge = flashTimers[player.id] !== undefined
                 ? performance.now() - flashTimers[player.id] : Infinity;
-            const barH = isMe ? 22 : 13;
-            const ammoH = 6;
-            const barW = isMe ? 108 : 70;
             if (flashAge < 280) {
                 ctx.globalAlpha = (1 - flashAge / 280) * 0.7;
                 ctx.beginPath();
@@ -4903,11 +4906,38 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 ctx.fill();
                 ctx.globalAlpha = 1;
             }
+            _plQ[_plN] = player; _plQx[_plN] = px; _plQy[_plN] = py; _plN++;
+        }
+        ctx.imageSmoothingQuality = 'low'; // back to the default for the rest of the frame
+
+        // --- COROANE --- (trees from sprites: above the players and zombies; see-through over whoever is under)
+        {
+            let _crN = 0;
+            for (let i = 0; i < _plN; i++) { _crX[_crN] = _plQx[i]; _crY[_crN] = _plQy[i]; _crR[_crN] = PLAYER_HIT_R; _crN++; }
+            for (let i = 0; i < _zVisible; i++) { const z = _zVisibleList[i]; _crX[_crN] = z.x; _crY[_crN] = z.y; _crR[_crN] = (_ZB_DEFS[z.type || 0] || _ZB_DEFS[0]).r; _crN++; }
+            for (let _oi = 0; _oi < _obstacles.length; _oi++) {
+                const obs = _obstacles[_oi];
+                if (obs.type !== 'tree') continue;
+                const _om = obs.r * 1.6 + 12;
+                if (obs.x + _om < visLeft || obs.x - _om > visRight || obs.y + _om < visTop || obs.y - _om > visBottom) continue;
+                ARArena.drawCrown(ctx, obs, obs.x + _obsShakeX(_oi, _obsNow), obs.y, dtSec, _crX, _crY, _crR, _crN);
+            }
+        }
+
+        // --- NUME + HP --- (above the crowns, so a tag is never hidden)
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        for (let _qi = 0; _qi < _plN; _qi++) {
+            const player = _plQ[_qi], px = _plQx[_qi], py = _plQy[_qi];
+            const isMe = player.id === socket.id;
+            const barH = isMe ? 22 : 13;
+            const ammoH = 6;
+            const barW = isMe ? 108 : 70;
             // Bara HP (toti jucatorii) — folosim latestHp pentru update instant, fara delay de interpolatie
             // Yours ends with the ammo bar on the ring; the others' bar sits 6 units above it
             const hpRatio = Math.min(1, Math.max(0, (latestHp[player.id] ?? player.hp) / player.maxHp));
             const barX    = px - barW / 2;
-            const barY    = py - ringR - barH - (isMe ? 4 + ammoH : 6);
+            const barY    = py - _ringR - barH - (isMe ? 4 + ammoH : 6);
             _drawLabel(ctx, player.name, isMe ? 14 : 12, isMe ? '#66E287' : '#ffffff', INK, 4, 'alphabetic',
                        px, barY - (isMe ? 12 : 10), _lblScale);
             _drawHpBar(ctx, barX, barY, barW, barH, hpRatio, isMe ? 2.5 : 2);

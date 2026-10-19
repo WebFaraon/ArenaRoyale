@@ -1239,10 +1239,32 @@ function pveDefeat(code, room) {
     console.log(`[${code}] PvE Infrangere (baza distrusa la wave ${room.pveWave})`);
 }
 
+// ---------- MAP SEASON ----------
+// The look of the trees and rocks (public/data/map-objects.json: seasons, sprites in public/images/map/<season>/).
+// One setting for the whole server: MAP_SEASON in the environment (.env), default "vara". Sent to the client with
+// game-start; it changes only the sprites, never the obstacles (positions, sizes, collisions).
+const MAP_DATA = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'data', 'map-objects.json'), 'utf8'));
+{
+    const errs = ARShared.checkMapObjects(MAP_DATA);
+    if (errs.length) throw new Error('public/data/map-objects.json: ' + errs.join('; '));
+}
+const MAP_SEASONS = MAP_DATA.seasons;
+const MAP_SEASON = (() => {
+    const want = String(process.env.MAP_SEASON || MAP_SEASONS[0]).trim().toLowerCase();
+    if (MAP_SEASONS.includes(want)) return want;
+    console.warn('[Map] MAP_SEASON="' + want + '" nu exista (' + MAP_SEASONS.join(', ') + '): folosesc "' + MAP_SEASONS[0] + '".');
+    return MAP_SEASONS[0];
+})();
+{
+    // a missing sprite is not fatal (the client draws the old vector look for it), but it is worth knowing
+    const missing = ARShared.MAP_OBJECT_IDS.filter(id => !fs.existsSync(path.join(__dirname, 'public', 'images', 'map', MAP_SEASON, id + '.png')));
+    if (missing.length) console.warn('[Map] Lipsesc sprite-uri pentru sezonul "' + MAP_SEASON + '": ' + missing.join(', ') + ' (se deseneaza varianta veche)');
+}
+
 function newRoom(hostId, mode = 'br') {
     const _obs = generateObstacles(mode);
     return {
-        hostId, mode,
+        hostId, mode, season: MAP_SEASON,
         players:     {},
         _playerArr:  [],
         bullets:     [],
@@ -2272,7 +2294,7 @@ io.on('connection', (socket) => {
             p.weaponSkin = equippedWeaponSkin(p.name, p.weapon); // may have been equipped while waiting
             playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON, weaponSkin: p.weaponSkin };
         });
-        io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles, mode: room.mode });
+        io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles, mode: room.mode, season: room.season });
         console.log(`[${code}] Joc pornit cu ${room._playerArr.length} jucatori (${room.mode})`);
 
         setTimeout(() => {

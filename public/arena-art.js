@@ -367,9 +367,171 @@
         return { c: c, scale: pixScale, pad: pad };
     }
 
-    // Trees and rocks: never change, keyed by the obstacle object itself
+    // ---------- trees and rocks as sprites (one set per season) ----------
+    // public/images/map/<season>/<id>.png + public/data/map-objects.json (the pack in _redesign/map-objects):
+    // 3 px per world unit, the image centre is the object's position, the shadow is part of the image (down and
+    // to the right). Never rotated: only mirrored and scaled a little, both worked out from the obstacle's
+    // position, so every player sees the same trees.
+    // The server sends only type, position and radius r (the collision, never touched here). Which sprite an
+    // obstacle gets follows its r, and the sprite is scaled so its visualRadius covers what the vector drawing
+    // below used to cover (trees 1.166 r + 3, rocks 0.96 r + 1.5): the look takes the same room on the map.
+    // Until a sprite is in (or when it is missing), the vector drawing is used, so nothing is ever empty.
+    // Trees are drawn in a second pass above the players (drawCrown); rocks stay under them.
+    const MAP_DIR = '/images/map/';
+    const TREE_R = [42, 62], ROCK_R = [26, 42];      // the server's generateObstacles ranges, to split them into bands
+    const PINE_SHARE = 64;                           // of 256: about a quarter of the trees are pines
+    const VAR_MIN = 0.9, VAR_MAX = 1.1;              // the scale variation
+    const CROWN_ALPHA = 0.42, CROWN_FADE = 12;       // a crown with someone under it: opacity, and how fast it gets there (1/s)
+    const mapArt = { meta: null, loading: false, want: null, season: null, sets: {} };   // sets[season][id] = { img, state: 0 loading, 1 ready, 2 failed, bmp }
+    const mapVariants = new WeakMap();               // obstacle -> { id, flip, k, nom, crownR, alpha }
+    const mapDraws = { sprite: 0, vector: 0 };       // objects drawn from sprites / from the old vectors (tests read it)
+
+    // The pixels of a position folded into 32 bits (the same everywhere: server positions are whole numbers)
+    function posHash(x, y) {
+        let h = Math.imul((x | 0) ^ 0x9E3779B1, 0x85EBCA6B) ^ Math.imul(((y | 0) + 0x7F4A7C15) | 0, 0xC2B2AE35);
+        h ^= h >>> 15; h = Math.imul(h, 0x2C1B3C6D); h ^= h >>> 12; h = Math.imul(h, 0x297A2D39); h ^= h >>> 15;
+        return h >>> 0;
+    }
+    function oldTreeRadius(r) { return r * 1.1 * 1.06 + 3; }
+    function oldRockRadius(r) { return r * 0.96 + 1.5; }
+    function bandOf(r, lo, hi, n) { const q = (r - lo) / (hi - lo); return Math.max(0, Math.min(n - 1, Math.floor(q * n))); }
+    // The sprite id of an obstacle (its band by r; a tree can be a pine) and its band's middle r
+    function pickSprite(o, h) {
+        if (o.type === 'tree') {
+            if (((h >>> 11) & 255) < PINE_SHARE) return { id: 'brad', rMid: (TREE_R[0] + TREE_R[1]) / 2, old: oldTreeRadius };
+            const b = bandOf(o.r, TREE_R[0], TREE_R[1], 3);
+            return { id: ['copac_mic', 'copac_mediu', 'copac_mare'][b], rMid: TREE_R[0] + (TREE_R[1] - TREE_R[0]) * (b * 2 + 1) / 6, old: oldTreeRadius };
+        }
+        const b = bandOf(o.r, ROCK_R[0], ROCK_R[1], 2);
+        return { id: ['piatra_medie', 'piatra_mare'][b], rMid: ROCK_R[0] + (ROCK_R[1] - ROCK_R[0]) * (b * 2 + 1) / 4, old: oldRockRadius };
+    }
+    // How this obstacle looks: sprite, mirror, size. Null until map-objects.json is in (not remembered then).
+    function variantOf(o) {
+        let v = mapVariants.get(o);
+        if (v !== undefined) return v;
+        if (!mapArt.meta) return null;
+        const h = posHash(o.x, o.y);
+        const pick = pickSprite(o, h);
+        const m = mapArt.meta.objects[pick.id];
+        const varK = VAR_MIN + (VAR_MAX - VAR_MIN) * (((h >>> 1) & 1023) / 1023);
+        const target = pick.old(o.r);                   // what the old drawing covered
+        v = {
+            id: pick.id, flip: (h & 1) === 1,
+            k: target / m.visualRadius * varK,          // sprite scale in the world
+            nom: pick.old(pick.rMid) / m.visualRadius,   // the scale its bitmap is made at (the middle of its band)
+            crownR: target * varK, alpha: 1, tree: o.type === 'tree',
+        };
+        mapVariants.set(o, v);
+        return v;
+    }
+    function mapSet(season) {
+        return mapArt.sets[season] || (mapArt.sets[season] = {});
+    }
+    function mapEntry(season, id) {
+        const set = mapSet(season);
+        let e = set[id];
+        if (e) return e;
+        e = set[id] = { img: new Image(), state: 0, bmp: [null, null] };
+        e.img.onload = function () { e.state = e.img.naturalWidth > 0 ? 1 : 2; };
+        e.img.onerror = function () { e.state = 2; console.warn('[map] sprite lipsa: ' + season + '/' + id + ' (se deseneaza varianta veche)'); };
+        e.img.src = window.arAsset ? window.arAsset(MAP_DIR + season + '/' + id + '.png') : MAP_DIR + season + '/' + id + '.png';
+        return e;
+    }
+    // The season of the match. Starts loading the sprites at once; safe to call before map-objects.json is in.
+    function setMapSeason(season) {
+        mapArt.want = season || null;
+        if (!mapArt.meta) {
+            if (mapArt.loading) return;
+            mapArt.loading = true;
+            const url = window.arAsset ? window.arAsset('/data/map-objects.json') : '/data/map-objects.json';
+            fetch(url).then(function (r) { if (!r.ok) throw new Error('map-objects.json ' + r.status); return r.json(); }).then(function (d) {
+                const errs = window.ARShared && window.ARShared.checkMapObjects ? window.ARShared.checkMapObjects(d) : [];
+                if (errs.length) throw new Error(errs.join('; '));
+                mapArt.meta = d;
+                setMapSeason(mapArt.want);
+            }).catch(function (e) { console.warn('[map]', e.message, '(se deseneaza varianta veche)'); });
+            return;
+        }
+        const s = mapArt.meta.seasons.indexOf(mapArt.want) >= 0 ? mapArt.want : mapArt.meta.seasons[0];
+        mapArt.season = s;
+        for (const id of (window.ARShared ? window.ARShared.MAP_OBJECT_IDS : [])) mapEntry(s, id);
+    }
+    function reduceTo(img, px) {   // halve while the source is over twice the target: a clean downscale in one go looks rough
+        let src = img, w = img.naturalWidth;
+        while (w > px * 2) {
+            const h = Math.ceil(w / 2), c = document.createElement('canvas');
+            c.width = c.height = h;
+            const g = c.getContext('2d');
+            g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+            g.drawImage(src, 0, 0, h, h);
+            src = c; w = h;
+        }
+        return src;
+    }
+    // The bitmap of a sprite at the current scale, one per mirror (e.bmp[0], e.bmp[1]): the mirror is made once, so
+    // drawing takes no transform. Rebuilt when the scale changed (budgeted like every sprite). Null: not possible now.
+    function mapBitmap(e, v) {
+        const slot = v.flip ? 1 : 0, old = e.bmp[slot];
+        if (old && (old.scale === pixScale || !scaleStable)) return old;
+        const m = mapArt.meta.objects[v.id], pad = m.frameRadius * v.nom, flip = v.flip;
+        const s = sprite(old, pad, function (g) {
+            g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+            if (flip) g.scale(-1, 1);
+            g.drawImage(reduceTo(e.img, g.canvas.width), -pad, -pad, pad * 2, pad * 2);
+        });
+        if (s) e.bmp[slot] = s;
+        return s || old || null;
+    }
+    // Makes this obstacle's sprite ready to draw: true when it is (variant known, image in, bitmap made); then
+    // curV (how it looks) and curS (its bitmap) hold it until the next call. False: use the vector drawing.
+    let curV = null, curS = null;
+    function mapPrep(o) {
+        if (!mapArt.season) return false;
+        const v = variantOf(o);
+        if (!v) return false;
+        const set = mapArt.sets[mapArt.season], e = (set && set[v.id]) || mapEntry(mapArt.season, v.id);
+        if (e.state !== 1) return false;
+        const s = mapBitmap(e, v);
+        if (!s) return false;
+        curV = v; curS = s;
+        return true;
+    }
+    // x, y: the object's centre. The mirror is in the bitmap; alpha < 1 for a crown with someone under it.
+    function drawMapObj(ctx, x, y, v, s, alpha) {
+        const half = s.pad * (v.k / v.nom);
+        if (alpha < 1) { ctx.globalAlpha = alpha; ctx.drawImage(s.c, x - half, y - half, half * 2, half * 2); ctx.globalAlpha = 1; }
+        else ctx.drawImage(s.c, x - half, y - half, half * 2, half * 2);
+    }
+    // The crown of a tree, above the players. Whoever stands under it (ax, ay, ar: centres and radii of the
+    // players and zombies on screen, n of them) makes it see-through, fading in and out (dt in seconds).
+    // False when this obstacle is not a tree drawn from a sprite (it was drawn, as a vector, in drawProp).
+    function drawCrown(ctx, o, x, y, dt, ax, ay, ar, n) {
+        if (o.type !== 'tree' || !mapPrep(o)) return false;
+        const v = curV, s = curS;
+        let under = false;
+        for (let i = 0; i < n; i++) {
+            const dx = x - ax[i], dy = y - ay[i], rr = v.crownR + ar[i];
+            if (dx * dx + dy * dy < rr * rr) { under = true; break; }
+        }
+        const target = under ? CROWN_ALPHA : 1;
+        if (v.alpha !== target) {
+            v.alpha += (target - v.alpha) * (1 - Math.exp(-CROWN_FADE * dt));
+            if (Math.abs(v.alpha - target) < 0.01) v.alpha = target;
+        }
+        drawMapObj(ctx, x, y, v, s, v.alpha);
+        mapDraws.sprite++;
+        return true;
+    }
+
+    // Trees and rocks: never change, keyed by the obstacle object itself.
+    // With the sprites in: rocks are drawn here, trees wait for drawCrown (above the players).
     function drawProp(ctx, o, x, y) {
         const tree = o.type === 'tree';
+        if (mapPrep(o)) {
+            if (!tree) { drawMapObj(ctx, x, y, curV, curS, 1); mapDraws.sprite++; }
+            return;
+        }
+        mapDraws.vector++;
         const rot = o.rot || 0;
         // half-size of the bitmap: canopy + shadow for trees, outline + shadow offset for rocks
         const pad = tree ? o.r * 1.1 * 1.25 + 4 : o.r + 12;
@@ -515,6 +677,12 @@
         beginFrame: beginFrame,
         allowBurst: allowBurst,
         drawProp: drawProp,
+        drawCrown: drawCrown,
+        setMapSeason: setMapSeason,
+        mapState: function () { return { season: mapArt.season, meta: !!mapArt.meta, sets: mapArt.sets }; },
+        mapStats: function (reset) { const s = { sprite: mapDraws.sprite, vector: mapDraws.vector }; if (reset) { mapDraws.sprite = 0; mapDraws.vector = 0; } return s; },
+        // how an obstacle looks (tests): sprite id, mirrored, scale, crown radius, crown opacity; null before map-objects.json is in
+        mapVariant: function (o) { const v = variantOf(o); return v ? { id: v.id, flip: v.flip, k: v.k, nom: v.nom, crownR: v.crownR, alpha: v.alpha } : null; },
         drawZombieSprite: drawZombieSprite,
         drawGrass: drawGrass,
         drawKit: drawKit,
