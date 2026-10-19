@@ -11,6 +11,10 @@ const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
 const Missions = require('./missions');
 const ARShared = require('./public/combat-shared');
+const ARNet = require('./public/netproto');           // the state packet, protocol 2 (shared with the client)
+const { createGsWriter } = require('./server-gs');
+const notepack = require('notepack.io');             // the encoder socket.io-msgpack-parser uses
+const GS = createGsWriter(notepack, 7);               // 7 shared elements + the client's own row
 // PERF=1: per-second game loop stats to perf.jsonl (tools/perf-probe.js); nothing runs without it
 const PERF = process.env.PERF === '1' ? require('./tools/perf-probe') : null;
 
@@ -1319,6 +1323,7 @@ function newRoom(hostId, mode = 'br') {
         base: mode === 'pve' ? { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R } : null,
         pveWave: 0, pveWaveActive: false, pveWaveBreak: false, pveBreakTimer: 0, pveSkipVotes: new Set(),
         pveSpawnQueue: [], pveSpawnTimer: 0,
+        nextSlot: 0,   // players are named by a small number in the state packet (netproto.js)
         gameStarted:     false,
         gameEnded:       false,
         countdownActive: false,
@@ -1368,7 +1373,7 @@ function addPlayer(code, room, socket, data) {
     const weaponSkin = equippedWeaponSkin(data.name, weapon);
 
     room.players[socket.id] = {
-        id: socket.id, name: data.name, skin, xp: data.xp || 0, weapon, weaponSkin,
+        id: socket.id, slot: room.nextSlot++, name: data.name, skin, xp: data.xp || 0, weapon, weaponSkin,
         x: SPAWN_POINTS[room.spawnIndex % SPAWN_POINTS.length].x,
         y: SPAWN_POINTS[(room.spawnIndex++) % SPAWN_POINTS.length].y,
         angle: 0, size: PLAYER_SIZE,
@@ -1467,8 +1472,6 @@ function startRoomLoop(code, room) {
     const _expiredBullets = [];
     const _zScratch       = [];
     const _kScratch       = [];
-    const _privScratch    = [];
-    const _skipIds        = [];
     // Reused per tick by the bullet sweep (no allocation per bullet)
     const _hitTargets = { obstacles: null, zombies: null, zombieRadius: null, players: null, playerRadius: PLAYER_R, ownerId: null, hitPlayers: true };
     const _hitOut     = { kind: 0, target: null, t: -1 };
@@ -1563,7 +1566,7 @@ function startRoomLoop(code, room) {
                         wsFor(player, _bw).shots++;
                         // from the muzzle where the player is now; the hit test starts at the centre (sx, sy)
                         room.bullets.push({
-                            id: room.nextBulletId++, ownerId: player.id, weapon: _bw,
+                            id: room.nextBulletId++, ownerId: player.id, os: player.slot, weapon: _bw,
                             x: player.x + player.burstDx * _bfire.muzzle, y: player.y + player.burstDy * _bfire.muzzle,
                             sx: player.x, sy: player.y,
                             dx: player.burstDx * player.bulletSpeed,
@@ -1602,7 +1605,7 @@ function startRoomLoop(code, room) {
                             const _pdx = dx * _cos - dy * _sin;
                             const _pdy = dx * _sin + dy * _cos;
                             room.bullets.push({
-                                id: room.nextBulletId++, ownerId: player.id, weapon: player.weapon,
+                                id: room.nextBulletId++, ownerId: player.id, os: player.slot, weapon: player.weapon,
                                 x: _mx, y: _my, sx: player.x, sy: player.y,
                                 dx: _pdx * _bspd, dy: _pdy * _bspd,
                                 damage: player.damage, radius: WEAPON_RULES.bulletRadius, lifetime: _blife,
@@ -2036,53 +2039,27 @@ function startRoomLoop(code, room) {
             }
             if (PERF) PERF.mark(room, 'kits');
 
-            // ── State packet: built and encoded ONCE per tick for the whole room ──
-            // Per-player private values (ammo, reload, ack seq, coins) travel together in a flat
-            // array [id, ammo, ammoMax, reloading, reloadProgress, ackSeq, coins, ...]; each client
-            // picks its own row. Before, the shared arrays were re-encoded once per player per tick.
-            // Fractions travel as scaled integers (1-3 bytes in msgpack instead of 9 for a float); the
-            // client divides them back to the exact same values: player angle x1000, bullet direction
-            // (velocity / NET_BULLET_SPEED) x1000, zombie angle x100. Only live zombies are sent, with
-            // their id: one missing from the packet has died (game.js).
-            _pScratch.length = 0;
-            for (const p of allPlayers) {
-                _pScratch.push([p.id, Math.round(p.x), Math.round(p.y), Math.round(p.angle * 1000), Math.round(p.hp), p.alive ? 1 : 0, p.kills]);
-            }
-            _bScratch.length = 0;
-            for (const b of room.bullets) {
-                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), Math.round(b.dx / ARShared.NET_BULLET_SPEED * 1000), Math.round(b.dy / ARShared.NET_BULLET_SPEED * 1000), b.ownerId]);
-            }
-            for (const b of _expiredBullets) {
-                _bScratch.push([b.id, Math.round(b.x), Math.round(b.y), Math.round(b.dx / ARShared.NET_BULLET_SPEED * 1000), Math.round(b.dy / ARShared.NET_BULLET_SPEED * 1000), b.ownerId]);
-            }
-            _zScratch.length = 0;
-            for (const z of room.zombies) {
-                if (!z.alive) continue;
-                _zScratch.push(z.id, Math.round(z.x), Math.round(z.y), Math.round(z.angle * 100), Math.round(z.hp), PVE_TYPE_IDX[z.type] || 0);
-            }
-            _kScratch.length = 0;
-            for (const k of room.healthKits) {
-                _kScratch.push(k.id, Math.round(k.x), Math.round(k.y), Math.round((30000 - (now - k.spawnTime)) / 1000));
-            }
-            _privScratch.length = 0;
-            for (const p of allPlayers) {
-                _privScratch.push(p.id, p.ammo, p.ammoMax, p.reloading ? 1 : 0, _r3(Math.min(1, p.reloadProgress || 0)), p.lastAckSeq, p.coins || 0);
-            }
-            const zoneArr = [Math.round(zone.cx), Math.round(zone.cy), Math.round(zone.r), _r1(zone.waitTimer)];
-            const pveArr  = room.mode === 'pve' && room.base
-                ? [Math.round(room.base.hp), room.base.maxHp, room.pveWave, room.pveWaveBreak ? 1 : 0, _r1(room.pveBreakTimer)]
-                : null;
+            // ── State packet (public/netproto.js, protocol 2) ──
+            // What every client shares is packed and encoded ONCE per tick; each client then gets its own small row
+            // appended (server-gs.js). Positions travel as quarter pixels, players are named by their slot number,
+            // only live zombies are listed (one missing from the packet has died: game.js).
+            ARNet.packPlayers(_pScratch, allPlayers);
+            ARNet.packBullets(_bScratch, room.bullets, false);
+            ARNet.packBullets(_bScratch, _expiredBullets, true);
+            ARNet.packZombies(_zScratch, room.zombies, PVE_TYPE_IDX);
+            ARNet.packKits(_kScratch, room.healthKits, now);
             if (PERF) PERF.mark(room, 'snapshot');
             tickNo++;
+            const _shared = GS.begin([tickNo, _pScratch, _bScratch, _zScratch, _kScratch, ARNet.packZone(zone), ARNet.packPve(room)]);
+            let _sentBytes = 0;
             // Slow clients: the newest state only, never a queue of old ones. A client is skipped this tick when
             //  - its connection has more than BACKLOG_BYTES waiting to be written (it is not reading fast enough), or
             //  - it stopped answering: every client sends one input per state packet it receives, so no input for
             //    STALL_MS means it is not receiving (a stalled phone or WiFi, a frozen tab). It then gets one packet
             //    every KEEPALIVE_MS, so the first thing it sees on coming back is the latest state.
             // (Dead players, the countdown and PvE breaks send no inputs: those are not counted as silence.)
-            _skipIds.length = 0;
             for (const p of allPlayers) {
-                let skip = false;
+                let silentSkip = false;
                 if (!p.alive || room.countdownActive || room.pveWaveBreak || room.gameEnded || !p.lastInputAt) {
                     if (p.lastInputAt) p.lastInputAt = tickStart;
                     p.stalled = false;
@@ -2090,25 +2067,26 @@ function startRoomLoop(code, room) {
                     const silent = tickStart - p.lastInputAt;
                     if (silent > STALL_MS) {
                         if (!p.stalled) { p.stalled = true; p.nextKeepAt = tickStart + KEEPALIVE_MS; console.log('[' + code + '] ' + p.name + ': nu mai raspunde de ' + silent + ' ms, primeste doar ultima stare'); }
-                        skip = true;
+                        silentSkip = true;
                     } else if (p.stalled) { p.stalled = false; console.log('[' + code + '] ' + p.name + ': raspunde din nou'); }
                 }
-                const sock = io.sockets.sockets.get(p.id), ws = sock && sock.conn && sock.conn.transport && sock.conn.transport.socket, raw = ws && ws._socket;
+                const sock = io.sockets.sockets.get(p.id);
+                if (!sock) continue;
+                const ws = sock.conn && sock.conn.transport && sock.conn.transport.socket, raw = ws && ws._socket;
                 if (raw && raw.writableLength > BACKLOG_BYTES) {
                     if (!p.backlogged) { p.backlogged = true; console.log('[' + code + '] ' + p.name + ': conexiune lenta (' + raw.writableLength + ' B in asteptare), primeste doar ultima stare'); }
-                    skip = true;
+                    continue;
                 } else if (p.backlogged) { p.backlogged = false; console.log('[' + code + '] ' + p.name + ': conexiunea s-a eliberat'); }
-                if (skip) _skipIds.push(p.id);
-            }
-            const _gs = [_pScratch, _bScratch, _privScratch, tickStart, zoneArr, _zScratch, _kScratch, pveArr, tickNo];
-            if (_skipIds.length === 0) io.to(code).emit('gs', _gs);
-            else {
-                io.to(code).except(_skipIds).emit('gs', _gs);
-                for (const p of allPlayers) { if (p.stalled && tickStart >= p.nextKeepAt) { p.nextKeepAt = tickStart + KEEPALIVE_MS; io.to(p.id).emit('gs', _gs); } }
+                if (silentSkip) {
+                    if (tickStart < p.nextKeepAt) continue;
+                    p.nextKeepAt = tickStart + KEEPALIVE_MS;
+                }
+                const n = GS.send(sock, _shared, ARNet.packOwn(p));
+                if (n) _sentBytes = n;
             }
             if (PERF) {
                 PERF.mark(room, 'emit');
-                PERF.tickEnd(room, code, [_pScratch, _bScratch, _privScratch, tickStart, zoneArr, _zScratch, _kScratch, pveArr, tickNo], allPlayers.map(p => p.id), () => {
+                PERF.tickEnd(room, code, _sentBytes, allPlayers.map(p => p.id), () => {
                     let zAlive = 0;
                     for (const z of room.zombies) if (z.alive) zAlive++;
                     return {
@@ -2242,7 +2220,7 @@ function triggerRematch(code, room) {
     const rematchMeta = {};
     room._playerArr.forEach(p => {
         p.weaponSkin = equippedWeaponSkin(p.name, p.weapon); // may have been equipped in between
-        rematchMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON, weaponSkin: p.weaponSkin };
+        rematchMeta[p.id] = { slot: p.slot, speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON, weaponSkin: p.weaponSkin };
     });
     Object.keys(room.players).forEach(pid => {
         io.to(pid).emit('game-rematch', { isHost: room.hostId === pid, playersMeta: rematchMeta });
@@ -2310,6 +2288,7 @@ io.on('connection', (socket) => {
 
     socket.on('create-room', (data) => {
         if (!socket._nickname) { socket.emit('room-error', 'Neautentificat.'); return; }
+        if (data && data.proto !== ARNet.PROTO) { socket.emit('proto-mismatch', ARNet.PROTO); socket.emit('room-error', 'Versiune veche a jocului. Pagina se reincarca.'); return; }
         data = { ...data, name: socket._nickname };
         const mode = data.mode === 'pve' ? 'pve' : 'br';
         const code = generateCode();
@@ -2326,6 +2305,7 @@ io.on('connection', (socket) => {
     socket.on('join-room', (payload) => {
         if (!socket._nickname) { socket.emit('room-error', 'Neautentificat.'); return; }
         const { code: rawCode, ...data } = payload;
+        if (data.proto !== ARNet.PROTO) { socket.emit('proto-mismatch', ARNet.PROTO); socket.emit('room-error', 'Versiune veche a jocului. Pagina se reincarca.'); return; }
         data.name = socket._nickname;
         const code = (rawCode || '').toUpperCase();
         const room = rooms.get(code);
@@ -2375,7 +2355,7 @@ io.on('connection', (socket) => {
         const playersMeta = {};
         room._playerArr.forEach(p => {
             p.weaponSkin = equippedWeaponSkin(p.name, p.weapon); // may have been equipped while waiting
-            playersMeta[p.id] = { speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON, weaponSkin: p.weaponSkin };
+            playersMeta[p.id] = { slot: p.slot, speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON, weaponSkin: p.weaponSkin };
         });
         io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles, mode: room.mode, season: room.season });
         console.log(`[${code}] Joc pornit cu ${room._playerArr.length} jucatori (${room.mode})`);

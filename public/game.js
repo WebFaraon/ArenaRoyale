@@ -1084,6 +1084,7 @@ function _checkBuild(build) {
 }
 function _watchBuild(socket) {
     socket.on('build', _checkBuild);
+    socket.on('proto-mismatch', () => _checkBuild('proto'));   // this page speaks another state packet than the server: reload once
     socket.on('disconnect', reason => {
         if (reason === 'io client disconnect') return; // we closed it ourselves
         let tries = 0;
@@ -2606,7 +2607,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     const socket = _sessionSocket || _watchBuild(io(_ioFallbackOpts));
     _sessionSocket = null;
 
-    const playerData = { name: playerName, skin: playerSkin, stats: playerStats, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode || 'br' };
+    const playerData = { name: playerName, skin: playerSkin, stats: playerStats, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode || 'br', proto: ARNet.PROTO };
 
     if (roomAction.action === 'create') {
         socket.emit('create-room', playerData);
@@ -2839,8 +2840,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const playerMeta   = {}; // {id: {speed, maxHp, name}} — static per runda, trimis o data
     window.__arPlayerName = id => (playerMeta[id] && playerMeta[id].name) || null; // ?dev=weapons
     // Aplica metadata trimisa de server inainte ca startGameLoop sa fie apelat
+    // Players are named by a small slot number in the state packet (netproto.js); playersMeta says which is who
+    const _slotId = [];
+    function _noteSlots(meta) { for (const id in meta) if (meta[id].slot !== undefined) _slotId[meta[id].slot] = id; }
     if (gameControl.pendingMeta) {
         Object.assign(playerMeta, gameControl.pendingMeta);
+        _noteSlots(gameControl.pendingMeta);
         for (const [id, m] of Object.entries(gameControl.pendingMeta)) { if (m.weapon) _playerWeapons.set(id, m.weapon); if (m.weaponSkin) _playerWeaponSkins.set(id, m.weaponSkin); }
         delete gameControl.pendingMeta;
     }
@@ -3474,25 +3479,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _dbgSrvPickups = pickups || 0;
     });
 
-    socket.on('gs', ([pArr, bArr, privArr, serverTime = 0, zoneArr, zArr, kArr, pveShared, tickNo]) => {
+    const _own = { ammo: 0, max: 0, reloading: false, reloadProgress: 1, ack: 0, coins: 0 };
+    socket.on(ARNet.EVENT, (pk) => {
+        // [tick, players, bullets, zombies, kits, zone, pve, own]: see public/netproto.js
+        const tickNo = pk[0], pFlat = pk[1], bFlat = pk[2], zArr = pk[3], kArr = pk[4], zone2 = pk[5], pve2 = pk[6], ownRow = pk[7];
 
         _dbgGsCount++;
         const now = performance.now();
         _sendInputForTick(now); // one input per server tick (see _sendInputForTick)
-        // One packet per tick for the whole room: pick this client's private row
-        // [id, ammo, ammoMax, reloading, reloadProgress, ackSeq, coins] out of the flat array.
+        // This client's own row (ammo, reload, ack, coins) comes last in the packet; the rest is shared by the room
         let ammoArr = null, _myCoins = 0;
-        if (privArr) {
-            for (let _pi = 0; _pi < privArr.length; _pi += 7) {
-                if (privArr[_pi] === socket.id) {
-                    _ammoRow[0] = privArr[_pi + 1]; _ammoRow[1] = privArr[_pi + 2]; _ammoRow[2] = privArr[_pi + 3];
-                    _ammoRow[3] = privArr[_pi + 4]; _ammoRow[4] = privArr[_pi + 5];
-                    ammoArr = _ammoRow; _myCoins = privArr[_pi + 6];
-                    break;
-                }
-            }
+        if (ownRow) {
+            ARNet.own(ownRow, _own);
+            _ammoRow[0] = _own.ammo; _ammoRow[1] = _own.max; _ammoRow[2] = _own.reloading ? 1 : 0;
+            _ammoRow[3] = _own.reloadProgress; _ammoRow[4] = _own.ack;
+            ammoArr = _ammoRow; _myCoins = _own.coins;
         }
-        const pveArr = pveShared ? [pveShared[0], pveShared[1], pveShared[2], pveShared[3], pveShared[4], _myCoins] : null;
+        const pveArr = pve2 ? [pve2[0], pve2[1], pve2[2], pve2[3], pve2[4] / ARNet.TQ, _myCoins] : null;
         if (ammoArr) {
             const _prevAmmo = ammoState.ammo;
             // Locally predicted shots spend ammo instantly; the server catches up ~RTT later.
@@ -3523,9 +3526,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 aimStartTime = now;
             }
         }
-        if (zoneArr) {
-            _zone.cx = zoneArr[0]; _zone.cy = zoneArr[1];
-            _zone.r  = zoneArr[2]; _zone.waitTimer = zoneArr[3];
+        if (zone2) {   // the centre never moves (the middle of the arena)
+            _zone.r = zone2[0]; _zone.waitTimer = zone2[1] / ARNet.TQ;
         }
         if (pveArr) {
             _pveState.baseHp      = pveArr[0];
@@ -3546,7 +3548,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const _zPrevHp = _zb.hp;
                 // sx, sy, sa: where the server has it now. What is drawn (x, y, angle) is blended between two
                 // snapshots in getInterpolatedState; a zombie seen for the first time starts at its server place.
-                _zb.sx = zArr[_zi + 1]; _zb.sy = zArr[_zi + 2]; _zb.sa = zArr[_zi + 3] / 100;
+                _zb.sx = zArr[_zi + 1] / ARNet.PQ; _zb.sy = zArr[_zi + 2] / ARNet.PQ; _zb.sa = zArr[_zi + 3] / ARNet.ZAQ;
                 if (_zPrevHp < 0) { _zb.x = _zb.sx; _zb.y = _zb.sy; _zb.angle = _zb.sa; }
                 _zb.hp = zArr[_zi + 4];
                 _zb.type = zArr[_zi + 5] || 0;
@@ -3585,11 +3587,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const entry = {
             t:       now,
             // the server's simulation time: tick number x tick length (older servers: the tick's wall clock)
-            st:      tickNo ? tickNo * ARShared.TICK_S * 1000 : (serverTime || now),
+            st:      tickNo * ARShared.TICK_S * 1000,
             players: {},
             z:       zArr || null,   // the packet's zombie list, blended per frame (ARInterp.zombies)
             // direction arrives x1000 (server.js state packet)
-            bullets: bArr.map(([id, x, y, dx, dy, ownerId]) => ({ id, x, y, dx: dx / 1000 * ARShared.NET_BULLET_SPEED, dy: dy / 1000 * ARShared.NET_BULLET_SPEED, ownerId, radius: WEAPON_RULES.bulletRadius })),
+            bullets: ARNet.bullets(bFlat, _slotId, WEAPON_RULES.bulletRadius),
         };
         _reconcileOwnBullets(entry.bullets, now);
         // Trail age bookkeeping for other players' bullets: once per packet, not per frame
@@ -3603,8 +3605,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
         for (const [_sid, _s] of _srvBulletSeen) { if (_s.gen !== _srvSeenGen) _srvBulletSeen.delete(_sid); }
 
-        pArr.forEach(([id, x, y, angle, hp, alive, kills]) => {
-            angle /= 1000; // sent x1000
+        ARNet.eachPlayer(pFlat, (slot, x, y, angle, hp, alive, kills) => {
+            const id = _slotId[slot];
+            if (id === undefined) return;
             const meta = playerMeta[id] || {};
             if (!alive) _hiddenPlayers.delete(id);
             // Detectie moarte jucator → efect vizual
@@ -3839,6 +3842,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _playerWeapons.clear();
         _playerWeaponSkins.clear();
         if (gameControl.pendingMeta) {
+            _noteSlots(gameControl.pendingMeta);
             for (const [id, m] of Object.entries(gameControl.pendingMeta)) { if (m.weapon) _playerWeapons.set(id, m.weapon); if (m.weaponSkin) _playerWeaponSkins.set(id, m.weaponSkin); }
         }
         predX      = null; predY = null;
@@ -4103,6 +4107,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         resetForNewGame();
         if (playersMeta) {
             Object.assign(playerMeta, playersMeta);
+            _noteSlots(playersMeta);
             for (const [id, m] of Object.entries(playersMeta)) { if (m.weapon) _playerWeapons.set(id, m.weapon); if (m.weaponSkin) _playerWeaponSkins.set(id, m.weaponSkin); }
         }
         const btn = document.getElementById('btn-rematch');
@@ -4204,7 +4209,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
 
         // Zombies: blended between the same two snapshots as the players (they used to jump to each packet's place)
-        ARInterp.zombies(sOld.z, sNew.z, t, _zombies, ZOMBIE_SNAP);
+        ARInterp.zombies(sOld.z, sNew.z, t, _zombies, ZOMBIE_SNAP, ARNet.PQ);
 
         // Enemy bullets: straight lines, drawn from the snapshot at or before render time plus the exact time since it
         ARInterp.bulletBase(stateBuffer, loc, renderTime, EXTRAP_MS, _bb);

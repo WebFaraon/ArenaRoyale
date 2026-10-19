@@ -43,22 +43,22 @@
     }
 
     // Zombies. zOld / zNew: the flat zombie lists of two snapshots, 6 numbers each (id, x, y, angle x100, hp, type),
-    // ascending id (server.js). targets: array indexed by zombie id, objects with x, y, angle (what is drawn).
+    // ascending id (server.js); x and y are posScale times the real value (netproto.js sends x4). targets: array indexed by zombie id, objects with x, y, angle (what is drawn).
     // A zombie in both snapshots is blended by t (and extrapolated past 1, like players); one that is only in the
     // newer snapshot (just spawned) or that jumped more than snapDist is put at its new place at once.
-    function zombies(zOld, zNew, t, targets, snapDist) {
+    function zombies(zOld, zNew, t, targets, snapDist, posScale) {
         if (!zNew) return;
         if (!zOld) zOld = NONE;
-        const snap2 = snapDist * snapDist;
+        const snap2 = snapDist * snapDist, inv = 1 / (posScale || 1);
         let j = 0;
         for (let i = 0; i < zNew.length; i += 6) {
             const id = zNew[i];
             while (j < zOld.length && zOld[j] < id) j += 6;
             const tg = targets[id];
             if (!tg) continue;
-            const nx = zNew[i + 1], ny = zNew[i + 2], na = zNew[i + 3] / 100;
+            const nx = zNew[i + 1] * inv, ny = zNew[i + 2] * inv, na = zNew[i + 3] / 100;
             if (j < zOld.length && zOld[j] === id) {
-                const ox = zOld[j + 1], oy = zOld[j + 2], dx = nx - ox, dy = ny - oy;
+                const ox = zOld[j + 1] * inv, oy = zOld[j + 2] * inv, dx = nx - ox, dy = ny - oy;
                 if (dx * dx + dy * dy > snap2) { tg.x = nx; tg.y = ny; tg.angle = na; }
                 else {
                     tg.x = ox + dx * t; tg.y = oy + dy * t;
