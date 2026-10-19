@@ -339,35 +339,6 @@ function _applyWeaponUI() {
     if (titleEl) titleEl.innerHTML = `<span>${w.name.toUpperCase()}</span> LOADOUT`;
 }
 
-function openWeaponSelect() {
-    const overlay = document.getElementById('weapon-select-overlay');
-    if (!overlay) return;
-    const grid = document.getElementById('weapon-select-grid');
-    if (grid) {
-        // one group per class (weapons.json "classes"), the fire mode under each name
-        grid.innerHTML = WEAPON_CLASSES.map(c => {
-            const guns = WEAPONS.filter(w => w.class === c.id);
-            if (!guns.length) return '';
-            return `<section class="wsel-group" style="--n:${guns.length}">
-                <h3 class="wsel-group-title">${c.name}</h3>
-                <div class="wsel-group-cards">${guns.map(w => `
-                    <div class="weapon-card${w.id === selectedWeapon ? ' wc-selected' : ''}" onclick="selectWeapon('${w.id}')">
-                        <span class="weapon-card-icon">${ARIcons.weaponHtml(w.id, false)}</span>
-                        <span class="weapon-card-name">${w.name.toUpperCase()}</span>
-                        <span class="weapon-card-mode" data-mode="${w.fireMode}">${w.fireModeLabel}</span>
-                        <span class="weapon-card-desc">${w.desc}</span>
-                    </div>`).join('')}</div>
-            </section>`;
-        }).join('');
-    }
-    overlay.style.display = 'flex';
-}
-
-function closeWeaponSelect() {
-    const overlay = document.getElementById('weapon-select-overlay');
-    if (overlay) overlay.style.display = 'none';
-}
-
 function selectWeapon(id) {
     selectedWeapon = id;
     localStorage.setItem('selectedWeapon', id);
@@ -376,7 +347,6 @@ function selectWeapon(id) {
     localStorage.setItem('ar_stats', JSON.stringify(stats));
     _applyWeaponUI();
     updateStatsUI();
-    closeWeaponSelect();
 }
 
 // Initializeaza weapon UI la incarcare, once weapons.json is in (it arrives after DOMContentLoaded)
@@ -644,7 +614,7 @@ function arsPreviewSkin(id) {
     _ars.skin = id;
     _arsRenderMain(); _arsRenderSide();
 }
-// the same as picking the gun in the weapon menu (the loadout points start again for the new gun)
+// the gun for the match (selectWeapon: the loadout points start again for the new gun)
 function arsUseInMatch() {
     if (selectedWeapon === _ars.weapon) return;
     selectWeapon(_ars.weapon);

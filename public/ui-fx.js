@@ -137,7 +137,7 @@
 
     // every button press clicks, except the pickers, which have their own sound
     const CLICK_SEL = 'button, a[onclick], [role="button"]';
-    const QUIET_SEL = '.cs-select-btn, .weapon-card';
+    const QUIET_SEL = '.cs-select-btn';
     document.addEventListener('click', function (e) {
         const t = e.target.closest && e.target.closest(CLICK_SEL + ', ' + QUIET_SEL);
         if (!t || t.disabled) return;

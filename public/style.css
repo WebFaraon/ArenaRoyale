@@ -232,7 +232,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .leave-confirm-exit:active { background: #D92F42; }
 
 /* icon-only square buttons */
-.icon-btn, .lb-topbar-back, .lb-btn-icon, .friends-close, .char-shop-close, .weapon-select-close,
+.icon-btn, .lb-topbar-back, .lb-btn-icon, .friends-close, .char-shop-close,
 .wip-close, .spec-nav-btn, #btn-mute-game, #btn-leave-game, #btn-debug-toggle, .stat-btn, .btn-join, .friend-remove-btn {
     display: inline-flex;
     align-items: center;
@@ -1190,7 +1190,7 @@ button:disabled { cursor: not-allowed; }
    orange start marker, full-height square close. The panel unrolls from the top.
    ========================================================================== */
 
-#friends-overlay, #char-shop-overlay, #weapon-select-overlay, #lb-overlay, #waiting-invite-panel, #settings-overlay {
+#friends-overlay, #char-shop-overlay, #lb-overlay, #waiting-invite-panel, #settings-overlay {
     position: fixed;
     inset: 0;
     z-index: 600;
@@ -1200,11 +1200,10 @@ button:disabled { cursor: not-allowed; }
     background: rgba(7, 13, 15, .84);
     animation: scrimIn .2s var(--ease-out);
 }
-#weapon-select-overlay { display: none; }
 #lb-overlay { z-index: 2000; }
 @keyframes scrimIn { from { opacity: 0; } }
 
-.friends-modal, .char-shop-modal, .weapon-select-modal, .lbo-card, .wip-modal, .settings-modal {
+.friends-modal, .char-shop-modal, .lbo-card, .wip-modal, .settings-modal {
     position: relative;
     z-index: 1;
     display: flex;
@@ -1220,11 +1219,10 @@ button:disabled { cursor: not-allowed; }
 }
 .friends-modal { max-width: 460px; }
 .char-shop-modal { max-width: 920px; height: 100%; max-height: 640px; }
-.weapon-select-modal { max-width: 720px; }
 .lbo-card { max-width: 680px; }
 .wip-modal { max-width: 380px; }
 
-.friends-header, .char-shop-header, .weapon-select-header, .lbo-header, .wip-header, .settings-header {
+.friends-header, .char-shop-header, .lbo-header, .wip-header, .settings-header {
     position: relative;
     flex: none;
     display: flex;
@@ -1234,7 +1232,7 @@ button:disabled { cursor: not-allowed; }
     padding: 6px 0 6px 18px;
     border-bottom: 1px solid var(--rule);
 }
-.friends-header::after, .char-shop-header::after, .weapon-select-header::after, .lbo-header::after, .wip-header::after, .settings-header::after {
+.friends-header::after, .char-shop-header::after, .lbo-header::after, .wip-header::after, .settings-header::after {
     content: '';
     position: absolute;
     left: 0;
@@ -1243,7 +1241,7 @@ button:disabled { cursor: not-allowed; }
     height: 3px;
     background: var(--start);
 }
-.friends-title, .char-shop-title, .weapon-select-title, .lbo-title, .wip-title, .settings-title {
+.friends-title, .char-shop-title, .lbo-title, .wip-title, .settings-title {
     display: inline-flex;
     align-items: center;
     gap: .6em;
@@ -1254,9 +1252,9 @@ button:disabled { cursor: not-allowed; }
     letter-spacing: .05em;
     text-transform: uppercase;
 }
-.friends-title .ic, .char-shop-title .ic, .weapon-select-title .ic, .lbo-title .ic, .wip-title .ic, .settings-title .ic { color: var(--chalk-3); width: 1.1em; height: 1.1em; }
+.friends-title .ic, .char-shop-title .ic, .lbo-title .ic, .wip-title .ic, .settings-title .ic { color: var(--chalk-3); width: 1.1em; height: 1.1em; }
 
-.friends-close, .char-shop-close, .weapon-select-close, .wip-close, .lbo-close, .settings-close {
+.friends-close, .char-shop-close, .wip-close, .lbo-close, .settings-close {
     flex: none;
     align-self: stretch;
     margin-block: -6px;
@@ -1267,9 +1265,9 @@ button:disabled { cursor: not-allowed; }
     font-size: 1.15rem;
 }
 @media (hover: hover) and (pointer: fine) {
-    .friends-close:hover, .char-shop-close:hover, .weapon-select-close:hover, .wip-close:hover, .lbo-close:hover, .settings-close:hover { background: var(--board-up); color: var(--chalk); }
+    .friends-close:hover, .char-shop-close:hover, .wip-close:hover, .lbo-close:hover, .settings-close:hover { background: var(--board-up); color: var(--chalk); }
 }
-.friends-close:active, .char-shop-close:active, .weapon-select-close:active, .wip-close:active, .lbo-close:active, .settings-close:active {
+.friends-close:active, .char-shop-close:active, .wip-close:active, .lbo-close:active, .settings-close:active {
     background: var(--alert);
     color: var(--ink);
     transition-duration: 0s;
@@ -1439,49 +1437,6 @@ button:disabled { cursor: not-allowed; }
 .cs-locked-btn { background: var(--board-up); color: var(--chalk-3); }
 
 /* ---------- Weapon select ---------- */
-.weapon-select-grid {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-    align-content: start;
-    border-left: 1px solid var(--rule);
-}
-.weapon-card {
-    --wc: var(--chalk);
-    position: relative;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: 'icon name' 'icon desc';
-    align-items: center;
-    column-gap: 14px;
-    row-gap: 3px;
-    min-height: 84px;
-    padding: 12px 16px;
-    background: var(--board) !important;
-    border: 0 !important;
-    border-right: 1px solid var(--rule) !important;
-    border-bottom: 1px solid var(--rule) !important;
-    cursor: pointer;
-    transition: background-color .18s var(--ease-out), transform .12s var(--ease-out);
-}
-@media (hover: hover) and (pointer: fine) { .weapon-card:hover { background: var(--board-hi) !important; } }
-.weapon-card:active { transform: translateY(1px); transition-duration: 0s; }
-.weapon-card-icon { grid-area: icon; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; background: var(--board-up); color: var(--wc); }
-.weapon-card-icon .ic { width: 34px; height: 34px; stroke-width: 1.8; }
-.weapon-card-name { grid-area: name; align-self: end; font-weight: 800; font-size: 1.008rem; line-height: 1; letter-spacing: .04em; color: var(--chalk) !important; }
-.weapon-card-desc { grid-area: desc; align-self: start; color: var(--chalk-3); font-size: .78rem; line-height: 1.25; }
-.weapon-card.wc-selected { box-shadow: inset 0 0 0 2px var(--start); }
-.weapon-card.wc-selected::after {
-    content: '';
-    position: absolute;
-    right: 10px; top: 10px;
-    width: 16px; height: 16px;
-    background: var(--start);
-    -webkit-mask: var(--m-check) center / contain no-repeat;
-            mask: var(--m-check) center / contain no-repeat;
-}
 
 /* ---------- Leaderboard ---------- */
 .lbo-table-wrap { flex: 1; min-height: 0; overflow: auto; }
@@ -1619,8 +1574,6 @@ button:disabled { cursor: not-allowed; }
 .cs-title { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
 .cs-title .cs-char-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-title .cs-rarity-label { flex: none; }
-.weapon-card-icon { color: var(--chalk); }
-.weapon-card.wc-selected .weapon-card-icon { color: var(--start); }
 
 /* ---------- Settings ---------- */
 #settings-overlay { z-index: 3000; }
@@ -2307,15 +2260,13 @@ button:disabled { cursor: not-allowed; }
     .btn-start-game { min-height: 46px; font-size: 1.05rem; }
     .waiting-invite-btn { min-height: 38px; }
 
-    .friends-header, .char-shop-header, .weapon-select-header, .lbo-header, .wip-header { min-height: 48px; }
-    .friends-close, .char-shop-close, .weapon-select-close, .wip-close { width: 48px; }
-    .friends-title, .char-shop-title, .weapon-select-title, .lbo-title, .wip-title { font-size: 1.15rem; }
+    .friends-header, .char-shop-header, .lbo-header, .wip-header { min-height: 48px; }
+    .friends-close, .char-shop-close, .wip-close { width: 48px; }
+    .friends-title, .char-shop-title, .lbo-title, .wip-title { font-size: 1.15rem; }
     .csf-btn { min-height: 40px; }
     .char-shop-grid { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); }
     .char-shop-card { padding: 8px; gap: 4px; }
     .cs-char-name { font-size: 1rem; }
-    .weapon-card { min-height: 72px; padding: 10px 14px; }
-    .weapon-card-icon { width: 44px; height: 44px; }
     .lbo-table-wrap td { padding: 8px 10px; }
 }
 
@@ -2469,8 +2420,8 @@ button:disabled { cursor: not-allowed; }
        .pending-accept, .wip-invite-btn,
        .btn-leave, .rip-decline, .leave-confirm-cancel, #fs-btn, #btn-spectate, #pve-skip-btn,
        .char-change-btn, .pending-reject, .lb-btn, .lb-topbar-back, .stat-btn, .btn-join, .waiting-invite-btn,
-       .friends-close, .char-shop-close, .weapon-select-close, .wip-close, .lbo-close, .settings-close,
-       #btn-mute-game, #btn-settings-game, #btn-leave-game, #btn-debug-toggle, .spec-nav-btn, .gm-card, .settings-btn, .weapon-card, .char-shop-card) {
+       .friends-close, .char-shop-close, .wip-close, .lbo-close, .settings-close,
+       #btn-mute-game, #btn-settings-game, #btn-leave-game, #btn-debug-toggle, .spec-nav-btn, .gm-card, .settings-btn, .char-shop-card) {
     --sh-rest:  inset 0 -5px 0 var(--cl), inset 0 3px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45), 0 10px 18px -6px rgba(0, 0, 0, .55);
     --sh-lift:  inset 0 -5px 0 var(--cl), inset 0 3px 0 rgba(255, 255, 255, .36), 0 6px 0 rgba(0, 0, 0, .45), 0 16px 24px -8px rgba(0, 0, 0, .6);
     --sh-press: inset 0 -2px 0 var(--cl), inset 0 2px 0 rgba(255, 255, 255, .18), 0 1px 0 rgba(0, 0, 0, .45), 0 3px 6px -2px rgba(0, 0, 0, .5);
@@ -2491,7 +2442,7 @@ button:disabled { cursor: not-allowed; }
 }
 :where(.btn-leave, .rip-decline, .leave-confirm-cancel, #fs-btn, #btn-spectate, #pve-skip-btn,
        .char-change-btn, .pending-reject, .lb-btn, .stat-btn, .waiting-invite-btn,
-       .friends-close, .char-shop-close, .weapon-select-close, .wip-close, .lbo-close, .settings-close,
+       .friends-close, .char-shop-close, .wip-close, .lbo-close, .settings-close,
        #btn-mute-game, #btn-settings-game, #btn-leave-game, #btn-debug-toggle, .spec-nav-btn) {
     --c: var(--c-slate); --cl: var(--l-slate); --ch: var(--h-slate);
 }
@@ -2510,7 +2461,7 @@ button:disabled { cursor: not-allowed; }
     .pending-accept, .wip-invite-btn,
     .btn-leave, .rip-decline, .leave-confirm-cancel, #fs-btn, #btn-spectate, #pve-skip-btn,
     .char-change-btn, .pending-reject, .lb-btn, .lb-topbar-back, .stat-btn, .btn-join,
-    .friends-close, .char-shop-close, .weapon-select-close, .wip-close, .lbo-close, .settings-close,
+    .friends-close, .char-shop-close, .wip-close, .lbo-close, .settings-close,
     #btn-mute-game, #btn-settings-game, #btn-leave-game, #btn-debug-toggle, .spec-nav-btn) {
     position: relative;
     clip-path: none;
@@ -2531,8 +2482,7 @@ button:disabled { cursor: not-allowed; }
 :is(.btn-play, .auth-btn, .btn-start-game, #fs-btn-android, .rip-accept, #btn-rematch, .leave-confirm-exit,
     .mission-claim-btn, .cs-unlock-btn, .cs-select-btn, .friends-search-btn, .pending-accept, .wip-invite-btn,
     .btn-leave, .rip-decline, .leave-confirm-cancel, #fs-btn, #btn-spectate, #pve-skip-btn, .char-change-btn,
-    .pending-reject, .lb-btn, .lb-topbar-back, .stat-btn, .btn-join, .friends-close, .char-shop-close,
-    .weapon-select-close, .wip-close, .lbo-close, .settings-close, #btn-mute-game, #btn-leave-game,
+    .pending-reject, .lb-btn, .lb-topbar-back, .stat-btn, .btn-join, .friends-close, .char-shop-close, .wip-close, .lbo-close, .settings-close, #btn-mute-game, #btn-leave-game,
     #btn-debug-toggle, .spec-nav-btn) .ic {
     filter: drop-shadow(0 2px 0 var(--ink-line));
 }
@@ -2543,7 +2493,7 @@ button:disabled { cursor: not-allowed; }
         .pending-accept, .wip-invite-btn,
         .btn-leave, .rip-decline, .leave-confirm-cancel, #fs-btn, #btn-spectate, #pve-skip-btn,
         .char-change-btn, .pending-reject, .lb-btn, .lb-topbar-back, .stat-btn, .btn-join,
-        .friends-close, .char-shop-close, .weapon-select-close, .wip-close, .lbo-close, .settings-close,
+        .friends-close, .char-shop-close, .wip-close, .lbo-close, .settings-close,
         #btn-mute-game, #btn-settings-game, #btn-leave-game, #btn-debug-toggle, .spec-nav-btn):not(:disabled):hover {
         background: var(--ch);
         border-color: var(--ink-line);
@@ -2552,7 +2502,7 @@ button:disabled { cursor: not-allowed; }
         transform: translateY(-2px);
     }
     /* the icon gives a little shake when you point at a block */
-    :is(.lb-btn, .lb-topbar-back, .btn-join, .friends-close, .char-shop-close, .weapon-select-close, .wip-close,
+    :is(.lb-btn, .lb-topbar-back, .btn-join, .friends-close, .char-shop-close, .wip-close,
         .settings-close):not(:disabled):hover .ic {
         animation: icoWiggle .42s var(--settle);
     }
@@ -2562,7 +2512,7 @@ button:disabled { cursor: not-allowed; }
     .pending-accept, .wip-invite-btn,
     .btn-leave, .rip-decline, .leave-confirm-cancel, #fs-btn, #btn-spectate, #pve-skip-btn,
     .char-change-btn, .pending-reject, .lb-btn, .lb-topbar-back, .stat-btn, .btn-join,
-    .friends-close, .char-shop-close, .weapon-select-close, .wip-close, .lbo-close, .settings-close,
+    .friends-close, .char-shop-close, .wip-close, .lbo-close, .settings-close,
     #btn-mute-game, #btn-settings-game, #btn-leave-game, #btn-debug-toggle, .spec-nav-btn):not(:disabled):active {
     background: var(--c);
     border-color: var(--ink-line);
@@ -3025,10 +2975,10 @@ button:disabled { cursor: not-allowed; }
 /* ==========================================================================
    Modals: the same block family
    ========================================================================== */
-#friends-overlay, #char-shop-overlay, #weapon-select-overlay, #lb-overlay, #waiting-invite-panel, #settings-overlay {
+#friends-overlay, #char-shop-overlay, #lb-overlay, #waiting-invite-panel, #settings-overlay {
     background: rgba(4, 7, 9, .72);
 }
-.friends-modal, .char-shop-modal, .weapon-select-modal, .lbo-card, .wip-modal, .settings-modal {
+.friends-modal, .char-shop-modal, .lbo-card, .wip-modal, .settings-modal {
     background: #131C22;
     border: var(--o) solid var(--ink-line);
     border-radius: 20px;
@@ -3036,25 +2986,25 @@ button:disabled { cursor: not-allowed; }
     animation: modalPop .42s var(--spring) backwards;
 }
 @keyframes modalPop { from { opacity: 0; transform: translateY(18px) scale(.94); } }
-.friends-header, .char-shop-header, .weapon-select-header, .lbo-header, .wip-header, .settings-header {
+.friends-header, .char-shop-header, .lbo-header, .wip-header, .settings-header {
     background: var(--c-slate);
     border-bottom: var(--o) solid var(--ink-line);
     box-shadow: inset 0 -4px 0 var(--l-slate), inset 0 3px 0 rgba(255, 255, 255, .08);
     padding-right: 10px;
 }
-.friends-header::after, .char-shop-header::after, .weapon-select-header::after, .lbo-header::after, .wip-header::after, .settings-header::after { display: none; }
-.friends-title, .char-shop-title, .weapon-select-title, .lbo-title, .wip-title, .settings-title { text-shadow: var(--stroke); color: #fff; }
-.friends-title .ic, .char-shop-title .ic, .weapon-select-title .ic, .lbo-title .ic, .wip-title .ic, .settings-title .ic { color: var(--c-orange); filter: drop-shadow(0 2px 0 var(--ink-line)); }
-.friends-close, .char-shop-close, .weapon-select-close, .wip-close, .settings-close {
+.friends-header::after, .char-shop-header::after, .lbo-header::after, .wip-header::after, .settings-header::after { display: none; }
+.friends-title, .char-shop-title, .lbo-title, .wip-title, .settings-title { text-shadow: var(--stroke); color: #fff; }
+.friends-title .ic, .char-shop-title .ic, .lbo-title .ic, .wip-title .ic, .settings-title .ic { color: var(--c-orange); filter: drop-shadow(0 2px 0 var(--ink-line)); }
+.friends-close, .char-shop-close, .wip-close, .settings-close {
     width: 42px; height: 42px; min-height: 0; align-self: center;
 }
-:is(.friends-close, .char-shop-close, .weapon-select-close, .wip-close, .lbo-close, .settings-close):not(:disabled):active {
+:is(.friends-close, .char-shop-close, .wip-close, .lbo-close, .settings-close):not(:disabled):active {
     --c: var(--c-red); --cl: var(--l-red);
 }
 
 /* catalogs (weapons, characters): a tray of toy tiles instead of a ruled grid */
-.weapon-select-grid, .char-shop-grid { gap: 10px; padding: 12px; border-left: 0; }
-.weapon-card, .char-shop-card {
+.char-shop-grid { gap: 10px; padding: 12px; border-left: 0; }
+.char-shop-card {
     --c: var(--c-slate); --cl: var(--l-slate);
     background: var(--c) !important;
     border: var(--o) solid var(--ink-line) !important;
@@ -3062,37 +3012,13 @@ button:disabled { cursor: not-allowed; }
     box-shadow: var(--sh-rest);
     transition: transform .28s var(--spring), box-shadow .28s var(--spring), background-color .18s ease;
 }
-.weapon-card { min-height: 80px; padding: 10px 14px 13px; }
 .char-shop-card { padding: 10px 10px 13px; }
 @media (hover: hover) and (pointer: fine) {
-    .weapon-card:hover, .char-shop-card:hover { --c: var(--h-slate); background: var(--c) !important; transform: translateY(-3px); box-shadow: var(--sh-lift); }
+    .char-shop-card:hover { --c: var(--h-slate); background: var(--c) !important; transform: translateY(-3px); box-shadow: var(--sh-lift); }
 }
-.weapon-card:active, .char-shop-card:active { transform: translateY(3px) scale(.98); box-shadow: var(--sh-press); transition-duration: 0s; }
-.weapon-card.wc-selected, .cs-card-selected { box-shadow: var(--sh-rest), 0 0 0 3px var(--c-orange); }
-.weapon-card.wc-selected::after {
-    right: 8px; top: 8px;
-    width: 24px; height: 24px;
-    background: #fff;
-    border-radius: 999px;
-    -webkit-mask: none; mask: none;
-    box-shadow: 0 0 0 2px var(--ink-line), 0 2px 0 2px var(--ink-line);
-    animation: badgePop .4s var(--spring);
-}
-.weapon-card.wc-selected::before {
-    content: '';
-    position: absolute;
-    right: 12px; top: 12px;
-    width: 16px; height: 16px;
-    z-index: 1;
-    background: var(--ink-line);
-    -webkit-mask: var(--m-check) center / contain no-repeat;
-            mask: var(--m-check) center / contain no-repeat;
-}
-.weapon-card-icon { border: 2px solid var(--ink-line); border-radius: 12px; background: rgba(0, 0, 0, .3); box-shadow: inset 0 3px 0 rgba(0, 0, 0, .3); }
-.weapon-card-icon .ic { filter: drop-shadow(0 2px 0 var(--ink-line)); }
-.weapon-card.wc-selected .weapon-card-icon { color: #fff; background: var(--c-orange); }
-.weapon-card-name, .cs-char-name { text-shadow: var(--stroke-sm); }
-.weapon-card-desc { color: #C9D4DA; }
+.char-shop-card:active { transform: translateY(3px) scale(.98); box-shadow: var(--sh-press); transition-duration: 0s; }
+.cs-card-selected { box-shadow: var(--sh-rest), 0 0 0 3px var(--c-orange); }
+.cs-char-name { text-shadow: var(--stroke-sm); }
 .cs-img-wrap { clip-path: none; border: 2px solid var(--ink-line); border-radius: 12px; background: radial-gradient(circle at 50% 38%, #3B5160, #1C2830 72%); }
 .cs-img-wrap::before { top: auto; bottom: 0; width: 100%; height: 6px; clip-path: none; }
 .cs-img-wrap img { filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .35)); }
@@ -4364,30 +4290,12 @@ button:disabled { cursor: not-allowed; }
 
 /* weapon icons built from the gun sprites (tools/build-weapon-icons.js): barrel to the right */
 .wicon { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
-.weapon-card-icon .wicon { width: 86%; height: 70%; filter: drop-shadow(0 2px 0 var(--ink-line)); }
 .hero-weapon .weapon-preview-icon .wicon { filter: none; }
 .mm-tile .wicon { width: 40px; height: 22px; filter: drop-shadow(0 2px 0 var(--ink-line)); }
 @media (max-height: 600px), (max-width: 600px) { .mm-tile .wicon { width: 32px; height: 18px; } }
 
 /* weapon menu grouped by class (weapons.json "classes"): 4 card columns, a group spans one column per gun;
    the fire mode sits under the name */
-.weapon-select-modal { max-width: 920px; }
-.weapon-select-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 10px; }
-.wsel-group { grid-column: span var(--n, 1); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.wsel-group-title { margin: 0 0 0 4px; font-size: .74rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #C9D4DA; text-shadow: var(--stroke-sm); }
-.wsel-group-cards { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); gap: 10px; flex: 1; }
-.weapon-card { grid-template-areas: 'icon name' 'icon mode' 'icon desc'; row-gap: 4px; }
-.weapon-card-mode {
-    grid-area: mode; justify-self: start;
-    padding: 1px 7px 2px; border: 2px solid var(--ink-line); border-radius: 7px;
-    background: var(--c-teal); color: #fff;
-    font-weight: 800; font-size: .66rem; letter-spacing: .04em; line-height: 1.2; text-shadow: var(--stroke-sm);
-}
-.weapon-card-mode[data-mode="burst"] { background: var(--c-purple); }
-.weapon-card-name { padding-right: 26px; }
-@media (max-width: 700px) {
-    .weapon-select-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 
 /* "new version, reloading" (game.js _checkBuild): the force-logout card, no button, a calm colour */
 .ar-forcelogout.ar-newbuild .ar-forcelogout-title { color: var(--c-gold); }
