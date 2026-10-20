@@ -1714,6 +1714,10 @@ function tournamentSignup() {
     showToast('Inscrierile la Weekend Tournament se deschid in curand.');
 }
 
+function stopEventTimer() {
+    if (_eventTimerInterval) { clearInterval(_eventTimerInterval); _eventTimerInterval = null; }
+}
+
 function startEventTimer() {
     const el = document.getElementById('lp-event-timer');
     if (!el) return;
@@ -2676,6 +2680,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     const canvas = document.getElementById('gameCanvas');
     const ctx    = canvas.getContext('2d');
 
+    stopEventTimer();   // the lobby countdown has nothing to do during a match (startEventTimer restarts it in the lobby)
     _rsInit();
     function resizeCanvas() { _rsApplySize(canvas); }
     resizeCanvas();
@@ -3854,8 +3859,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_gameMode !== 'pve') gameEnded = true;
         _selfDead  = true;
         moveDir.x = 0; moveDir.y = 0; isShooting = false; aimStartTime = null;
-        socket.emit('move', { x: 0, y: 0 });
-        socket.emit('stop-shoot');
         myElimData = { placement, totalPlayers, killedBy, kills };
         setTimeout(() => {
             if (_gameMode === 'pve') {
@@ -3884,8 +3887,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     socket.on('winner', ({ kills } = {}) => {
         gameEnded = true;
         moveDir.x = 0; moveDir.y = 0; isShooting = false; aimStartTime = null;
-        socket.emit('move', { x: 0, y: 0 });
-        socket.emit('stop-shoot');
         setTimeout(() => {
             document.getElementById('gameover-title').textContent = 'LOC 1 — AI CASTIGAT!';
             document.getElementById('gameover-msg').textContent   = 'Esti ultimul supravietuitor!';
@@ -4508,8 +4509,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 }
             }
             const sp = spectateTargetId ? rState.players[spectateTargetId] : null;
-            if (_specNameEl) _specNameEl.textContent = sp ? sp.name : '—';
-            if (_specHpEl)   _specHpEl.textContent   = sp ? `${Math.ceil(Math.max(0, sp.hp))} / ${sp.maxHp} HP` : '';
+            // text only when it changed: assigning textContent every frame forces a text-node rewrite
+            const _spN = sp ? sp.name : '—';
+            const _spH = sp ? `${Math.ceil(Math.max(0, sp.hp))} / ${sp.maxHp} HP` : '';
+            if (_specNameEl && _specNameEl._v !== _spN) _specNameEl.textContent = _specNameEl._v = _spN;
+            if (_specHpEl && _specHpEl._v !== _spH)     _specHpEl.textContent   = _specHpEl._v   = _spH;
         }
 
         const specTarget = isSpectating && spectateTargetId ? rState.players[spectateTargetId] : null;
