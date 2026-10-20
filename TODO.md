@@ -1,7 +1,7 @@
 # TODO — Arena Royale
 
 Convenție: **Fapt** = verificat în repo sau în producție în această sesiune. **De verificat** = nu pot confirma din repo; nu e dat ca fapt.
-Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS** (`git rev-parse HEAD` și `merge-base --is-ancestor` pentru fiecare hash): HEAD în producție = `4060c2a` (deploy din 2026-10-20 cu fix-ul `stat_*`; G1–G4 în el), curat, pm2 `arena` online (7 restart-uri în total, fără buclă). Rollback: `5126971` (mai adânc: `8dbf785`).
+Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS** (2026-10-20, după deploy: `git rev-parse HEAD`, pm2, log-uri): HEAD în producție = `9a9c220` (G1–G4, fix-ul `stat_*`, G7), curat, pm2 `arena` online (8 restart-uri în total, fără buclă). Rollback: `4060c2a` (mai adânc: `5126971`, apoi `8dbf785`).
 
 | Grup | Commit | În producție? |
 |---|---|---|
@@ -9,82 +9,33 @@ Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS*
 | G2 interpolare zombi/gloanțe | `b49c477` | **da** |
 | G3 server (fără spin, backpressure, `[LAG]`) | `eb1b9d8` | **da** |
 | G4 protocol `gs2` | `8f64373` | **da** |
+| fix `stat_*` (migrare + log + test) | `fe8dafe` | **da** (migrarea rulată în Supabase) |
+| G7 bcrypt nativ + token + `[SLOW]` | `9a9c220` | **da** |
 | Harness / teste / dependențe | `bc7088b`, `e8283ad`, `5126971` | da (fișiere, nu rulează în producție) |
 | G5, G6 | — | nefăcute |
 
-Singurul lucru nedeployat din ce e comis: commit-ul acestor documente (`CLAUDE.md`, `TODO.md`), care nu schimbă codul.
+Nedeployat din ce e comis: doar commit-uri de documente, care nu schimbă codul.
 
 ## Făcut (grupurile de performanță)
 - **G1 — strat static de grafică** · `92835e0` · **deployat**. Iarba, marcajele și chenarul în dale de 256 u (`public/ground-layer.js`), eticheta și vignetta zonei cache-uite, `?gfx=legacy`. La 2560×1600: PvE 68→221 fps, BR 62→208 fps. Inelul zonei rămâne vectorial (măsurat: nu costă).
 - **G2 — interpolare zombi și gloanțe inamice** · `b49c477` · **deployat**. `public/interp.js`, teste în `tools/tests/interp.test.js`. Zombi: cadre fără mișcare 57–63% → ~9% (apoi ~1% cu G4).
 - **G3 — server** · `eb1b9d8` · **deployat**. Fără spin pe Linux (CPU/cameră ~jumătate), backpressure pentru clienți lenți (client blocat 4 s: 249→72 pachete vechi), log `[LAG]` mereu pornit.
 - **G4 — protocol `gs2`** · `8f64373` · **deployat**. `public/netproto.js`, `server-gs.js`; KB/s per client la 30 de jucători 147→38; poziții ×4.
+- **G7 — bcrypt** · `9a9c220` · **deployat** (detalii mai jos): `bcrypt` nativ cu fallback pe `bcryptjs` (`auth-hash.js`), token de sesiune în `/api/profile/stats` și `/api/profile/avatar`, jurnal `[SLOW]` și `near:` în `[LAG]`. Local, gol în event-loop la stats 71,5→1,8 ms și la 3 login-uri simultane 210→1,9 ms.
 - Suport: harness `bc7088b`, `e8283ad`; teste + dependențe + harness actualizat `5126971` · deployate (fișierele ajung pe VPS prin `git pull`, nu rulează acolo).
 - Deja în producție înainte de G1 (verificat: strămoși ai `8dbf785`): nume de arme `653ce98`, skinuri de arme pe server `eea73bf`, skinuri în meci `3e71d29`, Arsenal `1f82813`, meniul vechi de arme scos `dad5432`, obiecte de hartă (grupa 1) `8dbf785`.
 
-## G7 (în curs de deploy)
-**Implementat:** token în `/api/profile/stats` și `/api/profile/avatar` (parola rămâne ca plasă pentru pagini vechi), `bcrypt` nativ cu fallback automat pe `bcryptjs` (`auth-hash.js`), jurnal `[SLOW]` și `near:` în `[LAG]`; hash-urile `$2a$10$` neschimbate, fără migrare de date. Măsurat local (RTT al unui ping în timpul cererilor): stats max 71,5 → 1,8 ms; 3 login-uri simultane 210 → 1,9 ms; login 112 → 18,7 ms. Starea de deploy se trece aici după verificare. Mai jos, descrierea problemei originale.
+## G7 — bcrypt blochează event-loop-ul (deployat 2026-10-20, `9a9c220`)
+**Problema.** Descoperită din logul `[LAG]`: când FARAON a intrat în meci, event-loop-ul s-a blocat 156 ms. Cât timp `bcryptjs.compare` rulează, **toate camerele** pierd tick-uri. Rutele: login, `/api/profile/stats` (apelat la fiecare `joinGame`), `/api/profile/avatar`; `bcrypt.hash(…, 10)` la înregistrare.
+- **Confirmat pe VPS** (script separat în /tmp; 1 vCPU Xeon, Node 22; toate cele 17 conturi au hash-uri `$2a$10$`): `bcryptjs` compare = **71 ms** (max 75), blochează tot; 3 simultane = **206 ms** într-un blocaj. În `worker_thread`: gol 1,4 ms. `bcrypt` nativ (verifică hash-urile `$2a$` existente): gol 1,6 ms, 3 simultane 2,3 ms, 55 ms/apel.
+- **Pe rută (local, Supabase fals):** login, stats, avatar și stats cu parolă greșită blochează fiecare ~31–48 ms (un compare); `create-room` + `start-game` nu blochează (sub 15 ms).
+- **Din logul `[LAG]` din producție (primele ~11 h după G3):** 30 de blocaje >25 ms (cel mai mare **184 ms**); 8 la ≤2,5 s de o cameră creată (5 din 6 intrări în meci), 20 fără eveniment de cameră în apropiere (logul nu avea cereri HTTP, deci ruta nu se putea dovedi), 2 la pornire. La niciunul nu era o cameră activă (`rooms 0`): până atunci nu se pierduseră tick-uri reale.
+- **Rămas neatribuit:** blocajele de 129–184 ms la intrarea în meci sunt mai lungi decât un compare (71 ms); ce adaugă restul nu e dovedit. Acum `[LAG]` numește cererile din jur (`near:`) și `[SLOW]` numește hash-ul/handlerul lent, deci se va vedea la următoarele blocaje.
 
-**G7 — bcrypt blochează event-loop-ul (login, `/api/profile/stats` la fiecare intrare în meci, schimbare avatar).** Descoperit din logul `[LAG]` după deploy-ul din 2026-10-20: când FARAON a intrat în meci, event-loop-ul s-a blocat 156 ms (plus 2 blocaje de ~143 ms neloggate, rată limitată), cu o singură cameră. Cât timp `bcrypt.compare` rulează, **toate camerele** pierd tick-uri.
-- **Unde:** `server.js` `bcrypt.compare` la login (~243), la `/api/profile/avatar` (~387) și la `/api/profile/stats` (~417, apelat de client la fiecare `joinGame`, deci o dată pe intrare în meci, pe lângă login); `bcrypt.hash(…, 10)` la înregistrare (~313). Toate cu `bcryptjs` (JS pur), cost 10.
-- **Confirmat pe VPS (2026-10-20, script separat în /tmp, aplicația neatinsă; 1 vCPU Xeon Granite Rapids, Node 22):** toate cele 17 conturi au hash-uri `$2a$10$` (cost 10). `bcryptjs` compare = **71 ms** (p50; max 75), blochează bucla pe toată durata (cel mai mare gol 71 ms); 3 apeluri simultane = **206 ms** într-un singur blocaj. Același calcul într-un `worker_thread`: gol în bucla principală 1,4 ms (72 ms pe worker). `bcrypt` nativ (verifică hash-urile `$2a$` existente): gol 1,6 ms, 3 simultane 2,3 ms, 55 ms per apel.
-- **Pe rută (local, `[LAG]` la 15 ms, Supabase fals):** login, `/api/profile/stats`, `/api/profile/avatar` și `stats` cu parolă greșită blochează fiecare ~31–48 ms (un compare, PC rapid); `create-room` + `start-game` **nu** blochează (sub 15 ms). Login + stats în același timp = două blocaje consecutive.
-- **Din logul `[LAG]` din producție (după G3, ~11 h):** 30 de blocaje >25 ms (18 linii + 12 neloggate de rata limitată), cel mai mare **184 ms**. 2 sunt de la pornire (hash-ul lui `public/`). 8 blocaje (5 linii: 184, 129, 134, 100, 156 ms, plus 133 și 143) cad la ≤2,5 s de o cameră creată: 5 din 6 intrări în meci din fereastră au un blocaj în acel interval, a 6-a la 4 s. Restul de 20 apar fără niciun eveniment de cameră în apropiere (login/avatar/altceva: **logul nu are cereri HTTP, deci ruta nu se poate dovedi**). Din 24 de durări cunoscute: 8 ≈ un compare (50–100 ms), 9 ≈ 115–200 ms (≈ 1,6–2,8 compare-uri), 7 sub 50 ms. La niciun blocaj nu era o cameră activă (`rooms 0`), deci până acum nu s-au pierdut tick-uri reale; riscul apare cu mai mulți jucători conectați.
-- **Neatribuit:** blocajele de 129–184 ms la intrarea în meci sunt mai lungi decât un singur compare (71 ms), iar la intrare clientul face doar un POST cu parolă (`stats`). Ce adaugă restul nu e dovedit (al doilea compare din altă cerere, cod rece, TLS către Supabase). De închis cu un jurnal de cereri lente (`[SLOW] ruta, ms`) ca parte din G7.
-- **Opțiuni:**
-  1. `/api/profile/stats` și `/api/profile/avatar` să folosească tokenul de sesiune existent (`sessionTokens`, emis la login), nu parola: scoate ~1 compare din fiecare intrare în meci. Login-ul rămâne cu bcrypt. Cere ca clientul să trimită tokenul (acum trimite parola din `currentPassword`) și o perioadă de compatibilitate pentru clienții vechi.
-  2. `bcrypt` nativ (addon C++, rulează în thread pool-ul libuv, nu blochează bucla). Cere compilare/binar prebuilt pe Ubuntu 24 + Node 22; hash-urile existente (`$2a# TODO — Arena Royale
-
-Convenție: **Fapt** = verificat în repo sau în producție în această sesiune. **De verificat** = nu pot confirma din repo; nu e dat ca fapt.
-Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS** (`git rev-parse HEAD` și `merge-base --is-ancestor` pentru fiecare hash): HEAD în producție = `4060c2a` (deploy din 2026-10-20 cu fix-ul `stat_*`; G1–G4 în el), curat, pm2 `arena` online (7 restart-uri în total, fără buclă). Rollback: `5126971` (mai adânc: `8dbf785`).
-
-| Grup | Commit | În producție? |
-|---|---|---|
-| G1 strat static de grafică | `92835e0` | **da** |
-| G2 interpolare zombi/gloanțe | `b49c477` | **da** |
-| G3 server (fără spin, backpressure, `[LAG]`) | `eb1b9d8` | **da** |
-| G4 protocol `gs2` | `8f64373` | **da** |
-| Harness / teste / dependențe | `bc7088b`, `e8283ad`, `5126971` | da (fișiere, nu rulează în producție) |
-| G5, G6 | — | nefăcute |
-
-Singurul lucru nedeployat din ce e comis: commit-ul acestor documente (`CLAUDE.md`, `TODO.md`), care nu schimbă codul.
-
-## Făcut (grupurile de performanță)
-- **G1 — strat static de grafică** · `92835e0` · **deployat**. Iarba, marcajele și chenarul în dale de 256 u (`public/ground-layer.js`), eticheta și vignetta zonei cache-uite, `?gfx=legacy`. La 2560×1600: PvE 68→221 fps, BR 62→208 fps. Inelul zonei rămâne vectorial (măsurat: nu costă).
-- **G2 — interpolare zombi și gloanțe inamice** · `b49c477` · **deployat**. `public/interp.js`, teste în `tools/tests/interp.test.js`. Zombi: cadre fără mișcare 57–63% → ~9% (apoi ~1% cu G4).
-- **G3 — server** · `eb1b9d8` · **deployat**. Fără spin pe Linux (CPU/cameră ~jumătate), backpressure pentru clienți lenți (client blocat 4 s: 249→72 pachete vechi), log `[LAG]` mereu pornit.
-- **G4 — protocol `gs2`** · `8f64373` · **deployat**. `public/netproto.js`, `server-gs.js`; KB/s per client la 30 de jucători 147→38; poziții ×4.
-- Suport: harness `bc7088b`, `e8283ad`; teste + dependențe + harness actualizat `5126971` · deployate (fișierele ajung pe VPS prin `git pull`, nu rulează acolo).
-- Deja în producție înainte de G1 (verificat: strămoși ai `8dbf785`): nume de arme `653ce98`, skinuri de arme pe server `eea73bf`, skinuri în meci `3e71d29`, Arsenal `1f82813`, meniul vechi de arme scos `dad5432`, obiecte de hartă (grupa 1) `8dbf785`.
-
-/`$2b# TODO — Arena Royale
-
-Convenție: **Fapt** = verificat în repo sau în producție în această sesiune. **De verificat** = nu pot confirma din repo; nu e dat ca fapt.
-Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS** (`git rev-parse HEAD` și `merge-base --is-ancestor` pentru fiecare hash): HEAD în producție = `4060c2a` (deploy din 2026-10-20 cu fix-ul `stat_*`; G1–G4 în el), curat, pm2 `arena` online (7 restart-uri în total, fără buclă). Rollback: `5126971` (mai adânc: `8dbf785`).
-
-| Grup | Commit | În producție? |
-|---|---|---|
-| G1 strat static de grafică | `92835e0` | **da** |
-| G2 interpolare zombi/gloanțe | `b49c477` | **da** |
-| G3 server (fără spin, backpressure, `[LAG]`) | `eb1b9d8` | **da** |
-| G4 protocol `gs2` | `8f64373` | **da** |
-| Harness / teste / dependențe | `bc7088b`, `e8283ad`, `5126971` | da (fișiere, nu rulează în producție) |
-| G5, G6 | — | nefăcute |
-
-Singurul lucru nedeployat din ce e comis: commit-ul acestor documente (`CLAUDE.md`, `TODO.md`), care nu schimbă codul.
-
-## Făcut (grupurile de performanță)
-- **G1 — strat static de grafică** · `92835e0` · **deployat**. Iarba, marcajele și chenarul în dale de 256 u (`public/ground-layer.js`), eticheta și vignetta zonei cache-uite, `?gfx=legacy`. La 2560×1600: PvE 68→221 fps, BR 62→208 fps. Inelul zonei rămâne vectorial (măsurat: nu costă).
-- **G2 — interpolare zombi și gloanțe inamice** · `b49c477` · **deployat**. `public/interp.js`, teste în `tools/tests/interp.test.js`. Zombi: cadre fără mișcare 57–63% → ~9% (apoi ~1% cu G4).
-- **G3 — server** · `eb1b9d8` · **deployat**. Fără spin pe Linux (CPU/cameră ~jumătate), backpressure pentru clienți lenți (client blocat 4 s: 249→72 pachete vechi), log `[LAG]` mereu pornit.
-- **G4 — protocol `gs2`** · `8f64373` · **deployat**. `public/netproto.js`, `server-gs.js`; KB/s per client la 30 de jucători 147→38; poziții ×4.
-- Suport: harness `bc7088b`, `e8283ad`; teste + dependențe + harness actualizat `5126971` · deployate (fișierele ajung pe VPS prin `git pull`, nu rulează acolo).
-- Deja în producție înainte de G1 (verificat: strămoși ai `8dbf785`): nume de arme `653ce98`, skinuri de arme pe server `eea73bf`, skinuri în meci `3e71d29`, Arsenal `1f82813`, meniul vechi de arme scos `dad5432`, obiecte de hartă (grupa 1) `8dbf785`.
-
-) sunt compatibile, deci fără migrare de date.
-  3. Calcul în `worker_threads` (pool mic) cu `bcryptjs`: fără dependență nativă, dar cu overhead de mesaje și un pool de gestionat.
-  4. (Mitigare, nu soluție) scăderea costului nu e recomandată: slăbește hash-urile noi și nu ajută la cele existente.
-- **Fișiere:** `server.js` (rutele de mai sus, `sessionTokens`), `public/game.js` (`joinGame` ~1984, fluxul de avatar, `authSuccess`), `package.json` dacă se alege `bcrypt` nativ. După ce se alege o variantă: măsurare înainte/după cu `[LAG]`/PERF și un test în `tools/tests/`.
+**Ce s-a făcut.** `auth-hash.js` (nativ dacă se încarcă, verificat; altfel `bcryptjs` cu linie `[Auth]`; `AUTH_BCRYPT=js` forțează fallback-ul; aceleași hash-uri, cost 10, fără migrare). `/api/profile/stats` și `/api/profile/avatar` se autentifică cu tokenul de sesiune (verificare în memorie), cu parola ca plasă pentru pagini vechi. `game.js` trimite tokenul. `[SLOW] <rută> <ms>` (hash `bcryptjs`, handlere de socket, cereri `/api` lungi; rată limitată, fără parole/tokenuri). Teste: 33 în total (`stat-points`, `auth-hash`, `fake-supabase`).
+- **Măsurat local** (RTT al unui ping în timpul cererilor; înainte → după): stats max 71,5 → 1,8 ms; 3 login-uri simultane 210 → 1,9 ms; login 112 → 18,7 ms (restul e munca rutei, nu hash-ul). Doar cu token (fără nativ): stats rezolvat, login rămâne ~115 ms.
+- **Verificat în producție după deploy:** pm2 online, `[Auth] bcrypt nativ activ (bcrypt 6.0.0)` în log, fără erori de `require`, fișierele publice 200, `game.js` trimite tokenul. **De verificat:** un login real + intrare în meci fără `[LAG]`/`[SLOW]` lângă `/api/auth/login` și `/api/profile/stats`, și salvarea `stat_*` cu token în DB.
+- **Nu s-a făcut (opțiuni respinse):** `worker_threads` (nativul e mai simplu și mai rapid); scăderea costului.
 
 ## Urmează (în ordinea priorității)
 1. **G5 — plafon dpr + scalare dinamică a rezoluției, fără setare în UI.** Coboară rezoluția internă când fps-ul scade sub țintă, urcă lent la loc, cu histerezis (să nu oscileze). La 2560×1600 randarea e legată de numărul de pixeli (fps ∝ 1/pixeli). Fișiere: `public/game.js` (`MAX_DPR` ~linia 111, `resizeCanvas` în `initGame`, `ZOOM`/`dpr` din `draw`), `public/ground-layer.js` (scara dalelor), `public/arena-art.js` (cache de scară). Măsurare: `tools/perf-harness/suite.js`.
