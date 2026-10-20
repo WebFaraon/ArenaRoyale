@@ -401,6 +401,9 @@ app.get('/api/weapon-stats', async (req, res) => {
     catch (err) { console.error('[WeaponStats] read error:', err.message || err); res.json({ ok: false }); }
 });
 
+// The HP / DMG / SPD points of the lobby build (0-10 each, 10 in total), saved on the account so the build follows it
+// to another device. Needs players.stat_hp / stat_dmg / stat_spd (supabase-migration-stat-points.sql).
+let _statPointsMissingLogged = false;
 app.post('/api/profile/stats', async (req, res) => {
     const { nickname, password, stat_hp, stat_dmg, stat_spd } = req.body || {};
     if (!nickname || !password || !supabase) return res.json({ ok: false });
@@ -413,9 +416,16 @@ app.post('/api/profile/stats', async (req, res) => {
         if (!data) return res.json({ ok: false });
         const valid = await bcrypt.compare(password, data.password_hash);
         if (!valid) return res.json({ ok: false });
-        await supabase.from('players').update({ stat_hp: hp, stat_dmg: dmg, stat_spd: spd, updated_at: new Date().toISOString() }).eq('nickname', nickname);
+        const { error } = await supabase.from('players').update({ stat_hp: hp, stat_dmg: dmg, stat_spd: spd, updated_at: new Date().toISOString() }).eq('nickname', nickname);
+        if (error) {
+            // Not saved: say so. Until the migration has run the columns do not exist: that one is logged once, anything else every time.
+            if (/stat_(hp|dmg|spd)/.test(error.message || '')) {
+                if (!_statPointsMissingLogged) { _statPointsMissingLogged = true; console.error('[Stats] Coloanele players.stat_hp/stat_dmg/stat_spd lipsesc: punctele HP/DMG/SPD nu se salveaza pe cont (raman in browser). Ruleaza supabase-migration-stat-points.sql in Supabase. (' + error.message + ')'); }
+            } else console.error('[Profile/Stats] update esuat pentru ' + nickname + ':', error.message);
+            return res.json({ ok: false });
+        }
         res.json({ ok: true });
-    } catch { res.json({ ok: false }); }
+    } catch (err) { console.error('[Profile/Stats] Error:', err); res.json({ ok: false }); }
 });
 
 app.post('/api/missions/claim', async (req, res) => {
