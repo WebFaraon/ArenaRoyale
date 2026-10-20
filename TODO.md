@@ -1,7 +1,7 @@
 # TODO — Arena Royale
 
 Convenție: **Fapt** = verificat în repo sau în producție în această sesiune. **De verificat** = nu pot confirma din repo; nu e dat ca fapt.
-Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS** (2026-10-20, după deploy: `git rev-parse HEAD`, pm2, log-uri): HEAD în producție = `9a9c220` (G1–G4, fix-ul `stat_*`, G7), curat, pm2 `arena` online (8 restart-uri în total, fără buclă). Rollback: `4060c2a` (mai adânc: `5126971`, apoi `8dbf785`).
+Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS** (2026-10-20, după deploy: `git rev-parse HEAD`, pm2, log-uri): HEAD în producție = `dc1143f` (G1–G7 + G5 + G6; verificat pe VPS 2026-10-21: pm2 online, 9 restart-uri, `[Auth] bcrypt nativ activ`, o singură linie `[LAG]` de 37 ms la pornire, `game.js` servit conține `_rsTick`, build `e23d443e50`). Rollback: `9a9c220` (mai adânc: `4060c2a`, `5126971`, apoi `8dbf785`).
 
 | Grup | Commit | În producție? |
 |---|---|---|
@@ -12,7 +12,8 @@ Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS*
 | fix `stat_*` (migrare + log + test) | `fe8dafe` | **da** (migrarea rulată în Supabase) |
 | G7 bcrypt nativ + token + `[SLOW]` | `9a9c220` | **da** |
 | Harness / teste / dependențe | `bc7088b`, `e8283ad`, `5126971` | da (fișiere, nu rulează în producție) |
-| G5, G6 | — | nefăcute |
+| G5 scalare dinamică a rezoluției | `cf630a4` | **da** |
+| G6 mărunțișuri (parțial) | `dc1143f` | **da** |
 
 Nedeployat din ce e comis: doar commit-uri de documente, care nu schimbă codul.
 
@@ -36,6 +37,11 @@ Nedeployat din ce e comis: doar commit-uri de documente, care nu schimbă codul.
 - **Măsurat local** (RTT al unui ping în timpul cererilor; înainte → după): stats max 71,5 → 1,8 ms; 3 login-uri simultane 210 → 1,9 ms; login 112 → 18,7 ms (restul e munca rutei, nu hash-ul). Doar cu token (fără nativ): stats rezolvat, login rămâne ~115 ms.
 - **Verificat în producție după deploy:** pm2 online, `[Auth] bcrypt nativ activ (bcrypt 6.0.0)` în log, fără erori de `require`, fișierele publice 200, `game.js` trimite tokenul. **De verificat:** un login real + intrare în meci fără `[LAG]`/`[SLOW]` lângă `/api/auth/login` și `/api/profile/stats`, și salvarea `stat_*` cu token în DB.
 - **Nu s-a făcut (opțiuni respinse):** `worker_threads` (nativul e mai simplu și mai rapid); scăderea costului.
+
+## G5/G6 — deployate 2026-10-21 (`dc1143f`)
+- **G5** (`public/game.js`, blocul `RS_*`/`_rsTick`): pașii de scară 1/0,85/0,72/0,62/0,54 din dpr; jos după 2 s sub 54 fps, sus după 12 s peste (dublează așteptarea dacă proba eșuează); un pas jos care nu ridică fps-ul (display 30 Hz, CPU-bound) se anulează, iar după 2 astfel de eșecuri scalerul se oprește. `?rs=off` / `?rs=0.6` pentru măsurători; ultimul pas se ține în `localStorage.ar_rs_idx`. Măsurat (software, 1707×1067 dpr 1,5, BR, 45 s): fără scaler 50,2 fps (ultimele 10 s: 53,1), cu scaler 66,5 (68,4), a ajuns pe pasul 0,85, iar proba în sus a eșuat o dată (upNeed 12→24 s), fără oscilație. Pe GPU real (200+ fps) nu intervine. **Netestat live:** calea „anulare” (nu am reușit să creez un caz CPU-bound cu `--cpu 6`).
+- **G6 făcut:** text spectator doar la schimbare; cronometrul lobby oprit în meci (`stopEventTimer`); scoase `move`/`stop-shoot` (serverul n-are handlere).
+- **G6 nefăcut, cu motiv:** `leaderboard-update` rămâne `io.emit` (1 mesaj la ≥10 s, câțiva KB; clasamentul de pe ecranul game over se actualizează tocmai prin el); alocările din `draw`/cheile de etichete (alocare totală măsurată ~2–2,6 MB/s, deci neglijabil); camera aliniată la pixel (cere verificare vizuală); layout-urile HUD PvE (~0,4%).
 
 ## Urmează (în ordinea priorității)
 1. **G5 — plafon dpr + scalare dinamică a rezoluției, fără setare în UI.** Coboară rezoluția internă când fps-ul scade sub țintă, urcă lent la loc, cu histerezis (să nu oscileze). La 2560×1600 randarea e legată de numărul de pixeli (fps ∝ 1/pixeli). Fișiere: `public/game.js` (`MAX_DPR` ~linia 111, `resizeCanvas` în `initGame`, `ZOOM`/`dpr` din `draw`), `public/ground-layer.js` (scara dalelor), `public/arena-art.js` (cache de scară). Măsurare: `tools/perf-harness/suite.js`.
