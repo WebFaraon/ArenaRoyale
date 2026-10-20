@@ -78,5 +78,6 @@ Protocolul `gs2` (ambele părți + `PROTO`) · logica de damage/hit și gloanțe
 - Un pacer artificial de 144/240 Hz pe GPU produce blocaje false de secunde; măsoară cu `--gpuoff` sau cu vsync real.
 - Memoria dalelor pe iOS/iPad nu e verificată pe dispozitiv (bugetul de 40 MB e o presupunere prudentă).
 - Pe Windows timerele sunt grosiere: cifrele de jitter ale serverului local nu reprezintă producția (Linux).
-- Cod vs DB (verificat în citire pe 2026-10-20): `/api/profile/stats` scrie `players.stat_hp/stat_dmg/stat_spd`, dar aceste coloane nu există în tabel, iar eroarea e ignorată: punctele HP/DMG/SPD nu se salvează (detalii în TODO.md). Migrările din `supabase-migration-*.sql` sunt aplicate, dar manual: `list_migrations` e gol.
+- **Limita de 10 puncte HP/DMG/SPD e în 3 locuri**: clientul (`MAX_POINTS` în `game.js`), serverul (`/api/profile/stats`, plus clamp-ul din `addPlayer` la intrarea în meci) și check-ul `players_stat_points_total` din DB (`supabase-migration-stat-points.sql`; intervalul 0–10 pe stat e în `players_stat_points_range`). Dacă se schimbă, se schimbă în toate trei.
+- Migrările din `supabase-migration-*.sql` se rulează manual în SQL editor (`list_migrations` e gol), deci nu au istoric: după fiecare, verifică în citire coloanele și check-urile. `stat_hp/dmg/spd` au lipsit din DB până pe 2026-10-20 (update-ul eșua în tăcere); acum există, iar o eroare de update se loghează și răspunde `ok:false`.
 - Cache-ul de scară al sprite-urilor/dalelor: o schimbare de zoom întinde bitmap-urile până se stabilizează scara.
