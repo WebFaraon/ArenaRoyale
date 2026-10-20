@@ -110,6 +110,96 @@ const VIEW_W  = 1300;
 const VIEW_H  =  730;
 const MAX_DPR = 2;   // cap pixelRatio - 2x acopera toate telefoanele moderne fara cost excesiv
 
+// ---------- G5: dynamic resolution ----------
+// Past ~2 Mpx the canvas is fill-rate bound (fps ~ 1/pixels), so when fps stays under the target
+// the internal resolution steps down (the canvas keeps its CSS size, the browser upscales it) and
+// probes back up slowly. Hysteresis: 2 s of low fps to go down, 12 s of good fps to try up, and every
+// failed probe doubles the wait. A step down that does not raise fps (a 30 fps display, a CPU-bound
+// phone) is undone, and after two such failures the scaler stops for the session.
+// ?rs=off keeps full resolution, ?rs=0.6 pins a fixed scale (measurements).
+const RS_STEPS = [1, 0.85, 0.72, 0.62, 0.54];
+const RS_TARGET_FPS = 54;
+const _RS = {
+    idx: 0, fixed: null, off: false,
+    last: 0, wStart: 0, frames: 0, fps: 0,
+    settleUntil: 0, bad: 0, good: 0, upNeed: 12000,
+    probeAt: 0, check: null, noDownUntil: 0, fails: 0
+};
+function _rsInit() {
+    _RS.idx = 0; _RS.fixed = null; _RS.off = false; _RS.last = 0; _RS.wStart = 0; _RS.frames = 0;
+    _RS.settleUntil = 0; _RS.bad = 0; _RS.good = 0; _RS.upNeed = 12000;
+    _RS.probeAt = 0; _RS.check = null; _RS.noDownUntil = 0; _RS.fails = 0;
+    try {
+        const q = new URLSearchParams(location.search).get('rs');
+        if (q === 'off') _RS.off = true;
+        else if (q && isFinite(+q) && +q >= 0.3 && +q <= 1) { _RS.fixed = +q; _RS.off = true; }
+        else {
+            const s = parseInt(localStorage.getItem('ar_rs_idx'), 10);   // last match's step: no re-learning
+            if (s > 0 && s < RS_STEPS.length) _RS.idx = s;
+        }
+    } catch (e) { /* no URL API / storage blocked */ }
+    window.__arRS = _RS;
+}
+function _rsScale() { return _RS.fixed !== null ? _RS.fixed : RS_STEPS[_RS.idx]; }
+function _rsDpr() { return Math.min(window.devicePixelRatio || 1, MAX_DPR) * _rsScale(); }
+function _rsApplySize(canvas) {
+    const vv   = window.visualViewport;
+    const cssW = vv ? vv.width  : window.innerWidth;
+    const cssH = vv ? vv.height : window.innerHeight;
+    const dpr  = _rsDpr();
+    canvas.width  = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    canvas.style.width  = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+}
+function _rsSetIdx(canvas, idx, ts) {
+    _RS.idx = idx;
+    _RS.settleUntil = ts + 1800;   // sprite/tile caches rebuild at the new scale
+    _RS.bad = 0; _RS.good = 0; _RS.frames = 0; _RS.wStart = 0;
+    try { localStorage.setItem('ar_rs_idx', String(idx)); } catch (e) { /* storage blocked */ }
+    _rsApplySize(canvas);
+}
+// Called once per rAF frame, before the canvas size is read.
+function _rsTick(ts, canvas) {
+    if (_RS.off) return;
+    const dt = _RS.last ? ts - _RS.last : 0;
+    _RS.last = ts;
+    if (document.hidden || dt > 1000) {   // tab was in the background: restart the window
+        _RS.wStart = 0; _RS.frames = 0; _RS.settleUntil = ts + 1500; return;
+    }
+    if (!_RS.wStart) { _RS.wStart = ts; _RS.frames = 0; if (!_RS.settleUntil) _RS.settleUntil = ts + 3000; return; }
+    _RS.frames++;
+    const el = ts - _RS.wStart;
+    if (el < 1000) return;
+    const fps = _RS.frames * 1000 / el;
+    _RS.fps = fps; _RS.wStart = ts; _RS.frames = 0;
+    if (ts < _RS.settleUntil) { _RS.wStart = 0; return; }   // measure only windows fully after the settle time
+    if (_RS.check) {   // first full window after a step down: did it help?
+        const c = _RS.check; _RS.check = null;
+        if (fps < c.fps * 1.08 && fps < RS_TARGET_FPS) {
+            _RS.fails++;
+            _RS.noDownUntil = ts + 60000;
+            _rsSetIdx(canvas, c.idx, ts);
+            if (_RS.fails >= 2) _RS.off = true;
+            return;
+        }
+    }
+    if (fps < RS_TARGET_FPS) {
+        _RS.good = 0; _RS.bad++;
+        if (_RS.bad >= 2 && _RS.idx < RS_STEPS.length - 1 && ts >= _RS.noDownUntil) {
+            if (_RS.probeAt && ts - _RS.probeAt < 10000) _RS.upNeed = Math.min(_RS.upNeed * 2, 120000);   // the probe up failed
+            _RS.check = { idx: _RS.idx, fps };
+            _rsSetIdx(canvas, _RS.idx + 1, ts);
+        }
+    } else {
+        _RS.bad = 0; _RS.good++;
+        if (_RS.good * 1000 >= _RS.upNeed && _RS.idx > 0 && ts >= _RS.noDownUntil) {
+            _RS.probeAt = ts;
+            _rsSetIdx(canvas, _RS.idx - 1, ts);
+        }
+    }
+}
+
 // Decoratiuni statice ale hartii (seed fix, acelasi generator ca inainte): ground-layer.js
 const _mapDeco = ARGround.makeDeco();
 ARGround.setDeco(_mapDeco);
@@ -2586,16 +2676,8 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     const canvas = document.getElementById('gameCanvas');
     const ctx    = canvas.getContext('2d');
 
-    function resizeCanvas() {
-        const vv   = window.visualViewport;
-        const cssW = vv ? vv.width  : window.innerWidth;
-        const cssH = vv ? vv.height : window.innerHeight;
-        const dpr  = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-        canvas.width  = Math.floor(cssW * dpr);
-        canvas.height = Math.floor(cssH * dpr);
-        canvas.style.width  = cssW + 'px';
-        canvas.style.height = cssH + 'px';
-    }
+    _rsInit();
+    function resizeCanvas() { _rsApplySize(canvas); }
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
@@ -3361,8 +3443,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (e.pointerType !== 'mouse') return;
         mouseActive = true;
         const rect = canvas.getBoundingClientRect();
-        const W  = canvas.width  / Math.min(window.devicePixelRatio || 1, MAX_DPR);
-        const H  = canvas.height / Math.min(window.devicePixelRatio || 1, MAX_DPR);
+        const W  = canvas.width  / _rsDpr();
+        const H  = canvas.height / _rsDpr();
         const dx = (e.clientX - rect.left) - W / 2;
         const dy = (e.clientY - rect.top)  - H / 2;
         myAngle = Math.atan2(-dx, dy);
@@ -4268,7 +4350,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         rafId = requestAnimationFrame(draw);
         const _drawStart = performance.now();
 
-        const dpr  = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+        _rsTick(timestamp, canvas);
+        const dpr  = _rsDpr();
         const W    = canvas.width  / dpr;
         const H    = canvas.height / dpr;
         let ZOOM = Math.min(W / VIEW_W, H / VIEW_H); // recalculat dupa dtSec
@@ -5150,7 +5233,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _errColor  = _predErrRaw < 10 ? '#00ff88' : _predErrRaw < 50 ? '#ff8c00' : '#ff4444';
             const _lagColor  = _lagMs < 80 ? '#00ff88' : _lagMs < 150 ? '#ff8c00' : '#ff4444';
             const lines = [
-                { text: `FPS: ${_dbgFps}   frame: ${_dbgDrawMs.toFixed(1)}ms`,              color: _fpsColor  },
+                { text: `FPS: ${_dbgFps}   frame: ${_dbgDrawMs.toFixed(1)}ms   res: ${Math.round(_rsScale() * 100)}%${_RS.off && _RS.fixed === null ? ' (off)' : ''}`,            color: _fpsColor  },
                 { text: `TPS: ${_dbgSrvTps}   entities: ${_dbgSrvEnts}   pickups: ${_dbgSrvPickups}`, color: _tpsColor },
                 { text: `PING: ${_pingRtt < 0 ? '--' : _pingRtt + 'ms'}   pkt/s: ${_dbgPktPs}   rx gs/s: ${_dbgGs}`, color: _pingColor },
                 { text: `CSP: pending:${_dbgPending}   err:${_predErr}px   lag:~${_lagMs}ms`, color: _errColor  },

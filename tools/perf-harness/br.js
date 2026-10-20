@@ -244,6 +244,9 @@ async function main() {
         dt: { p50: +pct(dts, .5).toFixed(3), p95: +pct(dts, .95).toFixed(3), p99: +pct(dts, .99).toFixed(3), max: +Math.max(0, ...dts).toFixed(2), over1_5x: dts.filter(v => v > 1.5 * nominal).length, over2x: dts.filter(v => v > 2 * nominal).length },
         // the first 12 s of per-frame cb times, to spot warm-up
     };
+    // dynamic resolution (G5): final step of the scaler and the fps of the last 10 s (after it converged)
+    result.rs = await page.evaluate(() => { try { const r = window.__arRS; return r ? { idx: r.idx, fixed: r.fixed, off: r.off, fails: r.fails, upNeed: r.upNeed } : null; } catch (e) { return String(e); } });
+    if (fr.length > 2) { const tEnd = fr[fr.length - 1][0], last = fr.filter(f => f[0] >= tEnd - 10000); result.frames.fpsLast10 = +(last.length / Math.min(10, (tEnd - fr[0][0]) / 1000)).toFixed(1); }
     // heap sawtooth -> allocation estimate
     const hs = d.heap; let alloc = 0, drops = 0, dropMB = []; for (let i = 1; i < hs.length; i++) { const dd = hs[i][1] - hs[i - 1][1]; if (dd >= 0) alloc += dd; else { drops++; dropMB.push(-dd / 1048576); } }
     result.heap = { samples: hs.length, allocMBps: +(alloc / 1048576 / secsReal).toFixed(2), gcDrops: drops, gcDropsPerSec: +(drops / secsReal).toFixed(2), dropMBp50: +pct(dropMB, .5).toFixed(2), startMB: hs.length ? +(hs[0][1] / 1048576).toFixed(1) : 0, endMB: hs.length ? +(hs[hs.length - 1][1] / 1048576).toFixed(1) : 0 };
