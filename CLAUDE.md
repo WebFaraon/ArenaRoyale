@@ -48,10 +48,10 @@ Dependențe directe: express, socket.io, socket.io-msgpack-parser, notepack.io, 
 ## 6. Deploy pe Kamatera (VPS `root@79.108.166.122`, dosar `/root/ArenaRoyale`, pm2 `arena`)
 Se face doar după confirmarea explicită a utilizatorului.
 - **Branch din care se trage în producție: `skinuri-noi`** (`origin/skinuri-noi`); `main` e rămasă în urmă (`2738538`) și nu se folosește la deploy.
-- **Commit în producție acum: `5126971`** (G1–G4 deployate, verificat pe VPS la 2026-10-20). Actualizează linia asta la fiecare deploy.
-- **Commit de rollback curent: `8dbf785`** (`8dbf785cfe31ebcb99e7ec95ec44b85141b112b4`, starea de dinaintea G1–G4: protocolul vechi `gs`, fără dale). Comanda exactă (din PowerShell/Git Bash local):
-  `ssh -i ~/.ssh/arenaroyale root@79.108.166.122 "cd /root/ArenaRoyale && git checkout 8dbf785cfe31ebcb99e7ec95ec44b85141b112b4 && pm2 restart arena"`
-  Clienții cu pagina nouă se reîncarcă singuri (build-ul diferă). După rollback VPS-ul rămâne cu HEAD detașat: ca să revii la fluxul normal, `git checkout skinuri-noi && git pull --ff-only` și `pm2 restart arena`.
+- **Commit în producție acum: `4060c2a`** (cod identic cu `fe8dafe`; G1–G4 + fix `stat_*`; deployat și verificat pe VPS la 2026-10-20). Un commit mai nou poate diferi de el doar prin documente. Actualizează linia asta la fiecare deploy.
+- **Commit de rollback curent: `5126971`** (`5126971b0055f4422b8ab169ce33b2ba9de91ce6`, producția dinaintea fix-ului `stat_*`; pagina publică e aceeași, deci clienții nu se reîncarcă). Comanda exactă (din PowerShell/Git Bash local):
+  `ssh -i ~/.ssh/arenaroyale root@79.108.166.122 "cd /root/ArenaRoyale && git checkout 5126971b0055f4422b8ab169ce33b2ba9de91ce6 && pm2 restart arena"`
+  Rollback mai adânc, dinaintea G1–G4: `8dbf785cfe31ebcb99e7ec95ec44b85141b112b4` (protocolul vechi `gs`, fără dale; clienții cu pagina nouă se reîncarcă singuri, build-ul diferă). După orice rollback VPS-ul rămâne cu HEAD detașat: ca să revii la fluxul normal, `git checkout skinuri-noi && git pull --ff-only` și `pm2 restart arena`.
 1. Local: testele trec, totul comis, `git push origin skinuri-noi`.
 2. Pe VPS (cheia SSH locală: `~/.ssh/arenaroyale`): notează `git rev-parse HEAD` (punctul de rollback), verifică `git status` curat și că nu e meci activ (`ss -tn state established '( sport = :80 )'`, ultimele linii din `arena-out.log`).
 3. `git pull --ff-only` → `npm install --omit=dev` (doar dacă s-a schimbat `package*.json`) → `pm2 restart arena`.

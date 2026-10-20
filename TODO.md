@@ -1,7 +1,7 @@
 # TODO — Arena Royale
 
 Convenție: **Fapt** = verificat în repo sau în producție în această sesiune. **De verificat** = nu pot confirma din repo; nu e dat ca fapt.
-Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS** (`git rev-parse HEAD` și `merge-base --is-ancestor` pentru fiecare hash): HEAD în producție = `5126971`, curat, pm2 `arena` online (6 restart-uri în total, fără buclă). Rollback: `8dbf785`.
+Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS** (`git rev-parse HEAD` și `merge-base --is-ancestor` pentru fiecare hash): HEAD în producție = `4060c2a` (deploy din 2026-10-20 cu fix-ul `stat_*`; G1–G4 în el), curat, pm2 `arena` online (7 restart-uri în total, fără buclă). Rollback: `5126971` (mai adânc: `8dbf785`).
 
 | Grup | Commit | În producție? |
 |---|---|---|
