@@ -286,11 +286,11 @@ function selectCharacter(id) {
     if (lpPh)  lpPh.style.display = 'none';
     renderCharShopGrid(_currentShopFilter);
     if (currentProfile) currentProfile.skin = currentProfile.avatar = char.id;
-    if (currentNickname && currentPassword) {
+    if (currentNickname && sessionToken) {
         fetch('/api/profile/avatar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nickname: currentNickname, password: currentPassword, avatar: char.id })
+            body: JSON.stringify({ nickname: currentNickname, token: sessionToken, avatar: char.id })
         }).catch(() => {});
     }
 }
@@ -1977,11 +1977,11 @@ function joinGame() {
     if (!name) return;
     const char     = getSelectedCharacter();
 
-    if (currentNickname && currentPassword) {
+    if (currentNickname && sessionToken) {
         fetch('/api/profile/stats', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nickname: currentNickname, password: currentPassword, stat_hp: stats.hp, stat_dmg: stats.dmg, stat_spd: stats.spd })
+            body: JSON.stringify({ nickname: currentNickname, token: sessionToken, stat_hp: stats.hp, stat_dmg: stats.dmg, stat_spd: stats.spd })
         }).catch(() => {});
     }
 

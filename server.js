@@ -5,7 +5,7 @@ const { Server } = require('socket.io');
 const msgpackParser = require('socket.io-msgpack-parser');
 const path    = require('path');
 const fs      = require('fs');
-const bcrypt  = require('bcryptjs');
+const Passwords = require('./auth-hash');            // bcrypt (native when it loads, else bcryptjs), cost 10
 const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
@@ -58,10 +58,12 @@ const io     = new Server(server, {
             }
             const from = endedAt - lag - STEP;
             let gc = 0; for (const [a, b] of gcs) if (b >= from && a <= endedAt) gc += b - a;
+            const near = [];
+            for (const q of _recentReq) { if (q.e >= from - 5 && q.e <= endedAt + 150 && q.s <= endedAt && !near.includes(q.label)) near.push(q.label); }
             const more = held ? ' | +' + held + ' earlier stall' + (held > 1 ? 's' : '') + ' not logged (worst ' + heldWorst.toFixed(0) + ' ms)' : '';
             held = 0; heldWorst = 0;
             console.warn('[LAG] ' + wallIso + ' event loop blocked ' + lag.toFixed(0) + ' ms | rooms ' + rooms + ', players ' + players + ', zombies ' + zombies +
-                ' | gc ' + (gc ? gc.toFixed(1) + ' ms' : 'none') + ' | rss ' + (process.memoryUsage.rss() / 1048576).toFixed(0) + ' MB' + more);
+                ' | gc ' + (gc ? gc.toFixed(1) + ' ms' : 'none') + ' | rss ' + (process.memoryUsage.rss() / 1048576).toFixed(0) + ' MB' + (near.length ? ' | near: ' + near.slice(0, 3).join(', ') : '') + more);
         };
         const iv = setInterval(() => {
             const now = performance.now(), lag = now - last - STEP;
@@ -76,7 +78,42 @@ const io     = new Server(server, {
     }
 }
 
+// ---------- SLOW LOG ----------
+// [SLOW] <route> <ms>: work that held the event loop (a socket handler, a bcryptjs hash) for more than SLOW_LOG_MS (25),
+// or an /api request that took unusually long as a whole (SLOW_REQ_MS, 400; that includes waiting on Supabase).
+// One line per label every SLOW_LOG_EVERY_S (5) seconds, the rest counted in the next line, like [LAG]. SLOW_LOG=0 turns it off.
+// Only fixed labels are logged: the method and path (no query string), the socket event name. Never a body, a password or a token.
+// The last requests are also kept in a small ring so a [LAG] line can name the ones around it.
+const SLOW_MS = +process.env.SLOW_LOG_MS || 25, SLOW_REQ_MS = +process.env.SLOW_REQ_MS || 400, SLOW_EVERY_MS = (+process.env.SLOW_LOG_EVERY_S || 5) * 1000;
+const _slowLast = new Map(), _slowHeld = new Map(), _recentReq = [];
+function slowLog(label, ms, note) {
+    if (process.env.SLOW_LOG === '0') return;
+    const now = Date.now(), last = _slowLast.get(label) || 0;
+    if (now - last < SLOW_EVERY_MS) { const h = _slowHeld.get(label) || { n: 0, worst: 0 }; h.n++; if (ms > h.worst) h.worst = ms; _slowHeld.set(label, h); return; }
+    _slowLast.set(label, now);
+    const h = _slowHeld.get(label); _slowHeld.delete(label);
+    console.warn('[SLOW] ' + label + ' ' + Math.round(ms) + ' ms' + (note ? ' (' + note + ')' : '') + (h ? ' | +' + h.n + ' more (worst ' + Math.round(h.worst) + ' ms)' : ''));
+}
+// A password hash or check, timed. The JavaScript fallback holds the loop for its whole duration; the native one does not.
+async function hashOp(route, op, ...args) {
+    const t = performance.now();
+    try { return await Passwords[op](...args); }
+    finally {
+        const ms = performance.now() - t;
+        if (Passwords.native ? ms >= SLOW_REQ_MS : ms >= SLOW_MS) slowLog(route + ' bcrypt.' + op, ms, Passwords.native ? 'nativ, neobisnuit de lent' : 'bcryptjs: blocheaza bucla');
+    }
+}
+
 app.use(express.json({ limit: '5mb' }));
+app.use('/api', (req, res, next) => {
+    const t = performance.now(), label = req.method + ' ' + req.originalUrl.split('?')[0];
+    res.on('finish', () => {
+        const e = performance.now();
+        _recentReq.push({ label, s: t, e }); if (_recentReq.length > 64) _recentReq.shift();
+        if (e - t >= SLOW_REQ_MS) slowLog(label, e - t, 'cerere lunga, include asteptari');
+    });
+    next();
+});
 
 // ---------- STATIC FILES + CACHE BUSTING ----------
 // BUILD is a hash of everything in public/, taken at start: it changes exactly when a served file changes.
@@ -127,6 +164,16 @@ const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)
 // ---------- SESSION TOKENS ----------
 // nickname → token  (in-memory; se goleste la restart server)
 const sessionTokens = new Map();
+
+// Who is asking: a logged-in client proves it with the session token issued at login/register (an in-memory check, no
+// hashing). The password is still accepted, for pages loaded before this change (the build check reloads them on their
+// next connect). Hashing is the expensive part: keep it off the routes a player hits on every match.
+async function authenticated(route, nickname, token, password) {
+    if (token) return typeof token === 'string' && sessionTokens.get(nickname) === token;
+    if (!password || !supabase) return false;
+    const { data } = await supabase.from('players').select('password_hash').eq('nickname', nickname).single();
+    return !!data && await hashOp(route, 'compare', password, data.password_hash);
+}
 
 if (!supabase) console.warn('[Supabase] Nu e configurat — statisticile nu se salveaza.');
 
@@ -240,7 +287,7 @@ app.post('/api/auth/login', async (req, res) => {
         if (!existing)
             return res.json({ ok: false, error: 'Nickname inexistent. Creeaza un cont mai intai.' });
 
-        const valid = await bcrypt.compare(password, existing.password_hash);
+        const valid = await hashOp('POST /api/auth/login', 'compare', password, existing.password_hash);
         if (!valid) return res.json({ ok: false, error: 'Parola incorecta' });
 
         const token = crypto.randomBytes(32).toString('hex');
@@ -310,7 +357,7 @@ app.post('/api/auth/register', async (req, res) => {
         if (existing)
             return res.json({ ok: false, error: 'Nickname deja folosit. Alege altul sau logheaza-te.' });
 
-        const hash = await bcrypt.hash(password, 10);
+        const hash = await hashOp('POST /api/auth/register', 'hash', password);
         const { error } = await supabase
             .from('players')
             .insert({ nickname, password_hash: hash, kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, avatar: DEFAULT_SKIN, unlocked_characters: JSON.stringify([DEFAULT_SKIN]) });
@@ -377,15 +424,12 @@ app.post('/api/characters/unlock', async (req, res) => {
 
 // The chosen skin, saved as its id. Only a skin the player owns is accepted.
 app.post('/api/profile/avatar', async (req, res) => {
-    const { nickname, password, avatar } = req.body || {};
-    if (!nickname || !password || !avatar) return res.json({ ok: false });
+    const { nickname, token, password, avatar } = req.body || {};
+    if (!nickname || !(token || password) || !avatar) return res.json({ ok: false });
     if (!ownsSkin(nickname, avatar)) return res.json({ ok: false, error: 'Skin indisponibil' });
     if (!supabase) { memAvatars.set(nickname, avatar); return res.json({ ok: true }); }
     try {
-        const { data } = await supabase.from('players').select('password_hash').eq('nickname', nickname).single();
-        if (!data) return res.json({ ok: false });
-        const valid = await bcrypt.compare(password, data.password_hash);
-        if (!valid) return res.json({ ok: false });
+        if (!(await authenticated('POST /api/profile/avatar', nickname, token, password))) return res.json({ ok: false });
         await supabase.from('players').update({ avatar, updated_at: new Date().toISOString() }).eq('nickname', nickname);
         res.json({ ok: true });
     } catch (err) {
@@ -405,17 +449,14 @@ app.get('/api/weapon-stats', async (req, res) => {
 // to another device. Needs players.stat_hp / stat_dmg / stat_spd (supabase-migration-stat-points.sql).
 let _statPointsMissingLogged = false;
 app.post('/api/profile/stats', async (req, res) => {
-    const { nickname, password, stat_hp, stat_dmg, stat_spd } = req.body || {};
-    if (!nickname || !password || !supabase) return res.json({ ok: false });
+    const { nickname, token, password, stat_hp, stat_dmg, stat_spd } = req.body || {};
+    if (!nickname || !(token || password) || !supabase) return res.json({ ok: false });
     const hp  = Math.max(0, Math.min(10, Math.floor(+stat_hp  || 0)));
     const dmg = Math.max(0, Math.min(10, Math.floor(+stat_dmg || 0)));
     const spd = Math.max(0, Math.min(10, Math.floor(+stat_spd || 0)));
     if (hp + dmg + spd > 10) return res.json({ ok: false, error: 'Total depasit' });
     try {
-        const { data } = await supabase.from('players').select('password_hash').eq('nickname', nickname).single();
-        if (!data) return res.json({ ok: false });
-        const valid = await bcrypt.compare(password, data.password_hash);
-        if (!valid) return res.json({ ok: false });
+        if (!(await authenticated('POST /api/profile/stats', nickname, token, password))) return res.json({ ok: false });
         const { error } = await supabase.from('players').update({ stat_hp: hp, stat_dmg: dmg, stat_spd: spd, updated_at: new Date().toISOString() }).eq('nickname', nickname);
         if (error) {
             // Not saved: say so. Until the migration has run the columns do not exist: that one is logged once, anything else every time.
@@ -2248,6 +2289,13 @@ function closeRoom(code, room) {
 
 // ---------- CONEXIUNI ----------
 io.on('connection', (socket) => {
+    // every handler registered below is timed: one that holds the loop for more than SLOW_LOG_MS is logged as [SLOW] socket <event>
+    const _sockOn = socket.on.bind(socket);
+    socket.on = (ev, fn) => _sockOn(ev, function (...a) {
+        const t = performance.now();
+        try { return fn.apply(this, a); }
+        finally { const ms = performance.now() - t; if (ms >= SLOW_MS) slowLog('socket ' + ev, ms, 'handler'); }
+    });
     // the page build this server serves: a client on another build reloads (game.js _checkBuild)
     socket.emit('build', BUILD);
 
