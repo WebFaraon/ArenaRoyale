@@ -1,0 +1,127 @@
+{
+ "frame": {
+  "viewBox": "-40 0 80 144",
+  "topLeftFromBodyCenter": [
+   -40,
+   6
+  ],
+  "pxPerUnit": 4,
+  "size": [
+   320,
+   576
+  ]
+ },
+ "skins": {
+  "pi_eclipse": {
+   "weapon": "pistol",
+   "sprite": "pi_eclipse.png",
+   "hands": [
+    [
+     -9,
+     38
+    ],
+    [
+     9,
+     41
+    ]
+   ],
+   "muzzle": [
+    0,
+    88
+   ],
+   "accent": "#FFC53D",
+   "rarity": "mythic",
+   "cosmeticOnly": true,
+   "layers": {
+    "order": [
+     "corona",
+     "base"
+    ],
+    "corona": "layers/pi_eclipse_corona.png",
+    "base": "layers/pi_eclipse_base.png",
+    "note": "ambele sunt cadru complet 320x576; coroana se deseneaza INAINTEA bazei",
+    "pivots": {
+     "corona": [
+      0,
+      48
+     ]
+    },
+    "spinDegPerSecond": 22,
+    "spinBoostDegPerSecondOnShot": 160,
+    "spinBoostDecaySeconds": 0.25,
+    "staticAngleDeg": 8
+   },
+   "fx": {
+    "aura": {
+     "at": [
+      0,
+      48
+     ],
+     "radius": 44,
+     "color": "#966EFF",
+     "alpha": [
+      0.2,
+      0.27
+     ],
+     "pulseSeconds": 2.6
+    },
+    "rimLight": {
+     "at": [
+      0,
+      48
+     ],
+     "radius": 17,
+     "color": "#FFE28C",
+     "alpha": [
+      0.3,
+      0.8
+     ],
+     "note": "palpaie la fiecare foc"
+    },
+    "stardust": {
+     "shape": "stea cu 4 colturi",
+     "ratePerSecond": 8,
+     "spawn": "pe cercul coroanei [r 24..32 in jurul lui [0,48]]",
+     "speedBack": [
+      8,
+      26
+     ],
+     "life": [
+      0.8,
+      1.7
+     ],
+     "size": [
+      0.9,
+      2.2
+     ],
+     "color": "#FFE690",
+     "outline": "#0B0F1A",
+     "worldSpace": true
+    },
+    "muzzleRing": {
+     "seconds": 0.16,
+     "colors": [
+      "#0B0F1A",
+      "#FFD84A"
+     ],
+     "radius": [
+      3,
+      11
+     ],
+     "star": "#FFFFFF"
+    },
+    "bullets": {
+     "style": "stea-sageata",
+     "note": "doar aspectul gloantelor; viteza, dispersia, cadenta, raza si damage raman ale armei",
+     "colors": [
+      "#FFC53D",
+      "#FFF8D8"
+     ],
+     "outline": "#0B0F1A",
+     "glowRadius": 24,
+     "trail": "puncte violet #8A6BFF"
+    }
+   }
+  }
+ }
+}

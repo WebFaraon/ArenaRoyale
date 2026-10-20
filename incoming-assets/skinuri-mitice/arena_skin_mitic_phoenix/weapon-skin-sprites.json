@@ -1,0 +1,168 @@
+{
+ "frame": {
+  "viewBox": "-40 0 80 144",
+  "topLeftFromBodyCenter": [
+   -40,
+   6
+  ],
+  "pxPerUnit": 4,
+  "size": [
+   320,
+   576
+  ]
+ },
+ "skins": {
+  "sn_phoenix": {
+   "weapon": "sniper",
+   "sprite": "sn_phoenix.png",
+   "hands": [
+    [
+     -12,
+     39
+    ],
+    [
+     10.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    141
+   ],
+   "accent": "#FF6A2B",
+   "rarity": "mythic",
+   "fx": {
+    "aura": {
+     "at": [
+      0,
+      59
+     ],
+     "radius": 40,
+     "color": "#FF9632",
+     "alpha": [
+      0.34,
+      0.46
+     ],
+     "pulseSeconds": 1.4
+    },
+    "coreGlow": {
+     "at": [
+      0,
+      59
+     ],
+     "radius": [
+      9.5,
+      11
+     ],
+     "color": "#FFF6D6",
+     "alpha": 0.5
+    },
+    "wingBreath": {
+     "scaleX": 0.03,
+     "hz": 0.41
+    },
+    "embers": {
+     "ratePerSecond": 34,
+     "spawn": [
+      [
+       -18,
+       14
+      ],
+      [
+       18,
+       14
+      ],
+      [
+       -10,
+       8
+      ],
+      [
+       10,
+       8
+      ],
+      [
+       0,
+       6
+      ],
+      [
+       -39,
+       28
+      ],
+      [
+       39,
+       28
+      ],
+      [
+       -40,
+       41
+      ],
+      [
+       40,
+       41
+      ],
+      [
+       -36,
+       53
+      ],
+      [
+       36,
+       53
+      ],
+      [
+       0,
+       59
+      ]
+     ],
+     "speedBack": [
+      18,
+      60
+     ],
+     "side": 22,
+     "life": [
+      0.55,
+      1.15
+     ],
+     "size": [
+      1.4,
+      3.6
+     ],
+     "colors": [
+      "#FFF6D6",
+      "#FFE066",
+      "#FFB830",
+      "#FF7A1A",
+      "#C8102E",
+      "#5A0B1B"
+     ],
+     "worldSpace": true
+    },
+    "muzzleFlash": {
+     "seconds": 0.14,
+     "points": 9,
+     "radius": [
+      7,
+      19
+     ],
+     "colors": [
+      "#FFB830",
+      "#FFF6D6"
+     ],
+     "sparks": 6
+    },
+    "bullet": {
+     "color": "#FFF6D6",
+     "trail": [
+      "#FFF6D6",
+      "#FFBE3C",
+      "#FF5A14"
+     ],
+     "trailLength": 170,
+     "width": 11,
+     "glowRadius": 28,
+     "emberTrail": true,
+     "impactEmbers": 16
+    }
+   }
+  }
+ }
+}

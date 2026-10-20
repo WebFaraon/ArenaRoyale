@@ -1,0 +1,59 @@
+{
+ "pxPerUnit": 3,
+ "pivot": "centrul imaginii = pozitia obiectului in lume",
+ "seasons": [
+  "vara",
+  "toamna",
+  "iarna"
+ ],
+ "objects": {
+  "copac_mare": {
+   "name": "Copac mare",
+   "visualRadius": 84,
+   "frameRadius": 98,
+   "pngSize": 588
+  },
+  "copac_mediu": {
+   "name": "Copac mediu",
+   "visualRadius": 66,
+   "frameRadius": 80,
+   "pngSize": 480
+  },
+  "copac_mic": {
+   "name": "Copac mic",
+   "visualRadius": 48,
+   "frameRadius": 62,
+   "pngSize": 372
+  },
+  "brad": {
+   "name": "Brad",
+   "visualRadius": 62,
+   "frameRadius": 76,
+   "pngSize": 456
+  },
+  "tufis": {
+   "name": "Tufiș",
+   "visualRadius": 40,
+   "frameRadius": 54,
+   "pngSize": 324
+  },
+  "piatra_mare": {
+   "name": "Piatră mare",
+   "visualRadius": 52,
+   "frameRadius": 66,
+   "pngSize": 396
+  },
+  "piatra_medie": {
+   "name": "Piatră medie",
+   "visualRadius": 38,
+   "frameRadius": 52,
+   "pngSize": 312
+  },
+  "pietre_mici": {
+   "name": "Pietre mici",
+   "visualRadius": 38,
+   "frameRadius": 52,
+   "pngSize": 312
+  }
+ }
+}

@@ -1,0 +1,165 @@
+{
+ "frame": {
+  "viewBox": "-40 0 80 144",
+  "topLeftFromBodyCenter": [
+   -40,
+   6
+  ],
+  "pxPerUnit": 4,
+  "size": [
+   320,
+   576
+  ]
+ },
+ "skins": {
+  "sg_kraken": {
+   "weapon": "shotgun",
+   "sprite": "sg_kraken.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    109
+   ],
+   "accent": "#FF7FA8",
+   "rarity": "mythic",
+   "cosmeticOnly": true,
+   "layers": {
+    "order": [
+     "tentL",
+     "tentR",
+     "base"
+    ],
+    "tentL": "layers/sg_kraken_tentL.png",
+    "tentR": "layers/sg_kraken_tentR.png",
+    "base": "layers/sg_kraken_base.png",
+    "note": "toate sunt cadru complet 320x576; tentaculele se deseneaza INAINTEA bazei",
+    "pivots": {
+     "tentL": [
+      -6,
+      55
+     ],
+     "tentR": [
+      6,
+      55
+     ]
+    },
+    "swayDeg": 3.4,
+    "swayHz": 0.25,
+    "flickDegOnShot": 8,
+    "flickSeconds": 0.2
+   },
+   "fx": {
+    "aura": {
+     "at": [
+      0,
+      36
+     ],
+     "radius": 44,
+     "color": "#50DCE6",
+     "alpha": [
+      0.2,
+      0.27
+     ],
+     "pulseSeconds": 2.4
+    },
+    "bioSpots": {
+     "radius": 3.6,
+     "alpha": [
+      0.35,
+      0.75
+     ],
+     "pulseSeconds": 2.9,
+     "spots": [
+      [
+       -6.4,
+       40,
+       "#7DFFF0"
+      ],
+      [
+       6.2,
+       36,
+       "#FF7FA8"
+      ],
+      [
+       -4.8,
+       30,
+       "#FF7FA8"
+      ],
+      [
+       4.6,
+       25,
+       "#7DFFF0"
+      ],
+      [
+       -2.6,
+       20,
+       "#7DFFF0"
+      ],
+      [
+       1.2,
+       42,
+       "#7DFFF0"
+      ],
+      [
+       3,
+       17,
+       "#FF7FA8"
+      ]
+     ]
+    },
+    "bubbles": {
+     "ratePerSecond": 11,
+     "spawn": "langa tentacule [x +-8..24, y 52..106]",
+     "speedBack": [
+      6,
+      20
+     ],
+     "life": [
+      0.9,
+      1.8
+     ],
+     "size": [
+      1.2,
+      3.6
+     ],
+     "worldSpace": true
+    },
+    "muzzleInk": {
+     "seconds": 0.14,
+     "points": 9,
+     "radius": [
+      7,
+      17
+     ],
+     "colors": [
+      "#0B0F1A",
+      "#4B2C86",
+      "#7DFFF0"
+     ],
+     "bubbles": 10
+    },
+    "pellets": {
+     "style": "bula",
+     "note": "doar aspectul alicelor; numarul, dispersia, viteza si raza raman cele ale armei",
+     "colors": [
+      "#6FDCEE",
+      "#E9FBFF"
+     ],
+     "outline": "#0B0F1A",
+     "glowRadius": 16,
+     "trailBubbles": true,
+     "impactRing": true
+    }
+   }
+  }
+ }
+}

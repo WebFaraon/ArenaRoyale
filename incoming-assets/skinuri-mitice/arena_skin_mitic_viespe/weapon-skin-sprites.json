@@ -1,0 +1,131 @@
+{
+ "frame": {
+  "viewBox": "-40 0 80 144",
+  "topLeftFromBodyCenter": [
+   -40,
+   6
+  ],
+  "pxPerUnit": 4,
+  "size": [
+   320,
+   576
+  ]
+ },
+ "skins": {
+  "smg_hornet": {
+   "weapon": "smg",
+   "sprite": "smg_hornet.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     12,
+     62
+    ]
+   ],
+   "muzzle": [
+    0,
+    109
+   ],
+   "accent": "#FFC21F",
+   "rarity": "mythic",
+   "cosmeticOnly": true,
+   "layers": {
+    "order": [
+     "wingL",
+     "wingR",
+     "base"
+    ],
+    "wingL": "layers/smg_hornet_wingL.png",
+    "wingR": "layers/smg_hornet_wingR.png",
+    "base": "layers/smg_hornet_base.png",
+    "note": "toate sunt cadru complet 320x576; aripile se deseneaza INAINTEA bazei",
+    "pivots": {
+     "wingL": [
+      -8,
+      36
+     ],
+     "wingR": [
+      8,
+      36
+     ]
+    },
+    "buzzDeg": 6,
+    "buzzDegOnShot": 9,
+    "buzzHz": 30,
+    "ghostFrameAlpha": 0.32
+   },
+   "fx": {
+    "aura": {
+     "at": [
+      0,
+      56
+     ],
+     "radius": 46,
+     "color": "#FFC21F",
+     "alpha": [
+      0.2,
+      0.27
+     ],
+     "pulseSeconds": 2.1
+    },
+    "abdomenPulse": {
+     "seconds": 0.16,
+     "from": [
+      0,
+      57
+     ],
+     "to": [
+      0,
+      96
+     ],
+     "color": "#FFE278",
+     "radius": 8,
+     "note": "la fiecare foc, o lumina aleargă pe abdomen spre ac"
+    },
+    "pollen": {
+     "shape": "hexagon",
+     "ratePerSecond": 9,
+     "spawn": "langa aripi [x +-14..36, y 16..40]",
+     "speedBack": [
+      10,
+      30
+     ],
+     "life": [
+      0.8,
+      1.6
+     ],
+     "size": [
+      1,
+      2.4
+     ],
+     "color": "#FFC21F",
+     "outline": "#0B0F1A",
+     "worldSpace": true
+    },
+    "muzzleFlash": {
+     "seconds": 0.06,
+     "shape": "stea cu 4 colturi",
+     "colors": [
+      "#0B0F1A",
+      "#FFD84A",
+      "#FFFFFF"
+     ]
+    },
+    "bullets": {
+     "style": "ac",
+     "note": "doar aspectul gloantelor; viteza, dispersia, cadenta, raza si damage raman ale armei",
+     "colors": [
+      "#FFC21F",
+      "#FFF3B0"
+     ],
+     "outline": "#0B0F1A",
+     "glowRadius": 22,
+     "trailPollen": true
+    }
+   }
+  }
+ }
+}
