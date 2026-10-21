@@ -2963,9 +2963,11 @@ button:disabled { cursor: not-allowed; }
     border-radius: 16px;
     overflow: hidden;
     padding-bottom: 5px;
-    --sh-rest:  inset 0 -7px 0 var(--cl), inset 0 4px 0 rgba(255, 255, 255, .34), 0 5px 0 rgba(0, 0, 0, .5), 0 14px 22px -8px rgba(0, 0, 0, .6);
-    --sh-lift:  inset 0 -7px 0 var(--cl), inset 0 4px 0 rgba(255, 255, 255, .4), 0 8px 0 rgba(0, 0, 0, .5), 0 20px 28px -10px rgba(0, 0, 0, .65);
-    --sh-press: inset 0 -3px 0 var(--cl), inset 0 2px 0 rgba(255, 255, 255, .2), 0 1px 0 rgba(0, 0, 0, .5), 0 4px 8px -3px rgba(0, 0, 0, .55);
+    /* the glow is the colour of the key, like a lit button; it weakens when pressed and is gone when disabled */
+    --glow: rgba(255, 122, 31, .5);
+    --sh-rest:  inset 0 -7px 0 var(--cl), inset 0 4px 0 rgba(255, 255, 255, .34), 0 5px 0 rgba(0, 0, 0, .5), 0 14px 22px -8px rgba(0, 0, 0, .6), 0 0 32px 2px var(--glow);
+    --sh-lift:  inset 0 -7px 0 var(--cl), inset 0 4px 0 rgba(255, 255, 255, .4), 0 8px 0 rgba(0, 0, 0, .5), 0 20px 28px -10px rgba(0, 0, 0, .65), 0 0 44px 4px var(--glow);
+    --sh-press: inset 0 -3px 0 var(--cl), inset 0 2px 0 rgba(255, 255, 255, .2), 0 1px 0 rgba(0, 0, 0, .5), 0 4px 8px -3px rgba(0, 0, 0, .55), 0 0 14px var(--glow);
 }
 .btn-play .ic { width: 1.05em; height: 1.05em; }
 .btn-play:not(:disabled)::after {
@@ -3854,7 +3856,7 @@ button:disabled { cursor: not-allowed; }
 /* ---------- play card ---------- */
 .play-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
 .play-card .gm-card { min-height: 62px; }
-.play-card .btn-play { --c: var(--c-gold); --cl: var(--l-gold); --ch: var(--h-gold); min-height: 84px; margin-top: 6px; font-size: 2rem; }
+.play-card .btn-play { --c: var(--c-gold); --cl: var(--l-gold); --ch: var(--h-gold); --glow: rgba(255, 199, 46, .6); min-height: 84px; margin-top: 6px; font-size: 2rem; }
 .join-label { margin-top: 2px; }
 .play-card .join-input { letter-spacing: .06em; font-size: .9rem; text-transform: none; }
 .play-card .join-input:not(:placeholder-shown) { letter-spacing: .3em; text-transform: uppercase; font-size: 1rem; }

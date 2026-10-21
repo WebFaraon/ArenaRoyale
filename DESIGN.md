@@ -265,7 +265,7 @@ Softly rounded toy forms: 8px chips, 10px badges and small keys, 12px buttons an
 ### Buttons
 - **Shape:** 12px radius with a 3px ink outline; labels sit 3px high because the lip takes the bottom.
 - **Primary:** toy orange, white label with the medium stroke, 48px minimum. Variants by meaning: green accept, gold claim and unlock, sky search and invite, red exit.
-- **PLAY:** the one big key, gold (`toy-gold`) so it never reads as the orange Battle Royale block above it; 84px tall and 2rem on wide screens (70px under 820px tall, 62px on phones), 16px radius, a deeper 7px lip. Every 3.8s a soft light band sweeps across it (only while it is enabled, off under reduced motion). It pops in with a small spring when a mode is chosen.
+- **PLAY:** the one big key, gold (`toy-gold`) so it never reads as the orange Battle Royale block above it; 84px tall and 2rem on wide screens (70px under 820px tall, 62px on phones), 16px radius, a deeper 7px lip. Every 3.8s a soft light band sweeps across it (only while it is enabled, off under reduced motion). It also carries a glow in its own color (`0 0 32px 2px` at rest, wider on hover, weaker when pressed, none when disabled): the one block with a fifth shadow layer, because PLAY is the key to press. It pops in with a small spring when a mode is chosen.
 - **Neutral:** slate blocks with white labels, for secondary actions, change, settings, minus and the modal closes (which flash red while pressed).
 - **Hover (pointer only):** lift 2px to the lifted shadow and the hover face; icons give a small wiggle.
 - **Disabled:** a grey-slate face (`#34424B`), half-white label, a shallow lip and no lift.
