@@ -35,6 +35,18 @@
     { "id": "pi_tiger",     "weapon": "pistol",  "name": "Tigru",       "rarity": "rare",      "unlock": { "kills": 50 } },
     { "id": "pi_lava",      "weapon": "pistol",  "name": "Lavă",        "rarity": "rare" },
     { "id": "pi_galaxy",    "weapon": "pistol",  "name": "Galaxie",     "rarity": "epic" },
-    { "id": "pi_raygun",    "weapon": "pistol",  "name": "Raygun",      "rarity": "legendary" }
+    { "id": "pi_raygun",    "weapon": "pistol",  "name": "Raygun",      "rarity": "legendary" },
+    { "id": "gr_forest",     "weapon": "ar_grizzly", "name": "Pădure", "rarity": "rare", "unlock": { "kills": 50 } },
+    { "id": "gr_flannel",    "weapon": "ar_grizzly", "name": "Flanel", "rarity": "rare" },
+    { "id": "gr_polar",      "weapon": "ar_grizzly", "name": "Polar", "rarity": "epic" },
+    { "id": "gr_claw",       "weapon": "ar_grizzly", "name": "Rege", "rarity": "legendary" },
+    { "id": "fa_urban",      "weapon": "ar_falcon", "name": "Urban", "rarity": "rare", "unlock": { "kills": 50 } },
+    { "id": "fa_rally",      "weapon": "ar_falcon", "name": "Raliu", "rarity": "rare" },
+    { "id": "fa_neon",       "weapon": "ar_falcon", "name": "Neon", "rarity": "epic" },
+    { "id": "fa_hawk",       "weapon": "ar_falcon", "name": "Șoim", "rarity": "legendary" },
+    { "id": "ti_snow",       "weapon": "ar_titan", "name": "Zăpadă", "rarity": "rare", "unlock": { "kills": 50 } },
+    { "id": "ti_hazard",     "weapon": "ar_titan", "name": "Șantier", "rarity": "rare" },
+    { "id": "ti_crystal",    "weapon": "ar_titan", "name": "Cristal", "rarity": "epic" },
+    { "id": "ti_golem",      "weapon": "ar_titan", "name": "Golem", "rarity": "legendary" }
   ]
 }

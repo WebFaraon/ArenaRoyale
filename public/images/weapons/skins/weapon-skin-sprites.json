@@ -468,6 +468,234 @@
     82
    ],
    "accent": "#35F0FF"
+  },
+  "gr_forest": {
+   "weapon": "ar_grizzly",
+   "sprite": "gr_forest.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    108
+   ],
+   "accent": "#8BD62A"
+  },
+  "gr_flannel": {
+   "weapon": "ar_grizzly",
+   "sprite": "gr_flannel.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    108
+   ],
+   "accent": "#FF5A36"
+  },
+  "gr_polar": {
+   "weapon": "ar_grizzly",
+   "sprite": "gr_polar.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    110
+   ],
+   "accent": "#5FD6F5"
+  },
+  "gr_claw": {
+   "weapon": "ar_grizzly",
+   "sprite": "gr_claw.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    120
+   ],
+   "accent": "#FF5FA8"
+  },
+  "fa_urban": {
+   "weapon": "ar_falcon",
+   "sprite": "fa_urban.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     13.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    112
+   ],
+   "accent": "#14B8A6"
+  },
+  "fa_rally": {
+   "weapon": "ar_falcon",
+   "sprite": "fa_rally.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     13.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    112
+   ],
+   "accent": "#FFD23F"
+  },
+  "fa_neon": {
+   "weapon": "ar_falcon",
+   "sprite": "fa_neon.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     13.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    114
+   ],
+   "accent": "#FF3DCB"
+  },
+  "fa_hawk": {
+   "weapon": "ar_falcon",
+   "sprite": "fa_hawk.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     13.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    118
+   ],
+   "accent": "#FFC53D"
+  },
+  "ti_snow": {
+   "weapon": "ar_titan",
+   "sprite": "ti_snow.png",
+   "hands": [
+    [
+     -13.5,
+     40
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    98
+   ],
+   "accent": "#35C8FF"
+  },
+  "ti_hazard": {
+   "weapon": "ar_titan",
+   "sprite": "ti_hazard.png",
+   "hands": [
+    [
+     -13.5,
+     40
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    98
+   ],
+   "accent": "#FFC21F"
+  },
+  "ti_crystal": {
+   "weapon": "ar_titan",
+   "sprite": "ti_crystal.png",
+   "hands": [
+    [
+     -13.5,
+     40
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    102
+   ],
+   "accent": "#C9A6FF"
+  },
+  "ti_golem": {
+   "weapon": "ar_titan",
+   "sprite": "ti_golem.png",
+   "hands": [
+    [
+     -13.5,
+     40
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    110
+   ],
+   "accent": "#3DF2D0"
   }
  }
 }
