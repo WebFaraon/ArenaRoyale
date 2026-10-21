@@ -18,7 +18,7 @@ Dependențe directe: express, socket.io, socket.io-msgpack-parser, notepack.io, 
 - `game-physics.js` — coliziuni pure (glonț măturat cerc/segment). `missions.js` — pool de misiuni zilnice (6/zi/jucător).
 - `public/index.html` — o singură pagină cu toate ecranele (auth, lobby, Arsenal, așteptare, joc, overlay-uri). Serverul o stampilează cu hash-ul build-ului (`?v=`).
 - `public/game.js` — clientul: UI de lobby/Arsenal/prieteni, `initGame` (socket, camere) și `startGameLoop` (rețea, predicție, desen). **Fișier LF.**
-- `public/arena-art.js` — desenul hărții: sol (vectorial), copaci/pietre din sprite-uri PNG pe 3 sezoane, zombi ca bitmap-uri, zona (vectorial), kit-uri.
+- `public/arena-art.js` — desenul hărții: sol (vectorial), copaci/pietre din sprite-uri PNG pe 3 sezoane, zombi din SVG-urile din `public/images/zombies/` (pachetul Obiecte Arena, scalate la hitbox-ul serverului, bitmap per tip), zona (vectorial), kit-uri.
 - `public/ground-layer.js` — solul static (iarbă, marcaje, chenar) din dale în cache; `ARGround`.
 - `public/interp.js` — interpolarea pe timpul serverului (jucători, zombi, gloanțe); `ARInterp`.
 - `public/netproto.js` — formatul pachetului `gs2` (UMD: server, client, teste); `ARNet`.

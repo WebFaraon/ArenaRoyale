@@ -4419,11 +4419,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ctx.fillText(`${label}:${curStr}`, x + 2, y + 1);
     }
 
-    // Zombie looks per type (normal, runner, tank); hitbox radii live on the server
+    // Zombie looks per type (normal, runner, tank). r is the hitbox radius of the server (PVE_ZOMBIE_DEFS; BR zombies
+    // are all the first type): the new art is scaled to it (ARArena.drawZombieSprite), so the body you see is what
+    // a bullet hits. The colours are for the old vector drawing, used only until the pictures are in.
     const _ZB_DEFS = [
-        { r: 16, maxHp: 100, bodyColor: '#5E9253', innerColor: '#7DB26A', armColor: '#4A7A42', armStroke: '#25422A', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },
-        { r: 12, maxHp: 50,  bodyColor: '#C27A33', innerColor: '#E39A4D', armColor: '#9D5F26', armStroke: '#4C2D10', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },
-        { r: 24, maxHp: 400, bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
+        { r: 20, maxHp: 100, bodyColor: '#5E9253', innerColor: '#7DB26A', armColor: '#4A7A42', armStroke: '#25422A', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },
+        { r: 16, maxHp: 50,  bodyColor: '#C27A33', innerColor: '#E39A4D', armColor: '#9D5F26', armStroke: '#4C2D10', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },
+        { r: 28, maxHp: 400, bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
     ];
     const _ZB_BAR_COLORS = ['rgba(0,0,0,0.55)', '#46D17C', '#FFC52E', '#FF4155'];
     const FOOT_STEPS     = 10;
@@ -4960,24 +4962,39 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
 
         // --- ZOMBI ---
-        // Bodies come from cached bitmaps (ARArena.drawZombieSprite); the HP bars of all zombies
-        // are then drawn as four fills in total (track + one per colour) instead of two each.
+        // The art is a cached bitmap per type (ARArena.drawZombieSprite); the shadows of all the zombies are one fill
+        // under them all; the HP bars are then drawn as four fills in total (track + one per colour) instead of two each.
         const _zNow = performance.now();
         let _zVisible = 0;
         for (let _zi = 0; _zi < _zombies.length; _zi++) {
             const _zb = _zombies[_zi];
             if (!_zb || _zb.hp < 0) continue;
             const _zbx = _zb.x, _zby = _zb.y;
-            const _zType = _zb.type || 0;
-            const _zDef = _ZB_DEFS[_zType] || _ZB_DEFS[0];
+            const _zDef = _ZB_DEFS[_zb.type || 0] || _ZB_DEFS[0];
             const _zbR = _zDef.r;
             if (_zbx + _zbR + 50 < visLeft || _zbx - _zbR - 50 > visRight || _zby + _zbR + 50 < visTop || _zby - _zbR - 50 > visBottom) continue;
             _zVisibleList[_zVisible++] = _zb;
-            // Simplificat la distanta mare — reduce draw calls cand zombi sunt mici pe ecran
+        }
+        if (_zVisible > 0) {
+            ctx.setTransform(_wm);
+            ctx.beginPath();
+            for (let _zi = 0; _zi < _zVisible; _zi++) {
+                const _zb = _zVisibleList[_zi], _zType = _zb.type || 0, _zDef = _ZB_DEFS[_zType] || _ZB_DEFS[0];
+                if (_zDef.r * ZOOM >= 5) ARArena.addZombieShadow(ctx, _zb, _zDef, _zType);
+            }
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.fill();
+        }
+        for (let _zi = 0; _zi < _zVisible; _zi++) {
+            const _zb = _zVisibleList[_zi];
+            const _zType = _zb.type || 0;
+            const _zDef = _ZB_DEFS[_zType] || _ZB_DEFS[0];
+            const _zbR = _zDef.r;
+            // Simplified at long range: a plain disc, when the zombies are tiny on screen
             if (_zbR * ZOOM < 5) {
                 ctx.setTransform(_wm);
                 ctx.fillStyle = _zDef.bodyColor;
-                ctx.beginPath(); ctx.arc(_zbx, _zby, _zbR, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(_zb.x, _zb.y, _zbR, 0, Math.PI*2); ctx.fill();
                 continue;
             }
             ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow);

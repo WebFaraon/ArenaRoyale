@@ -335,11 +335,10 @@
     // a wave of new zombies never turns into a frame spike.
     const SPRITE_BUDGET = 4;
     const STABLE_MS = 300;
-    const ZOMBIE_FRAMES = 16; // arm sway steps per cycle (~50 ms each, under a pixel apart)
     let budget = SPRITE_BUDGET, pixScale = 0, scaleSince = 0, scaleStable = false;
     const propSprites = new WeakMap();
     const CPU_CTX = { willReadFrequently: true };   // obstacle object -> {c, scale}
-    const zombieSprites = new Map();     // 'type|frame' -> {c, scale, pad}
+    const zombieSprites = new Map();     // type index (and 'kit') -> {c, scale, pad}
 
     // burst: a one-off larger budget (first frame of a match, before anything is cached)
     let burstNext = 0;
@@ -543,34 +542,54 @@
         else drawRock(ctx, x, y, o.r, rot);
     }
 
-    // Zombies: one bitmap per type and sway step, drawn rotated.
-    // `m` is the world transform (ctx.getTransform() taken once per frame); the caller restores it.
-    function zombieSway(zb, now) {
-        const ph = now * 0.008 + (zb.x + zb.y) * 0.05;
-        let f = Math.floor((ph / TAU - Math.floor(ph / TAU)) * ZOMBIE_FRAMES);
-        if (f >= ZOMBIE_FRAMES) f = 0;
-        return f;
+    // ---------- zombies: the Obiecte Arena art, one SVG per type ----------
+    // public/images/zombies/<id>.svg (the baked-in shadow cut out: it is drawn apart, see addZombieShadow). Seen
+    // from above and facing down (+y) in the picture, whose origin is the zombie's centre. Scaled so the outline
+    // circle of the body is as big as the server's hitbox for the type (def.r), so what you see is what a bullet
+    // hits, and turned to face zb.angle (0 = +x), i.e. by angle - 90 degrees. Rastered from the vector at the
+    // current pixel scale like the other sprites, so it stays sharp at any zoom. Until a picture is in (or if it
+    // is missing) the old vector drawing is used, so a zombie is never invisible.
+    // view: the picture's viewBox; disc: the outer radius of the body's outline circle; sh: the shadow ellipse
+    // (cx, cy, rx, ry) of the original art, in picture units.
+    const ZOMBIE_ART = [
+        { id: 'zombi',       view: [-70, -52.5, 140, 140], disc: 38.5,  sh: [7, 12, 38.5, 35] },   // normal
+        { id: 'zombi_rapid', view: [-60, -45, 120, 120],   disc: 29.95, sh: [7, 12, 33, 30] },     // runner
+        { id: 'zombi_tanc',  view: [-90, -67.5, 180, 180], disc: 49.2,  sh: [7, 12, 49.5, 45] },   // tank
+    ];
+    const zombieImgs = ZOMBIE_ART.map(function (a) {
+        const e = { img: new Image(), state: 0 };   // 0 loading, 1 ready, 2 failed
+        e.img.onload = function () { e.state = e.img.naturalWidth > 0 ? 1 : 2; };
+        e.img.onerror = function () { e.state = 2; console.warn('[zombi] desen lipsa: ' + a.id + ' (se deseneaza varianta veche)'); };
+        e.img.src = window.arAsset ? window.arAsset('/images/zombies/' + a.id + '.svg') : '/images/zombies/' + a.id + '.svg';
+        return e;
+    });
+    // The shadow stays down and to the right whichever way the zombie faces (the trees' is the same), so it is
+    // not part of the turning picture. Adds one ellipse to the current path; the caller fills them all at once.
+    function addZombieShadow(ctx, zb, def, typeKey) {
+        const art = ZOMBIE_ART[typeKey] || ZOMBIE_ART[0], k = def.r / art.disc;
+        const cx = zb.x + art.sh[0] * k, cy = zb.y + art.sh[1] * k, rx = art.sh[2] * k, ry = art.sh[3] * k;
+        ctx.moveTo(cx + rx, cy);
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, TAU);
     }
+    // `m` is the world transform (ctx.getTransform() taken once per frame); the caller restores it.
     function drawZombieSprite(ctx, m, zb, def, typeKey, now) {
-        const R = def.r;
-        const f = zombieSway(zb, now);
-        const key = typeKey + '|' + f;
-        const pad = Math.max(R * 1.85, R + 11) + 2;
-        const old = zombieSprites.get(key);
-        const s = sprite(old, pad, function (g) {
-            const swayNow = (f / ZOMBIE_FRAMES) * TAU / 0.008; // a time whose sway phase is this step
-            drawZombie(g, { x: 0, y: 0, angle: 0, type: zb.type }, def, R, swayNow);
-        });
-        if (s !== old && s) zombieSprites.set(key, s);
-        const cs = Math.cos(zb.angle || 0), sn = Math.sin(zb.angle || 0);
-        if (s) {
-            ctx.setTransform(m.a * cs + m.c * sn, m.b * cs + m.d * sn, m.c * cs - m.a * sn, m.d * cs - m.b * sn,
-                             m.a * zb.x + m.c * zb.y + m.e, m.b * zb.x + m.d * zb.y + m.f);
-            ctx.drawImage(s.c, -pad, -pad, pad * 2, pad * 2);
-        } else {
-            ctx.setTransform(m);
-            drawZombie(ctx, zb, def, R, now);
+        const art = ZOMBIE_ART[typeKey], z = zombieImgs[typeKey];
+        let s = null, pad = 0;
+        if (art && z.state === 1) {
+            const k = def.r / art.disc, vx = art.view[0], vy = art.view[1], vw = art.view[2], vh = art.view[3];
+            pad = Math.max(-vx, -vy, vx + vw, vy + vh) * k + 2;
+            const old = zombieSprites.get(typeKey);
+            s = sprite(old, pad, function (g) {
+                g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+                g.drawImage(z.img, vx * k, vy * k, vw * k, vh * k);
+            });
+            if (s !== old && s) zombieSprites.set(typeKey, s);
         }
+        if (!s) { ctx.setTransform(m); drawZombie(ctx, zb, def, def.r, now); return; }
+        const a = (zb.angle || 0) - Math.PI / 2, cs = Math.cos(a), sn = Math.sin(a);
+        ctx.setTransform(m.a * cs + m.c * sn, m.b * cs + m.d * sn, m.c * cs - m.a * sn, m.d * cs - m.b * sn,
+                         m.a * zb.x + m.c * zb.y + m.e, m.b * zb.x + m.d * zb.y + m.f);
+        ctx.drawImage(s.c, -pad, -pad, pad * 2, pad * 2);
     }
     // ---------- medkit: a red toy block with a white cross, hovering over its shadow ----------
     const KIT_HALF = 16, KIT_PAD = 21;
@@ -758,6 +777,7 @@
         // how an obstacle looks (tests): sprite id, mirrored, scale, crown radius, crown opacity; null before map-objects.json is in
         mapVariant: function (o) { const v = variantOf(o); return v ? { id: v.id, flip: v.flip, k: v.k, nom: v.nom, crownR: v.crownR, alpha: v.alpha } : null; },
         drawZombieSprite: drawZombieSprite,
+        addZombieShadow: addZombieShadow,
         drawGrass: drawGrass,
         drawKit: drawKit,
         clearSprites: clearSprites,
