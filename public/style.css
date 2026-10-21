@@ -1836,6 +1836,12 @@ button:disabled { cursor: not-allowed; }
    ========================================================================== */
 
 #screen-game { position: relative; width: 100vw; height: 100vh; height: 100dvh; background: var(--ground); }
+/* In a match the mouse is the aim: a crosshair (public/images/ui/crosshair.svg, 32px, the "cruce goala" of the
+   Obiecte Arena pack, hotspot in the middle) instead of the arrow. Buttons and links keep their own pointer.
+   32px is the largest size Chrome always shows. Not on touch screens. */
+@media (hover: hover) and (pointer: fine) {
+    #screen-game { cursor: url('/images/ui/crosshair.svg') 16 16, crosshair; }
+}
 #gameCanvas { display: block; width: 100%; height: 100%; }
 
 #game-ui {
