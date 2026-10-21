@@ -923,8 +923,8 @@ button:disabled { cursor: not-allowed; }
 .chest-row-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
 .chest-row-title { margin: 0; }
 .chest-row-sub { color: var(--chalk-3); font-size: .78rem; font-weight: 600; }
-.chest-slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.chest-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border: 1px dashed var(--rule-hi); border-radius: var(--r); color: var(--chalk-3); }
+.chest-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.chest-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 10px 4px; border: 1px dashed var(--rule-hi); border-radius: var(--r); color: var(--chalk-3); }
 .chest-slot-icon { width: 1.3rem; height: 1.3rem; stroke-width: 1.75; }
 .chest-slot-label { font-weight: 700; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; }
 
@@ -4955,7 +4955,7 @@ button:disabled { cursor: not-allowed; }
 #fs-btn-android .pic { width: 1.8em; height: 1.8em; }
 .gm-icon.pic { padding: 0; background: none; border: 0; border-radius: 0; filter: none; }   /* the art has its own outline: no dark tile */
 .ars-wrow-kills .pic { width: 1.5em; height: 1.5em; }
-.chest-slot-icon.pic { width: 2.9rem; height: 2.9rem; margin: -6px 0; }   /* the empty chest art, until chests exist */
+.chest-slot-icon.pic { width: 2.9rem; height: auto; max-width: 100%; aspect-ratio: 1; margin: -6px 0; }   /* shrinks with a narrow column instead of pushing the last slot out */   /* the empty chest art, until chests exist */
 
 /* ---------- Black box (blackbox.js): the small "recording" pill, bottom left, only while it runs ---------- */
 .bb-rec {
