@@ -4508,10 +4508,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const H    = canvas.height / dpr;
         let ZOOM = Math.min(W / VIEW_W, H / VIEW_H); // recalculat dupa dtSec
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
         const rState = getInterpolatedState();
-        if (!rState) { lastTime = timestamp; return; }
+        if (!rState) { ctx.clearRect(0, 0, canvas.width, canvas.height); lastTime = timestamp; return; }
 
         const dtSec = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.05) : 0.016;
         lastTime = timestamp;
@@ -4520,6 +4518,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const _targetZoom = (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON]).cameraZoom;
         _zoomFactor += (_targetZoom - _zoomFactor) * Math.min(1, dtSec * 4);
         ZOOM = Math.min(W / (VIEW_W * _zoomFactor), H / (VIEW_H * _zoomFactor));
+        // Device pixels per world unit as a multiple of 1/256 (a change of at most 0.2%): a 256-unit ground tile is then a whole
+        // number of pixels and the ground and the zone blit 1:1 instead of being filtered (see ground-layer.js).
+        const _sq = Math.max(1 / 256, Math.round(dpr * ZOOM * 256) / 256);
+        ZOOM = _sq / dpr;
 
         // ── Local position prediction (runs every rAF frame) ─────────────────
         // Same rules as the server tick: move, clamp to the arena, slide out of obstacles (and the
@@ -4678,11 +4680,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const camX = specTarget ? specTarget.x : (predX !== null ? predX : (me ? me.x : ARENA_W / 2));
         const camY = specTarget ? specTarget.y : (predY !== null ? predY : (me ? me.y : ARENA_H / 2));
 
+        // The camera sits on whole device pixels: _ox/_oy are where world (0, 0) lands, so everything static blits at the same
+        // sub-pixel phase, and the ground can blit 1:1. Moving things are still drawn at their exact (fractional) positions.
+        const _ox = Math.round(canvas.width / 2 - camX * _sq), _oy = Math.round(canvas.height / 2 - camY * _sq);
         ctx.save();
-        ctx.scale(dpr, dpr);
-        ctx.translate(W / 2, H / 2);
-        ctx.scale(ZOOM, ZOOM);
-        ctx.translate(-camX, -camY);
+        ctx.setTransform(_sq, 0, 0, _sq, _ox, _oy);
 
         // World transform, read once: sprites drawn with setTransform start from it (no save/restore)
         const _wm = ctx.getTransform();
@@ -4696,13 +4698,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ARGround.beginFrame(gameControl.countdownActive || _spriteBurst0);
         const _lblScale = dpr * ZOOM;
 
-        const visLeft   = camX - W / (2 * ZOOM);
-        const visTop    = camY - H / (2 * ZOOM);
-        const visRight  = visLeft + W / ZOOM;
-        const visBottom = visTop  + H / ZOOM;
+        const visLeft   = -_ox / _sq;
+        const visTop    = -_oy / _sq;
+        const visRight  = (canvas.width - _ox) / _sq;
+        const visBottom = (canvas.height - _oy) / _sq;
 
         // --- FUNDAL + DECORATIUNI + MARCAJE --- (iarba, zone de culoare, marcaje, chenar: dale din cache, ground-layer.js)
-        ARGround.draw(ctx, visLeft, visTop, visRight, visBottom, _lblScale, ARArena.isScaleStable(), _gNow);
+        // The ground paints every pixel of the view (tiles, or vectors where a tile is not built, and the dark surround), so the
+        // frame needs no clear before it: one full-canvas fill less (~0.2 ms/frame at 1280x720 in a software raster).
+        if (!ARGround.paintsAll()) ctx.clearRect(visLeft, visTop, visRight - visLeft, visBottom - visTop);
+        ARGround.draw(ctx, visLeft, visTop, visRight, visBottom, _lblScale, ARArena.isScaleStable(), _gNow, _ox, _oy);
         // (no flowers: the pitch stays clean)
         // Particule ambient (world-space, se misca independent de camera)
         {
@@ -4737,7 +4742,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
 
         // --- ZONA --- (BR only)
-        if (_gameMode !== 'pve') ARArena.drawZone(ctx, visLeft, visTop, visRight, visBottom, _zone, ZOOM);
+        if (_gameMode !== 'pve') ARArena.drawZone(ctx, visLeft, visTop, visRight, visBottom, _zone, ZOOM, _ox, _oy, _lblScale);
 
         // --- INDICATOR TRAIECTORIE ---
         if ((_aimActive || isShooting || mouseActive) && me && me.alive && !gameEnded) {
@@ -5248,23 +5253,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (!gameEnded && _gameMode !== 'pve' && _zone.r >= 0 && predX !== null) {
             const _distZ = Math.hypot(predX - _zone.cx, predY - _zone.cy);
             if (_zone.r === 0 || _distZ > _zone.r) {
-                // a small pre-painted gradient (alpha 0 -> 1) stretched over the screen and faded by the pulse: no gradient
-                // object and no string per frame
-                if (_vig.w !== W || _vig.h !== H || _vig.dpr !== dpr) {
-                    const vw = Math.max(8, Math.ceil(W / 4)), vh = Math.max(8, Math.ceil(H / 4)), k = vw / W;
+                // a pre-painted gradient (alpha 0 -> 1) at the canvas's own size, blitted 1:1 and faded by the pulse: no gradient
+                // object and no string per frame. (It used to be a quarter-size one stretched over the screen: the filtering of
+                // that stretch cost ~3.9 ms/frame at 1280x720 in a software raster, ~0.9 ms for the 1:1 blit.)
+                const _vcw = canvas.width, _vch = canvas.height;
+                if (_vig.w !== _vcw || _vig.h !== _vch) {
                     if (!_vig.c) _vig.c = document.createElement('canvas');
-                    _vig.c.width = vw; _vig.c.height = vh;
+                    _vig.c.width = _vcw; _vig.c.height = _vch;
                     const vg = _vig.c.getContext('2d');
-                    const gr = vg.createRadialGradient(vw / 2, vh / 2, H * 0.25 * k, vw / 2, vh / 2, H * 0.75 * k);
+                    const gr = vg.createRadialGradient(_vcw / 2, _vch / 2, _vch * 0.25, _vcw / 2, _vch / 2, _vch * 0.75);
                     gr.addColorStop(0, 'rgba(220,0,0,0)'); gr.addColorStop(1, 'rgba(220,0,0,1)');
-                    vg.fillStyle = gr; vg.fillRect(0, 0, vw, vh);
-                    _vig.w = W; _vig.h = H; _vig.dpr = dpr;
+                    vg.fillStyle = gr; vg.fillRect(0, 0, _vcw, _vch);
+                    _vig.w = _vcw; _vig.h = _vch;
                 }
-                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                ctx.globalAlpha = Math.round((0.25 + 0.15 * Math.sin(performance.now() / 160)) * 100) / 100;
-                ctx.drawImage(_vig.c, 0, 0, W, H);
-                ctx.globalAlpha = 1;
                 ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.globalAlpha = Math.round((0.25 + 0.15 * Math.sin(performance.now() / 160)) * 100) / 100;
+                ctx.drawImage(_vig.c, 0, 0);
+                ctx.globalAlpha = 1;
             }
         }
 
