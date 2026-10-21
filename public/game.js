@@ -2861,6 +2861,7 @@ function _needleBulletSprite(gun, scale) {
         g.beginPath(); g.moveTo(8 * K, 0); g.lineTo(-3 * K, -1.2 * K); g.lineTo(-3 * K, 1.2 * K); g.closePath(); g.fillStyle = b.colors[1]; g.fill();
     });
     s.box = box;
+    s.noTrail = true;   // the needle leaves pollen, not the accent streak the other bullets leave
     return s;
 }
 // pollen: a hexagon in the skin's colour with an ink outline, painted at 2.5x so the biggest ones stay sharp
@@ -2874,14 +2875,24 @@ function _hexSprite(scale) {
     s.box = 1.3;
     return s;
 }
-// draws a pool's pollen in the current (world) transform, each fading out over its life
+// a spark off a bullet: a small bright dot (light core, amber edge), no outline
+function _sparkSprite(scale) {
+    const s = _unitSprite(_SKINFX, 'spark', scale * 2.5, 1.3, g => {
+        const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+        gr.addColorStop(0, '#FFF3B0'); gr.addColorStop(0.55, '#FFC21F'); gr.addColorStop(1, 'rgba(255,194,31,0)');
+        g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 1, 0, Math.PI * 2); g.fill();
+    });
+    s.box = 1.3;
+    return s;
+}
+// draws a pool's particles in the current (world) transform, each fading out over its life
 function _drawSkinPollen(ctx, pool, scale) {
     if (!pool.n) return;
-    const hs = _hexSprite(scale), box = hs.box;
+    const hs = _hexSprite(scale), ss = _sparkSprite(scale);
     for (let i = 0; i < pool.n; i++) {
-        const k = pool.age[i] / pool.life[i], r = pool.size[i];
+        const k = pool.age[i] / pool.life[i], r = pool.size[i], sp = pool.kind[i] === 1 ? ss : hs, box = sp.box;
         ctx.globalAlpha = Math.max(0, 1 - k * k);
-        ctx.drawImage(hs.c, pool.x[i] - r * box, pool.y[i] - r * box, r * box * 2, r * box * 2);
+        ctx.drawImage(sp.c, pool.x[i] - r * box, pool.y[i] - r * box, r * box * 2, r * box * 2);
     }
     ctx.globalAlpha = 1;
 }
@@ -5045,7 +5056,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _bw = _playerWeapons.get(b.ownerId) || DEFAULT_WEAPON;
             const _bs = _bulletSprite(_bw, _lblScale, _playerWeaponSkins.get(b.ownerId));
             _setRotated(ctx, _wm, _bx, _by, b.dx, b.dy);
-            if (_trail > 4) ctx.drawImage(_trailSpriteFor(_bw, _playerWeaponSkins.get(b.ownerId)), -_trail, -3, _trail, 6);
+            if (_trail > 4 && !(_bs && _bs.noTrail)) ctx.drawImage(_trailSpriteFor(_bw, _playerWeaponSkins.get(b.ownerId)), -_trail, -3, _trail, 6);
             if (_bs) ctx.drawImage(_bs.c, -_bs.box, -_bs.box, _bs.box * 2, _bs.box * 2);
             else { ctx.beginPath(); ctx.arc(0, 0, b.radius || 6, 0, Math.PI * 2); ctx.fill(); }
             if (_skinPollen) {
@@ -5071,7 +5082,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _trail = Math.min(_cAgeFull * 480, 110);
             ctx.globalAlpha = _cAlpha;
             _setRotated(ctx, _wm, _cbx, _cby, cb.dx, cb.dy);
-            if (_trail > 4) ctx.drawImage(_myTrail, -_trail, -3, _trail, 6);
+            if (_trail > 4 && !(_myBs && _myBs.noTrail)) ctx.drawImage(_myTrail, -_trail, -3, _trail, 6);
             if (_myBs) ctx.drawImage(_myBs.c, -_myBs.box, -_myBs.box, _myBs.box * 2, _myBs.box * 2);
             else { ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill(); }
             if (_myGunFx && _myGunFx.bullets && _myGunFx.bullets.trailPollen) ARSkinFx.emitBulletPollen(_skinPool, _skinEmitter(_skinEm, 'b' + socket.id), _myGunFx, _cbx, _cby, PLAYER_VISUAL_SCALE, _skinDt, Math.random);

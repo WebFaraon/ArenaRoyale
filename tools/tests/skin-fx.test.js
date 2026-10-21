@@ -79,6 +79,7 @@ test('bullet pollen only for skins that ask for it', () => {
     assert.equal(F.emitBulletPollen(pool, { acc: 0 }, { bullets: { trailPollen: false } }, 0, 0, 0.85, 1, rnd), 0);
     assert.equal(F.emitBulletPollen(pool, { acc: 0 }, null, 0, 0, 0.85, 1, rnd), 0);
     assert.ok(F.emitBulletPollen(pool, { acc: 0 }, F.parseFx(SKINS.smg_hornet.fx), 0, 0, 0.85, 0.2, rnd) >= 1);
+    for (let i = 0; i < pool.n; i++) assert.equal(pool.kind[i], 1, 'bullet pollen is a spark, not an outlined hexagon');
 });
 
 test('auraAlpha breathes inside its range; pulseAt runs down the gun and ends', () => {

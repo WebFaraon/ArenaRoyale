@@ -64,14 +64,15 @@
     function createPool(max) {
         const n = max || MAX_PARTICLES;
         return { n: 0, max: n, x: new Float32Array(n), y: new Float32Array(n), vx: new Float32Array(n), vy: new Float32Array(n),
-                 age: new Float32Array(n), life: new Float32Array(n), size: new Float32Array(n) };
+                 age: new Float32Array(n), life: new Float32Array(n), size: new Float32Array(n), kind: new Uint8Array(n) };
     }
     function clear(pool) { pool.n = 0; }
 
-    function spawn(pool, x, y, vx, vy, life, size) {
+    // kind: 0 = pollen (a hexagon with an ink outline), 1 = a spark off a bullet (a small bright dot: at its size an outline would be all there is)
+    function spawn(pool, x, y, vx, vy, life, size, kind) {
         if (pool.n >= pool.max) return false;
         const i = pool.n++;
-        pool.x[i] = x; pool.y[i] = y; pool.vx[i] = vx; pool.vy[i] = vy; pool.age[i] = 0; pool.life[i] = life; pool.size[i] = size;
+        pool.x[i] = x; pool.y[i] = y; pool.vx[i] = vx; pool.vy[i] = vy; pool.age[i] = 0; pool.life[i] = life; pool.size[i] = size; pool.kind[i] = kind || 0;
         return true;
     }
 
@@ -84,7 +85,7 @@
                 const l = --pool.n;
                 if (i !== l) {
                     pool.x[i] = pool.x[l]; pool.y[i] = pool.y[l]; pool.vx[i] = pool.vx[l]; pool.vy[i] = pool.vy[l];
-                    pool.age[i] = pool.age[l]; pool.life[i] = pool.life[l]; pool.size[i] = pool.size[l];
+                    pool.age[i] = pool.age[l]; pool.life[i] = pool.life[l]; pool.size[i] = pool.size[l]; pool.kind[i] = pool.kind[l];
                 }
                 i--;
                 continue;
@@ -119,14 +120,14 @@
     }
 
     // Small pollen left along a bullet's path (rate per second per bullet); em = { acc } of that bullet's owner
-    const BULLET_POLLEN_RATE = 14;
+    const BULLET_POLLEN_RATE = 24;   // per bullet per second (the artifact: 0.4 a frame at 60 fps)
     function emitBulletPollen(pool, em, fx, x, y, S, dt, rnd) {
         if (!fx || !fx.bullets || !fx.bullets.trailPollen) return 0;
         em.acc = Math.min(3, (em.acc || 0) + BULLET_POLLEN_RATE * dt);
         let n = 0;
         while (em.acc >= 1) {
             em.acc -= 1;
-            if (spawn(pool, x, y, (rnd() - 0.5) * 30 * S, (rnd() - 0.5) * 30 * S, 0.25, 0.7 * S * PARTICLE_VIS)) n++;
+            if (spawn(pool, x, y, (rnd() - 0.5) * 30 * S, (rnd() - 0.5) * 30 * S, 0.25, 0.7 * S * PARTICLE_VIS * 1.5, 1)) n++;
         }
         return n;
     }
