@@ -123,21 +123,28 @@
 
 <!-- ========== ECRANUL DE AUTENTIFICARE ========== -->
 <div id="screen-auth">
-    <button class="lb-btn lb-btn-icon auth-settings" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
+    <button class="lb-btn lb-btn-icon auth-settings" onclick="openSettings()" title="Setări" aria-label="Setări"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
     <div class="auth-wrap">
 
         <div class="auth-logo">
-            <div class="auth-lanes" aria-hidden="true">
-                <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span>
-                <span style="--i:3"></span><span style="--i:4"></span><span style="--i:5"></span>
-            </div>
-            <svg class="ic auth-logo-icon" aria-hidden="true"><use href="#mark"/></svg>
+            <svg class="auth-mark" viewBox="0 0 64 64" aria-hidden="true">
+                <ellipse class="am-ground" cx="35" cy="59" rx="26" ry="4"/>
+                <path class="am-lip" d="M5 5h38l14 14v34a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/>
+                <path class="am-face" d="M5 5h38l14 14v28H5z"/>
+                <path class="am-bevel" d="M9 9.5h33"/>
+                <path class="am-a" d="M16 42 31 14l15 28M21.5 33h19"/>
+                <path class="am-edge" d="M5 5h38l14 14v34a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/>
+            </svg>
             <h1 class="auth-logo-title wordmark wm-xl"><span>ARENA</span><span class="wm-r">ROYALE</span></h1>
+            <div class="auth-modes" aria-hidden="true">
+                <span class="am-chip am-br"><svg class="ic"><use href="#swords"/></svg>BATTLE ROYALE</span>
+                <span class="am-chip am-pve"><svg class="ic"><use href="#biohazard"/></svg>SURVIVAL PVE</span>
+            </div>
         </div>
 
         <div class="auth-card">
             <div class="auth-tabs" role="tablist">
-                <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">INTRU IN JOC</button>
+                <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">INTRU ÎN JOC</button>
                 <button class="auth-tab"         id="tab-register" onclick="switchTab('register')">CONT NOU</button>
             </div>
 
@@ -145,23 +152,21 @@
             <div id="form-login" class="auth-form">
                 <div class="input-group">
                     <label class="input-label" for="login-nickname">NICKNAME</label>
-                    <input type="text" id="login-nickname" placeholder="Nickname-ul tau"
+                    <input type="text" id="login-nickname" placeholder="Nickname-ul tău"
                         maxlength="15" autocomplete="username" autocapitalize="none"
                         oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
-                    <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label" for="login-password">PAROLA</label>
+                    <label class="input-label" for="login-password">PAROLĂ</label>
                     <input type="password" id="login-password" placeholder="Parola ta"
                         maxlength="32" autocomplete="off">
-                    <div class="input-line"></div>
                 </div>
                 <div class="auth-error" id="login-error"></div>
                 <button class="auth-btn" id="login-btn" onclick="doLogin()">
-                    <span class="btn-text">INTRU IN JOC</span>
+                    <span class="btn-text">INTRU ÎN JOC</span>
                     <svg class="ic btn-arrow" aria-hidden="true"><use href="#arrow-right"/></svg>
                 </button>
-                <p class="auth-note">Nu ai cont? Apasa <strong>CONT NOU</strong> sus.</p>
+                <p class="auth-note">Nu ai cont? Apasă <strong>CONT NOU</strong> sus.</p>
             </div>
 
             <!-- REGISTER -->
@@ -171,26 +176,23 @@
                     <input type="text" id="reg-nickname" placeholder="Alege un nickname"
                         maxlength="15" autocomplete="username" autocapitalize="none"
                         oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
-                    <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label" for="reg-password">PAROLA <span class="auth-hint">(min. 6 car., litere + cifre)</span></label>
-                    <input type="password" id="reg-password" placeholder="Alege o parola"
+                    <label class="input-label" for="reg-password">PAROLĂ <span class="auth-hint">(min. 6 car., litere + cifre)</span></label>
+                    <input type="password" id="reg-password" placeholder="Alege o parolă"
                         maxlength="32" autocomplete="new-password">
-                    <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label" for="reg-confirm">CONFIRMA PAROLA</label>
-                    <input type="password" id="reg-confirm" placeholder="Repeta parola"
+                    <label class="input-label" for="reg-confirm">CONFIRMĂ PAROLA</label>
+                    <input type="password" id="reg-confirm" placeholder="Repetă parola"
                         maxlength="32" autocomplete="new-password">
-                    <div class="input-line"></div>
                 </div>
                 <div class="auth-error" id="reg-error"></div>
                 <button class="auth-btn" id="reg-btn" onclick="doRegister()">
-                    <span class="btn-text">CREEAZA CONT</span>
+                    <span class="btn-text">CREEAZĂ CONT</span>
                     <svg class="ic btn-arrow" aria-hidden="true"><use href="#arrow-right"/></svg>
                 </button>
-                <p class="auth-note">Ai deja cont? Apasa <strong>INTRU IN JOC</strong> sus.</p>
+                <p class="auth-note">Ai deja cont? Apasă <strong>INTRU ÎN JOC</strong> sus.</p>
             </div>
         </div>
 

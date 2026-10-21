@@ -651,6 +651,77 @@
     }
 
     // ---------- lobby backdrop: the same field the match is played on ----------
+    // The trees and rocks are the match sprites (public/images/map/<season>/), laid out once per size from a
+    // fixed seed, so the picture is always the same one. The middle band stays free for the login card and the
+    // logo. Nothing is drawn for a sprite that is missing: the lobby is only a backdrop.
+    const LOBBY_TREES = ['copac_mic', 'copac_mediu', 'copac_mare', 'brad'], LOBBY_ROCKS = ['piatra_medie', 'piatra_mare'];
+    const LOBBY_IDS = LOBBY_TREES.concat(LOBBY_ROCKS);
+    const lobbyReduced = new Map();   // 'season|id|px' -> the sprite halved down to about that many pixels
+
+    // Loads map-objects.json and the lobby sprites, then calls cb(season) (cb(null) after 15 s: no sprites).
+    function prepareLobby(season, cb) {
+        setMapSeason(season);
+        const t0 = Date.now();
+        (function wait() {
+            if (mapArt.meta) {
+                const s = mapArt.meta.seasons.indexOf(season) >= 0 ? season : mapArt.meta.seasons[0];
+                if (LOBBY_IDS.every(function (id) { return mapEntry(s, id).state !== 0; })) return cb(s);
+            }
+            if (Date.now() - t0 > 15000) return cb(null);
+            setTimeout(wait, 80);
+        })();
+    }
+    function lobbyRand(seed) {   // mulberry32
+        let a = seed >>> 0;
+        return function () {
+            a = (a + 0x6D2B79F5) >>> 0;
+            let t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+    // Props for a W x H backdrop: { id, x, y, k (px per world unit), flip, r (visual radius, px) }, rocks first, then trees by y
+    function layoutLobby(W, H, season) {
+        const rnd = lobbyRand(20261021);
+        const base = Math.max(0.45, Math.min(1.4, Math.min(W / 1500, H / 800)));
+        const total = Math.max(8, Math.min(18, Math.round(W * H / 130000)));
+        // kept free: the width of the login content (.auth-wrap, 1080 px at most, centred) and its middle band
+        // (under 700 px the logo sits above the card and they fill the height)
+        const narrow = W < 700;
+        const half = Math.min(W * (narrow ? 0.38 : 0.46), 560), kx0 = W / 2 - half, kx1 = W / 2 + half;
+        const ky0 = H * (narrow ? 0.03 : 0.2), ky1 = H * (narrow ? 0.93 : 0.8);
+        const objs = mapArt.meta.objects, props = [];
+        for (let tries = 0; props.length < total && tries < 600; tries++) {
+            const rock = rnd() < 0.38;
+            const ids = rock ? LOBBY_ROCKS : LOBBY_TREES;
+            const id = ids[Math.floor(rnd() * ids.length)];
+            const k = base * (0.9 + rnd() * 0.2), r = objs[id].visualRadius * k;
+            const x = -W * 0.02 + rnd() * W * 1.04, y = -H * 0.02 + rnd() * H * 1.04;
+            const flip = rnd() < 0.5;
+            const nx = Math.max(kx0, Math.min(x, kx1)) - x, ny = Math.max(ky0, Math.min(y, ky1)) - y;
+            if (nx * nx + ny * ny < r * r * 0.7) continue;   // its crown would reach into the kept area
+            let ok = true;
+            for (const q of props) { const dx = x - q.x, dy = y - q.y, rr = (r + q.r) * 0.92; if (dx * dx + dy * dy < rr * rr) { ok = false; break; } }
+            if (ok) props.push({ id: id, x: x, y: y, k: k, flip: flip, r: r, rock: rock });
+        }
+        props.sort(function (a, b) { return (a.rock === b.rock ? a.y - b.y : (a.rock ? -1 : 1)); });
+        return props;
+    }
+    function drawLobbyProps(ctx, bg) {
+        const season = bg.season, objs = mapArt.meta.objects, dpr = bg.dpr || 1;
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        for (const p of bg.props) {
+            const e = mapEntry(season, p.id);
+            if (e.state !== 1) continue;
+            const half = objs[p.id].frameRadius * p.k, px = Math.max(8, Math.round(half * 2 * dpr));
+            const key = season + '|' + p.id + '|' + (px >> 4);
+            let src = lobbyReduced.get(key);
+            if (!src) { src = reduceTo(e.img, px); lobbyReduced.set(key, src); }
+            if (p.flip) { ctx.save(); ctx.translate(p.x, p.y); ctx.scale(-1, 1); ctx.drawImage(src, -half, -half, half * 2, half * 2); ctx.restore(); }
+            else ctx.drawImage(src, p.x - half, p.y - half, half * 2, half * 2);
+        }
+    }
+    // W, H in CSS pixels (the caller sets the canvas transform). bg: { season, props, dpr } once the sprites are in.
     function drawLobbyField(ctx, W, H, bg) {
         drawGround(ctx, 0, 0, W, H, W, H);
         ctx.save();
@@ -662,8 +733,10 @@
         ctx.fillStyle = 'rgba(' + CHALK + ',.26)';
         ctx.beginPath(); ctx.arc(cx, cy, 6, 0, TAU); ctx.fill();
         ctx.restore();
-        for (const rock of bg.rocks) drawRock(ctx, rock.x, rock.y, rock.r * 1.15, rock.rot);
-        for (const tree of bg.trees) drawTree(ctx, tree.x, tree.y, tree.r * 0.95, tree.rot);
+        if (bg.season && mapArt.meta) {
+            if (!bg.props || bg.propsW !== W || bg.propsH !== H) { bg.props = layoutLobby(W, H, bg.season); bg.propsW = W; bg.propsH = H; }
+            drawLobbyProps(ctx, bg);
+        }
     }
 
     window.ARArena = {
@@ -674,6 +747,7 @@
         drawZone: drawZone,
         drawZombie: drawZombie,
         drawLobbyField: drawLobbyField,
+        prepareLobby: prepareLobby,
         beginFrame: beginFrame,
         allowBurst: allowBurst,
         drawProp: drawProp,

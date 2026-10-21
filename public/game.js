@@ -6,7 +6,8 @@
 let _lobbyBgRaf = null;
 const _LBG = {
     ready: false,
-    gridSize: 50,
+    gen: 0,        // bumped on every start/resize: a late sprite load for an older size is ignored
+    season: null,  // set once the sprites of ARArena.prepareLobby are in
 };
 
 function _drawConcavePoly(ctx, cx, cy, r, sides, concave, rot) {
@@ -63,34 +64,24 @@ function startLobbyBackground() {
 
     if (!_LBG.ready) {
         _LBG.ready = true;
-        canvas.width  = window.innerWidth;
-        canvas.height = window.innerHeight;
-        const W = canvas.width, H = canvas.height;
-
-        _LBG.trees = [];
-        for (let i = 0; i < 16; i++) {
-            _LBG.trees.push({
-                x: 30 + Math.random() * (W - 60),
-                y: 30 + Math.random() * (H - 60),
-                r: 18 + Math.random() * 16,
-                rot: Math.random() * Math.PI * 2,
-            });
-        }
-
-        _LBG.rocks = [];
-        for (let i = 0; i < 10; i++) {
-            _LBG.rocks.push({
-                x: 30 + Math.random() * (W - 60),
-                y: 30 + Math.random() * (H - 60),
-                r: 14 + Math.random() * 14,
-                rot: Math.random() * Math.PI,
-            });
-        }
+        _LBG.gen++;
+        _LBG.season = null;
+        _LBG.props = null;
+        _LBG.dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width  = Math.round(window.innerWidth  * _LBG.dpr);
+        canvas.height = Math.round(window.innerHeight * _LBG.dpr);
     }
 
-    // The field is still (no moving players), so one paint per start or resize is enough
+    // The field is still (no moving players), so one paint per start or resize is enough; the sprites of
+    // trees and rocks arrive a moment later and repaint it once.
     const ctx = canvas.getContext('2d');
     _lobbyBgRaf = requestAnimationFrame(() => _lobbyBgTick(ctx));
+    const gen = _LBG.gen;
+    ARArena.prepareLobby(ARArena.mapState().season || 'vara', season => {
+        if (gen !== _LBG.gen || !season || !_lobbyBgRaf) return;
+        _LBG.season = season;
+        _lobbyBgTick(ctx);
+    });
 }
 
 function stopLobbyBackground() {
@@ -100,7 +91,9 @@ function stopLobbyBackground() {
 }
 
 function _lobbyBgTick(ctx) {
-    ARArena.drawLobbyField(ctx, ctx.canvas.width, ctx.canvas.height, _LBG);
+    const d = _LBG.dpr || 1;
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    ARArena.drawLobbyField(ctx, ctx.canvas.width / d, ctx.canvas.height / d, _LBG);
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -1335,10 +1328,10 @@ async function doLogin() {
     const btn      = document.getElementById('login-btn');
     const btnText  = btn.querySelector('.btn-text');
 
-    if (!nickname || !password) { errorEl.textContent = 'Completeaza toate campurile'; return; }
+    if (!nickname || !password) { errorEl.textContent = 'Completează toate câmpurile'; return; }
 
     btn.disabled = true;
-    btnText.textContent = 'Se verifica...';
+    btnText.textContent = 'Se verifică...';
     errorEl.textContent = '';
 
     try {
@@ -1352,15 +1345,15 @@ async function doLogin() {
         if (!data.ok) {
             errorEl.textContent = '' + data.error;
             btn.disabled = false;
-            btnText.textContent = 'INTRU IN JOC';
+            btnText.textContent = 'INTRU ÎN JOC';
             return;
         }
         await Promise.all([SKINS_READY, WEAPONS_ART_READY]);
         authSuccess(nickname, password, data.player, data.token);
     } catch {
-        errorEl.textContent = 'Eroare de retea. Incearca din nou.';
+        errorEl.textContent = 'Eroare de rețea. Încearcă din nou.';
         btn.disabled = false;
-        btnText.textContent = 'INTRU IN JOC';
+        btnText.textContent = 'INTRU ÎN JOC';
     }
 }
 
@@ -1372,11 +1365,11 @@ async function doRegister() {
     const btn      = document.getElementById('reg-btn');
     const btnText  = btn.querySelector('.btn-text');
 
-    if (!nickname || !password || !confirm) { errorEl.textContent = 'Completeaza toate campurile'; return; }
+    if (!nickname || !password || !confirm) { errorEl.textContent = 'Completează toate câmpurile'; return; }
     if (password !== confirm) { errorEl.textContent = 'Parolele nu coincid'; return; }
 
     btn.disabled = true;
-    btnText.textContent = 'Se creeaza...';
+    btnText.textContent = 'Se creează...';
     errorEl.textContent = '';
 
     try {
@@ -1390,15 +1383,15 @@ async function doRegister() {
         if (!data.ok) {
             errorEl.textContent = '' + data.error;
             btn.disabled = false;
-            btnText.textContent = 'CREEAZA CONT';
+            btnText.textContent = 'CREEAZĂ CONT';
             return;
         }
         await Promise.all([SKINS_READY, WEAPONS_ART_READY]);
         authSuccess(nickname, password, data.player, data.token);
     } catch {
-        errorEl.textContent = 'Eroare de retea. Incearca din nou.';
+        errorEl.textContent = 'Eroare de rețea. Încearcă din nou.';
         btn.disabled = false;
-        btnText.textContent = 'CREEAZA CONT';
+        btnText.textContent = 'CREEAZĂ CONT';
     }
 }
 

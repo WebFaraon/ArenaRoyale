@@ -348,7 +348,10 @@ button:disabled { cursor: not-allowed; }
 .fs-steps-note { color: var(--chalk-3); font-size: .78rem; }
 #fs-btn-android { min-height: 56px; padding: 0 30px; font-size: 1.05rem; }
 
-/* ---------- Auth ---------- */
+/* ---------- Auth ----------
+   Login and sign-up sit on the pitch like the lobby: a tilted outlined logo with its toy mark, a tray with
+   a segmented tab block, sunk fields and the orange key. The block recipe (outline, lip, bevel, shadow) is
+   the one of the toy-block layer further down. */
 #screen-auth {
     position: fixed;
     inset: 0;
@@ -358,6 +361,7 @@ button:disabled { cursor: not-allowed; }
     overflow-y: auto;
     padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
 }
+#screen-auth::before { content: ''; position: fixed; inset: 0; background: rgba(11, 20, 23, .34); pointer-events: none; z-index: 0; }
 .auth-wrap {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -370,121 +374,130 @@ button:disabled { cursor: not-allowed; }
     position: relative;
     z-index: 1;
 }
+/* the id beats the toy button grammar below, which would make it position: relative */
+#screen-auth .auth-settings { position: fixed; top: calc(var(--safe-t) + 12px); right: calc(var(--safe-r) + 12px); z-index: 3; width: 46px; height: 44px; }
+
+/* logo: the mark block, the wordmark and the two mode chips */
 .auth-logo {
     position: relative;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: clamp(8px, 2vh, 16px);
+    gap: clamp(10px, 2.4vh, 20px);
     min-width: 0;
+    animation: trayDrop .62s var(--settle) .04s backwards;
 }
-.auth-logo-icon { width: clamp(30px, 7vh, 52px); height: clamp(30px, 7vh, 52px); color: var(--start); stroke-width: 1.6; position: relative; z-index: 1; }
-.auth-logo-title { position: relative; z-index: 1; }
+.auth-mark {
+    width: clamp(56px, 11vh, 92px);
+    height: clamp(56px, 11vh, 92px);
+    overflow: visible;
+    transform: rotate(-6deg);
+    transform-origin: 30% 80%;
+}
+.auth-mark .am-ground { fill: rgba(0, 0, 0, .38); }
+.auth-mark .am-lip   { fill: var(--l-orange); }
+.auth-mark .am-face  { fill: var(--c-orange); }
+.auth-mark .am-bevel { fill: none; stroke: rgba(255, 255, 255, .42); stroke-width: 2.4; stroke-linecap: round; }
+.auth-mark .am-a-ink { fill: none; stroke: var(--ink-line); stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; }
+.auth-mark .am-a     { fill: none; stroke: #fff; stroke-width: 5.2; stroke-linecap: round; stroke-linejoin: round; }
+.auth-mark .am-edge  { fill: none; stroke: var(--ink-line); stroke-width: 2.8; stroke-linejoin: round; }
+.auth-logo-title {
+    font-size: clamp(2.4rem, min(7.4vw, 15.5vh), 5.6rem);
+    letter-spacing: .03em;
+    gap: .05em;
+    text-shadow: var(--stroke-lg);
+    transform: rotate(-2deg);
+    transform-origin: left center;
+}
+.auth-modes { display: flex; flex-wrap: wrap; gap: 10px; }
+.am-chip {
+    --c: var(--c-orange); --cl: var(--l-orange);
+    display: inline-flex;
+    align-items: center;
+    gap: .5em;
+    min-height: 34px;
+    padding: 0 13px 3px;
+    border: var(--o) solid var(--ink-line);
+    border-radius: 10px;
+    background: var(--c);
+    color: #fff;
+    font-weight: 800;
+    font-size: .75rem;
+    letter-spacing: .09em;
+    text-shadow: var(--stroke-sm);
+    box-shadow: inset 0 -4px 0 var(--cl), inset 0 2px 0 rgba(255, 255, 255, .3), 0 3px 0 rgba(0, 0, 0, .45), 0 8px 14px -6px rgba(0, 0, 0, .55);
+    white-space: nowrap;
+}
+.am-chip .ic { width: 1.3em; height: 1.3em; filter: drop-shadow(0 2px 0 var(--ink-line)); }
+.am-pve { --c: var(--c-green); --cl: var(--l-green); }
 
-/* lanes: six hairlines, runners leave the blocks once on arrival */
-.auth-lanes {
-    container-type: inline-size;
-    position: absolute;
-    inset: -8% -2% -8% -2%;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    pointer-events: none;
-    z-index: 0;
-}
-.auth-lanes span { position: relative; height: 1px; background: var(--rule); }
-.auth-lanes span::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: -3px;
-    width: 22px;
-    height: 7px;
-    background: var(--rule-hi);
-    transform: translateX(calc((100cqw - 28px) * (.5 + var(--i) * .09)));
-    animation: runner 1.15s var(--ease-out) calc(var(--i) * 85ms) backwards;
-}
-.auth-lanes span:first-child::after { background: var(--start); }
-@keyframes runner { from { transform: translateX(-30px); } }
-
+/* the card: a tray with the tabs as one segmented block on top */
 .auth-card {
     position: relative;
     z-index: 1;
     width: 100%;
     max-width: 420px;
-    background: var(--board);
-    border: 1px solid var(--rule-hi);
-    border-radius: var(--r);
-    box-shadow: 0 6px 10px -6px rgba(0, 0, 0, .8);
-    overflow: hidden;
-    animation: boardIn .5s var(--ease-out) .12s backwards;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(12px, 2.4vh, 18px);
+    padding: 14px;
+    background: var(--tray);
+    border: var(--o) solid var(--tray-line);
+    border-radius: var(--r-tray);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, .07), inset 0 -4px 0 rgba(0, 0, 0, .28), 0 6px 0 rgba(0, 0, 0, .32), 0 14px 24px -12px rgba(0, 0, 0, .6);
+    animation: trayDrop .62s var(--settle) .12s backwards;
 }
-@keyframes boardIn {
-    from { opacity: 0; clip-path: inset(0 0 100% 0); transform: translateY(-8px); }
-    to   { opacity: 1; clip-path: inset(0); transform: none; }
+.auth-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: rgba(5, 8, 10, .62);
+    border: var(--o) solid var(--ink-line);
+    border-radius: 14px;
+    box-shadow: inset 0 3px 0 rgba(0, 0, 0, .35), 0 4px 0 rgba(0, 0, 0, .35);
 }
-
-.auth-tabs { display: flex; border-bottom: 1px solid var(--rule); }
 .auth-tab {
-    position: relative;
+    --cl: transparent;
     flex: 1;
-    min-height: 48px;
-    padding: 0 10px;
-    color: var(--chalk-3);
+    min-height: 40px;
+    padding: 0 10px 2px;
+    border-radius: 10px;
+    color: rgba(255, 255, 255, .72);
     font-weight: 800;
     font-size: .75rem;
     letter-spacing: .09em;
-    transition: color .15s var(--ease-out), background-color .15s var(--ease-out);
+    text-shadow: var(--stroke-sm);
+    transition: background-color .2s ease, color .2s ease, transform .28s var(--spring), box-shadow .28s var(--spring);
 }
-.auth-tab::after {
-    content: '';
-    position: absolute;
-    left: 0; right: 0; bottom: -1px;
-    height: 3px;
-    background: var(--start);
-    transform: scaleX(0);
-    transform-origin: left center;
-    transition: transform .3s var(--ease-out);
+.auth-tab.active {
+    --cl: var(--l-orange);
+    background: var(--c-orange);
+    color: #fff;
+    box-shadow: inset 0 -4px 0 var(--cl), inset 0 2px 0 rgba(255, 255, 255, .3), 0 0 0 2px var(--ink-line);
+    transform: translateY(-1px);
 }
-.auth-tab.active { color: var(--chalk); }
-.auth-tab.active::after { transform: scaleX(1); }
-@media (hover: hover) and (pointer: fine) { .auth-tab:not(.active):hover { color: var(--chalk-2); background: var(--board-hi); } }
+.auth-tab:active { transform: translateY(2px); transition-duration: 0s; background: rgba(255, 255, 255, .08); }
+.auth-tab.active:active { background: var(--c-orange); }
+@media (hover: hover) and (pointer: fine) { .auth-tab:not(.active):hover { color: #fff; background: rgba(255, 255, 255, .08); } }
 
-.auth-form { display: flex; flex-direction: column; gap: clamp(10px, 2.2vh, 16px); padding: clamp(14px, 3vh, 24px); }
+.auth-form { display: flex; flex-direction: column; gap: clamp(10px, 2.2vh, 16px); }
 .input-group { position: relative; display: flex; flex-direction: column; gap: 6px; }
 .input-label {
     font-weight: 800;
     font-size: .75rem;
     letter-spacing: .1em;
-    color: var(--chalk-3);
+    color: #B7C4CB;
 }
 .auth-hint { font-weight: 500; letter-spacing: 0; text-transform: none; }
 .input-group input {
     width: 100%;
     height: 48px;
     padding: 0 14px;
-    background: var(--board-hi);
-    border: 1px solid var(--rule);
-    border-radius: var(--r);
-    color: var(--chalk);
     font-size: 1rem;
     font-weight: 600;
     outline: none;
-    transition: border-color .15s var(--ease-out), background-color .15s var(--ease-out);
 }
-.input-group input::placeholder { color: var(--chalk-3); font-weight: 500; }
-.input-group input:focus { border-color: var(--chalk-2); background: var(--board-up); }
-.input-line {
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
-    height: 3px;
-    background: var(--start);
-    transform: scaleX(0);
-    transform-origin: left center;
-    transition: transform .3s var(--ease-out);
-    pointer-events: none;
-}
-.input-group:focus-within .input-line { transform: scaleX(1); }
+.input-group input::placeholder { color: rgba(255, 255, 255, .38); font-weight: 500; }
 
 .auth-error, .room-err, .lobby-err {
     min-height: 1.2em;
@@ -504,7 +517,17 @@ button:disabled { cursor: not-allowed; }
     -webkit-mask: var(--m-triangle-alert) center / contain no-repeat;
             mask: var(--m-triangle-alert) center / contain no-repeat;
 }
-.auth-error:not(:empty) { animation: errShake .32s var(--ease-out); }
+/* an error is a small red block, not loose red text */
+.auth-error:not(:empty) {
+    padding: 8px 12px 10px;
+    border: var(--o) solid var(--ink-line);
+    border-radius: 10px;
+    background: var(--c-red);
+    color: #fff;
+    text-shadow: var(--stroke-sm);
+    box-shadow: inset 0 -4px 0 var(--l-red), inset 0 2px 0 rgba(255, 255, 255, .3), 0 3px 0 rgba(0, 0, 0, .45);
+    animation: errShake .32s var(--settle);
+}
 @keyframes errShake {
     0%, 100% { transform: translateX(0); }
     25% { transform: translateX(-5px); }
@@ -512,21 +535,26 @@ button:disabled { cursor: not-allowed; }
 }
 
 .auth-btn { justify-content: space-between; min-height: 52px; width: 100%; padding: 0 18px; }
-.auth-btn .btn-arrow { transition: transform .2s var(--ease-out); }
+.auth-btn .btn-arrow { transition: transform .2s var(--settle); }
 @media (hover: hover) and (pointer: fine) { .auth-btn:not(:disabled):hover .btn-arrow { transform: translateX(4px); } }
-.auth-note { color: var(--chalk-3); font-size: .78rem; text-align: center; line-height: 1.4; }
-.auth-note strong { color: var(--chalk-2); font-weight: 800; }
+.auth-note { color: #B7C4CB; font-size: .78rem; text-align: center; line-height: 1.4; }
+.auth-note strong { color: #DCE4E8; font-weight: 800; }
 
-/* two columns whenever there is room: brand left, board right */
+@keyframes boardIn {
+    from { opacity: 0; clip-path: inset(0 0 100% 0); transform: translateY(-8px); }
+    to   { opacity: 1; clip-path: inset(0); transform: none; }
+}
+
+/* two columns whenever there is room: brand left, card right */
 @media (min-width: 700px) {
     .auth-wrap { grid-template-columns: minmax(0, 1.15fr) minmax(320px, 420px); align-items: center; column-gap: clamp(24px, 6vw, 80px); }
     .auth-card { justify-self: end; }
 }
 @media (max-width: 699px) {
     .auth-logo { align-items: center; text-align: center; }
-    .wm-xl { align-items: center; }
+    .auth-logo-title { align-items: center; transform-origin: center; }
+    .auth-modes { justify-content: center; }
     .auth-card { justify-self: center; }
-    .auth-lanes { inset: -4% -6%; }
 }
 
 /* ---------- Rotate gate (touch devices held upright) ---------- */
@@ -560,9 +588,6 @@ button:disabled { cursor: not-allowed; }
 .rotate-title { font-weight: 800; font-size: 1.216rem; letter-spacing: .06em; }
 .rotate-sub { color: var(--chalk-3); font-size: .85rem; }
 
-#screen-auth::before { content: ''; position: fixed; inset: 0; background: rgba(11, 20, 23, .34); pointer-events: none; z-index: 0; }
-
-.auth-settings { position: fixed; top: calc(var(--safe-t) + 12px); right: calc(var(--safe-r) + 12px); z-index: 3; background: rgba(11, 20, 23, .85); }
 /* ==========================================================================
    Lobby: top rule, athlete column, start line, results column
    ========================================================================== */
@@ -2241,8 +2266,11 @@ button:disabled { cursor: not-allowed; }
     .btn-join { width: 40px; }
 
     .auth-wrap { padding-top: 8px; padding-bottom: 8px; gap: 14px; }
-    .auth-form { gap: 8px; padding: 12px 16px; }
-    .auth-tab { min-height: 40px; }
+    .auth-card { gap: 10px; padding: 10px 12px; }
+    .auth-form { gap: 8px; }
+    .auth-tab { min-height: 36px; }
+    .auth-mark { width: 48px; height: 48px; }
+    .auth-modes { display: none; }
     .input-group { gap: 4px; }
     .input-group input { height: 40px; }
     .auth-btn { min-height: 44px; }
@@ -2340,7 +2368,7 @@ button:disabled { cursor: not-allowed; }
     .btn-play, .btn-start-game { min-height: 44px; font-size: 1.05rem; }
     .join-input, .btn-join { height: 38px; }
     .btn-join { width: 38px; }
-    .auth-settings { top: 8px; right: calc(var(--safe-r) + 8px); }
+    #screen-auth .auth-settings { top: 8px; right: calc(var(--safe-r) + 8px); }
     .friend-remove-btn { width: 36px; height: 36px; }
 
     .hud-actions { top: max(8px, var(--safe-t)); right: max(8px, var(--safe-r)); gap: 5px; }
