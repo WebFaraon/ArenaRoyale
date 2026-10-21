@@ -328,6 +328,8 @@ The canvas mirrors the DOM blocks through `_drawBlock` and the `TOY` face/lip pa
 - **Bottom squares:** the bullet sprite in a slate block and the weapon in an orange block. On laptops they are `min(86px, 5.6vw, 9.5vh)`.
 - **Zone banner:** a slate block while the zone waits, red while it shrinks, with white stroked text.
 - **Damage popups:** they slam in at 1.5x, tilted, then settle, float up and fade over 820ms. Heavy hits (60 and above) are bigger and gold, normal hits pink-red, both with a thick ink stroke.
+- **PvE base:** a stone hexagon fort in the style of the trees and guns (`ARArena.drawBase`): ink outline, a darker lip under every part, a bevel on the top-left edges, a ground shadow. The stone never changes; the core, the tower lights and the floor trim show the state: green over half, gold to a quarter, red under it, with a ring that pulses round the core (faster when red). Its bar is the player's bar made bigger (150 x 20, "BAZĂ" above it, the number on it), drawn with the names above the tree crowns.
+- **Zombie bars:** the player's bar made small (ink frame, sunk track, a toy block for the fill), only on a zombie that is hurt; at full health there is none.
 - **Medkit:** a red toy block with an ink-outlined white cross, hovering and bobbing over a soft shadow (`ARArena.drawKit`, cached as a sprite).
 - **DOM HUD:** the players/kills panel, kill-feed chips, the kill notification (an orange block that stamps in), the PvE wave/base/coins blocks, the upgrade sheet tiles and the toasts all use the same block recipe.
 

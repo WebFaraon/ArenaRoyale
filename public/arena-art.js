@@ -591,6 +591,89 @@
                          m.a * zb.x + m.c * zb.y + m.e, m.b * zb.x + m.d * zb.y + m.f);
         ctx.drawImage(s.c, -pad, -pad, pad * 2, pad * 2);
     }
+    // ---------- the PvE base: a stone hexagon fort in the style of the trees, rocks and guns ----------
+    // Thick ink outline, a darker lip under every part (the same extrusion as the toy blocks), a light bevel on the
+    // top-left edges, a ground shadow down and to the right. The stone is always the same; what shows how the base is
+    // doing is the colour of the core, the lights on the towers and the trim of the floor: green, gold, then red (the
+    // thresholds of the HP bars). The picture is made once per colour at the current scale (like the other sprites); only
+    // the pulse of the core is drawn every frame. 85 units from the middle to the wall = the server's PVE_BASE_R.
+    const BASE_INK = '#0B0F1A';
+    const BASE_PAL = [   // by state: [accent, accent lip]
+        ['#46D46A', '#24903C'],   // more than half
+        ['#FFC72E', '#C68A07'],   // a quarter to a half
+        ['#FF4B5C', '#B11F2E'],   // under a quarter
+    ];
+    const BASE_PAD = 108;
+    function basePolygon(g, R, dy) {
+        g.beginPath();
+        for (let i = 0; i < 6; i++) {
+            const a = i * Math.PI / 3 - Math.PI / 6, x = Math.cos(a) * R, y = Math.sin(a) * R + dy;
+            if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+        }
+        g.closePath();
+    }
+    function paintBase(g, pal) {
+        const accent = pal[0], lip = pal[1];
+        g.lineJoin = 'round'; g.lineCap = 'round';
+        g.fillStyle = 'rgba(0,0,0,.22)';
+        g.beginPath(); g.ellipse(7, 12, 90, 86, 0, 0, TAU); g.fill();
+        // the wall: lip, then face
+        g.lineWidth = 4.4; g.strokeStyle = BASE_INK;
+        basePolygon(g, 80, 7); g.fillStyle = '#55627A'; g.fill(); g.stroke();
+        basePolygon(g, 80, 0); g.fillStyle = '#8FA0BA'; g.fill(); g.stroke();
+        // bevel along the two top-left edges (the vertices run from -30 degrees in 60 degree steps)
+        g.strokeStyle = 'rgba(255,255,255,.4)'; g.lineWidth = 3.2;
+        g.beginPath();
+        for (let i = 3; i <= 5; i++) { const a = i * Math.PI / 3 - Math.PI / 6, x = Math.cos(a) * 72, y = Math.sin(a) * 72; if (i === 3) g.moveTo(x, y); else g.lineTo(x, y); }
+        g.stroke();
+        // the sunken floor and the trim round the core
+        g.lineWidth = 3.4; g.strokeStyle = BASE_INK;
+        basePolygon(g, 55, 0); g.fillStyle = '#3A4760'; g.fill(); g.stroke();
+        g.lineWidth = 3;
+        g.beginPath(); g.arc(0, 0, 36, 0, TAU); g.fillStyle = '#2C3750'; g.fill(); g.stroke();
+        g.lineWidth = 3; g.strokeStyle = accent; g.globalAlpha = .9;
+        g.beginPath(); g.arc(0, 0, 31, 0, TAU); g.stroke(); g.globalAlpha = 1;
+        // six lights on the floor, between the towers
+        for (let i = 0; i < 6; i++) {
+            const a = i * Math.PI / 3, x = Math.cos(a) * 46, y = Math.sin(a) * 46;
+            g.lineWidth = 1.6; g.strokeStyle = BASE_INK; g.fillStyle = accent;
+            g.beginPath(); g.arc(x, y, 3.2, 0, TAU); g.fill(); g.stroke();
+        }
+        // the core: lip, face, shine
+        g.lineWidth = 3.2; g.strokeStyle = BASE_INK;
+        g.beginPath(); g.arc(0, 4, 20, 0, TAU); g.fillStyle = lip; g.fill(); g.stroke();
+        g.beginPath(); g.arc(0, 0, 20, 0, TAU); g.fillStyle = accent; g.fill(); g.stroke();
+        g.fillStyle = 'rgba(255,255,255,.55)';
+        g.beginPath(); g.ellipse(-6.5, -8, 8, 4.6, -0.6, 0, TAU); g.fill();
+        // the six towers on the corners of the wall
+        for (let i = 0; i < 6; i++) {
+            const a = i * Math.PI / 3 - Math.PI / 6, x = Math.cos(a) * 80, y = Math.sin(a) * 80;
+            g.lineWidth = 3.2; g.strokeStyle = BASE_INK;
+            g.beginPath(); g.arc(x, y + 5, 13, 0, TAU); g.fillStyle = '#55627A'; g.fill(); g.stroke();
+            g.beginPath(); g.arc(x, y, 13, 0, TAU); g.fillStyle = '#A9B7CC'; g.fill(); g.stroke();
+            g.lineWidth = 1.8; g.fillStyle = accent;
+            g.beginPath(); g.arc(x, y, 5.2, 0, TAU); g.fill(); g.stroke();
+            g.fillStyle = 'rgba(255,255,255,.7)';
+            g.beginPath(); g.arc(x - 1.6, y - 1.8, 1.7, 0, TAU); g.fill();
+        }
+    }
+    // ratio: hp / max hp; t: seconds (the pulse). The caller has the world transform on.
+    function drawBase(ctx, x, y, ratio, t) {
+        const state = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2, pal = BASE_PAL[state], key = 'base' + state;
+        const old = zombieSprites.get(key);
+        const sp = sprite(old, BASE_PAD, function (g) { paintBase(g, pal); });
+        if (sp !== old && sp) zombieSprites.set(key, sp);
+        if (sp) ctx.drawImage(sp.c, x - BASE_PAD, y - BASE_PAD, BASE_PAD * 2, BASE_PAD * 2);
+        else { ctx.save(); ctx.translate(x, y); paintBase(ctx, pal); ctx.restore(); }
+        // the core breathes: a ring round it that swells and fades, faster when the base is nearly gone
+        const pulse = 0.5 + 0.5 * Math.sin(t * (state === 2 ? 5 : 2.5));
+        ctx.save();
+        ctx.globalAlpha = 0.55 * (1 - pulse);
+        ctx.strokeStyle = pal[0]; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(x, y, 22 + pulse * 9, 0, TAU); ctx.stroke();
+        ctx.restore();
+    }
+
     // ---------- medkit: a red toy block with a white cross, hovering over its shadow ----------
     const KIT_HALF = 16, KIT_PAD = 21;
     function paintKit(g) {
@@ -778,6 +861,7 @@
         mapVariant: function (o) { const v = variantOf(o); return v ? { id: v.id, flip: v.flip, k: v.k, nom: v.nom, crownR: v.crownR, alpha: v.alpha } : null; },
         drawZombieSprite: drawZombieSprite,
         addZombieShadow: addZombieShadow,
+        drawBase: drawBase,
         drawGrass: drawGrass,
         drawKit: drawKit,
         clearSprites: clearSprites,

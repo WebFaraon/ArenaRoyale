@@ -2315,6 +2315,42 @@ function _drawHpBar(ctx, x, y, w, h, ratio, ol) {
     ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(x + h * 0.4, y + h * 0.12, Math.max(0, fw - h * 0.8), Math.max(1, h * 0.14));
 }
 
+// The bars of the zombies that are hurt: the player's bar made small (an ink frame round a sunk track, the fill a
+// small toy block with its lip and bevel). A zombie at full health has none. All of them together cost a few fills:
+// the frames, the tracks, then the lip and the face of each colour, then the bevels.
+const _ZBAR_H = 6, _ZBAR_OL = 1.6;
+const _zbX = [], _zbY = [], _zbW = [], _zbF = [], _zbBand = [];
+function _drawZombieBars(ctx, list, n, defs) {
+    const h = _ZBAR_H, ol = _ZBAR_OL, rad = h * 0.45;
+    for (let i = 0; i < n; i++) {
+        const z = list[i], def = defs[z.type || 0] || defs[0];
+        const ratio = Math.max(0, Math.min(1, z.hp / def.maxHp)), w = Math.max(24, def.r * 1.6);
+        _zbW[i] = w; _zbX[i] = z.x - w / 2; _zbY[i] = z.y - def.r - 12 - h;
+        _zbF[i] = Math.max(h * 0.9, w * ratio);
+        _zbBand[i] = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
+    }
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) ctx.roundRect(_zbX[i] - ol, _zbY[i] - ol, _zbW[i] + ol * 2, h + ol * 2, rad + ol);
+    ctx.fillStyle = INK; ctx.fill();
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) ctx.roundRect(_zbX[i], _zbY[i], _zbW[i], h, rad);
+    ctx.fillStyle = '#1B252C'; ctx.fill();
+    const bands = [TOY.green, TOY.gold, TOY.red];
+    for (let b = 0; b < 3; b++) {
+        let any = false;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) if (_zbBand[i] === b) { ctx.roundRect(_zbX[i], _zbY[i], _zbF[i], h, rad); any = true; }
+        if (!any) continue;
+        ctx.fillStyle = bands[b][1]; ctx.fill();
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) if (_zbBand[i] === b) ctx.roundRect(_zbX[i], _zbY[i], _zbF[i], h * 0.7, [rad, rad, 1.5, 1.5]);
+        ctx.fillStyle = bands[b][0]; ctx.fill();
+    }
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) ctx.rect(_zbX[i] + h * 0.4, _zbY[i] + h * 0.12, Math.max(0, _zbF[i] - h * 0.8), Math.max(0.8, h * 0.14));
+    ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fill();
+}
+
 // Labels made before the web font arrived would keep the fallback font: redo them once it loads
 try { if (document.fonts) document.fonts.addEventListener('loadingdone', () => _labelCache.clear()); } catch (e) { /* no FontFaceSet */ }
 
@@ -3222,6 +3258,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const PLAYER_HIT_R   = 30;
     const _PVE_ZB_RADIUS = [20, 16, 28]; // normal, runner, tank
     const _PVE_BASE_R    = 85;
+    const _PVE_BASE      = { x: ARENA_W / 2, y: ARENA_H / 2, r: _PVE_BASE_R };   // a solid circle for bullets and players
     const _solidOut      = { x: 0, y: 0 };
     // Same slide-out the server applies to a player after moving (obstacles, then the PvE base)
     function _pushOutOfSolids(x, y) {
@@ -3258,7 +3295,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
 
     // True if the segment an enemy bullet is extrapolated along touches an obstacle, a zombie or
-    const _PVE_BASE      = { x: ARENA_W / 2, y: ARENA_H / 2, r: _PVE_BASE_R };   // a solid circle for bullets and players
     // (BR only) a player other than its owner. Same radii as the server's hit test (game-physics.js: r + BULLET_RADIUS).
     function _enemyBulletBlocked(x0, y0, x1, y1, ownerId, rState) {
         const minX = x0 < x1 ? x0 : x1, maxX = x0 < x1 ? x1 : x0;
@@ -3267,6 +3303,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const o = _obstacles[i], R = o.r + 6;
             if (o.x + R < minX || o.x - R > maxX || o.y + R < minY || o.y - R > maxY) continue;
             if (_segCircleT(x0, y0, x1, y1, o.x, o.y, R) >= 0) return true;
+        }
+        if (_gameMode === 'pve') {
+            const R = _PVE_BASE.r + 6;
+            if (!(_PVE_BASE.x + R < minX || _PVE_BASE.x - R > maxX || _PVE_BASE.y + R < minY || _PVE_BASE.y - R > maxY)
+                && _segCircleT(x0, y0, x1, y1, _PVE_BASE.x, _PVE_BASE.y, R) >= 0) return true;
         }
         for (let i = 0; i < _zombies.length; i++) {
             const z = _zombies[i];
@@ -3304,11 +3345,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     // Cached DOM references — evita getElementById in hot paths (draw loop, gs handler)
     const _specNameEl     = document.getElementById('spec-target-name');
-        if (_gameMode === 'pve') {
-            const R = _PVE_BASE.r + 6;
-            if (!(_PVE_BASE.x + R < minX || _PVE_BASE.x - R > maxX || _PVE_BASE.y + R < minY || _PVE_BASE.y - R > maxY)
-                && _segCircleT(x0, y0, x1, y1, _PVE_BASE.x, _PVE_BASE.y, R) >= 0) return true;
-        }
     const _specHpEl       = document.getElementById('spec-target-hp');
     const _playersAliveEl = document.getElementById('players-alive');
 
@@ -4433,10 +4469,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { r: 16, maxHp: 50,  bodyColor: '#C27A33', innerColor: '#E39A4D', armColor: '#9D5F26', armStroke: '#4C2D10', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },
         { r: 28, maxHp: 400, bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
     ];
-    const _ZB_BAR_COLORS = ['rgba(0,0,0,0.55)', '#46D17C', '#FFC52E', '#FF4155'];
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)
     const _zVisibleList  = [];
+    const _zHurt         = [];
     // players drawn this frame (figure first, tags after the tree crowns) and the bodies a crown can be over
     const _plQ = [], _plQx = [], _plQy = [];
     const _crX = [], _crY = [], _crR = [];
@@ -4560,6 +4596,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const _t = _segCircleT(_x0, _y0, _x1, _y1, _o.x, _o.y, _R);
                 if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = _oi; }
             }
+            if (_gameMode === 'pve') {   // the base stops bullets too
+                const _R = _PVE_BASE.r + 6;
+                if (!(_PVE_BASE.x + _R < _bMinX || _PVE_BASE.x - _R > _bMaxX || _PVE_BASE.y + _R < _bMinY || _PVE_BASE.y - _R > _bMaxY)) {
+                    const _t = _segCircleT(_x0, _y0, _x1, _y1, _PVE_BASE.x, _PVE_BASE.y, _R);
+                    if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = -1; }
+                }
+            }
             for (let _zi = 0; _zi < _zombies.length; _zi++) {
                 const _zb = _zombies[_zi];
                 if (!_zb || _zb.hp < 0) continue;
@@ -4596,13 +4639,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         const me = rState.players[socket.id];
         if (_bDiag.track && _bDiag.track.length < 4000) { for (const _tp in rState.players) { if (_tp !== socket.id) { _bDiag.track.push([performance.now(), rState.players[_tp].x, rState.players[_tp].y]); break; } } }
-            if (_gameMode === 'pve') {   // the base stops bullets too
-                const _R = _PVE_BASE.r + 6;
-                if (!(_PVE_BASE.x + _R < _bMinX || _PVE_BASE.x - _R > _bMaxX || _PVE_BASE.y + _R < _bMinY || _PVE_BASE.y - _R > _bMaxY)) {
-                    const _t = _segCircleT(_x0, _y0, _x1, _y1, _PVE_BASE.x, _PVE_BASE.y, _R);
-                    if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = -1; }
-                }
-            }
 
         // Spectator: auto-switch daca tinta a murit, urmareste tinta vie
         if (isSpectating) {
@@ -4904,75 +4940,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
         ctx.globalAlpha = 1;
 
-        // --- BAZA PvE ---
-        if (_gameMode === 'pve') {
-            const _bx = ARENA_W / 2, _by = ARENA_H / 2;
-            const _bhpRatio = Math.max(0, _pveState.baseHp / (_pveState.baseMaxHp || 1000));
-            const _t = Date.now() / 1000;
-            ctx.save();
-            ctx.translate(_bx, _by);
-
-            // Perimetru exterior — hexagon de 6 colturi
-            const _wallR = 80;
-            const _wallColor = _bhpRatio > 0.5 ? '#17372F' : _bhpRatio > 0.25 ? '#4A3A12' : '#4A1A1E';
-            const _wallStroke = _bhpRatio > 0.5 ? '#46D17C' : _bhpRatio > 0.25 ? '#FFC52E' : '#FF4155';
-            ctx.beginPath();
-            for (let _i = 0; _i < 6; _i++) {
-                const _a = _i * Math.PI / 3 - Math.PI / 6;
-                _i === 0 ? ctx.moveTo(Math.cos(_a) * _wallR, Math.sin(_a) * _wallR)
-                         : ctx.lineTo(Math.cos(_a) * _wallR, Math.sin(_a) * _wallR);
-            }
-            ctx.closePath();
-            ctx.fillStyle = _wallColor; ctx.fill();
-            ctx.strokeStyle = _wallStroke; ctx.lineWidth = 3.5; ctx.stroke();
-
-            // Turnuri la colturi
-            for (let _i = 0; _i < 6; _i++) {
-                const _a = _i * Math.PI / 3 - Math.PI / 6;
-                const _tx = Math.cos(_a) * _wallR, _ty = Math.sin(_a) * _wallR;
-                ctx.beginPath(); ctx.arc(_tx, _ty, 10, 0, Math.PI * 2);
-                ctx.fillStyle = '#1a3a1e'; ctx.fill();
-                ctx.strokeStyle = _wallStroke; ctx.lineWidth = 2.5; ctx.stroke();
-                // Detaliu turn
-                ctx.beginPath(); ctx.arc(_tx, _ty, 4.5, 0, Math.PI * 2);
-                ctx.fillStyle = _wallStroke; ctx.fill();
-            }
-
-            // Ziduri interioare — octagon
-            const _innerR = 44;
-            ctx.beginPath();
-            for (let _i = 0; _i < 8; _i++) {
-                const _a = _i * Math.PI / 4;
-                _i === 0 ? ctx.moveTo(Math.cos(_a) * _innerR, Math.sin(_a) * _innerR)
-                         : ctx.lineTo(Math.cos(_a) * _innerR, Math.sin(_a) * _innerR);
-            }
-            ctx.closePath();
-            ctx.fillStyle = '#0B1C17'; ctx.fill();
-            ctx.strokeStyle = 'rgba(70,209,124,0.35)'; ctx.lineWidth = 1.5; ctx.stroke();
-
-            // Core pulsant
-            const _pulse = 0.7 + 0.3 * Math.sin(_t * 2.5);
-            const _coreColor = _bhpRatio > 0.5 ? '#46D17C' : _bhpRatio > 0.25 ? '#FFC52E' : '#FF4155';
-            ctx.beginPath(); ctx.arc(0, 0, 18 * _pulse, 0, Math.PI * 2);
-            ctx.strokeStyle = _coreColor; ctx.lineWidth = 2; ctx.globalAlpha = 0.55; ctx.stroke(); ctx.globalAlpha = 1;
-            ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2);
-            ctx.fillStyle = _coreColor; ctx.fill();
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
-
-            // HP bar + text interior (pe octagon)
-            const _hbW = _innerR * 1.5, _hbH = 5;
-            const _hbY = _innerR * 0.72;
-            ctx.fillStyle = 'rgba(0,0,0,0.55)';
-            ctx.beginPath(); ctx.roundRect(-_hbW / 2, _hbY, _hbW, _hbH, 0); ctx.fill();
-            ctx.fillStyle = _coreColor;
-            ctx.beginPath(); ctx.roundRect(-_hbW / 2, _hbY, _hbW * _bhpRatio, _hbH, 0); ctx.fill();
-            ctx.fillStyle = 'rgba(255,255,255,0.75)';
-            ctx.font = `bold ${Math.round(_innerR * 0.32)}px 'Sen', sans-serif`;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(_pveState.baseHp, 0, _hbY - _innerR * 0.22);
-
-            ctx.restore();
-        }
+        // --- BAZA PvE --- (ARArena.drawBase: the fort; its HP bar is drawn with the names, above the crowns)
+        if (_gameMode === 'pve') ARArena.drawBase(ctx, _PVE_BASE.x, _PVE_BASE.y, Math.max(0, _pveState.baseHp / (_pveState.baseMaxHp || 1000)), Date.now() / 1000);
 
         // --- ZOMBI ---
         // The art is a cached bitmap per type (ARArena.drawZombieSprite); the shadows of all the zombies are one fill
@@ -5012,26 +4981,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
             ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow);
         }
+        // HP bars: only on the zombies that are hurt (see _drawZombieBars)
         ctx.setTransform(_wm);
-        if (_zVisible > 0) {
-            for (let _pass = 0; _pass < 4; _pass++) {
-                ctx.beginPath();
-                let _any = false;
-                for (let _zi = 0; _zi < _zVisible; _zi++) {
-                    const _zb = _zVisibleList[_zi];
-                    const _zDef = _ZB_DEFS[_zb.type || 0] || _ZB_DEFS[0];
-                    const _zbR = _zDef.r;
-                    const _zhpRatio = Math.max(0, Math.min(1, _zb.hp / _zDef.maxHp));
-                    const _band = _zhpRatio > 0.5 ? 1 : _zhpRatio > 0.25 ? 2 : 3;
-                    if (_pass !== 0 && _pass !== _band) continue;
-                    const _zbW = Math.max(28, _zbR * 2.2);
-                    ctx.rect(_zb.x - _zbW / 2, _zb.y - _zbR - 14, _pass === 0 ? _zbW : _zbW * _zhpRatio, 3);
-                    _any = true;
-                }
-                if (!_any) continue;
-                ctx.fillStyle = _ZB_BAR_COLORS[_pass];
-                ctx.fill();
+        {
+            let _hurt = 0;
+            for (let _zi = 0; _zi < _zVisible; _zi++) {
+                const _zb = _zVisibleList[_zi], _zDef = _ZB_DEFS[_zb.type || 0] || _ZB_DEFS[0];
+                if (_zb.hp > 0 && _zb.hp < _zDef.maxHp) _zHurt[_hurt++] = _zb;
             }
+            if (_hurt > 0) _drawZombieBars(ctx, _zHurt, _hurt, _ZB_DEFS);
         }
 
         // --- JUCATORI ---
@@ -5102,6 +5060,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // --- NUME + HP --- (above the crowns, so a tag is never hidden)
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
+        if (_gameMode === 'pve') {   // the base's bar: the player's, made bigger, over the fort
+            const _bBarW = 150, _bBarH = 20, _bBarX = _PVE_BASE.x - _bBarW / 2, _bBarY = _PVE_BASE.y - _PVE_BASE_R - 52;
+            const _bRatio = Math.max(0, Math.min(1, _pveState.baseHp / (_pveState.baseMaxHp || 1000)));
+            _drawLabel(ctx, 'BAZĂ', 14, '#66E287', INK, 4, 'alphabetic', _PVE_BASE.x, _bBarY - 10, _lblScale);
+            _drawHpBar(ctx, _bBarX, _bBarY, _bBarW, _bBarH, _bRatio, 2.5);
+            _drawLabel(ctx, String(Math.ceil(_pveState.baseHp)), 13, '#ffffff', INK, 4, 'middle', _PVE_BASE.x, _bBarY + _bBarH / 2, _lblScale);
+        }
         for (let _qi = 0; _qi < _plN; _qi++) {
             const player = _plQ[_qi], px = _plQx[_qi], py = _plQy[_qi];
             const isMe = player.id === socket.id;
