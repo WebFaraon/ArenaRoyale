@@ -434,7 +434,34 @@ const ARS_RARITY = {
 const NO_WSKIN = 'default';
 // weapon: the gun shown; skin: the skin previewed on it (NO_WSKIN = the gun as it is); inHand: the figure
 // view; busy: a request is out (one at a time, so a double click cannot send two)
-const _ars = { weapon: null, skin: NO_WSKIN, inHand: false, busy: false, buy: null, raf: 0, fx: _newShotFx(), entries: {} };
+const _ars = { weapon: null, skin: NO_WSKIN, cls: null, k: 1, inHand: false, busy: false, buy: null, raf: 0, fx: _newShotFx(), entries: {} };
+
+// The screen is laid out like on a laptop at every size. Below ARS_MIN_W x ARS_MIN_H (a phone, a small tablet)
+// the whole thing is drawn at that design size and scaled down to fit (#ars-fit: width/height = the screen / k,
+// transform: scale(k)), so a phone shows the same three columns, smaller, with no scrolling to find things.
+// --k lets the small print keep a readable size on screen (style.css: .is-scaled).
+const ARS_MIN_W = 1280, ARS_MIN_H = 620;
+function _arsFit() {
+    const scr = document.getElementById('screen-arsenal'), fit = document.getElementById('ars-fit');
+    if (!scr || !fit || scr.style.display === 'none') return;
+    const cs = getComputedStyle(scr);
+    const aw = scr.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    const ah = scr.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    if (aw < 50 || ah < 50) return;
+    const k = Math.min(1, aw / ARS_MIN_W, ah / ARS_MIN_H);
+    _ars.k = k;
+    const scaled = k < 0.999;
+    scr.classList.toggle('is-scaled', scaled);
+    scr.style.setProperty('--k', scaled ? k.toFixed(4) : '1');
+    if (scaled) {
+        fit.style.width = (aw / k).toFixed(1) + 'px';
+        fit.style.height = (ah / k).toFixed(1) + 'px';
+        fit.style.transform = `scale(${k.toFixed(4)})`;
+    } else { fit.style.width = ''; fit.style.height = ''; fit.style.transform = ''; }
+    scr.classList.toggle('is-tight', ah / k < 760);   // short screens: the trays take less room
+}
+window.addEventListener('resize', _arsFit);
+window.addEventListener('orientationchange', () => setTimeout(_arsFit, 150));
 
 const _arsOwned    = () => new Set((currentProfile && currentProfile.owned_weapon_skins) || []);
 const _arsStats    = id => ((currentProfile && currentProfile.weapon_stats) || {})[id] || { kills: 0, zombieKills: 0, damage: 0, shots: 0, hits: 0 };
@@ -586,9 +613,32 @@ function _arsSetMoney() {
     }
 }
 
+// The category tabs over the list: one per class in weapons.json (with how many guns it has), the shown list is
+// the active class. The class of the chosen gun is the one open.
+function _arsClassOf(wid) { const w = _WEAPON_DATA[wid]; return w ? w.class : null; }
+function _arsRenderTabs() {
+    const box = document.getElementById('ars-tabs');
+    if (!box) return;
+    const tabs = WEAPON_CLASSES.map(c => ({ c, n: WEAPONS.filter(w => w.class === c.id).length })).filter(t => t.n);
+    box.innerHTML = tabs.map(({ c, n }) => {
+        const on = c.id === _ars.cls;
+        return `<button type="button" role="tab" class="ars-blk ars-tab ${on ? 'ars-btn-orange is-on' : 'ars-btn-slate'}" data-cls="${c.id}" aria-selected="${on}" onclick="arsSelectClass('${c.id}')">
+            <span class="ars-tab-name">${c.name.toUpperCase()}</span><span class="ars-tab-n">${n}</span></button>`;
+    }).join('');
+}
+// A tab opens its class; when the chosen gun is not in it, the first gun of the class is chosen, so the middle
+// and the right follow what the list shows.
+function arsSelectClass(cid) {
+    if (cid === _ars.cls) return;
+    _ars.cls = cid;
+    const first = WEAPONS.find(w => w.class === cid);
+    if (first && _arsClassOf(_ars.weapon) !== cid) { arsSelectWeapon(first.id); return; }
+    _arsRenderTabs(); _arsRenderList();
+}
+
 function _arsRenderList() {
     const box = document.getElementById('ars-weapons');
-    const order = WEAPON_CLASSES.flatMap(c => WEAPONS.filter(w => w.class === c.id));
+    const order = WEAPONS.filter(w => w.class === _ars.cls);
     box.innerHTML = order.map(w => {
         const sk = _arsEquippedSkin(w.id), cls = WEAPON_CLASSES.find(c => c.id === w.class);
         const sel = w.id === _ars.weapon;
@@ -703,13 +753,14 @@ function _arsRenderSide() {
         <div class="ars-skin-grid">${cards.join('')}</div>`;
 }
 
-function _arsRender() { _arsRenderList(); _arsRenderMain(); _arsRenderSide(); }
+function _arsRender() { _arsRenderTabs(); _arsRenderList(); _arsRenderMain(); _arsRenderSide(); }
 
 async function openArsenal(weaponId, skinId) {
     _arsWarm();
     await Promise.all([WEAPONS_ART_READY, WEAPON_SKIN_ART_READY, WEAPON_SKIN_CATALOG_READY]);
     if (!WEAPONS.length) return;
     _ars.weapon = _WEAPON_DATA[weaponId] ? weaponId : (_WEAPON_DATA[selectedWeapon] ? selectedWeapon : DEFAULT_WEAPON);
+    _ars.cls = _arsClassOf(_ars.weapon);
     const sk = _arsSkin(skinId);
     _ars.skin = sk && sk.weapon === _ars.weapon ? skinId : _arsEquippedSkin(_ars.weapon);
     _ars.inHand = false;
@@ -718,6 +769,7 @@ async function openArsenal(weaponId, skinId) {
     const scr = document.getElementById('screen-arsenal');
     scr.classList.remove('is-closing');
     scr.style.display = 'flex';          // starts the arrival animation (style.css: arsIn, and the lobby fades out under it)
+    _arsFit();
     document.body.classList.add('arsenal-open');
     document.addEventListener('keydown', _arsKey);
     const back = scr.querySelector('.ars-back'); if (back) back.focus({ preventScroll: true, focusVisible: false });
@@ -752,6 +804,7 @@ function _arsKey(e) {
 function arsSelectWeapon(id) {
     if (!_WEAPON_DATA[id]) return;
     _ars.weapon = id;
+    _ars.cls = _arsClassOf(id);
     _ars.skin = _arsEquippedSkin(id);
     _arsRender();
 }
@@ -793,7 +846,7 @@ function _arsHandLoop(now) {
     const c = document.getElementById('ars-hand');
     if (!c || !_ars.inHand || document.getElementById('screen-arsenal').style.display === 'none') return;
     _ars.raf = requestAnimationFrame(_arsHandLoop);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) * _ars.k;   // the screen may be scaled down (_arsFit): one canvas pixel per device pixel
     const cw = Math.max(1, Math.round(c.clientWidth * dpr)), ch = Math.max(1, Math.round(c.clientHeight * dpr));
     if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
     const ctx = c.getContext('2d');

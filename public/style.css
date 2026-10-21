@@ -4429,7 +4429,7 @@ button:disabled { cursor: not-allowed; }
     text-shadow: var(--stroke-lg);
 }
 .ars-title .ic { width: 1.05em; height: 1.05em; color: var(--c-orange); stroke-width: 2.6; filter: drop-shadow(0 3px 0 var(--ink-line)); }
-.ars-wallet { margin-left: auto; display: flex; gap: 8px; }
+.ars-wallet { flex: none; display: flex; gap: 8px; }
 .ars-cur {
     display: inline-flex;
     align-items: center;
@@ -4454,7 +4454,7 @@ button:disabled { cursor: not-allowed; }
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(280px, 330px) minmax(0, 1fr) minmax(330px, 410px);
+    grid-template-columns: minmax(250px, 320px) minmax(0, 1fr) minmax(310px, 400px);
     gap: 18px;
     padding: 8px calc(var(--safe-r) + 24px) calc(var(--safe-b) + 22px) calc(var(--safe-l) + 24px);
 }
@@ -4572,6 +4572,7 @@ button:disabled { cursor: not-allowed; }
 .ars-main-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .ars-main-id { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .ars-pill {
+    white-space: nowrap;
     padding: 2px 10px 4px;
     border: 2.5px solid var(--ink-line);
     border-radius: 999px;
@@ -4630,7 +4631,7 @@ button:disabled { cursor: not-allowed; }
 #ars-hand { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 .ars-bars { display: flex; flex-direction: column; gap: 9px; }
-.ars-bar-row { display: grid; grid-template-columns: 118px minmax(0, 1fr) 118px; align-items: center; gap: 12px; }
+.ars-bar-row { display: grid; grid-template-columns: minmax(80px, 118px) minmax(40px, 1fr) minmax(70px, 118px); align-items: center; gap: 12px; }
 .ars-bar-label { font-weight: 800; font-size: .76rem; letter-spacing: .07em; color: #DCE4E8; text-shadow: var(--stroke-sm); }
 .ars-bar {
     position: relative;
@@ -4656,10 +4657,10 @@ button:disabled { cursor: not-allowed; }
 .ars-bar-val { text-align: right; font-weight: 800; font-size: .92rem; text-shadow: var(--stroke-sm); white-space: nowrap; }
 
 .ars-actions { display: flex; gap: 12px; margin-top: auto; padding-top: 4px; }
-.ars-use { flex: 1; min-height: 54px; font-size: 1.1rem; letter-spacing: .09em; text-shadow: var(--stroke); }
+.ars-use { flex: 1; white-space: nowrap; min-height: 54px; font-size: 1.1rem; letter-spacing: .09em; text-shadow: var(--stroke); }
 .ars-use[aria-pressed="true"] { --c: var(--c-slate); --cl: var(--l-slate); --ch: var(--c-slate); cursor: default; color: #DFF7E5; }
 .ars-use[aria-pressed="true"] .ic { color: var(--c-green); stroke-width: 3.2; }
-.ars-hand-btn { min-width: 190px; min-height: 54px; font-size: .98rem; }
+.ars-hand-btn { flex: 0 1 170px; min-width: 0; min-height: 54px; font-size: .98rem; }
 
 /* ---------- right: your numbers, the skins ---------- */
 .ars-side { gap: 16px; min-height: 0; overflow-y: auto; }
@@ -4735,7 +4736,7 @@ button:disabled { cursor: not-allowed; }
 .ars-skin-icon .wicon { filter: drop-shadow(0 2px 0 var(--ink-line)); }
 .ars-skin.is-locked .ars-skin-icon .wicon { filter: drop-shadow(0 2px 0 var(--ink-line)) saturate(.55) brightness(.85); }
 .ars-skin-name { max-width: 100%; font-weight: 800; font-size: .9rem; line-height: 1.1; text-shadow: var(--stroke-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ars-skin-foot { display: flex; justify-content: center; padding: 2px 6px 11px; }
+.ars-skin-foot { display: flex; justify-content: center; min-width: 0; padding: 2px 6px 11px; }
 .ars-mini { white-space: nowrap; min-height: 30px; padding: 0 9px 3px; font-size: .74rem; border-width: 2.5px; border-radius: 9px; gap: 4px; }
 .ars-mini .ic { width: 1.1em; height: 1.1em; }
 .ars-mini.is-short { --c: var(--c-slate); --cl: var(--l-slate); --ch: var(--h-slate); color: #FFB3BA; }
@@ -4815,41 +4816,65 @@ button:disabled { cursor: not-allowed; }
 }
 .wskin-notice-x .ic { width: 1.05em; height: 1.05em; stroke-width: 3; }
 
-/* ---------- stacked: below 1100px wide or on a short landscape screen (phones) ---------- */
-@media (max-width: 1099px), (max-height: 620px) {
-    .ars-top { gap: 10px; padding-left: calc(var(--safe-l) + 14px); padding-right: calc(var(--safe-r) + 14px); }
-    .ars-back { width: 42px; height: 42px; }
-    .ars-cur { min-height: 38px; font-size: .95rem; padding: 0 11px 3px 8px; }
-    .ars-body {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        padding: 6px calc(var(--safe-r) + 14px) calc(var(--safe-b) + 18px) calc(var(--safe-l) + 14px);
-    }
-    .ars-col, .ars-main, .ars-side { flex: none; overflow: visible; min-height: auto; }
-    /* the guns: one sideways row */
-    .ars-head { padding-bottom: 6px; }
-    .ars-weapons { flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 8px; padding: 2px 4px 10px; scroll-snap-type: x proximity; }
-    .ars-wrow { flex: 0 0 auto; width: 240px; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; min-height: 60px; scroll-snap-align: start; }
-    .ars-wrow-icon { height: 38px; padding: 3px 5px; }
-    .ars-wrow-name { font-size: .98rem; }
-    .ars-main-name { font-size: 2rem; }
-    .ars-stage { flex: none; height: 150px; }
-    .ars-stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .ars-skin-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-    .ars-bar-row { grid-template-columns: 104px minmax(0, 1fr) 104px; gap: 10px; }
-    .ars-actions { margin-top: 2px; }
-    .ars-hand-btn { min-width: 160px; }
+/* ---------- the category tabs, in the top bar between the title and the wallet ---------- */
+.ars-tabs { flex: 1; min-width: 0; display: flex; justify-content: center; gap: 8px; padding: 0 6px; }
+.ars-tab { flex: 0 1 auto; min-height: 42px; padding: 0 12px 3px; font-size: .8rem; letter-spacing: .06em; gap: 7px; white-space: nowrap; }
+.ars-tab-n {
+    min-width: 1.5em;
+    padding: 2px 5px 3px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .3);
+    font-size: .72rem;
+    line-height: 1;
+    letter-spacing: 0;
+    text-shadow: none;
 }
+.ars-tab.is-on .ars-tab-n { background: rgba(0, 0, 0, .26); }
+
+/* ---------- every size: the same screen ----------
+   The inside (#ars-fit) is laid out like on a laptop; game.js _arsFit scales it down when the screen is smaller
+   than ARS_MIN_W x ARS_MIN_H (a phone, a small tablet). The notch / home bar are kept out by the screen's own
+   padding, so inside the safe areas are 0. */
+#screen-arsenal { padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l); }
+.ars-fit {
+    --safe-t: 0px; --safe-r: 0px; --safe-b: 0px; --safe-l: 0px;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    transform-origin: 0 0;
+}
+#screen-arsenal.is-scaled .ars-fit { flex: none; }
+/* small print stays readable once scaled: at least ~8-9px on screen */
+#screen-arsenal.is-scaled :is(.ars-wrow-sub, .ars-tray-note, .ars-head-note, .ars-wrow-tag, .ars-bullet-kick, .ars-bar-label, .ars-stat-label, .ars-skin-rar, .ars-tab-n, .ars-pill, .ars-unlock-line) {
+    font-size: max(.7rem, calc(8.5px / var(--k)));
+}
+#screen-arsenal.is-scaled :is(.ars-badge, .ars-mini) { font-size: max(.66rem, calc(7.5px / var(--k))); letter-spacing: .02em; max-width: 100%; }
+#screen-arsenal.is-scaled .ars-head-title, #screen-arsenal.is-scaled .ars-tray-title { font-size: max(.8rem, calc(9.5px / var(--k))); }
+#screen-arsenal.is-scaled :is(.ars-tab, .ars-skin-name, .ars-bar-val, .ars-main-skin) { font-size: max(.78rem, calc(9px / var(--k))); }
+#screen-arsenal.is-scaled .ars-main-head { flex-wrap: wrap; row-gap: 6px; }
+#screen-arsenal.is-scaled .ars-bar-row { grid-template-columns: minmax(80px, 140px) minmax(40px, 1fr) minmax(70px, 120px); }
+/* a short screen: less air in the trays, the numbers in one row */
+#screen-arsenal.is-tight .ars-body { gap: 14px; padding-top: 4px; padding-bottom: 16px; }
+#screen-arsenal.is-tight .ars-tray { padding: 12px 14px; }
+#screen-arsenal.is-tight .ars-top { height: calc(var(--bar-h) + 4px); padding-top: 4px; }
+#screen-arsenal.is-tight .ars-main { gap: 10px; }
+#screen-arsenal.is-tight .ars-stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#screen-arsenal.is-tight .ars-stat-grid { gap: 6px; }
+#screen-arsenal.is-tight .ars-stat { padding: 7px 8px 8px; gap: 2px; }
+#screen-arsenal.is-tight .ars-stat-label { white-space: nowrap; letter-spacing: .03em; font-size: .62rem; }
+#screen-arsenal.is-tight .ars-stat-val { font-size: 1.25rem; }
+#screen-arsenal.is-tight .ars-skins { gap: 8px; }
+#screen-arsenal.is-tight .ars-skin-grid { gap: 8px; }
+#screen-arsenal.is-tight .ars-skin-face { gap: 3px; padding: 6px 4px 2px; }
+#screen-arsenal.is-tight .ars-skin-icon { height: 32px; }
+#screen-arsenal.is-tight .ars-skin-foot { padding: 1px 5px 10px; }
+#screen-arsenal.is-tight .ars-stage { min-height: 0; }
+#screen-arsenal.is-tight .ars-weapons { gap: 8px; }
+#screen-arsenal.is-tight .ars-wrow { min-height: 60px; }
+#screen-arsenal.is-tight .ars-use, #screen-arsenal.is-tight .ars-hand-btn { min-height: 46px; }
 @media (max-width: 560px) {
-    .ars-wallet { gap: 6px; }
-    .ars-bar-row { grid-template-columns: 92px minmax(0, 1fr) 92px; }
-    .ars-actions { flex-direction: column; }
-    .ars-hand-btn { min-width: 0; }
-    .ars-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .ars-skin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .wskin-notice { flex-wrap: wrap; justify-content: center; }
 }
 @media (prefers-reduced-motion: reduce) {

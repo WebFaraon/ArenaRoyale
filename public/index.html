@@ -465,9 +465,11 @@
 
 <!-- ========== ARSENAL: armele, skin-urile si statisticile pe arma (game.js ARSENAL) ========== -->
 <div id="screen-arsenal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="ars-title">
+    <div class="ars-fit" id="ars-fit">
     <header class="ars-top">
         <button type="button" class="ars-blk ars-back" onclick="closeArsenal()" aria-label="Inapoi in lobby"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
         <h1 class="ars-title" id="ars-title"><svg class="ic" aria-hidden="true"><use href="#crosshair"/></svg><span>ARSENAL</span></h1>
+        <div class="ars-tabs" id="ars-tabs" role="tablist" aria-label="Categoria armei"></div>
         <div class="ars-wallet">
             <span class="ars-cur ars-cur-gold"><img class="pic" src="/images/ui/monede.svg" alt="" aria-hidden="true" draggable="false"><span id="ars-coins">0</span></span>
             <span class="ars-cur ars-cur-gem"><img class="pic" src="/images/ui/diamante.svg" alt="" aria-hidden="true" draggable="false"><span id="ars-diamonds">0</span></span>
@@ -486,6 +488,7 @@
             <section class="ars-tray ars-stats" id="ars-stats"></section>
             <section class="ars-tray ars-skins" id="ars-skins"></section>
         </div>
+    </div>
     </div>
     <!-- buying asks first -->
     <div class="ars-confirm" id="ars-confirm" hidden>
