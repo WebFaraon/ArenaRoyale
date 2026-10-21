@@ -460,6 +460,33 @@ function _arsFit() {
     } else { fit.style.width = ''; fit.style.height = ''; fit.style.transform = ''; }
     scr.classList.toggle('is-tight', ah / k < 760);   // short screens: the trays take less room
 }
+// The lobby does the same (style.css: .lb-fit is a size container, the layout rules read it): laid out at least
+// LOBBY_MIN_W x LOBBY_MIN_H like a laptop, scaled down to fit a phone or a small tablet.
+const LOBBY_MIN_W = 1280, LOBBY_MIN_H = 650;
+function _lobbyFit() {
+    const scr = document.getElementById('screen-lobby'), fit = document.getElementById('lb-fit');
+    if (!scr || !fit || scr.style.display === 'none') return;
+    const cs = getComputedStyle(scr);
+    const aw = scr.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    const ah = scr.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    if (aw < 50 || ah < 50) return;
+    const k = Math.min(1, aw / LOBBY_MIN_W, ah / LOBBY_MIN_H);
+    const scaled = k < 0.999;
+    scr.classList.toggle('is-scaled', scaled);
+    scr.style.setProperty('--k', scaled ? k.toFixed(4) : '1');
+    if (scaled) {
+        fit.style.width = (aw / k).toFixed(1) + 'px';
+        fit.style.height = (ah / k).toFixed(1) + 'px';
+        fit.style.transform = `scale(${k.toFixed(4)})`;
+    } else { fit.style.width = ''; fit.style.height = ''; fit.style.transform = ''; }
+    if (window.adjustLbText) window.adjustLbText();   // the top bar's button labels follow the layout size
+}
+window.addEventListener('resize', _lobbyFit);
+window.addEventListener('orientationchange', () => setTimeout(_lobbyFit, 150));
+document.addEventListener('DOMContentLoaded', () => {
+    const scr = document.getElementById('screen-lobby');
+    if (scr && window.ResizeObserver) new ResizeObserver(_lobbyFit).observe(scr);   // fires when the lobby is shown
+});
 window.addEventListener('resize', _arsFit);
 window.addEventListener('orientationchange', () => setTimeout(_arsFit, 150));
 

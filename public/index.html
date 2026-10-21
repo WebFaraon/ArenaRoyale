@@ -201,6 +201,7 @@
 
 <!-- ========== LOBBY ========== -->
 <div id="screen-lobby" style="display:none">
+    <div class="lb-fit" id="lb-fit">
     <!-- Top bar: logo, season, (tabs on phones), social + settings -->
     <header class="lb-topbar">
         <div class="lb-topbar-left">
@@ -394,6 +395,7 @@
         </section>
     </aside>
 
+    </div>
     </div>
 
     <!-- ── Missions Modal (all six of today's missions) ── -->
@@ -848,12 +850,14 @@
 
     // Ascunde textul butoanelor topbar pe ecrane < 1100px (telefoane + tablete)
     function adjustLbText() {
-        const hide = window.innerWidth < 1024;
+        const lobby = document.getElementById('screen-lobby');
+        const hide = window.innerWidth < 1024 && !(lobby && lobby.classList.contains('is-scaled'));   // a scaled lobby is laid out like a laptop's
         document.querySelectorAll('.lb-btn-text').forEach(el => {
             el.style.display = hide ? 'none' : '';
         });
     }
     adjustLbText();
+    window.adjustLbText = adjustLbText;
     window.addEventListener('resize', adjustLbText);
 
     // Blocheaza modul portret pe touch devices
