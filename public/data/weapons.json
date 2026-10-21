@@ -157,7 +157,7 @@
       "reload": {"rounds": 10, "seconds": 6},
       "loadout": {"baseHp": 350, "baseDmg": 13, "baseSpd": 2, "hpPer": 40, "dmgPer": 2, "spdPer": 0.2},
       "sprite": "/images/weapons/ar_grizzly.png",
-      "hands": [[-12, 38], [13.5, 68]],
+      "hands": [[-12, 39.6], [13.5, 69.6]],
       "muzzle": [0, 108],
       "recoil": 3,
       "flash": {"length": 18, "width": 8},

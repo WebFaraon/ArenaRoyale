@@ -555,7 +555,15 @@ function _arsBox(e) {
         let y0 = 0, y1 = H - 1;
         while (y0 < H && !rowHas(y0)) y0++;
         while (y1 > y0 && !rowHas(y1)) y1--;
-        if (y0 < H) e.box = [y0 / H * 144, (y1 + 1) / H * 144];
+        if (y0 < H) {
+            e.box = [y0 / H * 144, (y1 + 1) / H * 144];
+            // and how far it reaches across (wings, feathers): the stage shows the middle 44 units, wider art is shrunk to fit
+            const colHas = x => { for (let y = y0; y <= y1; y++) if (a[(y * W + x) * 4 + 3] > 12) return true; return false; };
+            let x0 = 0, x1 = W - 1;
+            while (x0 < W && !colHas(x0)) x0++;
+            while (x1 > x0 && !colHas(x1)) x1--;
+            e.bx = [x0 / W * 80, (x1 + 1) / W * 80];
+        }
     } catch { /* a picture that cannot be read stays where the frame puts it */ }
     return e.box;
 }
@@ -579,6 +587,10 @@ async function _arsFitGun(swap) {
     if (seq !== _arsGunSeq || !wrap.isConnected) return;   // another click came first
     const box = _arsBox(e), el = e.img;
     wrap.style.setProperty('--dx', box ? ((72 - (box[0] + box[1]) / 2) / 144 * 100).toFixed(3) + '%' : '0%');
+    // art wider than the 44 units the stage shows (the Viespe's wings, the Soim's feathers) is scaled down about the middle of its pixels
+    const half = e.bx ? Math.max(40 - e.bx[0], e.bx[1] - 40) + 2 : 0;
+    wrap.style.setProperty('--fit', half > 22 ? (22 / half).toFixed(3) : '1');
+    wrap.style.setProperty('--ody', box ? (((box[0] + box[1]) / 2 / 144 - 0.5) * 100).toFixed(2) + '%' : '0%');
     el.className = '';
     el.alt = ''; el.draggable = false;
     if (el.parentNode !== wrap) wrap.replaceChildren(el);
