@@ -2,7 +2,7 @@
   "units": "unitati-lume; corpul are raza 36; directia de tintire 0 = in jos; originea = centrul corpului",
   "defaultWeapon": "pistol",
   "rules": {
-    "aimDelay": 0.3,
+    "aimDelay": 0,
     "reloadDelay": 0.5,
     "bulletRadius": 6
   },

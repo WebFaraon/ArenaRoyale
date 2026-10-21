@@ -3133,12 +3133,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // Fire timing mirrors server.js. Cooldowns and burst delays carry their sub-tick remainder on
     // the server, so their average length is exact (SMG 120 ms, Burst cycle 800 ms); a real shot
     // lands up to one tick after its due time, which keeps our prediction slightly ahead.
-    // The aim delay (weapons.json rules.aimDelay, 0.3 s) is armed when the server applies the input, on
+    // The aim delay (weapons.json rules.aimDelay, 0 now = the gun fires as soon as the input lands; it was 0.3 s) is armed when the server applies the input, on
     // the first tick after it lands, and counted down from that same tick, so the server fires between
     // (k-1) and k ticks after the input lands (k = ticks to count the delay down, the server's own
     // arithmetic). Use the earliest: a prediction a few ms early links fine, one a few ms late races the
     // server bullet.
-    const _AIM_MS = (() => { let c = WEAPON_RULES.aimDelay, k = 0; while (c > 0) { c -= ARShared.TICK_S; k++; } return (k - 1) * ARShared.TICK_S * 1000; })();
+    const _AIM_MS = (() => { let c = WEAPON_RULES.aimDelay, k = 0; while (c > 0) { c -= ARShared.TICK_S; k++; } return Math.max(0, (k - 1) * ARShared.TICK_S * 1000); })();
 
     function _reconcileOwnBullets(bullets, now) {
         const myId = socket.id;
