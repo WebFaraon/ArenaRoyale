@@ -167,6 +167,7 @@ async function main() {
     if (ABL) await page.evaluate((abl) => { for (const n of abl.split(',')) { if (n.startsWith('ARArena.')) { window.ARArena[n.slice(8)] = function () {}; } else { window[n] = function () {}; } } }, ABL);
     if (DBG) await page.keyboard.press('`');
     if (CPU > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
+    if (arg('bb', false)) await page.evaluate(() => ARBlackBox.start());   // the lag black box running, to measure what it costs
 
     // ---- simple player: wander + shoot, driven from here ----
     let stop = false;

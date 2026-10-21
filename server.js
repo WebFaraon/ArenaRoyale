@@ -36,6 +36,10 @@ const io     = new Server(server, {
     connectTimeout: 45000,
 });
 
+// Recent event-loop stalls (wall time they ended, ms), in a small ring. c-pong hands them to the client's black box, which can then tell
+// a server stall from the network when packets arrive late. Filled by the lag monitor below, so LAG_LOG=0 leaves it empty.
+const _srvStalls = [];
+
 // ---------- EVENT LOOP LAG LOG ----------
 // Always on, almost free: a 25 ms timer (it measures how late it fires, so any block longer than LAG_LOG_MS shows) notices when the event loop was blocked (a GC pause, a slow handler, the
 // host taking the CPU away) and writes one line to the log when it was blocked for more than LAG_LOG_MS (25).
@@ -69,6 +73,7 @@ const io     = new Server(server, {
         const iv = setInterval(() => {
             const now = performance.now(), lag = now - last - STEP;
             last = now;
+            if (lag >= 15) { _srvStalls.push([Date.now(), Math.round(lag)]); if (_srvStalls.length > 20) _srvStalls.shift(); }
             if (lag < LAG_MS) return;
             if (now - lastLog < EVERY_MS) { held++; if (lag > heldWorst) heldWorst = lag; return; }
             lastLog = now;
@@ -2466,7 +2471,8 @@ io.on('connection', (socket) => {
         if (count >= total) triggerRematch(code, room);
     });
 
-    socket.on('c-ping', (t) => socket.emit('c-pong', t));
+    // the echo, plus the server's clock and its recent event-loop stalls (the client's black box uses them; the game ignores them)
+    socket.on('c-ping', (t) => { const now = Date.now(); socket.emit('c-pong', t, now, _srvStalls.filter(x => now - x[0] < 6000)); });
 
     socket.on('pve-skip', () => {
         const r = fastGetRoom(socket);

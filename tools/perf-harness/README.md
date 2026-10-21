@@ -2,7 +2,7 @@
 
 Measurement tools used by the performance work (not part of the game, not deployed).
 
-- `br.js` – drives a real Chromium through a match (login, join a room hosted by bots, move/shoot) and records frame times, GC, allocations, CPU profile, DOM mutations. `--headed --vsync` = the real display cadence. `--abl ARArena.drawGrass,...` disables draw functions at runtime (ablation), `--query gfx=legacy` loads the page with a URL query.
+- `br.js` – drives a real Chromium through a match (login, join a room hosted by bots, move/shoot) and records frame times, GC, allocations, CPU profile, DOM mutations. `--headed --vsync` = the real display cadence. `--bb` runs the lag black box (public/blackbox.js) during the pass, to measure its cost. `--abl ARArena.drawGrass,...` disables draw functions at runtime (ablation), `--query gfx=legacy` loads the page with a URL query.
 - `suite.js` – the standard before/after table at 2560x1600 (150 % scale): PvE and BR scenes, 3 runs each, medians.
 - `bots.js` – socket.io bots (`--n 30 --mode br --secs 30 --port 3100`), prints KB/s, packet sizes, arrival jitter.
 - `ana_pos.js`, `ana_bullets.js` – smoothness of zombies/remote players/own camera and of enemy bullets from a `br.js --pos --gslog` run.

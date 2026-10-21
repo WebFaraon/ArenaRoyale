@@ -149,6 +149,7 @@ function _rsSetIdx(canvas, idx, ts) {
     _RS.idx = idx;
     _RS.settleUntil = ts + 1800;   // sprite/tile caches rebuild at the new scale
     _RS.bad = 0; _RS.good = 0; _RS.frames = 0; _RS.wStart = 0;
+    if (window.ARBlackBox && ARBlackBox.on) ARBlackBox.event('rs-step', idx);
     try { localStorage.setItem('ar_rs_idx', String(idx)); } catch (e) { /* storage blocked */ }
     _rsApplySize(canvas);
 }
@@ -3365,8 +3366,21 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _onDbgKey = (e) => { if (e.key === '`') _toggleDbg(); };
     window.addEventListener('keydown', _onDbgKey);
 
+    // Lag black box (blackbox.js): F8 starts it in a match. The hooks below cost one check while it is off.
+    const _BB = window.ARBlackBox || { on: false, attach() {}, detach() {}, frame() {}, packet() {}, csp() {}, ping() {}, event() {} };
+    _BB.attach({
+        socket,
+        meta: () => ({ mode: _gameMode, weapon: selectedWeapon, resolutionStep: _RS.idx, resolutionScale: _rsScale(), canvas: [canvas.width, canvas.height] }),
+        counts: () => {
+            let z = 0;
+            for (let i = 0; i < _zombies.length; i++) if (_zombies[i] && _zombies[i].hp > 0) z++;
+            const e = stateBuffer[stateBuffer.length - 1];
+            return [z, e ? e.bullets.length : 0, e ? Object.keys(e.players).length : 0];
+        },
+    });
+
     // Ping RTT measurement — trimis la fiecare 2s, server echoueaza timestamp
-    socket.on('c-pong', (t) => { _pingRtt = Math.round(performance.now() - t); });
+    socket.on('c-pong', (t, srvNow, srvStalls) => { _pingRtt = Math.round(performance.now() - t); if (_BB.on) _BB.ping(performance.now(), _pingRtt, srvNow, srvStalls); });
     const _pingInterval = setInterval(() => { if (!gameEnded) socket.emit('c-ping', performance.now()); }, 2000);
 
     let mouseActive = false;
@@ -3636,6 +3650,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('keyup',   onKeyUp);
         window.removeEventListener('keydown', _onDbgKey);
+        _BB.detach();   // saves the report if it was running
         canvas.removeEventListener('pointermove',  onPointerMove);
         canvas.removeEventListener('pointerleave', onPointerLeave);
         canvas.removeEventListener('pointerdown',  onPointerDown);
@@ -3704,6 +3719,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         _dbgGsCount++;
         const now = performance.now();
+        if (_BB.on) _BB.packet(now, tickNo, pFlat.length / 6, bFlat.length / 6, zArr ? zArr.length / 6 : 0);
         _sendInputForTick(now); // one input per server tick (see _sendInputForTick)
         // This client's own row (ammo, reload, ack, coins) comes last in the packet; the rest is shared by the room
         let ammoArr = null, _myCoins = 0;
@@ -3876,6 +3892,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             } else {
                 const _cspErr = Math.hypot(_rx - predX, _ry - predY);
                 if (_bDiag.csp && _bDiag.csp.length < 5000) _bDiag.csp.push(+_cspErr.toFixed(2));
+                if (_BB.on) _BB.csp(now, _cspErr);
                 if (_cspErr > 400) {
                     // Snap only for truly catastrophic divergence (>3s lag spike / respawn).
                     predX = _rx; predY = _ry;
@@ -4240,6 +4257,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('pve-wave-start', ({ wave, total, batches }) => {
+        if (_BB.on) ARBlackBox.event('wave-start', wave);   // the server puts everyone back by the base here: a jump, by design
         _pveState.waveBreak = false;
         _pveState.wave = wave;
         hidePvePanel();
@@ -5289,6 +5307,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         // --- DEBUG OVERLAY (backtick to toggle) ---
         _dbgDrawMs = performance.now() - _drawStart;
+        if (_BB.on) _BB.frame(timestamp, _dbgDrawMs);
         if (_bDiag.frames && _bDiag.frames.length < 30000) _bDiag.frames.push(+_dbgDrawMs.toFixed(3));
         _dbgFpsFrames++;
         if (timestamp - _dbgFpsWindowStart >= 1000) {
