@@ -533,7 +533,7 @@ function _arsRenderList() {
                 <span class="ars-wrow-sub">${cls ? cls.name : ''} · ${w.fireModeLabel}</span>
             </span>
             <span class="ars-wrow-end">
-                <span class="ars-wrow-kills" title="kill-uri">${ico('skull')}${_arsStats(w.id).kills.toLocaleString()}</span>
+                <span class="ars-wrow-kills" title="kill-uri">${pic('eliminari')}${_arsStats(w.id).kills.toLocaleString()}</span>
                 ${w.id === selectedWeapon ? '<span class="ars-wrow-tag">IN MECI</span>' : ''}
             </span>
         </button>`;

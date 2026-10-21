@@ -19,7 +19,14 @@
     };
 
     // ---------- icon markup for innerHTML templates ----------
+    // Colour icons (the "Obiecte Arena" pack): public/images/ui/<id>.svg, outline and lip are part of the art.
+    window.pic = function (id, cls) {
+        return '<img class="pic' + (cls ? ' ' + cls : '') + '" src="' + arAsset('/images/ui/' + id + '.svg') + '" alt="" aria-hidden="true" draggable="false">';
+    };
+    // The currency icons are the colour art everywhere (shop, rewards, prices); the others stay Lucide strokes
+    const PIC_OF = { coins: 'monede', gem: 'diamante' };
     window.ico = function (name, cls) {
+        if (PIC_OF[name]) return window.pic(PIC_OF[name], cls);
         return '<svg class="ic' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="#' + name + '"/></svg>';
     };
 
@@ -233,8 +240,7 @@
             swSound.setAttribute('aria-checked', muted ? 'false' : 'true');
             const txt = swSound.querySelector('.switch-text');
             if (txt) txt.textContent = muted ? 'OFF' : 'ON';
-            const use = soundIc && soundIc.querySelector('use');
-            if (use) use.setAttribute('href', muted ? '#volume-x' : '#volume-2');
+            if (soundIc) soundIc.classList.toggle('pic-off', muted);   // the speaker art has no muted twin: it greys out
         }
         if (swSound) {
             swSound.addEventListener('click', function () {

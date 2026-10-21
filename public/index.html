@@ -117,13 +117,13 @@
             </ol>
             <button id="fs-btn">CONTINUA IN BROWSER</button>
         </div>
-        <button id="fs-btn-android"><svg class="ic" aria-hidden="true"><use href="#fullscreen"/></svg><span>INTRA IN FULLSCREEN</span></button>
+        <button id="fs-btn-android"><img class="pic" src="/images/ui/ecran_complet.svg" alt="" aria-hidden="true" draggable="false"><span>INTRA IN FULLSCREEN</span></button>
     </div>
 </div>
 
 <!-- ========== ECRANUL DE AUTENTIFICARE ========== -->
 <div id="screen-auth">
-    <button class="lb-btn lb-btn-icon auth-settings" onclick="openSettings()" title="Setări" aria-label="Setări"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
+    <button class="lb-btn lb-btn-icon auth-settings" onclick="openSettings()" title="Setări" aria-label="Setări"><img class="pic" src="/images/ui/setari.svg" alt="" aria-hidden="true" draggable="false"></button>
     <div class="auth-wrap">
 
         <div class="auth-logo">
@@ -213,16 +213,16 @@
         <!-- Tabs (phones and narrow screens) -->
         <nav class="lobby-tabs-inline" aria-label="Sectiuni lobby">
             <button class="lti-btn" id="tab-left" onclick="switchLobbyTab('left')"><svg class="ic" aria-hidden="true"><use href="#id-card"/></svg><span>Profil</span></button>
-            <button class="lti-btn active" id="tab-center" onclick="switchLobbyTab('center')"><svg class="ic" aria-hidden="true"><use href="#swords"/></svg><span>Joc</span></button>
-            <button class="lti-btn" id="tab-right" onclick="switchLobbyTab('right')"><svg class="ic" aria-hidden="true"><use href="#target"/></svg><span>Misiuni</span></button>
+            <button class="lti-btn active" id="tab-center" onclick="switchLobbyTab('center')"><img class="pic" src="/images/ui/battle_royale.svg" alt="" aria-hidden="true" draggable="false"><span>Joc</span></button>
+            <button class="lti-btn" id="tab-right" onclick="switchLobbyTab('right')"><img class="pic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false"><span>Misiuni</span></button>
         </nav>
         <div class="lb-topbar-right">
             <button class="lb-btn friends-nav-btn" onclick="openFriendsPanel()" id="friends-nav-btn">
-                <svg class="ic" aria-hidden="true"><use href="#users"/></svg><span class="lb-btn-text">PRIETENI</span>
+                <img class="pic" src="/images/ui/prieteni.svg" alt="" aria-hidden="true" draggable="false"><span class="lb-btn-text">PRIETENI</span>
                 <span id="friends-nav-badge" class="friends-nav-badge" style="display:none"></span>
             </button>
-            <a href="#" class="lb-btn lb-gold" onclick="openLeaderboard(); return false;"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg><span class="lb-btn-text">LEADERBOARD</span></a>
-            <button class="lb-btn lb-btn-icon" id="btn-settings-lobby" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
+            <a href="#" class="lb-btn lb-gold" onclick="openLeaderboard(); return false;"><img class="pic" src="/images/ui/leaderboard.svg" alt="" aria-hidden="true" draggable="false"><span class="lb-btn-text">LEADERBOARD</span></a>
+            <button class="lb-btn lb-btn-icon" id="btn-settings-lobby" onclick="openSettings()" title="Setări" aria-label="Setări"><img class="pic" src="/images/ui/setari.svg" alt="" aria-hidden="true" draggable="false"></button>
         </div>
     </header>
 
@@ -248,18 +248,18 @@
                 <div class="lp-xp-bar"><div class="lp-xp-fill" id="lp-xp-fill" style="width:0%"></div></div>
             </div>
             <div class="lp-coins-row">
-                <div class="lp-coin-box lp-coin-gold"><svg class="ic lp-coin-icon" aria-hidden="true"><use href="#coins"/></svg><span class="lp-coin-val" id="lp-coins" data-flap>0</span></div>
-                <div class="lp-coin-box lp-coin-gem"><svg class="ic lp-coin-icon" aria-hidden="true"><use href="#gem"/></svg><span class="lp-coin-val" id="lp-crystals" data-flap>0</span></div>
+                <div class="lp-coin-box lp-coin-gold"><img class="pic lp-coin-icon" src="/images/ui/monede.svg" alt="" aria-hidden="true" draggable="false"><span class="lp-coin-val" id="lp-coins" data-flap>0</span></div>
+                <div class="lp-coin-box lp-coin-gem"><img class="pic lp-coin-icon" src="/images/ui/diamante.svg" alt="" aria-hidden="true" draggable="false"><span class="lp-coin-val" id="lp-crystals" data-flap>0</span></div>
             </div>
         </section>
 
         <section class="lp-card lp-results">
             <h2 class="lp-card-title">STATISTICI</h2>
             <div class="lp-stats-grid">
-                <div class="lp-stat-box lp-stat-wins"><span class="lp-stat-val" id="lp-wins">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#trophy"/></svg>VICTORII</span></div>
-                <div class="lp-stat-box lp-stat-kills"><span class="lp-stat-val" id="lp-kills">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#skull"/></svg>ELIMINARI</span></div>
-                <div class="lp-stat-box lp-stat-games"><span class="lp-stat-val" id="lp-games">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#gamepad-2"/></svg>MECIURI</span></div>
-                <div class="lp-stat-box lp-stat-winrate"><span class="lp-stat-val" id="lp-winrate">0%</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#trending-up"/></svg>WIN RATE</span></div>
+                <div class="lp-stat-box lp-stat-wins"><span class="lp-stat-val" id="lp-wins">0</span><span class="lp-stat-lbl"><img class="pic lp-stat-icon" src="/images/ui/victorii.svg" alt="" aria-hidden="true" draggable="false">VICTORII</span></div>
+                <div class="lp-stat-box lp-stat-kills"><span class="lp-stat-val" id="lp-kills">0</span><span class="lp-stat-lbl"><img class="pic lp-stat-icon" src="/images/ui/eliminari.svg" alt="" aria-hidden="true" draggable="false">ELIMINARI</span></div>
+                <div class="lp-stat-box lp-stat-games"><span class="lp-stat-val" id="lp-games">0</span><span class="lp-stat-lbl"><img class="pic lp-stat-icon" src="/images/ui/meciuri.svg" alt="" aria-hidden="true" draggable="false">MECIURI</span></div>
+                <div class="lp-stat-box lp-stat-winrate"><span class="lp-stat-val" id="lp-winrate">0%</span><span class="lp-stat-lbl"><img class="pic lp-stat-icon" src="/images/ui/win_rate.svg" alt="" aria-hidden="true" draggable="false">WIN RATE</span></div>
             </div>
         </section>
 
@@ -269,10 +269,10 @@
                 <span class="chest-row-sub">0 / 4 sloturi</span>
             </div>
             <div class="chest-slots">
-                <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
-                <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
-                <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
-                <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
+                <div class="chest-slot"><img class="pic chest-slot-icon" src="/images/ui/loc_gol.svg" alt="" aria-hidden="true" draggable="false"></div>
+                <div class="chest-slot"><img class="pic chest-slot-icon" src="/images/ui/loc_gol.svg" alt="" aria-hidden="true" draggable="false"></div>
+                <div class="chest-slot"><img class="pic chest-slot-icon" src="/images/ui/loc_gol.svg" alt="" aria-hidden="true" draggable="false"></div>
+                <div class="chest-slot"><img class="pic chest-slot-icon" src="/images/ui/loc_gol.svg" alt="" aria-hidden="true" draggable="false"></div>
             </div>
             <p class="chest-hint">Castiga meciuri ca sa primesti chest-uri.</p>
         </section>
@@ -294,7 +294,7 @@
             <button type="button" class="hero-arrow hero-next" onclick="cycleCharacter(1)" aria-label="Personajul urmator"><svg class="ic" aria-hidden="true"><use href="#chevron-right"/></svg></button>
             <div class="hero-foot">
                 <button type="button" class="hero-weapon hero-chars" onclick="openCharacterShop()" aria-label="Toate personajele">
-                    <span class="weapon-preview-icon hc-icon"><svg class="ic" aria-hidden="true"><use href="#users"/></svg></span>
+                    <span class="weapon-preview-icon hc-icon"><img class="pic" src="/images/ui/personaje.svg" alt="" aria-hidden="true" draggable="false"></span>
                     <span class="hw-text"><span class="hw-kick">SKIN <b id="hero-skin-idx">1</b> / <span id="hero-skin-total">30</span></span><span class="hw-name">PERSONAJE</span></span>
                 </button>
                 <button type="button" class="hero-weapon hero-arms" id="weapon-ring" onclick="openArsenal()" aria-label="Arsenal: armele si skin-urile lor">
@@ -346,7 +346,7 @@
             <h2 class="gm-label">GAMEMODE</h2>
             <button class="gm-card gm-br" id="gm-br" onclick="selectGamemode('br')">
                 <span class="gm-lane">1</span>
-                <svg class="ic gm-icon" aria-hidden="true"><use href="#swords"/></svg>
+                <img class="pic gm-icon" src="/images/ui/battle_royale.svg" alt="" aria-hidden="true" draggable="false">
                 <span class="gm-info">
                     <span class="gm-name">BATTLE ROYALE</span>
                     <span class="gm-desc">Ultimul supravietuitor castiga</span>
@@ -355,7 +355,7 @@
             </button>
             <button class="gm-card gm-pve" id="gm-pve" onclick="selectGamemode('pve')">
                 <span class="gm-lane">2</span>
-                <svg class="ic gm-icon" aria-hidden="true"><use href="#biohazard"/></svg>
+                <img class="pic gm-icon" src="/images/ui/survival_pve.svg" alt="" aria-hidden="true" draggable="false">
                 <span class="gm-info">
                     <span class="gm-name">SURVIVAL PvE</span>
                     <span class="gm-desc">Cooperare contra hoardelor</span>
@@ -379,7 +379,7 @@
 
         <section class="lp-card missions-card">
             <div class="mc-head">
-                <h2 class="lp-card-title"><svg class="ic" aria-hidden="true"><use href="#target"/></svg>MISIUNI ZILNICE</h2>
+                <h2 class="lp-card-title"><img class="pic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false">MISIUNI ZILNICE</h2>
                 <button type="button" class="mc-all" onclick="openMissions()">Toate <b id="mc-count">6</b></button>
             </div>
             <div id="lp-missions"></div>
@@ -401,7 +401,7 @@
         <div class="missions-backdrop" onclick="closeMissions()"></div>
         <div class="missions-modal" role="dialog" aria-label="Misiuni zilnice">
             <div class="missions-header">
-                <span class="missions-title"><svg class="ic" aria-hidden="true"><use href="#target"/></svg>MISIUNI ZILNICE</span>
+                <span class="missions-title"><img class="pic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false">MISIUNI ZILNICE</span>
                 <button class="missions-close" onclick="closeMissions()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
             </div>
             <div class="missions-body" id="missions-modal-list"></div>
@@ -412,7 +412,7 @@
     <div id="friends-overlay" style="display:none">
         <div class="friends-modal">
             <div class="friends-header">
-                <span class="friends-title"><svg class="ic" aria-hidden="true"><use href="#users"/></svg>PRIETENI</span>
+                <span class="friends-title"><img class="pic" src="/images/ui/prieteni.svg" alt="" aria-hidden="true" draggable="false">PRIETENI</span>
                 <button class="friends-close" onclick="closeFriendsPanel()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
             </div>
             <div class="friends-scroll">
@@ -442,10 +442,10 @@
     <div id="char-shop-overlay" style="display:none">
         <div class="char-shop-modal">
             <div class="char-shop-header">
-                <span class="char-shop-title"><svg class="ic" aria-hidden="true"><use href="#id-card"/></svg>PERSONAJE</span>
+                <span class="char-shop-title"><img class="pic" src="/images/ui/personaje.svg" alt="" aria-hidden="true" draggable="false">PERSONAJE</span>
                 <div class="char-shop-currency">
-                    <span class="csc-box csc-gold"><svg class="ic" aria-hidden="true"><use href="#coins"/></svg><span id="shop-coins">0</span></span>
-                    <span class="csc-box csc-gem"><svg class="ic" aria-hidden="true"><use href="#gem"/></svg><span id="shop-diamonds">0</span></span>
+                    <span class="csc-box csc-gold"><img class="pic" src="/images/ui/monede.svg" alt="" aria-hidden="true" draggable="false"><span id="shop-coins">0</span></span>
+                    <span class="csc-box csc-gem"><img class="pic" src="/images/ui/diamante.svg" alt="" aria-hidden="true" draggable="false"><span id="shop-diamonds">0</span></span>
                 </div>
                 <button class="char-shop-close" onclick="closeCharacterShop()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
             </div>
@@ -469,8 +469,8 @@
         <button type="button" class="ars-blk ars-back" onclick="closeArsenal()" aria-label="Inapoi in lobby"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
         <h1 class="ars-title" id="ars-title"><svg class="ic" aria-hidden="true"><use href="#crosshair"/></svg><span>ARSENAL</span></h1>
         <div class="ars-wallet">
-            <span class="ars-cur ars-cur-gold"><svg class="ic" aria-hidden="true"><use href="#coins"/></svg><span id="ars-coins">0</span></span>
-            <span class="ars-cur ars-cur-gem"><svg class="ic" aria-hidden="true"><use href="#gem"/></svg><span id="ars-diamonds">0</span></span>
+            <span class="ars-cur ars-cur-gold"><img class="pic" src="/images/ui/monede.svg" alt="" aria-hidden="true" draggable="false"><span id="ars-coins">0</span></span>
+            <span class="ars-cur ars-cur-gem"><img class="pic" src="/images/ui/diamante.svg" alt="" aria-hidden="true" draggable="false"><span id="ars-diamonds">0</span></span>
         </div>
     </header>
     <div class="ars-body">
@@ -516,8 +516,8 @@
         <button class="lb-topbar-back" onclick="leaveWaiting()" title="Iesi din camera" aria-label="Iesi din camera"><svg class="ic" aria-hidden="true"><use href="#log-out"/></svg></button>
         <span class="lb-topbar-title wordmark"><svg class="ic tb-mark" aria-hidden="true"><use href="#mark"/></svg><span>ARENA</span><span class="wm-r">ROYALE</span></span>
         <div class="lb-topbar-right">
-            <a href="#" class="lb-btn lb-btn-icon" onclick="openLeaderboard(); return false;" aria-label="Leaderboard"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg></a>
-            <button class="lb-btn lb-btn-icon" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
+            <a href="#" class="lb-btn lb-btn-icon" onclick="openLeaderboard(); return false;" aria-label="Leaderboard"><img class="pic" src="/images/ui/leaderboard.svg" alt="" aria-hidden="true" draggable="false"></a>
+            <button class="lb-btn lb-btn-icon" onclick="openSettings()" title="Setări" aria-label="Setări"><img class="pic" src="/images/ui/setari.svg" alt="" aria-hidden="true" draggable="false"></button>
         </div>
     </header>
 
@@ -614,7 +614,7 @@
             </div>
         </div>
         <div id="pve-coins-badge">
-            <svg class="ic" aria-hidden="true"><use href="#coins"/></svg>
+            <img class="pic" src="/images/ui/monede.svg" alt="" aria-hidden="true" draggable="false">
             <span id="pve-coins-num">0</span>
         </div>
     </div>
@@ -625,7 +625,7 @@
             <span class="pve-upg-title"><svg class="ic" aria-hidden="true"><use href="#chevrons-up"/></svg>UPGRADE</span>
             <span id="pve-upgrade-wave-info" class="pve-upg-wave">Wave 1<svg class="ic" aria-hidden="true"><use href="#arrow-right"/></svg>2</span>
         </div>
-        <div class="pve-upg-coins"><svg class="ic" aria-hidden="true"><use href="#coins"/></svg><span id="pve-upgrade-coins">0</span><span class="pve-upg-coins-lbl">monede</span></div>
+        <div class="pve-upg-coins"><img class="pic" src="/images/ui/monede.svg" alt="" aria-hidden="true" draggable="false"><span id="pve-upgrade-coins">0</span><span class="pve-upg-coins-lbl">monede</span></div>
         <div class="pve-upg-grid">
             <button class="pve-upg-btn" data-type="dmg" onclick="buyUpgrade('dmg')">
                 <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#crosshair"/></svg>
@@ -721,7 +721,7 @@
                 <button id="btn-rematch">JOACA DIN NOU</button>
                 <button class="btn-leave" onclick="returnToLobby()">IESI</button>
             </div>
-            <a href="#" class="lb-btn gameover-lb" onclick="openLeaderboard(); return false;"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg>LEADERBOARD</a>
+            <a href="#" class="lb-btn gameover-lb" onclick="openLeaderboard(); return false;"><img class="pic" src="/images/ui/leaderboard.svg" alt="" aria-hidden="true" draggable="false">LEADERBOARD</a>
         </div>
     </div>
 </div>
@@ -731,27 +731,27 @@
     <div class="settings-backdrop" onclick="closeSettings()"></div>
     <div class="settings-modal" role="dialog" aria-label="Setari">
         <div class="settings-header">
-            <span class="settings-title"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg>SETARI</span>
+            <span class="settings-title"><img class="pic" src="/images/ui/setari.svg" alt="" aria-hidden="true" draggable="false">SETARI</span>
             <button class="settings-close" onclick="closeSettings()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
         </div>
         <div class="settings-body">
             <div class="settings-row">
                 <div class="settings-label">
-                    <svg class="ic" id="set-sound-ic" aria-hidden="true"><use href="#volume-2"/></svg>
+                    <img class="pic" id="set-sound-ic" src="/images/ui/sunet.svg" alt="" aria-hidden="true" draggable="false">
                     <div><div class="settings-name">Sunet</div><div class="settings-hint">Efecte la butoane, alegeri si start de meci</div></div>
                 </div>
                 <button class="switch" id="set-sound" role="switch" aria-checked="true" aria-label="Sunet"><span class="switch-knob"></span><span class="switch-text">ON</span></button>
             </div>
             <div class="settings-row" id="set-row-fs">
                 <div class="settings-label">
-                    <svg class="ic" aria-hidden="true"><use href="#maximize"/></svg>
+                    <img class="pic" src="/images/ui/ecran_complet.svg" alt="" aria-hidden="true" draggable="false">
                     <div><div class="settings-name">Ecran complet</div><div class="settings-hint" id="set-fs-hint">Ascunde bara browserului</div></div>
                 </div>
                 <button class="settings-btn" id="set-fs">INTRA</button>
             </div>
             <div class="settings-row" id="set-row-logout">
                 <div class="settings-label">
-                    <svg class="ic" aria-hidden="true"><use href="#log-out"/></svg>
+                    <img class="pic" src="/images/ui/iesi_din_cont.svg" alt="" aria-hidden="true" draggable="false">
                     <div><div class="settings-name">Cont</div><div class="settings-hint" id="set-account-hint">Iesi din contul curent</div></div>
                 </div>
                 <button class="settings-btn settings-logout" onclick="closeSettings(); logoutToAuth()">DECONECTARE</button>
@@ -772,7 +772,7 @@
     <div class="lbo-backdrop" onclick="closeLeaderboard()"></div>
     <div class="lbo-card">
         <div class="lbo-header">
-            <span class="lbo-title"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg>LEADERBOARD</span>
+            <span class="lbo-title"><img class="pic" src="/images/ui/leaderboard.svg" alt="" aria-hidden="true" draggable="false">LEADERBOARD</span>
             <button class="lbo-close" onclick="closeLeaderboard()"><svg class="ic" aria-hidden="true"><use href="#x"/></svg><span>INCHIDE</span></button>
         </div>
         <div class="lbo-table-wrap">
