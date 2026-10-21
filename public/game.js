@@ -3049,6 +3049,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     let predX = null, predY = null, predSpeed = 132; // px/sec (actualizat din meta)
     let _zoomFactor = 1.0; // factor view per arma (1.0 = normal, >1 = zoom out)
+    let _waveStartAt = -1e9, _tpFx = null;   // PvE: when the last wave began; the phase-in effect after the server moved us
+    const TP_MS = 450;
     const stateBuffer  = []; // [{t, players:{id:{x,y,angle,hp,maxHp,alive,kills,name}}, bullets:[], zone:{}}]
     const playerMeta   = {}; // {id: {speed, maxHp, name}} — static per runda, trimis o data
     window.__arPlayerName = id => (playerMeta[id] && playerMeta[id].name) || null; // ?dev=weapons
@@ -3893,7 +3895,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const _cspErr = Math.hypot(_rx - predX, _ry - predY);
                 if (_bDiag.csp && _bDiag.csp.length < 5000) _bDiag.csp.push(+_cspErr.toFixed(2));
                 if (_BB.on) _BB.csp(now, _cspErr);
-                if (_cspErr > 400) {
+                if (_cspErr > 90 && now - _waveStartAt < 1500) {
+                    // The server put everyone back by the base for the new wave (startPveWave): not a drift to blend away.
+                    // Sliding there at 40 px per tick looked like flying across the map (and a jump with no cue past 400 px);
+                    // snap and phase in instead.
+                    predX = _rx; predY = _ry;
+                    _tpFx = { t0: now, x: _rx, y: _ry };
+                } else if (_cspErr > 400) {
                     // Snap only for truly catastrophic divergence (>3s lag spike / respawn).
                     predX = _rx; predY = _ry;
                 } else {
@@ -4258,6 +4266,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     socket.on('pve-wave-start', ({ wave, total, batches }) => {
         if (_BB.on) ARBlackBox.event('wave-start', wave);   // the server puts everyone back by the base here: a jump, by design
+        _waveStartAt = performance.now();
         _pveState.waveBreak = false;
         _pveState.wave = wave;
         hidePvePanel();
@@ -5206,8 +5215,29 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
         }
 
+        // --- ARRIVAL (PvE wave start): a ring that opens where we landed and the scene coming out of the dark ---
+        if (_tpFx) {
+            const _tq = (performance.now() - _tpFx.t0) / TP_MS;
+            if (_tq >= 1 || gameEnded) _tpFx = null;
+            else {
+                const _te = 1 - (1 - _tq) * (1 - _tq);                 // ease-out
+                ctx.globalAlpha = 0.9 * (1 - _tq);
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.lineWidth = 7 * (1 - _tq) / ZOOM;
+                ctx.beginPath(); ctx.arc(_tpFx.x, _tpFx.y, 26 + 110 * _te, 0, Math.PI * 2); ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        }
+
         ctx.restore();
 
+        if (_tpFx) {
+            const _tq = (performance.now() - _tpFx.t0) / TP_MS;
+            ctx.globalAlpha = 0.85 * (1 - _tq) * (1 - _tq);
+            ctx.fillStyle = '#0B1511';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1;
+        }
 
         // --- TIMER ZONA (screen space, proportional) --- BR only
         if (!gameEnded && _gameMode !== 'pve') {
