@@ -2355,22 +2355,6 @@ function _drawZombieBars(ctx, list, n, defs) {
 // Labels made before the web font arrived would keep the fallback font: redo them once it loads
 try { if (document.fonts) document.fonts.addEventListener('loadingdone', () => _labelCache.clear()); } catch (e) { /* no FontFaceSet */ }
 
-// All shards of a death effect as one path (triangles rotated by hand), so the effect costs one
-// fill and one stroke instead of a save/restore, fill and stroke per shard.
-function _shardsPath(ctx, fx, age, sz) {
-    ctx.beginPath();
-    for (const sh of fx.shards) {
-        const r = sh.speed * age;
-        const sx = fx.x + Math.cos(sh.angle) * r, sy = fx.y + Math.sin(sh.angle) * r;
-        const a = sh.rot + sh.rotSpeed * age, cs = Math.cos(a), sn = Math.sin(a);
-        // local points (0,-1.2s) (0.8s,0.8s) (-0.8s,0.8s), rotated by a
-        const p0x = 1.2 * sz * sn,              p0y = -1.2 * sz * cs;
-        const p1x = 0.8 * sz * cs - 0.8 * sz * sn, p1y = 0.8 * sz * sn + 0.8 * sz * cs;
-        const p2x = -0.8 * sz * cs - 0.8 * sz * sn, p2y = -0.8 * sz * sn + 0.8 * sz * cs;
-        ctx.moveTo(sx + p0x, sy + p0y); ctx.lineTo(sx + p1x, sy + p1y); ctx.lineTo(sx + p2x, sy + p2y); ctx.closePath();
-    }
-}
-
 // Sets ctx to world matrix m, then translate(x, y) and rotate so +x points along (dx, dy).
 // Replaces save/translate/rotate/restore (and atan2/cos/sin) for things drawn many times a frame.
 function _setRotated(ctx, m, x, y, dx, dy) {
@@ -3798,8 +3782,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 if (!_zb || _zb.seen === _zGen || _zb.hp < 0) continue;
                 if (_zb.hp > 0) { // death effect
                     const _shards = [];
+                    const _k0 = (Math.random() * 5) | 0;   // zombie pieces are kinds 0-4 (arena-art.js drawShard)
                     for (let _si = 0; _si < 7; _si++) {
-                        _shards.push({ angle: (_si / 7) * Math.PI * 2 + Math.random() * 0.4, speed: 35 + Math.random() * 45, rot: Math.random() * Math.PI, rotSpeed: (Math.random() - 0.5) * 8 });
+                        _shards.push({ angle: (_si / 7) * Math.PI * 2 + Math.random() * 0.4, speed: 35 + Math.random() * 45, rot: Math.random() * Math.PI, rotSpeed: (Math.random() - 0.5) * 8, kind: (_k0 + _si) % 5, size: 0.8 + Math.random() * 0.35 });
                     }
                     _zombieDeathFx.push({ x: _zb.x, y: _zb.y, startTime: performance.now(), shards: _shards });
                 }
@@ -3849,8 +3834,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Detectie moarte jucator → efect vizual
             if (!alive && _prevPlayerAlive[id] === true && id !== socket.id) {
                 const _dshards = [];
+                const _dk0 = (Math.random() * 5) | 0;   // player pieces are kinds 5-9
                 for (let _si = 0; _si < 8; _si++) {
-                    _dshards.push({ angle: (_si / 8) * Math.PI * 2 + Math.random() * 0.5, speed: 45 + Math.random() * 55, rot: Math.random() * Math.PI, rotSpeed: (Math.random() - 0.5) * 9 });
+                    _dshards.push({ angle: (_si / 8) * Math.PI * 2 + Math.random() * 0.5, speed: 45 + Math.random() * 55, rot: Math.random() * Math.PI, rotSpeed: (Math.random() - 0.5) * 9, kind: 5 + (_dk0 + _si) % 5, size: 0.85 + Math.random() * 0.35 });
                 }
                 _playerDeathFx.push({ x, y, startTime: performance.now(), shards: _dshards });
             }
@@ -4937,11 +4923,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.strokeStyle = '#ffcc44';
             ctx.lineWidth = 2;
             ctx.beginPath(); ctx.arc(_pdf.x, _pdf.y, 8 + _pdfT * 52, 0, Math.PI * 2); ctx.stroke();
-            // Cioburi
-            ctx.globalAlpha = Math.pow(1 - _pdfT, 1.4);
-            _shardsPath(ctx, _pdf, _pdfAge, 8 * (1 - _pdfT));
-            ctx.fillStyle = '#ffaa22'; ctx.fill();
-            ctx.strokeStyle = '#cc6600'; ctx.lineWidth = 1; ctx.stroke();
+            // Cioburi: chunky toy pieces (ARArena.drawShard), flying out, turning, shrinking and fading
+            ctx.globalAlpha = Math.min(1, (1 - _pdfT) * 1.6);
+            for (const _sh of _pdf.shards) {
+                const _sr = _sh.speed * _pdfAge;
+                ARArena.drawShard(ctx, _sh.kind, _pdf.x + Math.cos(_sh.angle) * _sr, _pdf.y + Math.sin(_sh.angle) * _sr, _sh.rot + _sh.rotSpeed * _pdfAge, _sh.size * (1 - 0.65 * _pdfT));
+            }
         }
         ctx.globalAlpha = 1;
 
@@ -4967,11 +4954,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.globalAlpha = (1 - _dfT) * 0.45;
             ctx.lineWidth = 2;
             ctx.beginPath(); ctx.arc(_df.x, _df.y, 8 + _dfT * 55, 0, Math.PI * 2); ctx.stroke();
-            // Cioburi mari
-            ctx.globalAlpha = Math.pow(1 - _dfT, 1.5);
-            _shardsPath(ctx, _df, _dfAge, 9 * (1 - _dfT));
-            ctx.fillStyle = '#5E9253'; ctx.fill();
-            ctx.strokeStyle = '#25422A'; ctx.lineWidth = 1; ctx.stroke();
+            // Cioburi: chunky toy pieces (ARArena.drawShard), flying out, turning, shrinking and fading
+            ctx.globalAlpha = Math.min(1, (1 - _dfT) * 1.6);
+            for (const _sh of _df.shards) {
+                const _sr = _sh.speed * _dfAge;
+                ARArena.drawShard(ctx, _sh.kind, _df.x + Math.cos(_sh.angle) * _sr, _df.y + Math.sin(_sh.angle) * _sr, _sh.rot + _sh.rotSpeed * _dfAge, _sh.size * (1 - 0.65 * _dfT));
+            }
         }
         ctx.globalAlpha = 1;
 

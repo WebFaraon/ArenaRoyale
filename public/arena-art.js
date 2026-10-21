@@ -703,8 +703,16 @@
         ctx.restore();
     }
 
-    // ---------- medkit: a red toy block with a white cross, hovering over its shadow ----------
-    const KIT_HALF = 16, KIT_PAD = 21;
+    // ---------- medkit: the Obiecte Arena suitcase, hovering over its shadow and pickup ring ----------
+    // public/images/pickups/medkit.svg is the pack's picture without its baked ground shadow and pickup ring (those stay on the
+    // ground while the case hovers, so they are drawn here with the pack's own colours). 60-unit picture at 0.8 -> the case is
+    // 32 units wide, as the old vector block was. The old vector drawing below (paintKit) is used until the picture is in, or
+    // if it is missing.
+    const KIT_HALF = 16, KIT_PAD = 24, KIT_K = 0.8;
+    const kitArt = { img: new Image(), state: 0 };   // 0 loading, 1 ready, 2 failed
+    kitArt.img.onload = function () { kitArt.state = kitArt.img.naturalWidth > 0 ? 1 : 2; };
+    kitArt.img.onerror = function () { kitArt.state = 2; console.warn('[medkit] desen lipsa (se deseneaza varianta veche)'); };
+    kitArt.img.src = window.arAsset ? window.arAsset('/images/pickups/medkit.svg') : '/images/pickups/medkit.svg';
     function paintKit(g) {
         const s = KIT_HALF, r = 8, ol = 3, lip = 5;
         g.fillStyle = '#0A1013';
@@ -729,14 +737,111 @@
         const ph = bob ? Math.sin(now * 0.0042) : 0;
         const lift = (5 + ph * 3) - yOff;
         const sc = scale || 1;
-        ctx.fillStyle = 'rgba(6,22,12,.34)';
-        ctx.beginPath(); ctx.ellipse(x + 2, y + 13, 15 * sc * (1 - ph * 0.12), 5.5 * sc * (1 - ph * 0.12), 0, 0, TAU); ctx.fill();
+        const art = kitArt.state === 1;
+        if (art) {
+            // the pickup ring on the ground (the picture's red halo), then the shadow
+            ctx.beginPath(); ctx.arc(x, y + 3.2 * sc, 20 * sc, 0, TAU);
+            ctx.fillStyle = 'rgba(255,75,92,.2)'; ctx.fill();
+            ctx.strokeStyle = 'rgba(255,75,92,.65)'; ctx.lineWidth = 1.9 * sc; ctx.stroke();
+            ctx.fillStyle = 'rgba(0,0,0,.2)';
+            ctx.beginPath(); ctx.ellipse(x + 4 * sc, y + 7.2 * sc, 13.6 * sc * (1 - ph * 0.1), 9.6 * sc * (1 - ph * 0.1), 0, 0, TAU); ctx.fill();
+        } else {
+            ctx.fillStyle = 'rgba(6,22,12,.34)';
+            ctx.beginPath(); ctx.ellipse(x + 2, y + 13, 15 * sc * (1 - ph * 0.12), 5.5 * sc * (1 - ph * 0.12), 0, 0, TAU); ctx.fill();
+        }
         const old = zombieSprites.get('kit');
-        const s = sprite(old, KIT_PAD, paintKit);
+        const s = sprite(old, KIT_PAD, art ? function (g) {
+            g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+            g.drawImage(kitArt.img, -KIT_PAD, -KIT_PAD, KIT_PAD * 2, KIT_PAD * 2);
+        } : paintKit);
         if (s !== old && s) zombieSprites.set('kit', s);
         const half = KIT_PAD * sc;
         if (s) ctx.drawImage(s.c, x - half, y - half - lift, half * 2, half * 2);
         else { ctx.save(); ctx.translate(x, y - lift); ctx.scale(sc, sc); paintKit(ctx); ctx.restore(); }
+    }
+
+    // ---------- PvE coin: a small flat coin seen from above (public/images/pickups/moneda_pve.svg) ----------
+    // Not the lobby coin (two stacked gold coins with a star): this one lies on the pitch, reeded rim, lightning bolt. The outline
+    // circle of the picture (22 of its 30 half-units) is COIN_R world units, so a coin is ~18 units across next to a 40-unit
+    // player. The shadow is drawn apart (addCoinShadow, one fill for all the coins). Until the picture is in, a plain gold disc.
+    const COIN_R = 9, COIN_K = COIN_R / 22, COIN_PAD = 30 * COIN_K;
+    const coinArt = { img: new Image(), state: 0 };
+    coinArt.img.onload = function () { coinArt.state = coinArt.img.naturalWidth > 0 ? 1 : 2; };
+    coinArt.img.onerror = function () { coinArt.state = 2; console.warn('[moneda] desen lipsa (se deseneaza un disc)'); };
+    coinArt.img.src = window.arAsset ? window.arAsset('/images/pickups/moneda_pve.svg') : '/images/pickups/moneda_pve.svg';
+    function paintCoinFallback(g) {
+        g.fillStyle = '#0B0F1A'; g.beginPath(); g.arc(0, 0, COIN_R, 0, TAU); g.fill();
+        g.fillStyle = '#C68A07'; g.beginPath(); g.arc(0, 0.8, COIN_R - 2, 0, TAU); g.fill();
+        g.fillStyle = '#FFC72E'; g.beginPath(); g.arc(0, 0, COIN_R - 2, 0, TAU); g.fill();
+    }
+    // sc: size factor (1 = resting), the caller sets globalAlpha
+    function drawCoin(ctx, x, y, sc) {
+        const old = zombieSprites.get('coin');
+        const s = sprite(old, COIN_PAD, coinArt.state === 1 ? function (g) {
+            g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+            g.drawImage(coinArt.img, -COIN_PAD, -COIN_PAD, COIN_PAD * 2, COIN_PAD * 2);
+        } : paintCoinFallback);
+        if (s !== old && s) zombieSprites.set('coin', s);
+        const half = COIN_PAD * sc;
+        if (s) ctx.drawImage(s.c, x - half, y - half, half * 2, half * 2);
+        else { ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); paintCoinFallback(ctx); ctx.restore(); }
+    }
+    // One ellipse added to the current path, down and to the right like every shadow here; the caller fills them all at once
+    function addCoinShadow(ctx, x, y, sc) {
+        const r = COIN_R * sc;
+        ctx.moveTo(x + 1.8 * sc + r, y + 2.6 * sc);
+        ctx.ellipse(x + 1.8 * sc, y + 2.6 * sc, r, r * 0.92, 0, 0, TAU);
+    }
+
+    // ---------- death effect shards: chunky toy pieces ----------
+    // Each piece is a small rounded polygon in the same build as everything else: a thick ink outline round the whole piece,
+    // a darker lip under it, the lit face on top and a short white bevel on the top-left edge. 0-4 are zombie pieces (skin
+    // greens and one bit of flesh, the zombie art's colours), 5-9 are player pieces (the toy gold and orange). A sprite per
+    // kind at the current scale like the others; the caller turns and fades it.
+    const SHARD_R = 9, SHARD_PAD = 14;
+    const SHARD_SHAPES = [
+        [[-0.95, -0.15], [-0.35, -0.95], [0.75, -0.7], [0.95, 0.3], [0.05, 0.95]],        // chunk
+        [[-1, -0.55], [0.25, -1], [1, 0.05], [-0.35, 0.85]],                                  // slab
+        [[-0.9, 0.35], [-0.1, -0.9], [0.95, -0.1], [0.15, 0.8]],                              // wedge
+        [[-0.8, -0.5], [0.3, -0.9], [0.9, -0.1], [0.6, 0.8], [-0.5, 0.7]],                    // blob
+        [[-1, 0], [-0.2, -0.8], [1, -0.15], [0.1, 0.7]],                                       // spear
+    ];
+    const SHARD_PAL = [   // [face, lip]
+        ['#A9D873', '#5F8F3E'], ['#7FB24F', '#5F8F3E'], ['#7FB24F', '#46702E'], ['#E88AA0', '#B5566E'], ['#A9D873', '#5F8F3E'],
+        ['#FFC72E', '#C68A07'], ['#FF9447', '#B94E0C'], ['#FFC72E', '#C68A07'], ['#FF7A1F', '#B94E0C'], ['#FFD55E', '#C68A07'],
+    ];
+    function paintShard(g, kind) {
+        const pts = SHARD_SHAPES[kind % SHARD_SHAPES.length], pal = SHARD_PAL[kind % SHARD_PAL.length], R = SHARD_R, ol = 2.1, lip = 2.2;
+        const poly = function (dy) {
+            g.beginPath();
+            for (let i = 0; i < pts.length; i++) { const x = pts[i][0] * R, y = pts[i][1] * R + dy; if (i) g.lineTo(x, y); else g.moveTo(x, y); }
+            g.closePath();
+        };
+        g.lineJoin = 'round'; g.lineCap = 'round';
+        g.fillStyle = BASE_INK; g.strokeStyle = BASE_INK; g.lineWidth = ol * 2;
+        poly(lip); g.fill(); g.stroke();
+        poly(0); g.fill(); g.stroke();
+        g.fillStyle = pal[1]; poly(lip); g.fill();
+        g.fillStyle = pal[0]; poly(0); g.fill();
+        // bevel: the first edge, pulled in toward the middle and shortened
+        let cx = 0, cy = 0; for (let i = 0; i < pts.length; i++) { cx += pts[i][0]; cy += pts[i][1]; } cx = cx / pts.length * R; cy = cy / pts.length * R;
+        const ax = pts[0][0] * R, ay = pts[0][1] * R, bx = pts[1][0] * R, by = pts[1][1] * R;
+        const px = function (x, y, t) { return [x + (cx - x) * t, y + (cy - y) * t]; };
+        const p0 = px(ax + (bx - ax) * 0.16, ay + (by - ay) * 0.16, 0.2), p1 = px(ax + (bx - ax) * 0.7, ay + (by - ay) * 0.7, 0.2);
+        g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 1.4;
+        g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0], p1[1]); g.stroke();
+    }
+    // kind 0-9, rot in radians, sc: size factor (1 = SHARD_R units), the caller sets globalAlpha
+    function drawShard(ctx, kind, x, y, rot, sc) {
+        const key = 'shard' + kind, old = zombieSprites.get(key);
+        const s = sprite(old, SHARD_PAD, function (g) { paintShard(g, kind); });
+        if (s !== old && s) zombieSprites.set(key, s);
+        const half = SHARD_PAD * sc;
+        ctx.save();
+        ctx.translate(x, y); ctx.rotate(rot);
+        if (s) ctx.drawImage(s.c, -half, -half, half * 2, half * 2);
+        else { ctx.scale(sc, sc); paintShard(ctx, kind); }
+        ctx.restore();
     }
 
     function clearSprites() { zombieSprites.clear(); }
@@ -893,6 +998,10 @@
         drawBase: drawBase,
         drawGrass: drawGrass,
         drawKit: drawKit,
+        drawCoin: drawCoin,
+        addCoinShadow: addCoinShadow,
+        drawShard: drawShard,
+        COIN_R: COIN_R,
         clearSprites: clearSprites,
         isScaleStable: isScaleStable,
         takeBudget: takeBudget,
