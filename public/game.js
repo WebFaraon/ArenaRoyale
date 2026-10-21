@@ -3065,6 +3065,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _healthKits   = new Map(); // id → {x, y, timeLeft}
     const _kitPickupFx  = [];        // { x, y, amount, startTime }
     const _coinFloats   = [];        // { x, y, amount, startTime } — coin earn popup
+    const _coinDrops    = new Map(); // PvE coins on the ground: id -> { x, y, ox, oy, t0 } (ox/oy: where the zombie died)
+    const _coinFx       = [];        // coins just taken: { x, y, t0 }, a short hop and fade
+    const COIN_LAND_MS = ARPveCoins.LAND_MS, COIN_TTL_MS = ARPveCoins.TTL_MS, COIN_BLINK_MS = ARPveCoins.BLINK_MS;   // pve-coins.js: the server uses the same life
     const _kitDropAnim  = new Map(); // id → dropStartTime (animatie de cadere la spawn)
     const _obsShake     = {};   // obstacle index → shake start ms
     // The sideways offset of a shaking obstacle (hit by a bullet) at time now
@@ -4127,6 +4130,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _kitPickupFx.length = 0;
         _kitDropAnim.clear();
         _coinFloats.length = 0;
+        _coinDrops.clear(); _coinFx.length = 0;
         for (const k in _obsShake) delete _obsShake[k];
         gameControl.countdownEndTime = null;
         _footsteps.length = 0;
@@ -4235,7 +4239,25 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _pveState.myCoins = coins;
         updatePveHud();
         if (earned && x !== undefined && y !== undefined) {
-            _coinFloats.push({ x, y: y - 20, amount: earned, startTime: performance.now() });
+            // coins picked up one after another over a pile add up in one popup
+            const _now = performance.now(), _last = _coinFloats[_coinFloats.length - 1];
+            if (_last && _now - _last.startTime < 400) { _last.amount += earned; _last.x = x; _last.y = y - 20; }
+            else _coinFloats.push({ x, y: y - 20, amount: earned, startTime: _now });
+        }
+    });
+    // PvE coins lie on the ground until somebody touches them (server: pve-coins.js; these two events are not part of gs2).
+    // coin-drops: a zombie died at (ox, oy) and these landed around it. coin-taken: gone (gone: true = they timed out).
+    socket.on('coin-drops', ({ ox, oy, c }) => {
+        const _now = performance.now();
+        for (let i = 0; i < c.length; i++) _coinDrops.set(c[i][0], { x: c[i][1], y: c[i][2], ox, oy, t0: _now });
+    });
+    socket.on('coin-taken', ({ ids, gone }) => {
+        const _now = performance.now();
+        for (let i = 0; i < ids.length; i++) {
+            const d = _coinDrops.get(ids[i]);
+            if (!d) continue;
+            if (!gone) _coinFx.push({ x: d.x, y: d.y, t0: _now });
+            _coinDrops.delete(ids[i]);
         }
     });
 
@@ -4899,6 +4921,35 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.restore();
         }
         ctx.globalAlpha = 1;
+
+        // --- PvE COINS ON THE GROUND --- (shadows are one fill, then the coins)
+        if (_gameMode === 'pve' && (_coinDrops.size > 0 || _coinFx.length > 0)) {
+            const _cNow = performance.now();
+            ctx.beginPath();
+            for (const [, _cd] of _coinDrops) {
+                if (_cd.x + 24 < visLeft || _cd.x - 24 > visRight || _cd.y + 24 < visTop || _cd.y - 24 > visBottom) continue;
+                const _cq = Math.min(1, (_cNow - _cd.t0) / COIN_LAND_MS), _ce = 1 - (1 - _cq) * (1 - _cq);
+                ARArena.addCoinShadow(ctx, _cd.ox + (_cd.x - _cd.ox) * _ce, _cd.oy + (_cd.y - _cd.oy) * _ce, 0.5 + 0.5 * _cq);
+            }
+            ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fill();
+            for (const [_cid, _cd] of _coinDrops) {
+                if (_cd.x + 24 < visLeft || _cd.x - 24 > visRight || _cd.y + 24 < visTop || _cd.y - 24 > visBottom) continue;
+                const _cAge = _cNow - _cd.t0;
+                if (_cAge > COIN_TTL_MS + 3000) { _coinDrops.delete(_cid); continue; }   // the server's word never came: do not keep it forever
+                // the last seconds: it blinks
+                if (_cAge > COIN_TTL_MS - COIN_BLINK_MS && ((_cAge / 140) | 0) % 2 === 1) continue;
+                const _cq = Math.min(1, _cAge / COIN_LAND_MS), _ce = 1 - (1 - _cq) * (1 - _cq);
+                const _cx = _cd.ox + (_cd.x - _cd.ox) * _ce, _cy = _cd.oy + (_cd.y - _cd.oy) * _ce - 30 * _cq * (1 - _cq) * 2;   // an arc: up and down
+                ARArena.drawCoin(ctx, _cx, _cy, _cq < 1 ? 0.55 + 0.45 * _cq : 1);
+            }
+            for (let _cfi = _coinFx.length - 1; _cfi >= 0; _cfi--) {
+                const _cf = _coinFx[_cfi], _cfT = (_cNow - _cf.t0) / 280;
+                if (_cfT >= 1) { _coinFx.splice(_cfi, 1); continue; }
+                ctx.globalAlpha = 1 - _cfT;
+                ARArena.drawCoin(ctx, _cf.x, _cf.y - 22 * _cfT, 1 + 0.25 * _cfT);
+            }
+            ctx.globalAlpha = 1;
+        }
 
         // --- PLAYER DEATH FX ---
         const _pdfNow = performance.now();

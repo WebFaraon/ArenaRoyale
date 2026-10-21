@@ -10,6 +10,7 @@ const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
 const { avoidBase } = require('./zombie-steer.js');
+const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
 const ARShared = require('./public/combat-shared');
 const ARNet = require('./public/netproto');           // the state packet, protocol 2 (shared with the client)
@@ -982,6 +983,8 @@ const PVE_BASE_Y         = Math.round(ARENA_H / 2);
 const PVE_BASE_HP        = 1000;
 const PVE_BASE_R         = 85;
 const PVE_BASE_ATTACK_R  = 95;
+const _COIN_PICK_SQ      = (PLAYER_R + PveCoins.PICK_EXTRA) ** 2;   // a PvE coin is taken within this distance of a player
+const _coinOut           = { taken: [], gone: [] };                 // scratch for PveCoins.step
 const PVE_BREAK_DURATION = 15;
 const PVE_TOTAL_WAVES    = 10;
 // [normal, runner, tank] per wave
@@ -1376,6 +1379,8 @@ function newRoom(hostId, mode = 'br') {
         zombies:     mode === 'pve' ? [] : generateZombies(_obs),
         healthKits:  [],
         nextKitId:   0,
+        coinDrops:   [],     // PvE: coins lying on the ground { id, x, y, t }
+        nextCoinId:  0,
         zone: { cx: ARENA_W/2, cy: ARENA_H/2, r: ZONE_INITIAL_R, waitTimer: ZONE_WAIT, startDelay: 4 },
         base: mode === 'pve' ? { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R } : null,
         pveWave: 0, pveWaveActive: false, pveWaveBreak: false, pveBreakTimer: 0, pveSkipVotes: new Set(),
@@ -2039,13 +2044,20 @@ function startRoomLoop(code, room) {
                             if (room.mode === 'pve') _zOwner.rs.pveKills++;
                         }
                         if (room.mode === 'pve') {
+                            // The coins (the same count as before) drop around the zombie and lie there; whoever touches them gets them
+                            // (the coin step after the kits, below). One event for the whole drop.
                             const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
-                            const killer = room.players[b.ownerId];
-                            if (killer) {
-                                const earned = def.coinsMin + Math.floor(Math.random() * (def.coinsMax - def.coinsMin + 1));
-                                killer.coins += earned;
-                                io.to(killer.id).emit('pve-coins', { coins: killer.coins, earned, x: zombie.x, y: zombie.y });
+                            const earned = def.coinsMin + Math.floor(Math.random() * (def.coinsMax - def.coinsMin + 1));
+                            const spots = PveCoins.scatter(zombie.x, zombie.y, earned, _bulletBlockers(room), ARENA_W, ARENA_H, Math.random);
+                            const dropped = [];
+                            for (const [cx, cy] of spots) {
+                                const id = room.nextCoinId++;
+                                room.coinDrops.push({ id, x: cx, y: cy, t: now });
+                                dropped.push([id, cx, cy]);
                             }
+                            io.to(code).emit('coin-drops', { ox: Math.round(zombie.x), oy: Math.round(zombie.y), c: dropped });
+                            const _lost = PveCoins.trim(room.coinDrops, PveCoins.MAX_COINS);
+                            if (_lost.length) io.to(code).emit('coin-taken', { ids: _lost, gone: true });
                         } else {
                             room.healthKits.push({ id: room.nextKitId++, x: zombie.x, y: zombie.y, spawnTime: now });
                         }
@@ -2108,6 +2120,28 @@ function startRoomLoop(code, room) {
                 kits.length = kKeep;
             }
             if (PERF) PERF.mark(room, 'kits');
+
+            // PvE coins on the ground: a living player that reaches one takes it, the ones nobody takes time out
+            if (room.coinDrops.length) {
+                PveCoins.step(room.coinDrops, alivePlayers, _COIN_PICK_SQ, now, PveCoins.TTL_MS, _coinOut);
+                if (_coinOut.taken.length) {
+                    const ids = [];
+                    for (let ci = 0; ci < _coinOut.taken.length; ci += 2) {
+                        const p = _coinOut.taken[ci + 1];
+                        ids.push(_coinOut.taken[ci]);
+                        p._coinGot = (p._coinGot || 0) + 1;
+                    }
+                    io.to(code).emit('coin-taken', { ids });
+                    for (let ci = 1; ci < _coinOut.taken.length; ci += 2) {
+                        const p = _coinOut.taken[ci];
+                        if (!p._coinGot) continue;
+                        p.coins += p._coinGot;
+                        io.to(p.id).emit('pve-coins', { coins: p.coins, earned: p._coinGot, x: p.x, y: p.y });
+                        p._coinGot = 0;
+                    }
+                }
+                if (_coinOut.gone.length) io.to(code).emit('coin-taken', { ids: _coinOut.gone.slice(), gone: true });
+            }
 
             // ── State packet (public/netproto.js, protocol 2) ──
             // What every client shares is packed and encoded ONCE per tick; each client then gets its own small row
@@ -2264,6 +2298,8 @@ function triggerRematch(code, room) {
     room.zombies = generateZombies(room.obstacles);
     room.healthKits = [];
     room.nextKitId  = 0;
+    room.coinDrops  = [];
+    room.nextCoinId = 0;
     room.countdownActive = true;
     room.pveSkipVotes.clear();
     room.pveSpawnQueue = []; room.pveSpawnTimer = 0;
