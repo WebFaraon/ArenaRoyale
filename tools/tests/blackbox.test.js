@@ -158,3 +158,12 @@ test('a resolution step the game took 800 ms away from a stall does not explain 
     at.events.push({ t: 9900, type: 'rs-step', dur: 0, info: 1 });
     assert.deepEqual(causeOf(analyze(at)), ['resize']);
 });
+
+test('a stall right at a PvE event names it in the evidence', () => {
+    const rec = frameSpike(clean(), 10000, 95, 90);
+    rec.events.push({ t: 9950, type: 'pve-subwave', dur: 0, info: 2 }, { t: 10050, type: 'wave-start', dur: 0, info: 3 });
+    const r = analyze(rec);
+    assert.deepEqual(r.incidents[0].evidence.nearEvents.sort(), ['pve-subwave', 'wave-start']);
+    assert.equal(r.summary.incidentsNearPveEvents, 1);
+    assert.deepEqual(analyze(frameSpike(clean(), 10000, 95, 90)).incidents[0].evidence.nearEvents, []);
+});

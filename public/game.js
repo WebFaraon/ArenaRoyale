@@ -4295,6 +4295,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('pve-subwave', ({ remaining }) => {
+        if (_BB.on) ARBlackBox.event('pve-subwave', remaining);
         showToast(remaining > 0 ? 'Intariri!' : '');
     });
 
@@ -4304,6 +4305,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('pve-wave-break', ({ wave, nextWave, timer }) => {
+        if (_BB.on) ARBlackBox.event('pve-wave-break', wave);
         _pveState.waveBreak = true;
         _pveState.breakTimer = timer;
         _pveState.breakTimerMax = timer;
@@ -4315,6 +4317,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const _effectiveTimer = timer - _panelDelay / 1000;
         setTimeout(() => {
             if (!_pveState.waveBreak) return; // wave a inceput deja (skip rapid)
+            if (_BB.on) ARBlackBox.event('pve-panel', wave);
             document.getElementById('pve-upgrade-wave-info').innerHTML = `Wave ${wave}${ico('arrow-right')}${nextWave}`;
             document.getElementById('pve-upgrade-coins').textContent = _pveState.myCoins;
             const skipBtn = document.getElementById('pve-skip-btn');
@@ -4512,6 +4515,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _plQ = [], _plQx = [], _plQy = [];
     const _crX = [], _crY = [], _crR = [];
     let _spriteBurst     = true;
+    let _warmLeft        = 1;       // sprites still to be made ahead of their first use (ARArena.warm); 0 when done
 
     // ---------- BUCLA DE RANDARE ----------
     let lastTime  = 0;
@@ -4715,6 +4719,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_spriteBurst && _obstacles.length) { ARArena.allowBurst(_obstacles.length + 8); _spriteBurst = false; }
         const _gNow = performance.now();
         ARArena.beginFrame(dpr * ZOOM, _gNow);
+        if (_warmLeft) _warmLeft = ARArena.warm(_ZB_DEFS, _gameMode === 'pve');   // zombie, base, coin, kit and shard sprites, a few a frame from the start
         ARGround.beginFrame(gameControl.countdownActive || _spriteBurst0);
         const _lblScale = dpr * ZOOM;
 

@@ -88,3 +88,19 @@ test('trim keeps the newest coins and reports the dropped ones', () => {
     assert.deepEqual(coins.map(c => c.id), [2, 3, 4]);
     assert.deepEqual(C.trim(coins, 10), []);
 });
+
+test('sweep hands every coin to the nearest living player and empties the list', () => {
+    const coins = [{ id: 1, x: 100, y: 100, t: 0 }, { id: 2, x: 900, y: 900, t: 0 }, { id: 3, x: 120, y: 90, t: 0 }];
+    const a = { id: 'a', x: 90, y: 100 }, b = { id: 'b', x: 1000, y: 880 }, out = { taken: [], gone: [] };
+    C.sweep(coins, [a, b], out);
+    assert.deepEqual(out.taken, [1, a, 2, b, 3, a]);
+    assert.equal(coins.length, 0);
+});
+
+test('sweep with nobody alive pays nobody and reports the coins gone', () => {
+    const coins = [{ id: 1, x: 0, y: 0, t: 0 }, { id: 2, x: 5, y: 5, t: 0 }], out = { taken: [], gone: [] };
+    C.sweep(coins, [], out);
+    assert.equal(out.taken.length, 0);
+    assert.deepEqual(out.gone, [1, 2]);
+    assert.equal(coins.length, 0);
+});

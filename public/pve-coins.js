@@ -61,11 +61,31 @@
         coins.length = keep;
     }
 
+    // The wave is over and the break panel is about to cover the pitch: every coin still on the ground goes to the living player
+    // nearest to it (the same flat out.taken as step), and the list is emptied. Nobody alive: nobody is paid (out.taken stays empty).
+    function sweep(coins, players, out) {
+        out.taken.length = 0; out.gone.length = 0;
+        if (players.length) {
+            for (let i = 0; i < coins.length; i++) {
+                const c = coins[i];
+                let best = null, bd = Infinity;
+                for (let k = 0; k < players.length; k++) {
+                    const p = players[k], dx = p.x - c.x, dy = p.y - c.y, d = dx * dx + dy * dy;
+                    if (d < bd) { bd = d; best = p; }
+                }
+                out.taken.push(c.id, best);
+            }
+        } else {
+            for (let i = 0; i < coins.length; i++) out.gone.push(coins[i].id);
+        }
+        coins.length = 0;
+    }
+
     // Keeps at most `max` coins, dropping the oldest; returns the ids dropped
     function trim(coins, max) {
         if (coins.length <= max) return [];
         return coins.splice(0, coins.length - max).map(function (c) { return c.id; });
     }
 
-    return { TTL_MS: TTL_MS, BLINK_MS: BLINK_MS, LAND_MS: LAND_MS, PICK_EXTRA: PICK_EXTRA, MAX_COINS: MAX_COINS, scatter: scatter, step: step, trim: trim };
+    return { TTL_MS: TTL_MS, BLINK_MS: BLINK_MS, LAND_MS: LAND_MS, PICK_EXTRA: PICK_EXTRA, MAX_COINS: MAX_COINS, scatter: scatter, step: step, sweep: sweep, trim: trim };
 });

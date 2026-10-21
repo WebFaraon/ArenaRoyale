@@ -68,7 +68,7 @@
     //   frames  [t, dt (ms since the previous frame), js (ms the frame's own work took)]
     //   packets [t, tick, gap (ms since the previous packet), tickGap (ticks missing since the previous), players, bullets, zombies]
     //   csp     [t, error in px]   heap [t, bytes]   pings [t, rtt ms]
-    //   events  { t, type: 'stall' | 'longtask' (dur) | 'server-stall' (dur, the server's event loop was blocked; t is its start on this clock) | 'visibility' | 'resize' | 'rs-step' | 'wave-start' | 'disconnect' | 'reconnect', dur?, info? }
+    //   events  { t, type: 'stall' | 'longtask' (dur) | 'server-stall' (dur, the server's event loop was blocked; t is its start on this clock) | 'visibility' | 'resize' | 'rs-step' | 'wave-start' | 'pve-subwave' | 'pve-wave-break' | 'pve-panel' | 'disconnect' | 'reconnect', dur?, info? }
     function analyze(rec) {
         const frames = rec.frames || [], packets = rec.packets || [], csp = rec.csp || [], heap = rec.heap || [], pings = rec.pings || [], events = rec.events || [];
         const dtS = sortedCol(frames, 1), jsS = sortedCol(frames, 2), gapS = sortedCol(packets.slice(1), 2);
@@ -132,6 +132,8 @@
             // what else happened around it
             const near = events.filter(function (v) { return v.t >= c.ts - 600 && v.t <= c.te + 600; });
             const has = function (type) { return near.some(function (v) { return v.type === type; }); };
+            // PvE things that happened right around it (a wave starting, reinforcements, the break and its panel), so a stutter at one of those shows
+            const pveNear = []; near.forEach(function (v) { if (/^(wave-start|pve-)/.test(v.type) && pveNear.indexOf(v.type) < 0) pveNear.push(v.type); });
             const rsStepJustBefore = events.some(function (v) { return v.type === 'rs-step' && v.t >= c.ts - 300 && v.t <= c.ts + 300; });
             let heapDrop = 0;
             for (let i = 1; i < heap.length; i++) if (heap[i][0] >= c.ts - 400 && heap[i][0] <= c.te + 400) heapDrop = Math.max(heapDrop, heap[i - 1][1] - heap[i][1]);
@@ -165,7 +167,7 @@
                 evidence: {
                     frameMs: r1(e.frameMs), frameJsMs: r1(e.frameJsMs), worstJsMs: r1(e.jsMaxMs),
                     packetGapMs: r1(e.gapMs), packetsInBurstAfter: burst, missingTicks: e.missingTicks,
-                    serverStallMs: srvStall, mainThreadBlockedMs: r1(blocked), heapDropMB: r1(heapDrop / 1048576),
+                    nearEvents: pveNear, serverStallMs: srvStall, mainThreadBlockedMs: r1(blocked), heapDropMB: r1(heapDrop / 1048576),
                     pingMsNearby: pingMax, pingBaselineMs: r1(baselinePing), predictionErrorPx: r1(e.predictionErrorPx),
                     tabOrWindowEvent: has('visibility') || has('resize') || rsStepJustBefore, disconnected: has('disconnect') || has('reconnect'),
                 },
@@ -176,6 +178,7 @@
         const byCause = {};
         for (let i = 0; i < incidents.length; i++) byCause[incidents[i].causeId] = (byCause[incidents[i].causeId] || 0) + 1;
         const real = Object.keys(byCause).filter(function (k) { return k !== 'tab-hidden' && k !== 'unknown'; }).sort(function (a, b) { return byCause[b] - byCause[a]; });
+        summary.incidentsNearPveEvents = incidents.filter(function (i) { return i.evidence.nearEvents.length > 0; }).length;
         summary.incidents = incidents.length;
         summary.byCause = byCause;
         summary.verdict = !incidents.length ? 'Niciun incident în fereastra înregistrată: cadrele și pachetele au fost regulate.'

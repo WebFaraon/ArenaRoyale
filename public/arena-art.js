@@ -601,17 +601,26 @@
         ctx.ellipse(cx, cy, rx, ry, 0, 0, TAU);
     }
     // `m` is the world transform (ctx.getTransform() taken once per frame); the caller restores it.
-    function drawZombieSprite(ctx, m, zb, def, typeKey, now) {
+    // The picture's size and how to paint it for a type: null while the picture is not in (or failed: the vector zombie is drawn)
+    function zombiePainter(def, typeKey) {
         const art = ZOMBIE_ART[typeKey], z = zombieImgs[typeKey];
-        let s = null, pad = 0;
-        if (art && z.state === 1) {
-            const k = def.r / art.disc, vx = art.view[0], vy = art.view[1], vw = art.view[2], vh = art.view[3];
-            pad = Math.max(-vx, -vy, vx + vw, vy + vh) * k + 2;
-            const old = zombieSprites.get(typeKey);
-            s = sprite(old, pad, function (g) {
+        if (!art || z.state !== 1) return null;
+        const k = def.r / art.disc, vx = art.view[0], vy = art.view[1], vw = art.view[2], vh = art.view[3];
+        return {
+            pad: Math.max(-vx, -vy, vx + vw, vy + vh) * k + 2,
+            paint: function (g) {
                 g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
                 g.drawImage(z.img, vx * k, vy * k, vw * k, vh * k);
-            });
+            },
+        };
+    }
+    function drawZombieSprite(ctx, m, zb, def, typeKey, now) {
+        let s = null, pad = 0;
+        const zp = zombiePainter(def, typeKey);
+        if (zp) {
+            pad = zp.pad;
+            const old = zombieSprites.get(typeKey);
+            s = sprite(old, pad, zp.paint);
             if (s !== old && s) zombieSprites.set(typeKey, s);
         }
         if (!s) { ctx.setTransform(m); drawZombie(ctx, zb, def, def.r, now); return; }
@@ -732,6 +741,12 @@
         g.beginPath(); g.roundRect(-w, cy - a, w * 2, a * 2, 1.5); g.fill();
         g.beginPath(); g.roundRect(-a, cy - w, a * 2, w * 2, 1.5); g.fill();
     }
+    function kitPainter() {
+        return kitArt.state === 1 ? function (g) {
+            g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+            g.drawImage(kitArt.img, -KIT_PAD, -KIT_PAD, KIT_PAD * 2, KIT_PAD * 2);
+        } : paintKit;
+    }
     // yOff: extra vertical offset (drop-in, pickup); now drives the hover; bob 0 freezes it
     function drawKit(ctx, x, y, yOff, now, scale, bob) {
         const ph = bob ? Math.sin(now * 0.0042) : 0;
@@ -750,10 +765,7 @@
             ctx.beginPath(); ctx.ellipse(x + 2, y + 13, 15 * sc * (1 - ph * 0.12), 5.5 * sc * (1 - ph * 0.12), 0, 0, TAU); ctx.fill();
         }
         const old = zombieSprites.get('kit');
-        const s = sprite(old, KIT_PAD, art ? function (g) {
-            g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
-            g.drawImage(kitArt.img, -KIT_PAD, -KIT_PAD, KIT_PAD * 2, KIT_PAD * 2);
-        } : paintKit);
+        const s = sprite(old, KIT_PAD, kitPainter());
         if (s !== old && s) zombieSprites.set('kit', s);
         const half = KIT_PAD * sc;
         if (s) ctx.drawImage(s.c, x - half, y - half - lift, half * 2, half * 2);
@@ -774,13 +786,16 @@
         g.fillStyle = '#C68A07'; g.beginPath(); g.arc(0, 0.8, COIN_R - 2, 0, TAU); g.fill();
         g.fillStyle = '#FFC72E'; g.beginPath(); g.arc(0, 0, COIN_R - 2, 0, TAU); g.fill();
     }
+    function coinPainter() {
+        return coinArt.state === 1 ? function (g) {
+            g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+            g.drawImage(coinArt.img, -COIN_PAD, -COIN_PAD, COIN_PAD * 2, COIN_PAD * 2);
+        } : paintCoinFallback;
+    }
     // sc: size factor (1 = resting), the caller sets globalAlpha
     function drawCoin(ctx, x, y, sc) {
         const old = zombieSprites.get('coin');
-        const s = sprite(old, COIN_PAD, coinArt.state === 1 ? function (g) {
-            g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
-            g.drawImage(coinArt.img, -COIN_PAD, -COIN_PAD, COIN_PAD * 2, COIN_PAD * 2);
-        } : paintCoinFallback);
+        const s = sprite(old, COIN_PAD, coinPainter());
         if (s !== old && s) zombieSprites.set('coin', s);
         const half = COIN_PAD * sc;
         if (s) ctx.drawImage(s.c, x - half, y - half, half * 2, half * 2);
@@ -844,6 +859,27 @@
         ctx.restore();
     }
 
+    // Makes, a few a frame (the sprite budget), the sprites a match would otherwise build the first time each is needed: a zombie
+    // type the moment it first comes into view, the base's colours as its HP falls, the first coin, the first kit and death.
+    // Call it every frame from the start of the match until it returns 0 (what is still missing: pictures not loaded yet count).
+    // zdefs: the zombie definitions by type ({ r }), withBase: a PvE match.
+    function warm(zdefs, withBase) {
+        let missing = 0;
+        const need = function (key, pad, paint) {
+            const old = zombieSprites.get(key), s = sprite(old, pad, paint);
+            if (s !== old && s) zombieSprites.set(key, s);
+            if (!s) missing++;
+        };
+        for (let t = 0; t < ZOMBIE_ART.length; t++) {
+            const zp = zombiePainter(zdefs[t] || zdefs[0], t);
+            if (zp) need(t, zp.pad, zp.paint); else if (zombieImgs[t].state === 0) missing++;
+        }
+        if (withBase) for (let st = 0; st < BASE_PAL.length; st++) { const pal = BASE_PAL[st]; need('base' + st, BASE_PAD, function (g) { paintBase(g, pal); }); }
+        need('kit', KIT_PAD, kitPainter());
+        need('coin', COIN_PAD, coinPainter());
+        for (let k = 0; k < SHARD_PAL.length; k++) need('shard' + k, SHARD_PAD, function (g) { paintShard(g, k); });
+        return missing;
+    }
     function clearSprites() { zombieSprites.clear(); }
     function isScaleStable() { return scaleStable; }
     function takeBudget() { if (budget <= 0) return false; budget--; return true; }
@@ -1001,6 +1037,7 @@
         drawCoin: drawCoin,
         addCoinShadow: addCoinShadow,
         drawShard: drawShard,
+        warm: warm,
         COIN_R: COIN_R,
         clearSprites: clearSprites,
         isScaleStable: isScaleStable,

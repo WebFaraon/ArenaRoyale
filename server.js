@@ -985,6 +985,31 @@ const PVE_BASE_R         = 85;
 const PVE_BASE_ATTACK_R  = 95;
 const _COIN_PICK_SQ      = (PLAYER_R + PveCoins.PICK_EXTRA) ** 2;   // a PvE coin is taken within this distance of a player
 const _coinOut           = { taken: [], gone: [] };                 // scratch for PveCoins.step
+// Coins taken (flat [coinId, player, ...] from PveCoins.step or sweep): every client drops them, each player is paid his own and told once.
+function _payCoins(code, taken) {
+    const ids = [];
+    for (let ci = 0; ci < taken.length; ci += 2) {
+        ids.push(taken[ci]);
+        const p = taken[ci + 1];
+        p._coinGot = (p._coinGot || 0) + 1;
+    }
+    io.to(code).emit('coin-taken', { ids });
+    for (let ci = 1; ci < taken.length; ci += 2) {
+        const p = taken[ci];
+        if (!p._coinGot) continue;
+        p.coins += p._coinGot;
+        io.to(p.id).emit('pve-coins', { coins: p.coins, earned: p._coinGot, x: p.x, y: p.y });
+        p._coinGot = 0;
+    }
+}
+// The wave is over: the break panel is about to cover the pitch, so the coins nobody reached are handed out (to the nearest living player)
+function _sweepCoins(code, room) {
+    if (!room.coinDrops.length) return;
+    const alive = room._playerArr.filter(p => p.alive);
+    PveCoins.sweep(room.coinDrops, alive, _coinOut);
+    if (_coinOut.taken.length) _payCoins(code, _coinOut.taken);
+    if (_coinOut.gone.length) io.to(code).emit('coin-taken', { ids: _coinOut.gone.slice(), gone: true });
+}
 const PVE_BREAK_DURATION = 15;
 const PVE_TOTAL_WAVES    = 10;
 // [normal, runner, tank] per wave
@@ -1998,6 +2023,8 @@ function startRoomLoop(code, room) {
                         room.pveSkipVotes.clear();
                         room._playerArr.forEach(p => { p.moveDir.x = 0; p.moveDir.y = 0; p.shooting = false; });
                         io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION });
+                        // the panel covers the pitch after 1 s (game.js): the coins still lying around are handed out just before
+                        setTimeout(() => { if (rooms.has(code) && room.pveWaveBreak) _sweepCoins(code, room); }, 900);
                     }
                 }
             }
@@ -2124,22 +2151,7 @@ function startRoomLoop(code, room) {
             // PvE coins on the ground: a living player that reaches one takes it, the ones nobody takes time out
             if (room.coinDrops.length) {
                 PveCoins.step(room.coinDrops, alivePlayers, _COIN_PICK_SQ, now, PveCoins.TTL_MS, _coinOut);
-                if (_coinOut.taken.length) {
-                    const ids = [];
-                    for (let ci = 0; ci < _coinOut.taken.length; ci += 2) {
-                        const p = _coinOut.taken[ci + 1];
-                        ids.push(_coinOut.taken[ci]);
-                        p._coinGot = (p._coinGot || 0) + 1;
-                    }
-                    io.to(code).emit('coin-taken', { ids });
-                    for (let ci = 1; ci < _coinOut.taken.length; ci += 2) {
-                        const p = _coinOut.taken[ci];
-                        if (!p._coinGot) continue;
-                        p.coins += p._coinGot;
-                        io.to(p.id).emit('pve-coins', { coins: p.coins, earned: p._coinGot, x: p.x, y: p.y });
-                        p._coinGot = 0;
-                    }
-                }
+                if (_coinOut.taken.length) _payCoins(code, _coinOut.taken);
                 if (_coinOut.gone.length) io.to(code).emit('coin-taken', { ids: _coinOut.gone.slice(), gone: true });
             }
 
