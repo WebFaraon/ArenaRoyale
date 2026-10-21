@@ -4507,8 +4507,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     // ---------- BUCLA DE RANDARE ----------
     let lastTime  = 0;
+    // A display of 200 Hz or more is drawn at about 120 frames a second, the rest skipped (frame-cap.js); ?fps=off draws every one
+    const _fcGate = (window.ARFrameCap && !/[?&]fps=off\b/.test(location.search)) ? ARFrameCap.createGate() : null;
     function draw(timestamp) {
         rafId = requestAnimationFrame(draw);
+        if (_fcGate && !_fcGate.frame(timestamp)) return;
         const _drawStart = performance.now();
 
         _rsTick(timestamp, canvas);
