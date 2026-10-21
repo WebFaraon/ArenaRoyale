@@ -1,10 +1,11 @@
 {
   "units": "un skin schimba doar aspectul armei (weapon = id din weapons.json). price lipsa = pretul raritatii (prices); unlock = se primeste automat la N killuri cu arma lui, nu se cumpara",
-  "rarities": ["rare", "epic", "legendary"],
+  "rarities": ["rare", "epic", "legendary", "mythic"],
   "prices": {
     "rare":      { "coins": 1200 },
     "epic":      { "diamonds": 40 },
-    "legendary": { "diamonds": 80 }
+    "legendary": { "diamonds": 80 },
+    "mythic":    { "diamonds": 150 }
   },
   "skins": [
     { "id": "sn_frost",     "weapon": "sniper",  "name": "Frost",       "rarity": "rare",      "unlock": { "kills": 50 } },
@@ -47,6 +48,8 @@
     { "id": "ti_snow",       "weapon": "ar_titan", "name": "Zăpadă", "rarity": "rare", "unlock": { "kills": 50 } },
     { "id": "ti_hazard",     "weapon": "ar_titan", "name": "Șantier", "rarity": "rare" },
     { "id": "ti_crystal",    "weapon": "ar_titan", "name": "Cristal", "rarity": "epic" },
-    { "id": "ti_golem",      "weapon": "ar_titan", "name": "Golem", "rarity": "legendary" }
+    { "id": "ti_golem",      "weapon": "ar_titan", "name": "Golem", "rarity": "legendary" },
+
+    { "id": "smg_hornet",   "weapon": "smg",     "name": "Viespe",      "rarity": "mythic" }
   ]
 }

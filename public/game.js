@@ -430,11 +430,12 @@ const ARS_RARITY = {
     rare:      { label: 'RAR',      title: 'Rar',      color: 'var(--c-sky)' },
     epic:      { label: 'EPIC',     title: 'Epic',     color: 'var(--c-purple)' },
     legendary: { label: 'LEGENDAR', title: 'Legendar', color: 'var(--c-gold)' },
+    mythic:    { label: 'MITIC',    title: 'Mitic',    color: '#FFC21F' },
 };
 const NO_WSKIN = 'default';
 // weapon: the gun shown; skin: the skin previewed on it (NO_WSKIN = the gun as it is); inHand: the figure
 // view; busy: a request is out (one at a time, so a double click cannot send two)
-const _ars = { weapon: null, skin: NO_WSKIN, cls: null, k: 1, inHand: false, busy: false, buy: null, raf: 0, fx: _newShotFx(), entries: {} };
+const _ars = { weapon: null, skin: NO_WSKIN, cls: null, k: 1, inHand: false, busy: false, buy: null, raf: 0, fx: _newShotFx(), entries: {}, pool: ARSkinFx.createPool(40), em: { acc: 0 }, lastT: 0 };
 
 // The screen is laid out like on a laptop at every size. Below ARS_MIN_W x ARS_MIN_H (a phone, a small tablet)
 // the whole thing is drawn at that design size and scaled down to fit (#ars-fit: width/height = the screen / k,
@@ -889,6 +890,10 @@ function _arsHandLoop(now) {
     ctx.imageSmoothingQuality = 'high';
     const entry = _ars.entries[selectedCharacterId] || (_ars.entries[selectedCharacterId] = _makeSkinEntry(selectedCharacterId));
     _drawPlayerFigure(ctx, ctx.getTransform(), 0, 0, -Math.PI / 2, entry, _ars.weapon, px, '#46D17C', 'rgba(70,209,124,0.14)', _ars.fx, now, skin);
+    // a mythic skin's pollen (SKIN EFFECTS), in the same world transform
+    const fdt = Math.min(0.05, Math.max(0, (now - _ars.lastT) / 1000)); _ars.lastT = now;
+    if (_SKINFX.full && look && look.fx && look.fx.pollen) ARSkinFx.emitPollen(_ars.pool, _ars.em, look.fx, 0, 0, -Math.PI / 2, PLAYER_VISUAL_SCALE, fdt, Math.random);
+    if (_ars.pool.n) { ARSkinFx.step(_ars.pool, fdt); _drawSkinPollen(ctx, _ars.pool, px); }
 }
 
 async function _arsPost(url, body) {
@@ -2653,6 +2658,7 @@ const WEAPON_SKIN_ART_READY = Promise.all([WEAPONS_ART_READY, fetch(arAsset(WEAP
                 hands0: k.hands, muzzle0: k.muzzle, // unscaled, for the dev view readout
                 recoil: base.recoil, flashLen: base.flashLen, flashWid: base.flashWid,
                 flashSprite: null, trail: null, bulletSprite: null,
+                fx: ARSkinFx.parseFx(k.fx),   // the mythic skins' effects (SKIN EFFECTS below); null for the others
             };
         }
     })
@@ -2728,6 +2734,7 @@ function _starPath(g, len, wid, k) {
     g.closePath();
 }
 function _flashSprite(gun, scale) {
+    if (gun.fx && gun.fx.flash) return _skinFlashSprite(gun, scale);
     const box = gun.flashLen;
     const s = _unitSprite(gun, 'flashSprite', scale, box, g => {
         _starPath(g, gun.flashLen, gun.flashWid, 1);
@@ -2765,6 +2772,122 @@ function _trailSpriteFor(weaponId, skinId) {
     return c;
 }
 
+// ---------- SKIN EFFECTS (the mythic weapon skins) ----------
+// weapon-skin-sprites.json "fx" (read by ARSkinFx.parseFx, public/skin-fx.js): a glow under the player, a light that runs
+// down the gun at each shot, a star at the muzzle, needle bullets with a glow, and hexagon pollen off the player and off the
+// bullets. Everything is a sprite painted once per scale (like the guns and the bullets), drawn with one drawImage; the
+// pollen is one fixed pool (ARSkinFx) updated once per frame. Visual only. The setting "Efecte skin" (Settings) off, or the
+// dynamic resolution having stepped down (the device is struggling), leaves the glow, the star and the needles and drops the
+// pollen and the light on the gun. The wings of the Viespe do not move: the sprite is a still picture.
+const _SKINFX = { full: true };
+try { _SKINFX.full = localStorage.getItem('ar_skinfx') !== '0'; } catch (e) { /* storage blocked: full */ }
+const _skinFxOn = () => _SKINFX.full && _RS.idx === 0;   // the pollen in a match
+document.addEventListener('DOMContentLoaded', () => {
+    const sw = document.getElementById('set-skinfx');
+    if (!sw) return;
+    const paint = () => {
+        sw.setAttribute('aria-checked', _SKINFX.full ? 'true' : 'false');
+        const t = sw.querySelector('.switch-text'); if (t) t.textContent = _SKINFX.full ? 'ON' : 'OFF';
+    };
+    sw.addEventListener('click', () => {
+        _SKINFX.full = !_SKINFX.full;
+        try { localStorage.setItem('ar_skinfx', _SKINFX.full ? '1' : '0'); } catch (e) { /* ignore */ }
+        paint();
+    });
+    paint();
+});
+const _hexRgba = (hex, a) => 'rgba(' + parseInt(hex.slice(1, 3), 16) + ',' + parseInt(hex.slice(3, 5), 16) + ',' + parseInt(hex.slice(5, 7), 16) + ',' + a + ')';
+// A soft round glow in one colour, fading to nothing at the edge; box = its radius in world units
+function _glowSprite(holder, key, scale, box, hex) {
+    const s = _unitSprite(holder, key, scale, box, g => {
+        const gr = g.createRadialGradient(0, 0, 0, 0, 0, box);
+        gr.addColorStop(0, _hexRgba(hex, 1)); gr.addColorStop(1, _hexRgba(hex, 0));
+        g.fillStyle = gr; g.beginPath(); g.arc(0, 0, box, 0, Math.PI * 2); g.fill();
+    });
+    s.box = box;
+    return s;
+}
+// the glow under the player, in the gun's frame, drawn before the body; it breathes
+function _drawSkinAura(ctx, gun, scale, now) {
+    const a = gun.fx.aura, S = PLAYER_VISUAL_SCALE;
+    const sp = _glowSprite(gun, 'auraSprite', scale, a.radius * S, a.color);
+    ctx.globalAlpha = ARSkinFx.auraAlpha(gun.fx, now);
+    ctx.drawImage(sp.c, a.at[0] * S - sp.box, a.at[1] * S - sp.box, sp.box * 2, sp.box * 2);
+    ctx.globalAlpha = 1;
+}
+// the light that runs down the gun after a shot (age ms since the shot), with the gun's recoil
+function _drawSkinPulse(ctx, gun, scale, age, back) {
+    const pu = ARSkinFx.pulseAt(gun.fx, age);
+    if (!pu) return;
+    const S = PLAYER_VISUAL_SCALE, p = gun.fx.pulse;
+    const sp = _glowSprite(gun, 'pulseSprite', scale, p.radius * S, p.color);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = pu.a;
+    ctx.drawImage(sp.c, pu.x * S - sp.box, pu.y * S - back - sp.box, sp.box * 2, sp.box * 2);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+}
+// the muzzle star: four points (long along the shot), ink outline, colour, white core; drawn by _drawPlayerFigure like any flash
+function _skinFlashSprite(gun, scale) {
+    const S = PLAYER_VISUAL_SCALE, c = gun.fx.flash.colors, box = 12.6 * S;
+    const s = _unitSprite(gun, 'flashSprite', scale, box, g => {
+        for (let pass = 0; pass < 2; pass++) {
+            const r0 = (pass ? 8 : 9.03) * S, r1 = (pass ? 1.6 : 2.2) * S;
+            g.beginPath();
+            for (let j = 0; j < 8; j++) {
+                const rr = j % 2 ? r1 : (j % 4 === 0 ? r0 * 1.4 : r0 * 0.9), aa = j / 8 * Math.PI * 2;
+                g.lineTo(Math.sin(aa) * rr, Math.cos(aa) * rr);
+            }
+            g.closePath(); g.fillStyle = pass ? c[1] : c[0]; g.fill();
+        }
+        g.fillStyle = c[2]; g.beginPath(); g.arc(0, 0, 1.3 * S, 0, Math.PI * 2); g.fill();
+    });
+    s.box = box;
+    return s;
+}
+// the needle bullet (a diamond, tip forward along +x), with its glow baked in: one drawImage per bullet
+const NEEDLE_K = 0.55;   // the artifact's pixels -> world units, so a needle is about as long as the capsule bullet
+function _needleBulletSprite(gun, scale) {
+    const b = gun.fx.bullets, K = NEEDLE_K, box = Math.max(14 * K + 1.5, b.glowRadius * K);
+    const s = _unitSprite(gun, 'bulletSprite', scale, box, g => {
+        if (b.glowRadius > 0) {
+            const gr = g.createRadialGradient(0, 0, 0, 0, 0, b.glowRadius * K);
+            gr.addColorStop(0, _hexRgba(b.colors[0], 0.35)); gr.addColorStop(1, _hexRgba(b.colors[0], 0));
+            g.fillStyle = gr; g.beginPath(); g.arc(0, 0, b.glowRadius * K, 0, Math.PI * 2); g.fill();
+        }
+        const dia = (tip, back, half, hb) => { g.beginPath(); g.moveTo(tip * K, 0); g.lineTo(hb * K, -half * K); g.lineTo(back * K, 0); g.lineTo(hb * K, half * K); g.closePath(); };
+        dia(14, -14, 5.4, -8); g.fillStyle = b.outline; g.fill();
+        dia(11, -11, 3.2, -7); g.fillStyle = b.colors[0]; g.fill();
+        g.beginPath(); g.moveTo(8 * K, 0); g.lineTo(-3 * K, -1.2 * K); g.lineTo(-3 * K, 1.2 * K); g.closePath(); g.fillStyle = b.colors[1]; g.fill();
+    });
+    s.box = box;
+    return s;
+}
+// pollen: a hexagon in the skin's colour with an ink outline, painted at 2.5x so the biggest ones stay sharp
+function _hexSprite(scale) {
+    const s = _unitSprite(_SKINFX, 'hex', scale * 2.5, 1.3, g => {
+        g.beginPath();
+        for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; g.lineTo(Math.cos(a), Math.sin(a)); }
+        g.closePath(); g.fillStyle = '#FFC21F'; g.fill();
+        g.lineWidth = 0.34; g.strokeStyle = '#0B0F1A'; g.lineJoin = 'round'; g.stroke();
+    });
+    s.box = 1.3;
+    return s;
+}
+// draws a pool's pollen in the current (world) transform, each fading out over its life
+function _drawSkinPollen(ctx, pool, scale) {
+    if (!pool.n) return;
+    const hs = _hexSprite(scale), box = hs.box;
+    for (let i = 0; i < pool.n; i++) {
+        const k = pool.age[i] / pool.life[i], r = pool.size[i];
+        ctx.globalAlpha = Math.max(0, 1 - k * k);
+        ctx.drawImage(hs.c, pool.x[i] - r * box, pool.y[i] - r * box, r * box * 2, r * box * 2);
+    }
+    ctx.globalAlpha = 1;
+}
+// one emitter counter per player (and per bullet owner), made when first needed
+function _skinEmitter(map, id) { let e = map.get(id); if (!e) { e = { acc: 0 }; map.set(id, e); } return e; }
+
 // The ring under a player: just outside the default hands (its 3-unit stroke clears them)
 function _playerRingR() { return _HAND.reach + 2.5; }
 
@@ -2789,6 +2912,7 @@ function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStr
 
     const gun = weaponId ? _gunLook(weaponId, weaponSkin) : null;
     _setRotated(ctx, wm, x, y, Math.cos(angle), Math.sin(angle));
+    if (gun && gun.fx && gun.fx.aura) _drawSkinAura(ctx, gun, scale, now);   // under the body
     if (entry && !gun) _drawHands(ctx, entry, scale);
     const spr = entry ? _skinSprite(entry, scale) : null;
     if (spr) {
@@ -2809,6 +2933,7 @@ function _drawPlayerFigure(ctx, wm, x, y, angle, entry, weaponId, scale, ringStr
         const gs = _imageSprite(gun, 'sprite', gun.img, scale, WEAPON_ART.size[0], WEAPON_ART.size[1]);
         if (gs) ctx.drawImage(gs.c, WEAPON_ART.tl[0], WEAPON_ART.tl[1] - back, WEAPON_ART.size[0], WEAPON_ART.size[1]);
         if (entry) _drawHands(ctx, entry, scale, gun.hands, -back);
+        if (gun.fx && gun.fx.pulse && fx && _SKINFX.full) _drawSkinPulse(ctx, gun, scale, now - fx.flash, back);
         const fage = fx ? now - fx.flash : Infinity;
         if (fage >= 0 && fage < FLASH_MS) {
             const a = fage / FLASH_MS, k = 1 - 0.4 * a;
@@ -2830,6 +2955,7 @@ const PELLET_LOOK = { len: 8, wid: 4 };   // guns that fire pellets (shotgun)
 function _bulletSprite(weaponId, scale, skinId) {
     const gun = _gunLook(weaponId, skinId) || WEAPON_ART.byId[DEFAULT_WEAPON];
     if (!gun) return null;
+    if (gun.fx && gun.fx.bullets) return _needleBulletSprite(gun, scale);
     const look = (_WEAPON_DATA[weaponId] || {}).pellets > 1 ? PELLET_LOOK : BULLET_LOOK;
     const box = look.len / 2 + 1.5;
     const s = _unitSprite(gun, 'bulletSprite', scale, box, g => {
@@ -3164,6 +3290,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _prevPlayerPos = {};
     const _srvBulletSeen = new Map(); // bullet id → first-seen timestamp
     const _playerFx = new Map(); // socketId → shot effects (_newShotFx): recoil + muzzle flash
+    // The mythic skins' pollen (SKIN EFFECTS): one pool for the whole screen, one emitter counter per player / bullet owner
+    const _skinPool = ARSkinFx.createPool(), _skinEm = new Map();
     const _fxFor = id => { let f = _playerFx.get(id); if (!f) { f = _newShotFx(); _playerFx.set(id, f); } return f; };
     const prevHp         = {};
     const latestHp       = {}; // hp instantaneu din gs, fara delay de interpolatie
@@ -4899,6 +5027,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // Enemy bullets extrapolate forward from the latest snapshot; own bullets come from
         // _clientBullets (predicted + reconciled with the server, see _reconcileOwnBullets).
         const _bulletNow = performance.now();
+        const _skinDt = Math.min(0.05, dtSec), _skinPollen = _skinFxOn();   // the mythic skins' pollen (SKIN EFFECTS)
         const _bulletAge = rState.bulletAge;   // seconds since the snapshot the bullets are read from, on the server timeline
         ctx.fillStyle = '#ffffff';
         for (const b of rState.bullets) {
@@ -4919,11 +5048,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (_trail > 4) ctx.drawImage(_trailSpriteFor(_bw, _playerWeaponSkins.get(b.ownerId)), -_trail, -3, _trail, 6);
             if (_bs) ctx.drawImage(_bs.c, -_bs.box, -_bs.box, _bs.box * 2, _bs.box * 2);
             else { ctx.beginPath(); ctx.arc(0, 0, b.radius || 6, 0, Math.PI * 2); ctx.fill(); }
+            if (_skinPollen) {
+                const _eg = _gunLook(_bw, _playerWeaponSkins.get(b.ownerId));
+                if (_eg && _eg.fx && _eg.fx.bullets && _eg.fx.bullets.trailPollen) ARSkinFx.emitBulletPollen(_skinPool, _skinEmitter(_skinEm, 'b' + b.ownerId), _eg.fx, _bx, _by, PLAYER_VISUAL_SCALE, _skinDt, Math.random);
+            }
         }
         ctx.setTransform(_wm);
         // Own bullets — fade-out in the last 20% of their lifetime; hidden ones hit something
         const _myBs = _bulletSprite(selectedWeapon, _lblScale, _playerWeaponSkins.get(socket.id));
         const _myTrail = _trailSpriteFor(selectedWeapon, _playerWeaponSkins.get(socket.id));
+        const _myGunFx = _skinPollen ? (_gunLook(selectedWeapon, _playerWeaponSkins.get(socket.id)) || {}).fx : null;
         for (const cb of _clientBullets) {
             if (cb.hiddenAt || cb.dead) continue;
             const _cAgeFull = (_bulletNow - cb.spawnTime) / 1000;
@@ -4940,6 +5074,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (_trail > 4) ctx.drawImage(_myTrail, -_trail, -3, _trail, 6);
             if (_myBs) ctx.drawImage(_myBs.c, -_myBs.box, -_myBs.box, _myBs.box * 2, _myBs.box * 2);
             else { ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill(); }
+            if (_myGunFx && _myGunFx.bullets && _myGunFx.bullets.trailPollen) ARSkinFx.emitBulletPollen(_skinPool, _skinEmitter(_skinEm, 'b' + socket.id), _myGunFx, _cbx, _cby, PLAYER_VISUAL_SCALE, _skinDt, Math.random);
         }
         ctx.setTransform(_wm);
         ctx.globalAlpha = 1;
@@ -5153,6 +5288,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         // --- JUCATORI ---
         // The ring sits just outside the default hands and the labels stack on it
+
         const _ringR    = _playerRingR();
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
@@ -5186,6 +5322,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Ring, body, gun, hands on the gun, fixed highlight (see GUNS IN HAND)
             const _pWeapon = isMe ? (_playerWeapons.get(socket.id) || selectedWeapon) : (_playerWeapons.get(player.id) || DEFAULT_WEAPON);
             _drawPlayerFigure(ctx, _wm, px, py, pangle, playerImages[player.id], _pWeapon, _lblScale, ringColor, ringFill, _playerFx.get(player.id), _bulletNow, _playerWeaponSkins.get(player.id));
+            if (_skinPollen) {   // a mythic skin sheds pollen from the wings
+                const _sg = _gunLook(_pWeapon, _playerWeaponSkins.get(player.id));
+                if (_sg && _sg.fx && _sg.fx.pollen) ARSkinFx.emitPollen(_skinPool, _skinEmitter(_skinEm, player.id), _sg.fx, px, py, pangle, PLAYER_VISUAL_SCALE, _skinDt, Math.random);
+            }
 
             // Hit flash on the body; the tag and bars come after the tree crowns (below)
             const flashAge = flashTimers[player.id] !== undefined
@@ -5201,6 +5341,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             _plQ[_plN] = player; _plQx[_plN] = px; _plQy[_plN] = py; _plN++;
         }
         ctx.imageSmoothingQuality = 'low'; // back to the default for the rest of the frame
+        // The mythic skins' pollen: moved once, drawn over the players (only the particles of the pool; none = nothing to do)
+        if (_skinPool.n) { ARSkinFx.step(_skinPool, _skinDt); ctx.setTransform(_wm); _drawSkinPollen(ctx, _skinPool, _lblScale); }
 
         // --- COROANE --- (trees from sprites: above the players and zombies; see-through over whoever is under)
         {

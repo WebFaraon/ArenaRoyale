@@ -696,6 +696,95 @@
     110
    ],
    "accent": "#3DF2D0"
+  },
+  "smg_hornet": {
+   "weapon": "smg",
+   "sprite": "smg_hornet.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     12,
+     62
+    ]
+   ],
+   "muzzle": [
+    0,
+    109
+   ],
+   "accent": "#FFC21F",
+   "fx": {
+    "aura": {
+     "at": [
+      0,
+      56
+     ],
+     "radius": 46,
+     "color": "#FFC21F",
+     "alpha": [
+      0.2,
+      0.27
+     ],
+     "pulseSeconds": 2.1
+    },
+    "abdomenPulse": {
+     "seconds": 0.16,
+     "from": [
+      0,
+      57
+     ],
+     "to": [
+      0,
+      96
+     ],
+     "color": "#FFE278",
+     "radius": 8
+    },
+    "pollen": {
+     "ratePerSecond": 9,
+     "spawnX": [
+      14,
+      36
+     ],
+     "spawnY": [
+      16,
+      40
+     ],
+     "speedBack": [
+      10,
+      30
+     ],
+     "life": [
+      0.8,
+      1.6
+     ],
+     "size": [
+      1,
+      2.4
+     ],
+     "color": "#FFC21F",
+     "outline": "#0B0F1A"
+    },
+    "muzzleFlash": {
+     "colors": [
+      "#0B0F1A",
+      "#FFD84A",
+      "#FFFFFF"
+     ]
+    },
+    "bullets": {
+     "style": "needle",
+     "colors": [
+      "#FFC21F",
+      "#FFF3B0"
+     ],
+     "outline": "#0B0F1A",
+     "glowRadius": 22,
+     "trailPollen": true
+    }
+   }
   }
  }
 }
