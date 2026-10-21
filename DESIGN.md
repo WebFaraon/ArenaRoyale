@@ -337,6 +337,7 @@ One block per second (orange, green on GO), about 120 to 176px, with a 5px outli
 ### Motion
 - **Arrival (`trayDrop`, 620ms):** trays drop 22px and settle with a 3px overshoot, staggered by 60ms, once per screen change.
 - **Press and release:** see the Squash Rule.
+- **Arsenal (a screen over the lobby):** it arrives and leaves as a crossfade (0.38s in, 0.28s out): the screen rises 22px and fades in while the lobby fades out under it, and leaving plays it backwards while the lobby fades back in; `closeArsenal` hides the screen only when the animation ends (and at once under reduced motion). Skin clicks change only what the skin changes and pop the gun in quickly (0.2s), never from empty: its picture is already decoded.
 - **Selection pop:** mode blocks, check badges and notification badges spring in.
 - **Live cues:** the online dot pings, the event icon pulses, the "choose a mode" flag waves.
 - **Reduced motion:** the sweep and the live cues stop; press and state feedback stay.

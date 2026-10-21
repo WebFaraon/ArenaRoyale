@@ -4346,7 +4346,8 @@ button:disabled { cursor: not-allowed; }
    chunky blocks for every control, outlined lettering. Three columns from 1100px wide; below that, or on
    a short landscape screen, everything stacks and the gun list becomes a sideways row.
    ========================================================================== */
-.arsenal-open #screen-lobby { visibility: hidden; }
+.arsenal-open #screen-lobby { opacity: 0; visibility: hidden; transition: opacity .3s var(--settle), visibility 0s .3s; }
+#screen-lobby { transition: opacity .3s var(--settle); }   /* the lobby fades out under the Arsenal and back in when it closes */
 
 #screen-arsenal {
     position: fixed;
@@ -4359,9 +4360,17 @@ button:disabled { cursor: not-allowed; }
     font-family: var(--f);
     background: linear-gradient(rgba(5, 8, 10, .5), rgba(5, 8, 10, .2) 140px), rgba(5, 8, 10, .34);
     touch-action: manipulation;
-    animation: arsIn .32s var(--settle);
+    animation: arsIn .38s var(--settle);
 }
-@keyframes arsIn { from { opacity: 0; transform: translateY(10px); } }
+@keyframes arsIn { from { opacity: 0; transform: translateY(22px) scale(.988); } }
+/* leaving: the same move backwards (closeArsenal hides the screen when it ends) */
+#screen-arsenal.is-closing { animation: arsOut .28s var(--settle) forwards; }
+@keyframes arsOut { to { opacity: 0; transform: translateY(18px) scale(.99); } }
+.is-closing .ars-body > * { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    #screen-arsenal, #screen-arsenal.is-closing { animation: none; }
+    #screen-lobby, .arsenal-open #screen-lobby { transition: none; }
+}
 
 /* ---------- blocks ---------- */
 .ars-blk {
@@ -4418,8 +4427,6 @@ button:disabled { cursor: not-allowed; }
     font: 800 clamp(1.4rem, 2.6vw, 2.1rem)/1 var(--f);
     letter-spacing: .04em;
     text-shadow: var(--stroke-lg);
-    transform: rotate(-2deg);
-    transform-origin: left center;
 }
 .ars-title .ic { width: 1.05em; height: 1.05em; color: var(--c-orange); stroke-width: 2.6; filter: drop-shadow(0 3px 0 var(--ink-line)); }
 .ars-wallet { margin-left: auto; display: flex; gap: 8px; }
@@ -4604,7 +4611,7 @@ button:disabled { cursor: not-allowed; }
 .ars-gun { position: relative; width: min(92%, 560px); width: min(92cqw, 620px, calc((100cqh - 24px) * 144 / 44)); aspect-ratio: 144 / 44; overflow: hidden; }
 .ars-gun img {
     position: absolute;
-    left: 22.2222%;            /* (100% - 80/144) / 2 */
+    left: calc(22.2222% + var(--dx, 0%));   /* (100% - 80/144) / 2, moved by --dx so the gun's pixels (not its frame) are centred (_arsFitGun) */
     top: -113.6364%;           /* (100% - 144/44) / 2, in wrapper heights */
     width: 55.5556%;           /* 80 / 144 of the wrapper width */
     height: 327.2727%;         /* 144 / 44 of the wrapper height */
@@ -4612,9 +4619,13 @@ button:disabled { cursor: not-allowed; }
     filter: drop-shadow(0 6px 0 rgba(0, 0, 0, .35));
     pointer-events: none;
     -webkit-user-drag: none;
-    animation: arsGunIn .42s var(--spring);
+    opacity: 0;                /* shown by _arsFitGun once the picture is decoded and placed */
 }
+.ars-gun img.is-in { opacity: 1; animation: arsGunIn .42s var(--spring); }
+.ars-gun img.is-in.is-swap { animation: arsGunSwap .2s var(--settle); }   /* a skin click: a quick pop, never from empty */
 @keyframes arsGunIn { from { opacity: 0; transform: rotate(-90deg) translateY(-14px); } }
+@keyframes arsGunSwap { from { opacity: .35; transform: rotate(-90deg) translateY(-7px) scale(.97); } }
+@media (prefers-reduced-motion: reduce) { .ars-gun img.is-in, .ars-gun img.is-in.is-swap { animation: none; } }
 .ars-stage.is-hand { cursor: crosshair; }
 #ars-hand { position: absolute; inset: 0; width: 100%; height: 100%; }
 

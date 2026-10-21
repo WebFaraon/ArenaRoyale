@@ -458,11 +458,76 @@ function _arsIcon(wid, skinId) {
     if (!gun) return ARIcons.weaponHtml(wid, false);
     return `<span class="ars-fi" style="--len:${gun.muzzle0[1] + 10}"><img src="${gun.img.src}" alt="" draggable="false"></span>`;
 }
-// the big preview: the match frame (80 x 144 units, barrel down) turned barrel-right, a skin's svg/ or the
-// base gun's sprite, so every gun sits at the same place and scale
-function _arsGunPreview(wid, skinId) {
-    const src = skinId !== NO_WSKIN ? arAsset(WEAPON_SKIN_DIR + 'svg/' + skinId + '.svg') : WEAPON_ART.byId[wid].img.src;
-    return `<div class="ars-gun"><img src="${src}" alt="" draggable="false"></div>`;
+// ---- the pictures of the Arsenal ----
+// Every preview and icon is fetched and decoded once (_arsLoad), the first time the lobby is idle after login
+// (_arsWarm) or when the screen opens, so a click on a skin never waits for the network or the decoder.
+const _arsImgs = new Map();   // url -> { img, ready: Promise<boolean>, box }
+function _arsLoad(url) {
+    let e = _arsImgs.get(url);
+    if (e) return e;
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+    e = { img, ready: img.decode().then(() => true, () => false), box: undefined };
+    _arsImgs.set(url, e);
+    return e;
+}
+let _arsWarmed = false;
+async function _arsWarm() {
+    if (_arsWarmed) return;
+    _arsWarmed = true;
+    try { await Promise.all([WEAPONS_ART_READY, WEAPON_SKIN_ART_READY, WEAPON_SKIN_CATALOG_READY]); } catch { return; }
+    const order = [selectedWeapon].concat(WEAPONS.map(w => w.id).filter(id => id !== selectedWeapon));
+    for (const wid of order) {   // one gun at a time, the equipped one first, so it does not crowd the rest of the page
+        const urls = [];
+        if (WEAPON_ART.byId[wid]) urls.push(WEAPON_ART.byId[wid].img.src);
+        for (const s of _arsSkinsOf(wid)) urls.push(arAsset(WEAPON_SKIN_DIR + 'svg/' + s.id + '.svg'), arAsset(WEAPON_SKIN_DIR + 'icons/' + s.id + '.svg'));
+        await Promise.all(urls.map(u => _arsLoad(u).ready));
+    }
+}
+// The rows of the 144-unit frame (barrel down) the gun's pixels cover: [first, end], measured once from the alpha
+function _arsBox(e) {
+    if (e.box !== undefined) return e.box;
+    e.box = null;
+    try {
+        const W = 160, H = 288, c = document.createElement('canvas');
+        c.width = W; c.height = H;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(e.img, 0, 0, W, H);
+        const a = g.getImageData(0, 0, W, H).data;
+        const rowHas = y => { for (let x = 0; x < W; x++) if (a[(y * W + x) * 4 + 3] > 12) return true; return false; };
+        let y0 = 0, y1 = H - 1;
+        while (y0 < H && !rowHas(y0)) y0++;
+        while (y1 > y0 && !rowHas(y1)) y1--;
+        if (y0 < H) e.box = [y0 / H * 144, (y1 + 1) / H * 144];
+    } catch { /* a picture that cannot be read stays where the frame puts it */ }
+    return e.box;
+}
+function _arsGunUrl(wid, skinId) {
+    return skinId !== NO_WSKIN ? arAsset(WEAPON_SKIN_DIR + 'svg/' + skinId + '.svg') : WEAPON_ART.byId[wid].img.src;
+}
+// the big preview: the match frame (80 x 144 units, barrel down) turned barrel-right: a skin's svg/ or the
+// base gun's sprite, so every gun is drawn at the same scale. The wrapper starts empty: _arsFitGun puts the
+// already decoded picture in it, centres it by its pixels and shows it.
+function _arsGunPreview() { return '<div class="ars-gun"></div>'; }
+// Shows the gun of the weapon and skin now selected. The picture on screen stays until the new one is decoded
+// (never an empty stage). The new one is the cached element itself, moved into the stage: a new <img> for the
+// same file would go through the loader again (a few ms on a good connection, a full round trip on a slow one).
+let _arsGunSeq = 0;
+async function _arsFitGun(swap) {
+    const seq = ++_arsGunSeq;
+    const wrap = document.querySelector('#ars-main .ars-gun');
+    if (!wrap) return;
+    const e = _arsLoad(_arsGunUrl(_ars.weapon, _ars.skin));
+    await e.ready;
+    if (seq !== _arsGunSeq || !wrap.isConnected) return;   // another click came first
+    const box = _arsBox(e), el = e.img;
+    wrap.style.setProperty('--dx', box ? ((72 - (box[0] + box[1]) / 2) / 144 * 100).toFixed(3) + '%' : '0%');
+    el.className = '';
+    el.alt = ''; el.draggable = false;
+    if (el.parentNode !== wrap) wrap.replaceChildren(el);
+    void el.offsetWidth;                                     // restarts the pop
+    el.className = swap ? 'is-in is-swap' : 'is-in';
 }
 // The name of a bullet colour, from its hue
 function _arsColorName(hex) {
@@ -555,11 +620,11 @@ function _arsRenderMain() {
             </div>
             <div class="ars-bullet">
                 <span class="ars-bullet-kick">CULOAREA GLONTULUI</span>
-                <span class="ars-bullet-val"><i class="ars-bullet-chip" style="--ac:${accent}"></i>${_arsColorName(accent)}</span>
+                <span class="ars-bullet-val"><i class="ars-bullet-chip" style="--ac:${accent}"></i><span class="ars-bullet-nm">${_arsColorName(accent)}</span></span>
             </div>
         </div>
         <div class="ars-stage${_ars.inHand ? ' is-hand' : ''}" ${_ars.inHand ? 'title="Click: trage"' : ''}>
-            ${_ars.inHand ? '<canvas id="ars-hand" aria-label="Personajul tau tinand arma"></canvas>' : _arsGunPreview(wid, _ars.skin)}
+            ${_ars.inHand ? '<canvas id="ars-hand" aria-label="Personajul tau tinand arma"></canvas>' : _arsGunPreview()}
         </div>
         <div class="ars-bars">${_arsBars(wid).map(([label, v, txt]) => `
             <div class="ars-bar-row">
@@ -578,7 +643,7 @@ function _arsRenderMain() {
         const c = document.getElementById('ars-hand');
         c.addEventListener('pointerdown', () => _shotKick(_ars.fx, performance.now()));
         if (!_ars.raf) _ars.raf = requestAnimationFrame(_arsHandLoop);
-    }
+    } else _arsFitGun(false);
 }
 
 function _arsRenderSide() {
@@ -620,7 +685,7 @@ function _arsRenderSide() {
         else {
             const gem = !!s.price.diamonds, cost = gem ? s.price.diamonds : s.price.coins;
             const short = (gem ? (p.diamonds || 0) : (p.coins ?? 1000)) < cost;
-            foot = `<button type="button" class="ars-blk ars-btn-gold ars-mini${short ? ' is-short' : ''}" onclick="arsAskBuy('${s.id}')" aria-label="Cumpara ${s.name} cu ${cost} ${gem ? 'diamante' : 'monede'}">${ico('lock')}${ico(gem ? 'gem' : 'coins')}${cost.toLocaleString()}</button>`;
+            foot = `<button type="button" class="ars-blk ars-btn-gold ars-mini${short ? ' is-short' : ''}" onclick="arsAskBuy('${s.id}')" aria-label="Cumpara ${s.name} cu ${cost} ${gem ? 'diamante' : 'monede'}">${ico(gem ? 'gem' : 'coins')}${cost.toLocaleString()}</button>`;
         }
         return `<div class="ars-skin${s.id === _ars.skin ? ' is-sel' : ''}${isEq ? ' is-eq' : ''}${has ? '' : ' is-locked'}" data-skin="${s.id}" style="--rc:${rar.color}">
             <button type="button" class="ars-skin-face" onclick="arsPreviewSkin('${s.id}')" aria-label="Previzualizeaza ${s.name}" aria-pressed="${s.id === _ars.skin}">
@@ -640,6 +705,7 @@ function _arsRenderSide() {
 function _arsRender() { _arsRenderList(); _arsRenderMain(); _arsRenderSide(); }
 
 async function openArsenal(weaponId, skinId) {
+    _arsWarm();
     await Promise.all([WEAPONS_ART_READY, WEAPON_SKIN_ART_READY, WEAPON_SKIN_CATALOG_READY]);
     if (!WEAPONS.length) return;
     _ars.weapon = _WEAPON_DATA[weaponId] ? weaponId : (_WEAPON_DATA[selectedWeapon] ? selectedWeapon : DEFAULT_WEAPON);
@@ -649,19 +715,34 @@ async function openArsenal(weaponId, skinId) {
     _arsSetMoney();
     _arsRender();
     const scr = document.getElementById('screen-arsenal');
-    scr.style.display = 'flex';
+    scr.classList.remove('is-closing');
+    scr.style.display = 'flex';          // starts the arrival animation (style.css: arsIn, and the lobby fades out under it)
     document.body.classList.add('arsenal-open');
     document.addEventListener('keydown', _arsKey);
     const back = scr.querySelector('.ars-back'); if (back) back.focus({ preventScroll: true, focusVisible: false });
 }
+// Leaving plays the arrival backwards: the screen fades and sinks while the lobby fades back in under it, and
+// only then is it hidden.
 function closeArsenal() {
+    const scr = document.getElementById('screen-arsenal');
+    if (scr.style.display === 'none' || scr.classList.contains('is-closing')) return;
     closeArsConfirm();
-    document.getElementById('screen-arsenal').style.display = 'none';
-    document.body.classList.remove('arsenal-open');
     document.removeEventListener('keydown', _arsKey);
     if (_ars.raf) { cancelAnimationFrame(_ars.raf); _ars.raf = 0; }
+    document.body.classList.remove('arsenal-open');
     _applyWeaponUI();
-    const ring = document.getElementById('weapon-ring'); if (ring) ring.focus({ preventScroll: true });
+    const onEnd = e => { if (e.target === scr) finish(); };
+    const finish = () => {
+        scr.removeEventListener('animationend', onEnd);
+        if (!scr.classList.contains('is-closing')) return;
+        scr.classList.remove('is-closing');
+        scr.style.display = 'none';
+        const ring = document.getElementById('weapon-ring'); if (ring) ring.focus({ preventScroll: true });
+    };
+    scr.classList.add('is-closing');
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
+    scr.addEventListener('animationend', onEnd);
+    setTimeout(finish, 450);   // if the animation never reports (a hidden tab)
 }
 function _arsKey(e) {
     if (e.key !== 'Escape') return;
@@ -673,11 +754,25 @@ function arsSelectWeapon(id) {
     _ars.skin = _arsEquippedSkin(id);
     _arsRender();
 }
+// A click on a skin changes only what the skin changes (the card ring, the skin line, the bullet colour, the
+// gun): no panel is rebuilt, so nothing is fetched or decoded again and the frame stays light.
 function arsPreviewSkin(id) {
     const sk = _arsSkin(id);
     if (id !== NO_WSKIN && (!sk || sk.weapon !== _ars.weapon)) return;
+    if (id === _ars.skin) return;
     _ars.skin = id;
-    _arsRenderMain(); _arsRenderSide();
+    const wid = _ars.weapon, eq = _arsEquippedSkin(wid), accent = _arsAccent(wid, id);
+    const shown = sk ? `${sk.name} · ${ARS_RARITY[sk.rarity].title}` : 'Standard';
+    const main = document.getElementById('ars-main');
+    main.querySelector('.ars-main-skin').innerHTML = id === eq ? `Skin: <b>${shown}</b>` : `Previzualizare: <b>${shown}</b>`;
+    main.querySelector('.ars-bullet-chip').style.setProperty('--ac', accent);
+    main.querySelector('.ars-bullet-nm').textContent = _arsColorName(accent);
+    for (const card of document.querySelectorAll('#ars-skins .ars-skin')) {
+        const on = card.dataset.skin === id;
+        card.classList.toggle('is-sel', on);
+        card.querySelector('.ars-skin-face').setAttribute('aria-pressed', String(on));
+    }
+    if (!_ars.inHand) _arsFitGun(true);   // in the hand view the canvas reads _ars.skin every frame
 }
 // the gun for the match (selectWeapon: the loadout points start again for the new gun)
 function arsUseInMatch() {
@@ -740,7 +835,7 @@ function arsAskBuy(skinId) {
     const have = gem ? (p.diamonds || 0) : (p.coins ?? 1000);
     if (have < cost) { showToast(`Iti mai trebuie ${(cost - have).toLocaleString()} ${gem ? 'diamante' : 'monede'} pentru ${s.name}`); return; }
     _ars.buy = skinId;
-    _ars.skin = skinId; _arsRenderMain(); _arsRenderSide();
+    arsPreviewSkin(skinId);
     document.getElementById('ars-confirm-icon').innerHTML = _arsIcon(s.weapon, skinId);
     document.getElementById('ars-confirm-title').textContent = `CUMPERI ${s.name.toUpperCase()}?`;
     document.getElementById('ars-confirm-text').innerHTML =
@@ -1315,6 +1410,7 @@ function authSuccess(nickname, password, player, token) {
     _applyWeaponUI();
     createSessionSocket();
     loadFriends();
+    setTimeout(_arsWarm, 1500);   // the Arsenal's pictures, once the lobby is up
 }
 
 function logoutToAuth() {
