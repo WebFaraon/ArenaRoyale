@@ -3258,6 +3258,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
 
     // True if the segment an enemy bullet is extrapolated along touches an obstacle, a zombie or
+    const _PVE_BASE      = { x: ARENA_W / 2, y: ARENA_H / 2, r: _PVE_BASE_R };   // a solid circle for bullets and players
     // (BR only) a player other than its owner. Same radii as the server's hit test (game-physics.js: r + BULLET_RADIUS).
     function _enemyBulletBlocked(x0, y0, x1, y1, ownerId, rState) {
         const minX = x0 < x1 ? x0 : x1, maxX = x0 < x1 ? x1 : x0;
@@ -3303,6 +3304,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     // Cached DOM references — evita getElementById in hot paths (draw loop, gs handler)
     const _specNameEl     = document.getElementById('spec-target-name');
+        if (_gameMode === 'pve') {
+            const R = _PVE_BASE.r + 6;
+            if (!(_PVE_BASE.x + R < minX || _PVE_BASE.x - R > maxX || _PVE_BASE.y + R < minY || _PVE_BASE.y - R > maxY)
+                && _segCircleT(x0, y0, x1, y1, _PVE_BASE.x, _PVE_BASE.y, R) >= 0) return true;
+        }
     const _specHpEl       = document.getElementById('spec-target-hp');
     const _playersAliveEl = document.getElementById('players-alive');
 
@@ -4590,6 +4596,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         const me = rState.players[socket.id];
         if (_bDiag.track && _bDiag.track.length < 4000) { for (const _tp in rState.players) { if (_tp !== socket.id) { _bDiag.track.push([performance.now(), rState.players[_tp].x, rState.players[_tp].y]); break; } } }
+            if (_gameMode === 'pve') {   // the base stops bullets too
+                const _R = _PVE_BASE.r + 6;
+                if (!(_PVE_BASE.x + _R < _bMinX || _PVE_BASE.x - _R > _bMaxX || _PVE_BASE.y + _R < _bMinY || _PVE_BASE.y - _R > _bMaxY)) {
+                    const _t = _segCircleT(_x0, _y0, _x1, _y1, _PVE_BASE.x, _PVE_BASE.y, _R);
+                    if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = -1; }
+                }
+            }
 
         // Spectator: auto-switch daca tinta a murit, urmareste tinta vie
         if (isSpectating) {

@@ -9,6 +9,7 @@ const Passwords = require('./auth-hash');            // bcrypt (native when it l
 const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
+const { avoidBase } = require('./zombie-steer.js');
 const Missions = require('./missions');
 const ARShared = require('./public/combat-shared');
 const ARNet = require('./public/netproto');           // the state packet, protocol 2 (shared with the client)
@@ -1469,6 +1470,16 @@ function broadcastWaiting(code, room) {
     });
 }
 
+const _steerOut = { x: 0, y: 0 };
+// The things that stop a bullet in a room: its obstacles, and in PvE the base (players and zombies were already kept
+// out of it; bullets went through). One array per room, made again only if the obstacles or the base are replaced.
+function _bulletBlockers(room) {
+    if (room._blk === undefined || room._blkObs !== room.obstacles || room._blkBase !== room.base) {
+        room._blkObs = room.obstacles; room._blkBase = room.base;
+        room._blk = room.obstacles.concat([room.base]);
+    }
+    return room._blk;
+}
 const _pveZombieRadius = (z) => (PVE_ZOMBIE_DEFS[z.type] || PVE_ZOMBIE_DEFS.normal).r;
 const _brZombieRadius  = () => ZOMBIE_R;
 const _r3 = (v) => Math.round(v * 1000) / 1000; // 3 decimals without toFixed string allocation
@@ -1856,6 +1867,9 @@ function startRoomLoop(code, room) {
                     const dLen = Math.hypot(ddx, ddy);
                     if (dLen > 0) { ddx /= dLen; ddy /= dLen; }
 
+                    // chasing a player: the base is an obstacle to get round (going for the base itself, it is the goal)
+                    if (chasingPlayer && room.base) { avoidBase(zombie.x, zombie.y, ddx, ddy, room.base, def.r, _steerOut); ddx = _steerOut.x; ddy = _steerOut.y; }
+
                     for (const obs of room.obstacles) {
                         const _ox = zombie.x - obs.x, _oy = zombie.y - obs.y;
                         const influence = obs.r + def.r + 55;
@@ -1985,7 +1999,7 @@ function startRoomLoop(code, room) {
             // Asa un glont rapid nu mai poate sari peste un zombi mic sau trece printr-un obstacol,
             // iar un glont care a ucis pe cineva nu mai continua spre cel din spate.
             _expiredBullets.length = 0;
-            _hitTargets.obstacles = room.obstacles;
+            _hitTargets.obstacles = room.base ? _bulletBlockers(room) : room.obstacles;   // in PvE the base stops bullets like a tree
             _hitTargets.zombies   = room.zombies;
             _hitTargets.zombieRadius = room.mode === 'pve' ? _pveZombieRadius : _brZombieRadius;
             _hitTargets.players   = alivePlayers;

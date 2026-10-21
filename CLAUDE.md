@@ -15,7 +15,7 @@ Dependențe directe: express, socket.io, socket.io-msgpack-parser, notepack.io, 
 - `server.js` — tot serverul: rute HTTP (`/api/auth`, `/api/weapon-skins`, `/api/friends`, `/api/missions`, `/api/leaderboard`, `/api/build`), jocul (camere, bucla de tick, zombi, zonă, gloanțe), evenimente socket, Supabase. Secțiuni cu antet `// ----------`. **Fișier CRLF.**
 - `auth-hash.js` — hash/verificare de parole: `bcrypt` nativ dacă se încarcă, altfel `bcryptjs` (cu linie `[Auth]` în log); aceleași hash-uri `$2a$10$`, cost 10.
 - `server-gs.js` — trimite pachetul de stare `gs2`: partea comună codificată o dată, rândul „own” adăugat per client.
-- `game-physics.js` — coliziuni pure (glonț măturat cerc/segment). `missions.js` — pool de misiuni zilnice (6/zi/jucător).
+- `game-physics.js` — coliziuni pure (glonț măturat cerc/segment). `zombie-steer.js` — ocolirea bazei de către zombii PvE care urmăresc un jucător (testată în `tools/tests/zombie-steer.test.js`). `missions.js` — pool de misiuni zilnice (6/zi/jucător).
 - `public/index.html` — o singură pagină cu toate ecranele (auth, lobby, Arsenal, așteptare, joc, overlay-uri). Serverul o stampilează cu hash-ul build-ului (`?v=`).
 - `public/game.js` — clientul: UI de lobby/Arsenal/prieteni, `initGame` (socket, camere) și `startGameLoop` (rețea, predicție, desen). **Fișier LF.**
 - `public/arena-art.js` — desenul hărții: sol (vectorial), copaci/pietre din sprite-uri PNG pe 3 sezoane, zombi din SVG-urile din `public/images/zombies/` (pachetul Obiecte Arena, scalate la hitbox-ul serverului, bitmap per tip), zona (vectorial), kit-uri.
