@@ -1,0 +1,346 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-16T10:33:25.287Z",
+  "title": "Design System: Arena Royale",
+  "extensions": {
+    "colorMeta": {
+      "toy-orange": {
+        "role": "primary",
+        "displayName": "Toy Orange",
+        "canonical": "#FF7A1F",
+        "tonalRamp": [
+          "#4D2509",
+          "#803D10",
+          "#B35516",
+          "#E56E1C",
+          "#FF8A3A",
+          "#FFAA71",
+          "#FFCBA7",
+          "#FFEBDD"
+        ]
+      },
+      "toy-green": {
+        "role": "secondary",
+        "displayName": "Toy Green",
+        "canonical": "#46D46A",
+        "tonalRamp": [
+          "#154020",
+          "#236A35",
+          "#31944A",
+          "#3FBF5F",
+          "#5CD97C",
+          "#89E4A0",
+          "#B6EEC4",
+          "#E3F9E9"
+        ]
+      },
+      "toy-sky": {
+        "role": "secondary",
+        "displayName": "Toy Sky",
+        "canonical": "#38A7F2",
+        "tonalRamp": [
+          "#113249",
+          "#1C5479",
+          "#2775A9",
+          "#3296DA",
+          "#50B2F4",
+          "#80C7F7",
+          "#B1DCFA",
+          "#E1F2FD"
+        ]
+      },
+      "toy-gold": {
+        "role": "secondary",
+        "displayName": "Toy Gold",
+        "canonical": "#FFC72E",
+        "tonalRamp": [
+          "#4D3C0E",
+          "#806417",
+          "#B38B20",
+          "#E5B329",
+          "#FFCE47",
+          "#FFDB7A",
+          "#FFE9AD",
+          "#FFF7E0"
+        ]
+      },
+      "toy-red": {
+        "role": "tertiary",
+        "displayName": "Toy Red",
+        "canonical": "#FF4B5C",
+        "tonalRamp": [
+          "#4D171C",
+          "#80262E",
+          "#B33540",
+          "#E54453",
+          "#FF6170",
+          "#FF8D97",
+          "#FFB8BF",
+          "#FFE4E7"
+        ]
+      },
+      "slate": {
+        "role": "neutral",
+        "displayName": "Slate Block",
+        "canonical": "#2A3A45",
+        "tonalRamp": [
+          "#0D1115",
+          "#151D23",
+          "#1D2930",
+          "#26343E",
+          "#44525C",
+          "#788289",
+          "#ABB2B6",
+          "#DFE1E3"
+        ]
+      },
+      "ink-line": {
+        "role": "neutral",
+        "displayName": "Ink Line",
+        "canonical": "#0A1013",
+        "tonalRamp": [
+          "#030506",
+          "#05080A",
+          "#070B0D",
+          "#090E11",
+          "#282D30",
+          "#636769",
+          "#9FA1A2",
+          "#DADBDC"
+        ]
+      },
+      "modal-body": {
+        "role": "neutral",
+        "displayName": "Modal Body",
+        "canonical": "#131C22",
+        "tonalRamp": [
+          "#06080A",
+          "#0A0E11",
+          "#0D1418",
+          "#11191F",
+          "#30383D",
+          "#696F73",
+          "#A2A6A8",
+          "#DCDDDE"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Logo",
+        "purpose": "ARENA ROYALE wordmark, large ink stroke, tilted -2deg."
+      },
+      "headline": {
+        "displayName": "Screen title",
+        "purpose": "Waiting room and other screen titles, large stroke."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Mode, athlete, character and weapon names, medium stroke."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Descriptions and hints; small stroke on color."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Buttons, section titles, tabs, stat names; uppercase, tracked, small stroke."
+      }
+    },
+    "shadows": [
+      {
+        "name": "block-rest",
+        "value": "inset 0 -5px 0 <lip>, inset 0 3px 0 rgba(255,255,255,.3), 0 4px 0 rgba(0,0,0,.45), 0 10px 18px -6px rgba(0,0,0,.55)",
+        "purpose": "Every block at rest; <lip> is the block color's lip shade."
+      },
+      {
+        "name": "block-lift",
+        "value": "inset 0 -5px 0 <lip>, inset 0 3px 0 rgba(255,255,255,.36), 0 6px 0 rgba(0,0,0,.45), 0 16px 24px -8px rgba(0,0,0,.6)",
+        "purpose": "Hover (pointer) and the selected mode block, with translateY(-2px)."
+      },
+      {
+        "name": "block-press",
+        "value": "inset 0 -2px 0 <lip>, inset 0 2px 0 rgba(255,255,255,.18), 0 1px 0 rgba(0,0,0,.45), 0 3px 6px -2px rgba(0,0,0,.5)",
+        "purpose": "Pressed, with translateY(3px) scale(.985) at 0ms."
+      },
+      {
+        "name": "tray",
+        "value": "inset 0 2px 0 rgba(255,255,255,.07), inset 0 -4px 0 rgba(0,0,0,.28), 0 6px 0 rgba(0,0,0,.32), 0 14px 24px -12px rgba(0,0,0,.6)",
+        "purpose": "Every section block."
+      },
+      {
+        "name": "modal",
+        "value": "inset 0 3px 0 rgba(255,255,255,.06), 0 8px 0 rgba(0,0,0,.5), 0 26px 40px -12px rgba(0,0,0,.7)",
+        "purpose": "Floating modals."
+      },
+      {
+        "name": "sunk",
+        "value": "inset 0 3px 0 rgba(0,0,0,.45)",
+        "purpose": "Tracks set into a block: bars, inputs, the switch."
+      }
+    ],
+    "motion": [
+      {
+        "name": "spring",
+        "value": "cubic-bezier(.34, 1.56, .64, 1)",
+        "purpose": "Release of a press (280ms), pops, badge and check entrances."
+      },
+      {
+        "name": "settle",
+        "value": "cubic-bezier(.22, 1, .36, 1)",
+        "purpose": "Arrival drop of trays (620ms, 60ms stagger) and icon wiggles."
+      },
+      {
+        "name": "press",
+        "value": "0ms",
+        "purpose": "Press is immediate; never eased."
+      },
+      {
+        "name": "play-sweep",
+        "value": "3.8s loop, 1s delay",
+        "purpose": "Light band across the enabled PLAY block; off under reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "one-column",
+        "value": "639px"
+      },
+      {
+        "name": "two-column",
+        "value": "640px"
+      },
+      {
+        "name": "three-column",
+        "value": "1100px"
+      },
+      {
+        "name": "short-landscape",
+        "value": "max-height: 520px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Block Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Orange toy block for primary actions; white stroked label, squash on press.",
+      "html": "<button class=\"ds-btn-primary\">Porneste jocul</button>",
+      "css": ".ds-btn-primary { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .55em; min-height: 48px; padding: 0 22px 3px; background: #FF7A1F; color: #fff; border: 3px solid #0A1013; border-radius: 12px; font-family: Sen, 'Helvetica Neue', Arial, sans-serif; font-weight: 800; font-size: .84rem; letter-spacing: .07em; text-transform: uppercase; text-shadow: 0 2px 0 #0A1013, 1.5px 1.5px 0 #0A1013, -1.5px 1.5px 0 #0A1013, 1.5px -1.5px 0 #0A1013, -1.5px -1.5px 0 #0A1013, 2px 0 0 #0A1013, -2px 0 0 #0A1013, 0 -2px 0 #0A1013, 0 3px 0 #0A1013; box-shadow: inset 0 -5px 0 #B94E0C, inset 0 3px 0 rgba(255,255,255,.3), 0 4px 0 rgba(0,0,0,.45), 0 10px 18px -6px rgba(0,0,0,.55); cursor: pointer; transition: transform .28s cubic-bezier(.34,1.56,.64,1), box-shadow .28s cubic-bezier(.34,1.56,.64,1), background-color .18s ease; } .ds-btn-primary:hover { background: #FF9447; transform: translateY(-2px); box-shadow: inset 0 -5px 0 #B94E0C, inset 0 3px 0 rgba(255,255,255,.36), 0 6px 0 rgba(0,0,0,.45), 0 16px 24px -8px rgba(0,0,0,.6); } .ds-btn-primary:active { background: #FF7A1F; transform: translateY(3px) scale(.985); box-shadow: inset 0 -2px 0 #B94E0C, inset 0 2px 0 rgba(255,255,255,.18), 0 1px 0 rgba(0,0,0,.45), 0 3px 6px -2px rgba(0,0,0,.5); transition-duration: 0s; } .ds-btn-primary:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }"
+    },
+    {
+      "name": "Play Key",
+      "kind": "button",
+      "refersTo": "button-play",
+      "description": "The one big orange key with a deeper lip.",
+      "html": "<button class=\"ds-btn-play\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"2.25\" stroke-linecap=\"square\" stroke-linejoin=\"miter\"><path d=\"M6 3l14 9-14 9z\"/></svg><span>PLAY</span></button>",
+      "css": ".ds-btn-play { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .55em; min-height: 66px; padding: 0 22px 3px; background: #FF7A1F; color: #fff; border: 3px solid #0A1013; border-radius: 16px; font-family: Sen, 'Helvetica Neue', Arial, sans-serif; font-weight: 800; font-size: 1.7rem; letter-spacing: .07em; text-transform: uppercase; text-shadow: 0 2px 0 #0A1013, 1.5px 1.5px 0 #0A1013, -1.5px 1.5px 0 #0A1013, 1.5px -1.5px 0 #0A1013, -1.5px -1.5px 0 #0A1013, 2px 0 0 #0A1013, -2px 0 0 #0A1013, 0 -2px 0 #0A1013, 0 3px 0 #0A1013; box-shadow: inset 0 -7px 0 #B94E0C, inset 0 3px 0 rgba(255,255,255,.3), 0 4px 0 rgba(0,0,0,.45), 0 10px 18px -6px rgba(0,0,0,.55); cursor: pointer; transition: transform .28s cubic-bezier(.34,1.56,.64,1), box-shadow .28s cubic-bezier(.34,1.56,.64,1), background-color .18s ease; } .ds-btn-play:hover { background: #FF9447; transform: translateY(-2px); box-shadow: inset 0 -7px 0 #B94E0C, inset 0 3px 0 rgba(255,255,255,.36), 0 6px 0 rgba(0,0,0,.45), 0 16px 24px -8px rgba(0,0,0,.6); } .ds-btn-play:active { background: #FF7A1F; transform: translateY(3px) scale(.985); box-shadow: inset 0 -2px 0 #B94E0C, inset 0 2px 0 rgba(255,255,255,.18), 0 1px 0 rgba(0,0,0,.45), 0 3px 6px -2px rgba(0,0,0,.5); transition-duration: 0s; } .ds-btn-play:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }"
+    },
+    {
+      "name": "Neutral Block Button",
+      "kind": "button",
+      "refersTo": "button-neutral",
+      "description": "Slate block for secondary actions.",
+      "html": "<button class=\"ds-btn-neutral\">Personaje</button>",
+      "css": ".ds-btn-neutral { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .55em; min-height: 40px; padding: 0 22px 3px; background: #2A3A45; color: #fff; border: 3px solid #0A1013; border-radius: 12px; font-family: Sen, 'Helvetica Neue', Arial, sans-serif; font-weight: 800; font-size: .84rem; letter-spacing: .07em; text-transform: uppercase; text-shadow: 0 2px 0 #0A1013, 1.5px 1.5px 0 #0A1013, -1.5px 1.5px 0 #0A1013, 1.5px -1.5px 0 #0A1013, -1.5px -1.5px 0 #0A1013, 2px 0 0 #0A1013, -2px 0 0 #0A1013, 0 -2px 0 #0A1013, 0 3px 0 #0A1013; box-shadow: inset 0 -5px 0 #18232A, inset 0 3px 0 rgba(255,255,255,.3), 0 4px 0 rgba(0,0,0,.45), 0 10px 18px -6px rgba(0,0,0,.55); cursor: pointer; transition: transform .28s cubic-bezier(.34,1.56,.64,1), box-shadow .28s cubic-bezier(.34,1.56,.64,1), background-color .18s ease; } .ds-btn-neutral:hover { background: #354957; transform: translateY(-2px); box-shadow: inset 0 -5px 0 #18232A, inset 0 3px 0 rgba(255,255,255,.36), 0 6px 0 rgba(0,0,0,.45), 0 16px 24px -8px rgba(0,0,0,.6); } .ds-btn-neutral:active { background: #2A3A45; transform: translateY(3px) scale(.985); box-shadow: inset 0 -2px 0 #18232A, inset 0 2px 0 rgba(255,255,255,.18), 0 1px 0 rgba(0,0,0,.45), 0 3px 6px -2px rgba(0,0,0,.5); transition-duration: 0s; } .ds-btn-neutral:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }"
+    },
+    {
+      "name": "Success Block Button",
+      "kind": "button",
+      "refersTo": "button-success",
+      "description": "Green block: accept, plus key.",
+      "html": "<button class=\"ds-btn-success\">Accepta</button>",
+      "css": ".ds-btn-success { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .55em; min-height: 48px; padding: 0 22px 3px; background: #46D46A; color: #fff; border: 3px solid #0A1013; border-radius: 12px; font-family: Sen, 'Helvetica Neue', Arial, sans-serif; font-weight: 800; font-size: .84rem; letter-spacing: .07em; text-transform: uppercase; text-shadow: 0 2px 0 #0A1013, 1.5px 1.5px 0 #0A1013, -1.5px 1.5px 0 #0A1013, 1.5px -1.5px 0 #0A1013, -1.5px -1.5px 0 #0A1013, 2px 0 0 #0A1013, -2px 0 0 #0A1013, 0 -2px 0 #0A1013, 0 3px 0 #0A1013; box-shadow: inset 0 -5px 0 #24903C, inset 0 3px 0 rgba(255,255,255,.3), 0 4px 0 rgba(0,0,0,.45), 0 10px 18px -6px rgba(0,0,0,.55); cursor: pointer; transition: transform .28s cubic-bezier(.34,1.56,.64,1), box-shadow .28s cubic-bezier(.34,1.56,.64,1), background-color .18s ease; } .ds-btn-success:hover { background: #66E287; transform: translateY(-2px); box-shadow: inset 0 -5px 0 #24903C, inset 0 3px 0 rgba(255,255,255,.36), 0 6px 0 rgba(0,0,0,.45), 0 16px 24px -8px rgba(0,0,0,.6); } .ds-btn-success:active { background: #46D46A; transform: translateY(3px) scale(.985); box-shadow: inset 0 -2px 0 #24903C, inset 0 2px 0 rgba(255,255,255,.18), 0 1px 0 rgba(0,0,0,.45), 0 3px 6px -2px rgba(0,0,0,.5); transition-duration: 0s; } .ds-btn-success:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }"
+    },
+    {
+      "name": "Reward Block Button",
+      "kind": "button",
+      "refersTo": "button-rank",
+      "description": "Gold block: claim, unlock, leaderboard.",
+      "html": "<button class=\"ds-btn-reward\">Revendica</button>",
+      "css": ".ds-btn-reward { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .55em; min-height: 48px; padding: 0 22px 3px; background: #FFC72E; color: #fff; border: 3px solid #0A1013; border-radius: 12px; font-family: Sen, 'Helvetica Neue', Arial, sans-serif; font-weight: 800; font-size: .84rem; letter-spacing: .07em; text-transform: uppercase; text-shadow: 0 2px 0 #0A1013, 1.5px 1.5px 0 #0A1013, -1.5px 1.5px 0 #0A1013, 1.5px -1.5px 0 #0A1013, -1.5px -1.5px 0 #0A1013, 2px 0 0 #0A1013, -2px 0 0 #0A1013, 0 -2px 0 #0A1013, 0 3px 0 #0A1013; box-shadow: inset 0 -5px 0 #C68A07, inset 0 3px 0 rgba(255,255,255,.3), 0 4px 0 rgba(0,0,0,.45), 0 10px 18px -6px rgba(0,0,0,.55); cursor: pointer; transition: transform .28s cubic-bezier(.34,1.56,.64,1), box-shadow .28s cubic-bezier(.34,1.56,.64,1), background-color .18s ease; } .ds-btn-reward:hover { background: #FFD55E; transform: translateY(-2px); box-shadow: inset 0 -5px 0 #C68A07, inset 0 3px 0 rgba(255,255,255,.36), 0 6px 0 rgba(0,0,0,.45), 0 16px 24px -8px rgba(0,0,0,.6); } .ds-btn-reward:active { background: #FFC72E; transform: translateY(3px) scale(.985); box-shadow: inset 0 -2px 0 #C68A07, inset 0 2px 0 rgba(255,255,255,.18), 0 1px 0 rgba(0,0,0,.45), 0 3px 6px -2px rgba(0,0,0,.5); transition-duration: 0s; } .ds-btn-reward:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }"
+    },
+    {
+      "name": "Tray",
+      "kind": "card",
+      "refersTo": "tray",
+      "description": "Translucent section block over glass or the field.",
+      "html": "<section class=\"ds-tray\"><h3 class=\"ds-tray-title\">Statistici</h3><p class=\"ds-tray-body\">Victorii 0</p></section>",
+      "css": ".ds-tray { width: 260px; padding: 14px; background: rgba(14,20,25,.74); border: 3px solid rgba(0,0,0,.62); border-radius: 16px; box-shadow: inset 0 2px 0 rgba(255,255,255,.07), inset 0 -4px 0 rgba(0,0,0,.28), 0 6px 0 rgba(0,0,0,.32), 0 14px 24px -12px rgba(0,0,0,.6); color: #fff; font-family: Sen, Arial, sans-serif; } .ds-tray-title { margin: 0 0 10px; font-weight: 800; font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 2px 0 #0A1013, 1px 1px 0 #0A1013, -1px 1px 0 #0A1013, 1px -1px 0 #0A1013, -1px -1px 0 #0A1013; } .ds-tray-body { margin: 0; padding: 8px 12px; background: rgba(0,0,0,.3); border-radius: 10px; font-weight: 800; font-size: .8rem; }"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Sunk black field with an ink outline; orange on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"KBNJM\">",
+      "css": ".ds-input { height: 48px; padding: 0 14px; background: rgba(0,0,0,.5); border: 3px solid #0A1013; border-radius: 12px; box-shadow: inset 0 4px 0 rgba(0,0,0,.4); color: #fff; font-family: Sen, Arial, sans-serif; font-weight: 800; letter-spacing: .32em; text-align: center; outline: none; transition: border-color .15s ease, box-shadow .2s ease; } .ds-input::placeholder { color: rgba(255,255,255,.38); } .ds-input:focus { border-color: #FF7A1F; box-shadow: inset 0 4px 0 rgba(0,0,0,.4), 0 0 0 3px rgba(255,122,31,.28); }"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "White tilted block for level and points.",
+      "html": "<span class=\"ds-badge\">LV 12</span>",
+      "css": ".ds-badge { display: inline-block; padding: 6px 12px 8px; background: #fff; color: #0A1013; border: 3px solid #0A1013; border-radius: 10px; box-shadow: inset 0 -4px 0 #C4CCD1, 0 4px 0 rgba(0,0,0,.42); font-family: Sen, Arial, sans-serif; font-weight: 800; font-size: 1.1rem; transform: rotate(-3deg); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Toy-Block Arena",
+    "overview": "Every control is a chunky physical toy block resting on the live match pitch: a thick ink outline, a darker lip inside its bottom edge, a light top bevel and a soft ground shadow. Pressed, a block squashes onto the pitch; released, it bounces back. The top bar is open sky, the side columns are black glass with no blur, and every section is a translucent tray. Type is white Sen 800 with a dark stroke, like a cartoon game's lettering. The family is the cartoon battle-royale lobby (Zombs Royale, Brawl Stars).",
+    "keyCharacteristics": [
+      "A 3px ink outline (2.5px on short landscape) around every block, tray, plate, chip and modal.",
+      "An inner bottom lip in the block's darker shade, a top bevel at 30% white and a soft offset ground shadow.",
+      "Five toy colors with a meaning each, plus slate for neutral blocks.",
+      "Black-glass side panels and translucent trays over a fully visible field.",
+      "White lettering with an ink stroke-shadow on every colored surface.",
+      "Squash-and-bounce press, a hover lift, a periodic light sweep across PLAY."
+    ],
+    "rules": [
+      {
+        "name": "The Toy Color Rule",
+        "body": "A color means one thing: orange plays, green co-ops and succeeds, sky is social and info, gold rewards and ranks, red exits and warns, slate is neutral. A new block picks its color by meaning, never by taste.",
+        "section": "colors"
+      },
+      {
+        "name": "The Lip Rule",
+        "body": "Every color ships with its lip shade. A block never takes a face color without its matching lip, or it reads flat.",
+        "section": "colors"
+      },
+      {
+        "name": "The White-On-Color Rule",
+        "body": "Text on a colored block is white with the ink stroke-shadow, never ink-on-color.",
+        "section": "colors"
+      },
+      {
+        "name": "The Stroke Rule",
+        "body": "Lettering on a block carries an ink stroke-shadow sized to the text: small (1px plus a 2px drop) for labels, medium (2px plus a 3px drop) for buttons and titles, large (3px plus a 5px drop and a soft shadow) for the logo and screen titles.",
+        "section": "typography"
+      },
+      {
+        "name": "The Four-Layer Rule",
+        "body": "A block is lip plus bevel plus ground offset plus soft drop. Dropping a layer flattens it; a new surface reuses the vocabulary above rather than inventing a shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Squash Rule",
+        "body": "The press is immediate (0ms): the block moves 3px down, the lip shrinks and the ground shadow nearly disappears. The release springs back over 280ms with a slight overshoot.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do give every new control the full block: 3px ink outline, matching lip, top bevel, ground shadow, and its three states.",
+      "Do pick a block's color by the Toy Color Rule and pair it with its lip.",
+      "Do put white type with the ink stroke-shadow on every colored surface.",
+      "Do keep side columns black glass (rgba(5,8,10,.56)) with no blur, so the field stays sharp.",
+      "Do press at 0ms and release with the spring."
+    ],
+    "donts": [
+      "Don't ship a flat colored rectangle or a hairline-ruled row; that is the rejected start-list look.",
+      "Don't add backdrop-filter blur over the animated field; it costs frames on phones and hides the pitch.",
+      "Don't use ink text on color fills, or a colored glow in place of the ink outline.",
+      "Don't animate on mount beyond the one arrival drop, and keep looping motion to the PLAY sweep and the small live cues."
+    ]
+  }
+}

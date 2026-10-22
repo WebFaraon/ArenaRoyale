@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "ui-animation": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/ui-animation/SKILL.md",
+      "computedHash": "f808502b397312a2a524b78912e683fa1a3491dcaff260ddf88057b35868339e"
+    }
+  }
+}

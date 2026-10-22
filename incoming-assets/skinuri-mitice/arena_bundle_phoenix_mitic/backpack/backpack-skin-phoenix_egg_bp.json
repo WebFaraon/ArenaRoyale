@@ -1,0 +1,86 @@
+{
+ "skin": {
+  "id": "phoenix_egg_bp",
+  "name": "Oul de Phoenix",
+  "type": "backpack",
+  "rarity": "mythic",
+  "cosmeticOnly": true,
+  "sprite": "sprites/phoenix_egg_bp.png",
+  "svg": "phoenix_egg_bp.svg",
+  "frame": {
+   "size": [
+    284,
+    329
+   ],
+   "viewBox": "-62 -112 124 144",
+   "pxPerUnit": 2.2903,
+   "note": "coordonate in cadrul corpului (raza 36); spatele = -y, mainile = +y; centrul corpului la (141.7, 256) px"
+  },
+  "bodyCenterPx": [
+   142,
+   256.5
+  ],
+  "drawBeforeBody": true,
+  "rotatesWithAim": true,
+  "layers": {
+   "order": [
+    "back",
+    "egg",
+    "flames"
+   ],
+   "back": "layers/phoenix_egg_bp_back.png",
+   "egg": "layers/phoenix_egg_bp_egg.png",
+   "flames": "layers/phoenix_egg_bp_flames.png",
+   "note": "cadru complet 284x329; se deseneaza in aceasta ordine, inaintea corpului",
+   "pivotsPx": {
+    "back": [
+     142,
+     206.1
+    ],
+    "egg": [
+     142,
+     123.7
+    ],
+    "flames": [
+     142,
+     87
+    ]
+   },
+   "motion": {
+    "backSwayDeg": 2.4,
+    "backSwayHz": 0.27,
+    "eggPulseScale": 0.03,
+    "eggPulseHz": 0.41,
+    "flamesFlickerScaleY": 0.07,
+    "flamesRotateDeg": 2.6,
+    "onShot": "evantaiul +3 grade, oul +5% scara, flacarile +10%"
+   }
+  },
+  "fx": {
+   "eggGlow": {
+    "at": "(0,-70) unitati corp",
+    "radiusUnits": 26,
+    "color": "#FFC85A",
+    "alpha": [
+     0.22,
+     0.52
+    ],
+    "pulseSeconds": 2.9
+   },
+   "embers": {
+    "ratePerSecond": 14,
+    "spawn": "x +-15, y -62..-92 unitati corp",
+    "life": [
+     0.7,
+     1.5
+    ],
+    "size": [
+     1.2,
+     3.4
+    ],
+    "worldSpace": true
+   },
+   "reducedEffects": "Efecte skin = Redus: imagine statica, fara miscare si fara scantei"
+  }
+ }
+}

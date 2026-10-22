@@ -1,0 +1,157 @@
+{
+ "frame": {
+  "viewBox": "-40 0 80 144",
+  "topLeftFromBodyCenter": [
+   -40,
+   6
+  ],
+  "pxPerUnit": 4,
+  "size": [
+   320,
+   576
+  ]
+ },
+ "skins": {
+  "bu_cerber": {
+   "weapon": "burst",
+   "sprite": "bu_cerber.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    111.3
+   ],
+   "accent": "#2BE38B",
+   "rarity": "mythic",
+   "layers": {
+    "base": "layers/bu_cerber_base.png",
+    "heads": [
+     "layers/bu_cerber_head1.png",
+     "layers/bu_cerber_head2.png",
+     "layers/bu_cerber_head3.png"
+    ],
+    "headFrame": {
+     "viewBox": [
+      -13,
+      -17,
+      26,
+      36
+     ],
+     "pxPerUnit": 4
+    },
+    "headPivots": [
+     {
+      "x": -11.5,
+      "y": 90,
+      "angleDeg": 22,
+      "scale": 0.78
+     },
+     {
+      "x": 0,
+      "y": 97,
+      "angleDeg": 0,
+      "scale": 0.98
+     },
+     {
+      "x": 11.5,
+      "y": 90,
+      "angleDeg": -22,
+      "scale": 0.78
+     }
+    ],
+    "swayDeg": 3.2,
+    "swayHz": 0.27,
+    "lungeUnits": 2.6,
+    "lungeSeconds": 0.11
+   },
+   "fx": {
+    "aura": {
+     "at": [
+      0,
+      62
+     ],
+     "radius": 44,
+     "color": "#2BE38B",
+     "alpha": [
+      0.22,
+      0.3
+     ],
+     "pulseSeconds": 1.2
+    },
+    "eyes": {
+     "radius": 4.4,
+     "color": "#FF5A6E",
+     "alpha": [
+      0.5,
+      0.7
+     ]
+    },
+    "wisps": {
+     "ratePerSecond": 22,
+     "spawn": "varf coada [-6,6..12] + umeri [+-14..22, 36..52] + guri",
+     "speedBack": [
+      20,
+      50
+     ],
+     "life": [
+      0.5,
+      1
+     ],
+     "size": [
+      1.6,
+      3.6
+     ],
+     "colors": [
+      "#B8FFD9",
+      "#2BE38B",
+      "#0B7A4C"
+     ],
+     "worldSpace": true
+    },
+    "burst": {
+     "note": "cosmetic: toate gloantele pleaca din gura centrala (muzzle), exact ca la arma normala",
+     "headLungeOnShot": {
+      "center": 1,
+      "sides": 0.45
+     }
+    },
+    "muzzleFlash": {
+     "seconds": 0.1,
+     "points": 6,
+     "radius": [
+      5,
+      13
+     ],
+     "colors": [
+      "#2BE38B",
+      "#F2FFF7"
+     ]
+    },
+    "bullet": {
+     "style": "flacara",
+     "length": 62,
+     "width": 9,
+     "colors": [
+      "#B8FFD9",
+      "#2BE38B",
+      "#0B7A4C"
+     ],
+     "core": "#F2FFF7",
+     "outline": "#0B0F1A",
+     "speed": 1450,
+     "glowRadius": 26,
+     "trailWisps": true,
+     "impactWisps": 8
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,152 @@
+{
+ "frame": {
+  "viewBox": "-40 0 80 144",
+  "topLeftFromBodyCenter": [
+   -40,
+   6
+  ],
+  "pxPerUnit": 4,
+  "size": [
+   320,
+   576
+  ]
+ },
+ "skins": {
+  "as_storm": {
+   "weapon": "assault",
+   "sprite": "as_storm.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    112
+   ],
+   "accent": "#35C8FF",
+   "rarity": "mythic",
+   "layers": {
+    "base": "layers/as_storm_base.png",
+    "rings": [
+     "layers/as_storm_ring1.png",
+     "layers/as_storm_ring2.png",
+     "layers/as_storm_ring3.png"
+    ],
+    "ringCenter": [
+     0,
+     56
+    ],
+    "ringDegPerSecond": [
+     70,
+     -95,
+     150
+    ]
+   },
+   "fx": {
+    "aura": {
+     "at": [
+      0,
+      56
+     ],
+     "radius": 38,
+     "color": "#3CAAFF",
+     "alpha": [
+      0.3,
+      0.4
+     ],
+     "flicker": true
+    },
+    "coreGlow": {
+     "at": [
+      0,
+      56
+     ],
+     "radius": [
+      10,
+      11.6
+     ],
+     "color": "#F2FDFF",
+     "alpha": 0.55
+    },
+    "forkBolt": {
+     "from": [
+      -6,
+      111.5
+     ],
+     "to": [
+      6,
+      111.5
+     ],
+     "segments": 6,
+     "amplitude": 3.2,
+     "refreshHz": 12,
+     "widths": [
+      2.6,
+      1.1
+     ],
+     "colors": [
+      "#FFE45C",
+      "#F2FDFF"
+     ],
+     "outline": "#0B0F1A",
+     "glowRadius": 12
+    },
+    "sparks": {
+     "ratePerSecond": 16,
+     "spawn": "fork tips + inele",
+     "speed": [
+      80,
+      240
+     ],
+     "life": [
+      0.18,
+      0.38
+     ],
+     "length": [
+      8,
+      18
+     ],
+     "colors": [
+      "#F2FDFF",
+      "#35C8FF"
+     ]
+    },
+    "arcs": {
+     "perSecond": 5,
+     "life": 0.09,
+     "color": "#A8F0FF"
+    },
+    "muzzleFlash": {
+     "seconds": 0.07,
+     "points": 7,
+     "radius": [
+      6,
+      13
+     ],
+     "color": "#A8F0FF"
+    },
+    "bullet": {
+     "style": "zigzag",
+     "length": 74,
+     "segments": 5,
+     "amplitude": 4.5,
+     "width": 3.2,
+     "colors": [
+      "#FFE45C",
+      "#F2FDFF"
+     ],
+     "outline": "#0B0F1A",
+     "speed": 1700,
+     "glowRadius": 22,
+     "impactSparks": 5
+    }
+   }
+  }
+ }
+}

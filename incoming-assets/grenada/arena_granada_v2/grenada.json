@@ -1,0 +1,15 @@
+{
+ "id": "granada",
+ "frame": [
+  52,
+  52
+ ],
+ "pxPerUnit": 3,
+ "frameRadius": 15,
+ "visualRadius": 15,
+ "variants": [
+  "granada",
+  "granada_armata"
+ ],
+ "note": "centrul imaginii = pozitia; nu se roteste; umbra e inclusa (folositi *_noshadow daca desenati umbra in cod)"
+}

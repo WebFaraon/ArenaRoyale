@@ -1,0 +1,153 @@
+{
+ "skin": {
+  "id": "phoenix_mythic",
+  "name": "Phoenix",
+  "type": "character",
+  "rarity": "mythic",
+  "cosmeticOnly": true,
+  "sprite": "sprites/phoenix_mythic.png",
+  "svg": "svg/phoenix_mythic.svg",
+  "icon": "icons/phoenix_mythic.svg",
+  "frame": {
+   "size": [
+    400,
+    400
+   ],
+   "viewBox": "-28 -24 156 156",
+   "pxPerUnit": 2.5641,
+   "note": "aceeasi scara ca celelalte skinuri de personaj (256 px = 100 unitati); cadrul e mai mare pentru aripi, coada si creasta"
+  },
+  "bodyCenterPx": [
+   200,
+   179.5
+  ],
+  "bodyRadiusPx": 92.3,
+  "bodyRadiusUnits": 36,
+  "hands": {
+   "note": "mainile le deseneaza jocul ca la celelalte skinuri: raza 9.4, raza interioara 6.6, contur 3.2, unghi 34 grade, distanta 47",
+   "base": "#FF6B1A",
+   "dark": "#B0200F",
+   "outline": "#0B0F1A"
+  },
+  "collision": "neschimbata: cercul corpului r=36; aripile, coada si creasta sunt doar imagine",
+  "accent": "#FF9A3C",
+  "layers": {
+   "order": [
+    "wingL",
+    "wingR",
+    "tail",
+    "crest",
+    "base"
+   ],
+   "wingL": "layers/phoenix_mythic_wingL.png",
+   "wingR": "layers/phoenix_mythic_wingR.png",
+   "tail": "layers/phoenix_mythic_tail.png",
+   "crest": "layers/phoenix_mythic_crest.png",
+   "base": "layers/phoenix_mythic_base.png",
+   "note": "toate sunt cadru complet 400x400, se deseneaza in aceasta ordine, la aceeasi pozitie; mai intai aripile, apoi coada si creasta, la urma baza",
+   "pivotsPx": {
+    "wingL": [
+     130.8,
+     166.7
+    ],
+    "wingR": [
+     269.2,
+     166.7
+    ],
+    "tail": [
+     200,
+     241
+    ],
+    "crest": [
+     200,
+     123.1
+    ]
+   },
+   "motion": {
+    "wingFlapDeg": {
+     "idle": 6,
+     "moving": "+10 la viteza maxima",
+     "onShot": "+12"
+    },
+    "wingFlapHz": "1.1 (idle) pana la ~2 (alergare)",
+    "tailSwayDeg": 4,
+    "tailHz": 0.29,
+    "crestFlickerScaleY": 0.05,
+    "crestRotateDeg": 2.4
+   }
+  },
+  "fx": {
+   "aura": {
+    "radiusUnits": 50,
+    "color": "#FF9632",
+    "alpha": [
+     0.26,
+     0.34
+    ],
+    "pulseSeconds": 2.6
+   },
+   "coreGlow": {
+    "at": "centrul corpului",
+    "radiusUnits": 15,
+    "color": "#FFF6D6",
+    "alpha": [
+     0.35,
+     0.6
+    ]
+   },
+   "embers": {
+    "ratePerSecond": 22,
+    "spawn": "zona aripilor, x +-30..70 fata de centru, y 30..70 (unitati sprite)",
+    "life": [
+     0.7,
+     1.6
+    ],
+    "size": [
+     1.2,
+     3.6
+    ],
+    "colors": [
+     "#FFF6D6",
+     "#FFE066",
+     "#FFB830",
+     "#FF7A1A",
+     "#C8102E"
+    ],
+    "shape": "romb cu margine neagra",
+    "worldSpace": true
+   },
+   "walkTrail": {
+    "ratePerSecondAtFullSpeed": 40,
+    "spawn": "sub coada",
+    "life": [
+     0.4,
+     0.9
+    ]
+   },
+   "rebirth": {
+    "seconds": 1.3,
+    "note": "la intrarea in meci: inel de foc (galben+portocaliu) care creste de la 30 la 220 px, 46 de scantei care se ridica, personajul apare in a doua parte",
+    "playsOnSpawn": true
+   },
+   "reducedEffects": "Efecte skin = Redus: imagine statica (fara bataie de aripi/coada), aura, fara scantei, fara urma, renasterea fara scantei"
+  }
+ },
+ "bundle": {
+  "id": "phoenix_bundle",
+  "name": "Phoenix",
+  "rarity": "mythic",
+  "items": [
+   {
+    "type": "character",
+    "id": "phoenix_mythic"
+   },
+   {
+    "type": "weapon",
+    "weapon": "sniper",
+    "id": "sn_phoenix"
+   }
+  ],
+  "setBonusCosmetic": "cand ambele sunt echipate: efectul de renastere la intrarea in meci; fara avantaj in joc",
+  "note": "se pot purta si separat"
+ }
+}

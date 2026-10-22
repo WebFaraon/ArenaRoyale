@@ -1,0 +1,618 @@
+{
+ "obiecte_de_ridicat": [
+  {
+   "id": "medkit",
+   "name": "Medkit",
+   "meta": "Viață mare",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "bandaj",
+   "name": "Bandaj",
+   "meta": "Viață mică",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "cutie_de_munitie",
+   "name": "Cutie de muniție",
+   "meta": "Muniție mare",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "incarcator",
+   "name": "Încărcător",
+   "meta": "Muniție mică",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "scut",
+   "name": "Scut",
+   "meta": "Armură",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "energie",
+   "name": "Energie",
+   "meta": "Viteză pe timp scurt (idee)",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  }
+ ],
+ "cutii": [
+  {
+   "id": "intreaga",
+   "name": "Întreagă",
+   "meta": "Rază ~28, se sparge din câteva lovituri",
+   "viewBox": "-44 -40 88 88",
+   "pxPerUnit": 3,
+   "size": [
+    264,
+    264
+   ]
+  },
+  {
+   "id": "crapata",
+   "name": "Crăpată",
+   "meta": "După jumătate din viață",
+   "viewBox": "-44 -40 88 88",
+   "pxPerUnit": 3,
+   "size": [
+    264,
+    264
+   ]
+  },
+  {
+   "id": "sparta",
+   "name": "Spartă",
+   "meta": "Bucățile dispar în ~1 s, loot-ul rămâne",
+   "viewBox": "-44 -40 88 88",
+   "pxPerUnit": 3,
+   "size": [
+    264,
+    264
+   ]
+  }
+ ],
+ "chesturi": [
+  {
+   "id": "loc_gol",
+   "name": "Loc gol",
+   "meta": "Chest încă necâștigat",
+   "viewBox": "-42 -44 84 80",
+   "pxPerUnit": 3,
+   "size": [
+    252,
+    240
+   ]
+  },
+  {
+   "id": "wooden",
+   "name": "Wooden",
+   "meta": "Comun · lemn, capac boltit, benzi simple",
+   "viewBox": "-42 -44 84 80",
+   "pxPerUnit": 3,
+   "size": [
+    252,
+    240
+   ]
+  },
+  {
+   "id": "silver",
+   "name": "Silver",
+   "meta": "Rar · oțel, benzi nituite, lacăt-scut",
+   "viewBox": "-42 -44 84 80",
+   "pxPerUnit": 3,
+   "size": [
+    252,
+    240
+   ]
+  },
+  {
+   "id": "golden",
+   "name": "Golden",
+   "meta": "Epic · coroană, picioare, volute, rubin",
+   "viewBox": "-42 -44 84 80",
+   "pxPerUnit": 3,
+   "size": [
+    252,
+    240
+   ]
+  },
+  {
+   "id": "diamond",
+   "name": "Diamond",
+   "meta": "Legendar · fațetat, cristale pe capac, sclipiri",
+   "viewBox": "-42 -44 84 80",
+   "pxPerUnit": 3,
+   "size": [
+    252,
+    240
+   ]
+  },
+  {
+   "id": "mythical",
+   "name": "Mythical",
+   "meta": "Mitic · coarne, rune care strălucesc, ochi, aură",
+   "viewBox": "-42 -44 84 80",
+   "pxPerUnit": 3,
+   "size": [
+    252,
+    240
+   ]
+  }
+ ],
+ "monede_diamante": [
+  {
+   "id": "monede",
+   "name": "Monede",
+   "meta": "Două monede de aur, cu stea",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "diamante",
+   "name": "Diamante",
+   "meta": "Diamant tăiat, cu fețe în 3 tonuri",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  }
+ ],
+ "icon_statistici": [
+  {
+   "id": "victorii",
+   "name": "Victorii",
+   "meta": "Trofeu de aur cu stea",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "eliminari",
+   "name": "Eliminări",
+   "meta": "Craniu portocaliu",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "meciuri",
+   "name": "Meciuri",
+   "meta": "Controller albastru",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "win_rate",
+   "name": "Win rate",
+   "meta": "Grafic care urcă",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  }
+ ],
+ "icon_lobby": [
+  {
+   "id": "personaje",
+   "name": "Personaje",
+   "meta": "Un jucător din joc, cu skin și mâini",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "prieteni",
+   "name": "Prieteni",
+   "meta": "Doi oameni și un plus verde",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "leaderboard",
+   "name": "Leaderboard",
+   "meta": "Podium 1-2-3 cu coroană",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  }
+ ],
+ "icon_moduri_setari": [
+  {
+   "id": "battle_royale",
+   "name": "Battle Royale",
+   "meta": "Două săbii încrucișate",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "survival_pve",
+   "name": "Survival PvE",
+   "meta": "Cap de zombi",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "misiuni",
+   "name": "Misiuni",
+   "meta": "Țintă cu săgeată în centru",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "setari",
+   "name": "Setări",
+   "meta": "Roată dințată portocalie",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "sunet",
+   "name": "Sunet",
+   "meta": "Difuzor cu unde",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "ecran_complet",
+   "name": "Ecran complet",
+   "meta": "Ecran cu colțuri de extindere",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "iesi_din_cont",
+   "name": "Ieși din cont",
+   "meta": "Ușă deschisă și săgeată",
+   "viewBox": "-30 -30 60 60",
+   "pxPerUnit": 4,
+   "size": [
+    240,
+    240
+   ]
+  }
+ ],
+ "rucsac": [
+  {
+   "id": "rucsac_default",
+   "name": "Rucsac default",
+   "meta": "Mic, pânză maro, clapă curbată și o insignă cu stea",
+   "viewBox": "-56 -70 112 112",
+   "pxPerUnit": 2,
+   "size": [
+    224,
+    224
+   ]
+  },
+  {
+   "id": "pe_jucator",
+   "name": "Pe jucător",
+   "meta": "Corpul acoperă mijlocul, se vede doar spatele",
+   "viewBox": "-62 -76 124 128",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    256
+   ]
+  },
+  {
+   "id": "rotit_ca_in_meci",
+   "name": "Rotit, ca în meci",
+   "meta": "Se rotește odată cu ținta",
+   "viewBox": "-66 -66 132 132",
+   "pxPerUnit": 2,
+   "size": [
+    264,
+    264
+   ]
+  },
+  {
+   "id": "exemplu_skin_camuflaj",
+   "name": "Exemplu skin: Camuflaj",
+   "meta": "Aceeași formă, altă paletă",
+   "viewBox": "-62 -76 124 128",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    256
+   ]
+  },
+  {
+   "id": "exemplu_skin_bubblegum",
+   "name": "Exemplu skin: Bubblegum",
+   "meta": "Aceeași formă, altă paletă",
+   "viewBox": "-62 -76 124 128",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    256
+   ]
+  },
+  {
+   "id": "skin_cu_forma_noua_mini_jetpack",
+   "name": "Skin cu formă nouă: Mini Jetpack",
+   "meta": "Două rachete cu duzele spre spate și flăcări",
+   "viewBox": "-36 -86 72 74",
+   "pxPerUnit": 3,
+   "size": [
+    216,
+    222
+   ]
+  },
+  {
+   "id": "mini_jetpack_pe_jucator",
+   "name": "Mini Jetpack pe jucător",
+   "meta": "Rotit ca în meci",
+   "viewBox": "-70 -70 140 140",
+   "pxPerUnit": 2,
+   "size": [
+    280,
+    280
+   ]
+  },
+  {
+   "id": "carapace_de_testoasa",
+   "name": "Carapace de țestoasă",
+   "meta": "Plăci hexagonale verzi pe spate",
+   "viewBox": "-62 -96 124 148",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    296
+   ]
+  },
+  {
+   "id": "ursulet",
+   "name": "Ursuleț",
+   "meta": "Un ursuleț care se uită peste umăr și te ține de umeri",
+   "viewBox": "-62 -96 124 148",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    296
+   ]
+  },
+  {
+   "id": "aripioare",
+   "name": "Aripioare",
+   "meta": "Aripi mici de înger cu o perlă aurie",
+   "viewBox": "-62 -96 124 148",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    296
+   ]
+  },
+  {
+   "id": "pelerina_regala",
+   "name": "Pelerină regală",
+   "meta": "Pelerină scurtă, roșie, cu guler auriu",
+   "viewBox": "-62 -96 124 148",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    296
+   ]
+  },
+  {
+   "id": "chitara",
+   "name": "Chitară",
+   "meta": "Chitară pe spate, cu gâtul ieșind în diagonală",
+   "viewBox": "-62 -96 124 148",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    296
+   ]
+  }
+ ],
+ "crosshair": [
+  {
+   "id": "cruce_cu_punct",
+   "name": "Cruce cu punct",
+   "meta": "4 liniuțe scurte, centrul liber, punct mic. Recomandat · mare / mărime reală",
+   "viewBox": "0 0 32 32",
+   "pxPerUnit": 6,
+   "size": [
+    192,
+    192
+   ]
+  },
+  {
+   "id": "cruce_goala",
+   "name": "Cruce goală",
+   "meta": "Doar liniuțele, centrul complet liber · mare / mărime reală",
+   "viewBox": "0 0 32 32",
+   "pxPerUnit": 6,
+   "size": [
+    192,
+    192
+   ]
+  },
+  {
+   "id": "doar_punct",
+   "name": "Doar punct",
+   "meta": "Cel mai discret · mare / mărime reală",
+   "viewBox": "0 0 32 32",
+   "pxPerUnit": 6,
+   "size": [
+    192,
+    192
+   ]
+  },
+  {
+   "id": "pe_inamic",
+   "name": "Pe inamic",
+   "meta": "Aceeași cruce, roșie când ținta e peste cineva · mare / mărime reală",
+   "viewBox": "0 0 32 32",
+   "pxPerUnit": 6,
+   "size": [
+    192,
+    192
+   ]
+  }
+ ],
+ "zombi": [
+  {
+   "id": "zombi",
+   "name": "Zombi",
+   "meta": "Normal, mers încet",
+   "viewBox": "-70 -52.5 140 140",
+   "pxPerUnit": 2,
+   "size": [
+    280,
+    280
+   ]
+  },
+  {
+   "id": "zombi_rapid",
+   "name": "Zombi rapid",
+   "meta": "Mic, aleargă repede",
+   "viewBox": "-60 -45 120 120",
+   "pxPerUnit": 2,
+   "size": [
+    240,
+    240
+   ]
+  },
+  {
+   "id": "zombi_tanc",
+   "name": "Zombi tanc",
+   "meta": "Mare, blindat, lent",
+   "viewBox": "-90 -67.5 180 180",
+   "pxPerUnit": 2,
+   "size": [
+    360,
+    360
+   ]
+  },
+  {
+   "id": "zombi_toxic",
+   "name": "Zombi toxic",
+   "meta": "Explodează lângă tine",
+   "viewBox": "-72 -54 144 144",
+   "pxPerUnit": 2,
+   "size": [
+    288,
+    288
+   ]
+  }
+ ],
+ "arme_pe_jos": [
+  {
+   "id": "simplu",
+   "name": "Simplu",
+   "meta": "Doar umbră pe sol",
+   "viewBox": "-62 -38 124 76",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    152
+   ]
+  },
+  {
+   "id": "cu_pastila_clasei",
+   "name": "Cu pastila clasei",
+   "meta": "Albastru = sniper",
+   "viewBox": "-62 -38 124 76",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    152
+   ]
+  },
+  {
+   "id": "skin_legendar",
+   "name": "Skin legendar",
+   "meta": "Strălucire aurie (Sniper Railgun)",
+   "viewBox": "-62 -38 124 76",
+   "pxPerUnit": 2,
+   "size": [
+    248,
+    152
+   ]
+  }
+ ]
+}

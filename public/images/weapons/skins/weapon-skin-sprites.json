@@ -1,0 +1,790 @@
+{
+ "frame": {
+  "viewBox": "-40 0 80 144",
+  "topLeftFromBodyCenter": [
+   -40,
+   6
+  ],
+  "pxPerUnit": 4,
+  "size": [
+   320,
+   576
+  ],
+  "note": "acelasi cadru ca sprite-urile armelor de baza; hands si muzzle in coordonate fata de centrul corpului"
+ },
+ "skins": {
+  "sn_frost": {
+   "weapon": "sniper",
+   "sprite": "sn_frost.png",
+   "hands": [
+    [
+     -12.0,
+     39
+    ],
+    [
+     10.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    126
+   ],
+   "accent": "#5FD6F5"
+  },
+  "sn_dragon": {
+   "weapon": "sniper",
+   "sprite": "sn_dragon.png",
+   "hands": [
+    [
+     -12.0,
+     39
+    ],
+    [
+     10.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    140
+   ],
+   "accent": "#FF4B3D"
+  },
+  "sn_railgun": {
+   "weapon": "sniper",
+   "sprite": "sn_railgun.png",
+   "hands": [
+    [
+     -12.0,
+     39
+    ],
+    [
+     10.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    136
+   ],
+   "accent": "#2EF2FF"
+  },
+  "sn_ghillie": {
+   "weapon": "sniper",
+   "sprite": "sn_ghillie.png",
+   "hands": [
+    [
+     -12.0,
+     39
+    ],
+    [
+     10.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    126
+   ],
+   "accent": "#8BD62A"
+  },
+  "as_desert": {
+   "weapon": "assault",
+   "sprite": "as_desert.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    104
+   ],
+   "accent": "#C98A3D"
+  },
+  "as_toy": {
+   "weapon": "assault",
+   "sprite": "as_toy.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    106
+   ],
+   "accent": "#FF7A1A"
+  },
+  "as_pixel": {
+   "weapon": "assault",
+   "sprite": "as_pixel.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    104
+   ],
+   "accent": "#FF3B5C"
+  },
+  "as_imperial": {
+   "weapon": "assault",
+   "sprite": "as_imperial.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     13.5,
+     68
+    ]
+   ],
+   "muzzle": [
+    0,
+    112
+   ],
+   "accent": "#FFC53D"
+  },
+  "sg_western": {
+   "weapon": "shotgun",
+   "sprite": "sg_western.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     15.0,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    106
+   ],
+   "accent": "#D4A23A"
+  },
+  "sg_scrap": {
+   "weapon": "shotgun",
+   "sprite": "sg_scrap.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     15.0,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    104
+   ],
+   "accent": "#E07B39"
+  },
+  "sg_pumpkin": {
+   "weapon": "shotgun",
+   "sprite": "sg_pumpkin.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     15.0,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    106
+   ],
+   "accent": "#8BD62A"
+  },
+  "sg_pirate": {
+   "weapon": "shotgun",
+   "sprite": "sg_pirate.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     15.0,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    116
+   ],
+   "accent": "#FFC53D"
+  },
+  "smg_graffiti": {
+   "weapon": "smg",
+   "sprite": "smg_graffiti.png",
+   "hands": [
+    [
+     -12.0,
+     36
+    ],
+    [
+     12.0,
+     62
+    ]
+   ],
+   "muzzle": [
+    0,
+    84
+   ],
+   "accent": "#FF3DCB"
+  },
+  "smg_candy": {
+   "weapon": "smg",
+   "sprite": "smg_candy.png",
+   "hands": [
+    [
+     -12.0,
+     36
+    ],
+    [
+     12.0,
+     62
+    ]
+   ],
+   "muzzle": [
+    0,
+    84
+   ],
+   "accent": "#FF7FB5"
+  },
+  "smg_toxic": {
+   "weapon": "smg",
+   "sprite": "smg_toxic.png",
+   "hands": [
+    [
+     -12.0,
+     36
+    ],
+    [
+     12.0,
+     62
+    ]
+   ],
+   "muzzle": [
+    0,
+    86
+   ],
+   "accent": "#8BD62A"
+  },
+  "smg_samurai": {
+   "weapon": "smg",
+   "sprite": "smg_samurai.png",
+   "hands": [
+    [
+     -12.0,
+     36
+    ],
+    [
+     12.0,
+     62
+    ]
+   ],
+   "muzzle": [
+    0,
+    104
+   ],
+   "accent": "#E5384B"
+  },
+  "bu_carbon": {
+   "weapon": "burst",
+   "sprite": "bu_carbon.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     12.0,
+     66
+    ]
+   ],
+   "muzzle": [
+    0,
+    96
+   ],
+   "accent": "#E5384B"
+  },
+  "bu_reef": {
+   "weapon": "burst",
+   "sprite": "bu_reef.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     12.0,
+     66
+    ]
+   ],
+   "muzzle": [
+    0,
+    96
+   ],
+   "accent": "#FF7F7F"
+  },
+  "bu_steampunk": {
+   "weapon": "burst",
+   "sprite": "bu_steampunk.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     12.0,
+     66
+    ]
+   ],
+   "muzzle": [
+    0,
+    96
+   ],
+   "accent": "#C98A3D"
+  },
+  "bu_celestial": {
+   "weapon": "burst",
+   "sprite": "bu_celestial.png",
+   "hands": [
+    [
+     -12.0,
+     38
+    ],
+    [
+     12.0,
+     66
+    ]
+   ],
+   "muzzle": [
+    0,
+    104
+   ],
+   "accent": "#FFC53D"
+  },
+  "pi_tiger": {
+   "weapon": "pistol",
+   "sprite": "pi_tiger.png",
+   "hands": [
+    [
+     -9.0,
+     38
+    ],
+    [
+     9.0,
+     41
+    ]
+   ],
+   "muzzle": [
+    0,
+    72
+   ],
+   "accent": "#FF8A1F"
+  },
+  "pi_galaxy": {
+   "weapon": "pistol",
+   "sprite": "pi_galaxy.png",
+   "hands": [
+    [
+     -9.0,
+     38
+    ],
+    [
+     9.0,
+     41
+    ]
+   ],
+   "muzzle": [
+    0,
+    72
+   ],
+   "accent": "#C9B8FF"
+  },
+  "pi_lava": {
+   "weapon": "pistol",
+   "sprite": "pi_lava.png",
+   "hands": [
+    [
+     -9.0,
+     38
+    ],
+    [
+     9.0,
+     41
+    ]
+   ],
+   "muzzle": [
+    0,
+    76
+   ],
+   "accent": "#FF7A1A"
+  },
+  "pi_raygun": {
+   "weapon": "pistol",
+   "sprite": "pi_raygun.png",
+   "hands": [
+    [
+     -9.0,
+     38
+    ],
+    [
+     9.0,
+     41
+    ]
+   ],
+   "muzzle": [
+    0,
+    82
+   ],
+   "accent": "#35F0FF"
+  },
+  "gr_forest": {
+   "weapon": "ar_grizzly",
+   "sprite": "gr_forest.png",
+   "hands": [
+    [
+     -12,
+     39.6
+    ],
+    [
+     13.5,
+     69.6
+    ]
+   ],
+   "muzzle": [
+    0,
+    109.6
+   ],
+   "accent": "#8BD62A"
+  },
+  "gr_flannel": {
+   "weapon": "ar_grizzly",
+   "sprite": "gr_flannel.png",
+   "hands": [
+    [
+     -12,
+     39.6
+    ],
+    [
+     13.5,
+     69.6
+    ]
+   ],
+   "muzzle": [
+    0,
+    109.6
+   ],
+   "accent": "#FF5A36"
+  },
+  "gr_polar": {
+   "weapon": "ar_grizzly",
+   "sprite": "gr_polar.png",
+   "hands": [
+    [
+     -12,
+     39.6
+    ],
+    [
+     13.5,
+     69.6
+    ]
+   ],
+   "muzzle": [
+    0,
+    111.6
+   ],
+   "accent": "#5FD6F5"
+  },
+  "gr_claw": {
+   "weapon": "ar_grizzly",
+   "sprite": "gr_claw.png",
+   "hands": [
+    [
+     -12,
+     39.6
+    ],
+    [
+     13.5,
+     69.6
+    ]
+   ],
+   "muzzle": [
+    0,
+    121.6
+   ],
+   "accent": "#FF5FA8"
+  },
+  "fa_urban": {
+   "weapon": "ar_falcon",
+   "sprite": "fa_urban.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     13.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    112
+   ],
+   "accent": "#14B8A6"
+  },
+  "fa_rally": {
+   "weapon": "ar_falcon",
+   "sprite": "fa_rally.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     13.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    112
+   ],
+   "accent": "#FFD23F"
+  },
+  "fa_neon": {
+   "weapon": "ar_falcon",
+   "sprite": "fa_neon.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     13.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    114
+   ],
+   "accent": "#FF3DCB"
+  },
+  "fa_hawk": {
+   "weapon": "ar_falcon",
+   "sprite": "fa_hawk.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     13.5,
+     72
+    ]
+   ],
+   "muzzle": [
+    0,
+    118
+   ],
+   "accent": "#FFC53D"
+  },
+  "ti_snow": {
+   "weapon": "ar_titan",
+   "sprite": "ti_snow.png",
+   "hands": [
+    [
+     -13.5,
+     40
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    98
+   ],
+   "accent": "#35C8FF"
+  },
+  "ti_hazard": {
+   "weapon": "ar_titan",
+   "sprite": "ti_hazard.png",
+   "hands": [
+    [
+     -13.5,
+     40
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    98
+   ],
+   "accent": "#FFC21F"
+  },
+  "ti_crystal": {
+   "weapon": "ar_titan",
+   "sprite": "ti_crystal.png",
+   "hands": [
+    [
+     -13.5,
+     40
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    102
+   ],
+   "accent": "#C9A6FF"
+  },
+  "ti_golem": {
+   "weapon": "ar_titan",
+   "sprite": "ti_golem.png",
+   "hands": [
+    [
+     -13.5,
+     40
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    110
+   ],
+   "accent": "#3DF2D0"
+  },
+  "smg_hornet": {
+   "weapon": "smg",
+   "sprite": "smg_hornet.png",
+   "hands": [
+    [
+     -12,
+     36
+    ],
+    [
+     12,
+     62
+    ]
+   ],
+   "muzzle": [
+    0,
+    109
+   ],
+   "accent": "#FFC21F",
+   "fx": {
+    "aura": {
+     "at": [
+      0,
+      56
+     ],
+     "radius": 46,
+     "color": "#FFC21F",
+     "alpha": [
+      0.2,
+      0.27
+     ],
+     "pulseSeconds": 2.1
+    },
+    "abdomenPulse": {
+     "seconds": 0.16,
+     "from": [
+      0,
+      57
+     ],
+     "to": [
+      0,
+      96
+     ],
+     "color": "#FFE278",
+     "radius": 8
+    },
+    "pollen": {
+     "ratePerSecond": 9,
+     "spawnX": [
+      14,
+      36
+     ],
+     "spawnY": [
+      16,
+      40
+     ],
+     "speedBack": [
+      10,
+      30
+     ],
+     "life": [
+      0.8,
+      1.6
+     ],
+     "size": [
+      1,
+      2.4
+     ],
+     "color": "#FFC21F",
+     "outline": "#0B0F1A"
+    },
+    "muzzleFlash": {
+     "colors": [
+      "#0B0F1A",
+      "#FFD84A",
+      "#FFFFFF"
+     ]
+    },
+    "bullets": {
+     "style": "needle",
+     "colors": [
+      "#FFC21F",
+      "#FFF3B0"
+     ],
+     "outline": "#0B0F1A",
+     "glowRadius": 22,
+     "trailPollen": true
+    }
+   }
+  }
+ }
+}
