@@ -4983,3 +4983,141 @@ button:disabled { cursor: not-allowed; }
 .bb-rec .bb-dot { width: 10px; height: 10px; border: 2px solid var(--ink-line); border-radius: 50%; background: var(--c-red); animation: bbBlink 1.1s steps(2, jump-none) infinite; }
 @keyframes bbBlink { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .bb-rec .bb-dot { animation: none; } }
+
+/* ---------- Match HUD: gun + health, ping, reload button (game.js _hudBottom) ---------- */
+#hud-bottom {
+    position: absolute;
+    left: 50%;
+    bottom: max(12px, var(--safe-b));
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    padding: 6px 12px 10px 10px;
+    background: var(--c-slate);
+    border: var(--o) solid var(--ink-line);
+    border-radius: 12px;
+    box-shadow: inset 0 -4px 0 var(--l-slate), inset 0 2px 0 rgba(255, 255, 255, .1), 0 4px 0 rgba(0, 0, 0, .45), 0 10px 16px -8px rgba(0, 0, 0, .55);
+    color: #fff;
+    font-weight: 800;
+    text-shadow: var(--stroke-sm);
+    pointer-events: none;
+    --hb-n: 10;
+}
+.hb-gun {
+    display: grid;
+    grid-template-columns: 46px auto;
+    column-gap: 8px;
+    row-gap: 4px;
+    align-items: center;
+    padding-right: 12px;
+    border-right: 3px solid rgba(0, 0, 0, .35);
+    min-width: 124px;
+}
+.hb-name { grid-column: 1 / -1; font-size: .7rem; letter-spacing: .14em; color: #B7C5CE; line-height: 1; }
+.hb-icon { width: 46px; height: 24px; }
+.hb-icon .wicon { width: 100%; height: 100%; filter: drop-shadow(0 2px 0 var(--ink-line)); }
+.hb-count { display: flex; align-items: baseline; gap: 3px; line-height: 1; white-space: nowrap; min-width: 78px; }
+.hb-count b { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hb-count i, .hb-count em { font-style: normal; font-size: 1rem; color: #B7C5CE; font-variant-numeric: tabular-nums; }
+.hb-dry { display: none; color: var(--h-red); font-size: .78rem; letter-spacing: .06em; line-height: 1.1; }
+.hb-segs {
+    grid-column: 1 / -1;
+    position: relative;
+    height: 8px;
+    border: 2px solid var(--ink-line);
+    border-radius: 5px;
+    background: #0F171B;
+    overflow: hidden;
+    box-sizing: border-box;
+    text-shadow: none;
+}
+.hb-segs #hb-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: var(--c-gold); }
+.hb-segs::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(90deg, transparent 0, transparent calc(100% / var(--hb-n) - 2px), #0F171B calc(100% / var(--hb-n) - 2px), #0F171B calc(100% / var(--hb-n)));
+}
+#hud-bottom.hb-reloading .hb-count { opacity: .5; }
+#hud-bottom.hb-reloading #hb-fill { background: var(--c-sky); }
+#hud-bottom.hb-low #hb-mag { color: var(--h-red); }
+#hud-bottom.hb-dry .hb-count { display: none; }
+#hud-bottom.hb-dry .hb-dry { display: block; }
+#hud-bottom.hb-dry #hb-fill { width: 0 !important; }
+.hb-hp { display: flex; flex-direction: column; gap: 3px; padding-left: 12px; min-width: 128px; }
+.hb-hp-lbl { font-size: .7rem; letter-spacing: .14em; color: var(--h-green); line-height: 1; }
+.hb-hpbar {
+    position: relative;
+    height: 17px;
+    border: 2px solid var(--ink-line);
+    border-radius: 9px;
+    background: #0F171B;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.hb-hpbar #hb-hpfill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: var(--c-green); }
+.hb-hpbar.hb-hp-low #hb-hpfill { background: var(--c-red); }
+.hb-hpbar b { position: absolute; inset: 0; display: grid; place-items: center; font-size: .78rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+
+#hud-ping {
+    position: absolute;
+    left: max(12px, var(--safe-l));
+    bottom: max(12px, var(--safe-b));
+    z-index: 10;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 28px;
+    padding: 0 11px 2px;
+    background: rgba(14, 20, 25, .82);
+    border: 2.5px solid var(--ink-line);
+    border-radius: 10px;
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .35), 0 3px 0 rgba(0, 0, 0, .4);
+    color: #fff;
+    font-size: .8rem;
+    font-weight: 800;
+    text-shadow: var(--stroke-sm);
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+}
+.hp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c-green); border: 2px solid var(--ink-line); box-sizing: content-box; }
+#hud-ping.ping-mid .hp-dot { background: var(--c-gold); }
+#hud-ping.ping-bad .hp-dot { background: var(--c-red); }
+
+.btn-reload {
+    position: absolute;
+    right: max(14px, var(--safe-r));
+    bottom: 58%;
+    z-index: 12;
+    width: 54px;
+    height: 54px;
+    padding: 0 0 4px;
+    display: grid;
+    place-items: center;
+    background: var(--c-sky);
+    border: var(--o) solid var(--ink-line);
+    border-radius: 16px;
+    box-shadow: inset 0 -5px 0 var(--l-sky), inset 0 2px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45);
+    color: #fff;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+.btn-reload .ic { width: 26px; height: 26px; filter: drop-shadow(0 2px 0 var(--ink-line)); }
+.btn-reload:active { transform: translateY(3px); box-shadow: inset 0 -2px 0 var(--l-sky), inset 0 2px 0 rgba(255, 255, 255, .3), 0 1px 0 rgba(0, 0, 0, .45); }
+.btn-reload.is-busy { filter: saturate(.4) brightness(.8); }
+
+@media (max-height: 520px), (max-width: 640px) {
+    #hud-bottom { padding: 4px 9px 8px 8px; }
+    .hb-gun { min-width: 108px; padding-right: 9px; grid-template-columns: 38px auto; column-gap: 6px; }
+    .hb-icon { width: 38px; height: 20px; }
+    .hb-count { min-width: 64px; }
+    .hb-count b { font-size: 1.3rem; }
+    .hb-hp { min-width: 96px; padding-left: 9px; }
+    .hb-hpbar { height: 15px; }
+    .hb-hpbar b { font-size: .66rem; }
+    #hud-ping { height: 24px; font-size: .72rem; }
+}
+
+/* the ammo reserve button of the wave break: one wide block under the four upgrades */
+.pve-upg-btn.pve-upg-reserve { grid-column: 1 / -1; flex-direction: row; justify-content: center; gap: 12px; padding-top: clamp(6px, 1.2dvh, 10px); padding-bottom: clamp(8px, 1.4dvh, 12px); }

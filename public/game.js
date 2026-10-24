@@ -385,7 +385,7 @@ const WEAPONS = [];        // { id, name, desc, class, fireModeLabel, ...ARShare
 const WEAPON_CLASSES = []; // { id, name } in menu order
 const WEAPON_LOADOUT = {}; // id -> loadout base values and growth per point (HP/DMG/SPD)
 const _WEAPON_DATA = {};   // id -> its WEAPONS entry
-let WEAPON_RULES = null;   // aimDelay, reloadDelay, bulletRadius: the same for every gun
+let WEAPON_RULES = null;   // aimDelay, bulletRadius: the same for every gun
 let DEFAULT_WEAPON = null;
 // Per-jucator: socketId → weaponId (populat din player-image si playersMeta)
 const _playerWeapons = new Map();
@@ -619,28 +619,27 @@ function _arsColorName(hex) {
 }
 // The bars: each gun's raw value, shown relative to the best gun (0..1). Damage is one shot (every pellet),
 // fire rate is bullets per second (a burst counts all its bullets), range is speed x lifetime, accuracy
-// drops with the spread (radians), reload is the time to fill the magazine (faster = longer bar).
+// drops with the spread (radians), reload is the time a reload takes (faster = longer bar).
 function _arsBars(wid) {
     const raw = {};
     for (const w of WEAPONS) {
         const rate = w.fireMode === 'burst' ? w.burstCount / (w.shootCd + (w.burstCount - 1) * w.burstDelay) : 1 / w.shootCd;
         raw[w.id] = {
             dmg: WEAPON_LOADOUT[w.id].baseDmg * (w.pellets || 1), rate, range: w.bulletSpeed * w.bulletLife,
-            acc: Math.max(0.05, 1 - (w.spread || 0)), ammo: w.ammoMax, reload: w.ammoMax / w.reloadRate,
+            acc: Math.max(0.05, 1 - (w.spread || 0)), ammo: w.ammoMax, reload: w.reloadSeconds,
         };
     }
     const all = Object.values(raw), me = raw[wid];
     const rel = k => me[k] / Math.max(...all.map(v => v[k]));
     const level = v => v >= 0.8 ? 'Foarte mare' : v >= 0.6 ? 'Mare' : v >= 0.4 ? 'Medie' : v >= 0.2 ? 'Mica' : 'Foarte mica';
     const speed = v => v >= 0.8 ? 'Foarte rapida' : v >= 0.6 ? 'Rapida' : v >= 0.4 ? 'Medie' : v >= 0.2 ? 'Lenta' : 'Foarte lenta';
-    const w = _WEAPON_DATA[wid];
     const reload = Math.min(...all.map(v => v.reload)) / me.reload;
     return [
         ['DAMAGE', rel('dmg'), level(rel('dmg'))],
         ['CADENTA', rel('rate'), level(rel('rate'))],
         ['BATAIE', rel('range'), level(rel('range'))],
         ['PRECIZIE', rel('acc'), level(rel('acc'))],
-        ['INCARCATOR', rel('ammo'), me.ammo + (w.fireMode === 'burst' ? ' rafale' : ' gloante')],
+        ['INCARCATOR', rel('ammo'), me.ammo + ' gloante'],
         ['REINCARCARE', reload, speed(reload)],
     ];
 }
@@ -3315,9 +3314,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const damageNumbers  = [];
     let _myLastKills     = -1; // -1 = neinitializat; previne notificari din gs-uri stale dupa reset
 
-    const ammoState      = { ammo: 10, max: 10, reloading: false, reloadProgress: 1 };
-    // Cache ammo bar pe OffscreenCanvas — redesenat doar la schimbarea starii, nu la 60fps
-    const _ammoBarCache  = { oc: null, key: '' };
+    // The classic magazine (public/ammo.js): rounds ready to fire, the size of the magazine, the reserve, a reload in progress.
+    // The server is the truth; this copy also predicts your own shots and reloads so the HUD and the bullets answer at once.
+    const ammoState      = { ammo: 0, ammoMax: 1, reserve: 0, reloading: false, reloadProgress: 0 };
+    const _AMMO_FULL = () => {
+        const wd = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {};
+        ammoState.ammoMax = wd.ammoMax || 1; ammoState.ammo = ammoState.ammoMax; ammoState.reserve = wd.reserveMax || 0;
+        ammoState.reloading = false; ammoState.reloadProgress = 0;
+    };
+    _AMMO_FULL();
+    let   _reloadWanted    = false;  // R (or the touch button) pressed: goes out with the next input
+    let   _reloadHoldUntil = 0;      // a reload you started stays on screen until the server confirms it (about one RTT)
 
 
 
@@ -3347,7 +3354,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _pendingBurstShots = []; // {spawnAt, x, y, dx, dy, life}
     let   _clientNextShotAt = 0;  // performance.now() timestamp of the next allowed local shot
     let   _ammoHoldUntil    = 0;  // keep the locally predicted ammo until the server confirms it
-    const _ammoRow          = [0, 0, 0, 0, 0];
+    const _ammoRow          = [0, 0, 0, 0, 0, 0];
     const _ownLinked        = new Map(); // server bullet id -> client bullet
     const _ownUnmatched     = new Map(); // server bullet id -> first time seen without a prediction
     const _GHOST_GRACE_MS   = 50;
@@ -3594,7 +3601,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     // Ping RTT measurement — trimis la fiecare 2s, server echoueaza timestamp
-    socket.on('c-pong', (t, srvNow, srvStalls) => { _pingRtt = Math.round(performance.now() - t); if (_BB.on) _BB.ping(performance.now(), _pingRtt, srvNow, srvStalls); });
+    socket.on('c-pong', (t, srvNow, srvStalls) => { _pingRtt = Math.round(performance.now() - t); _hudPing(_pingRtt); if (_BB.on) _BB.ping(performance.now(), _pingRtt, srvNow, srvStalls); });
     const _pingInterval = setInterval(() => { if (!gameEnded) socket.emit('c-ping', performance.now()); }, 2000);
 
     let mouseActive = false;
@@ -3673,14 +3680,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (gameEnded || gameControl.countdownActive || _selfDead || _pveState.waveBreak) return;
         _lastInputSend = now;
         const seq = ++_inputSeq;
-        socket.emit('input', {
+        const _inp = {
             seq,
             dx: moveDir.x,  dy: moveDir.y,
             angle: myAngle,
             shooting: isShooting,
             sdx: (isShooting || _aimActive) ? -Math.sin(myAngle) : 0,
             sdy: (isShooting || _aimActive) ?  Math.cos(myAngle) : 0,
-        });
+        };
+        if (_reloadWanted) { _inp.reload = true; _reloadWanted = false; }   // R: once, with this input
+        socket.emit('input', _inp);
         _dbgPktSent++;
         // Record for CSP replay (limit buffer to ~3s worth of inputs)
         if (predX !== null) {
@@ -3790,9 +3799,20 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
 
     // Handleri numiti — necesari pentru removeEventListener la cleanup
+    // R (or the touch button): reload now. Nothing happens with a full magazine, an empty reserve or a reload already running.
+    function _onReloadBtn(e) { e.preventDefault(); e.stopPropagation(); _tryReload(); }
+    function _tryReload() {
+        if (_selfDead || gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
+        // in the middle of a burst the server waits for the burst to end: ask, and let its answer show the reload
+        if (_pendingBurstShots.length > 0) { if (ARAmmo.canReload(ammoState)) _reloadWanted = true; return; }
+        if (!ARAmmo.startReload(ammoState)) return;
+        _reloadHoldUntil = performance.now() + Math.max(300, _rttMs() + 150);
+        _reloadWanted = true;
+    }
     const onKeyDown = (e) => {
         if (gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
         const k = e.key.toLowerCase();
+        if (k === 'r' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { _tryReload(); return; }
         if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) {
             e.preventDefault();
             keysHeld.add(k);
@@ -3871,6 +3891,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         canvas.removeEventListener('pointerup',    onPointerUp);
         if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
         clearInterval(_pingInterval);
+        if (_hb.btn) _hb.btn.removeEventListener('pointerdown', _onReloadBtn);
+        _hudHide();
         moveDir.x = 0; moveDir.y = 0;
         isShooting = false;
         aimStartTime = null;
@@ -3910,8 +3932,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (overlay && overlay.style.display !== 'none') renderLeaderboardOverlay(data);
     });
 
-    socket.on('kit-pickup', ({ amount, x, y }) => {
-        _kitPickupFx.push({ x, y, amount: Math.round(amount), startTime: performance.now() });
+    socket.on('kit-pickup', ({ amount, x, y, kind }) => {
+        _kitPickupFx.push({ x, y, amount: Math.round(amount), startTime: performance.now(), ammo: kind === ARNet.KIT_AMMO });
     });
 
     socket.on('hit', ({ amount, x, y, bid }) => {
@@ -3926,7 +3948,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _dbgSrvPickups = pickups || 0;
     });
 
-    const _own = { ammo: 0, max: 0, reloading: false, reloadProgress: 1, ack: 0, coins: 0 };
+    const _own = { ammo: 0, max: 0, reloading: false, reloadProgress: 1, ack: 0, coins: 0, reserve: 0 };
     socket.on(ARNet.EVENT, (pk) => {
         // [tick, players, bullets, zombies, kits, zone, pve, own]: see public/netproto.js
         const tickNo = pk[0], pFlat = pk[1], bFlat = pk[2], zArr = pk[3], kArr = pk[4], zone2 = pk[5], pve2 = pk[6], ownRow = pk[7];
@@ -3935,43 +3957,32 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const now = performance.now();
         if (_BB.on) _BB.packet(now, tickNo, pFlat.length / 6, bFlat.length / 6, zArr ? zArr.length / 6 : 0);
         _sendInputForTick(now); // one input per server tick (see _sendInputForTick)
-        // This client's own row (ammo, reload, ack, coins) comes last in the packet; the rest is shared by the room
+        // This client's own row (ammo, reload, ack, coins, reserve) comes last in the packet; the rest is shared by the room
         let ammoArr = null, _myCoins = 0;
         if (ownRow) {
             ARNet.own(ownRow, _own);
             _ammoRow[0] = _own.ammo; _ammoRow[1] = _own.max; _ammoRow[2] = _own.reloading ? 1 : 0;
-            _ammoRow[3] = _own.reloadProgress; _ammoRow[4] = _own.ack;
+            _ammoRow[3] = _own.reloadProgress; _ammoRow[4] = _own.ack; _ammoRow[5] = _own.reserve;
             ammoArr = _ammoRow; _myCoins = _own.coins;
         }
         const pveArr = pve2 ? [pve2[0], pve2[1], pve2[2], pve2[3], pve2[4] / ARNet.TQ, _myCoins] : null;
         if (ammoArr) {
-            const _prevAmmo = ammoState.ammo;
-            // Locally predicted shots spend ammo instantly; the server catches up ~RTT later.
-            // Until then an older (higher) server value must not undo the prediction.
+            // Locally predicted shots spend rounds instantly; the server catches up ~RTT later. Until then an older (higher)
+            // server value must not undo the prediction.
             const _srvAmmo = Math.max(0, ammoArr[0] || 0);
             if (_bDiag.ammoLog && _bDiag.ammoLog.length < 400 && _bDiag._lastSrvAmmo !== _srvAmmo) { _bDiag._lastSrvAmmo = _srvAmmo; _bDiag.ammoLog.push(Math.round(now) + ":" + _srvAmmo + ":" + (ammoArr[2] ? 1 : 0)); }
-            const _holdPrediction = now < _ammoHoldUntil && _srvAmmo > ammoState.ammo && !ammoArr[2];
+            const _srvReloading = !!ammoArr[2];
+            const _holdPrediction = now < _ammoHoldUntil && _srvAmmo > ammoState.ammo && !_srvReloading;
             if (!_holdPrediction) ammoState.ammo = _srvAmmo;
-            ammoState.max  = Math.max(1, ammoArr[1] || 10);
-            ammoState.reloading      = !!ammoArr[2];
-            ammoState.reloadProgress = Math.max(0, Math.min(1, ammoArr[3] ?? 1));
-            if (_prevAmmo > 0 && ammoState.ammo === 0) {
-                _shootMustRelease = true;
-                _clientHasReleased = false;
-            }
-            if (_prevAmmo === 0 && ammoState.ammo > 0 && !ammoState.reloading) {
-                _shootMustRelease = false;
-                _clientHasReleased = true;
-            }
-            // Magazine refilled while the trigger is still held: the server clears its
-            // "release to shoot" lock on a full reload and starts firing again after a fresh
-            // AIM_DELAY (server.js reload branch + input handler). Mirror it, or those shots are
-            // never predicted and only show up late, from server data.
-            if (_shootMustRelease && isShooting && _prevAmmo < ammoState.max && ammoState.ammo >= ammoState.max &&
-                !ammoState.reloading && (_WEAPON_DATA[selectedWeapon] || {}).fireMode !== 'semi') {
-                _shootMustRelease = false;
-                _clientHasReleased = true;
-                aimStartTime = now;
+            ammoState.ammoMax = Math.max(1, ammoArr[1] || 1);
+            ammoState.reserve = Math.max(0, ammoArr[5] || 0);
+            if (_srvReloading) {
+                ammoState.reloading = true;
+                ammoState.reloadProgress = Math.max(0, Math.min(1, ammoArr[3] ?? 0));
+                _reloadHoldUntil = 0;
+            } else if (!(ammoState.reloading && now < _reloadHoldUntil)) {
+                // not reloading on the server, and no reload of ours waiting for its answer
+                ammoState.reloading = false; ammoState.reloadProgress = 0;
             }
         }
         if (zone2) {   // the centre never moves (the middle of the arena)
@@ -4021,11 +4032,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
         if (kArr) {
             const _kSeen = new Set();
-            for (let _ki = 0; _ki < kArr.length; _ki += 4) {
+            for (let _ki = 0; _ki < kArr.length; _ki += 5) {   // id, x, y, seconds left, kind (medkit / box of ammo)
                 const _kid = kArr[_ki];
                 _kSeen.add(_kid);
                 if (!_healthKits.has(_kid)) _kitDropAnim.set(_kid, performance.now());
-                _healthKits.set(_kid, { x: kArr[_ki+1], y: kArr[_ki+2], timeLeft: kArr[_ki+3] });
+                _healthKits.set(_kid, { x: kArr[_ki+1], y: kArr[_ki+2], timeLeft: kArr[_ki+3], ammo: kArr[_ki+4] === ARNet.KIT_AMMO });
             }
             for (const [_kid] of _healthKits) {
                 if (!_kSeen.has(_kid)) { _healthKits.delete(_kid); _kitDropAnim.delete(_kid); }
@@ -4320,10 +4331,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         hitEffects.length = 0;
         damageNumbers.length = 0;
         for (const k in flashTimers) delete flashTimers[k];
-        ammoState.ammo = 10;
-        ammoState.max = 10;
-        ammoState.reloading = false;
-        ammoState.reloadProgress = 1;
+        _AMMO_FULL(); _reloadWanted = false; _reloadHoldUntil = 0;
         killFeedEl.innerHTML = '';
         myKillsEl.textContent = '0';
         document.getElementById('kill-notif').classList.remove('active');
@@ -4335,7 +4343,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (specBtn) specBtn.style.display = 'none';
         exitSpectating();
         myElimData = null;
-        _ammoBarCache.key = '';
         if (gameControl.pendingObstacles) { _obstacles = gameControl.pendingObstacles; delete gameControl.pendingObstacles; }
         if (gameControl.pendingSeason) { ARArena.setMapSeason(gameControl.pendingSeason); ARGround.setTheme(gameControl.pendingSeason); delete gameControl.pendingSeason; }
         _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
@@ -4428,7 +4435,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 }
             }
         });
+        // MUNITIE: fills the reserve for a flat price, as often as it is needed; nothing to buy when the reserve is full
+        const rb = document.querySelector('.pve-upg-btn[data-type="reserve"]');
+        if (rb) {
+            const full = ammoState.reserve >= _myReserveMax();
+            rb.querySelector('.pve-upg-cost').textContent = full ? 'PLIN' : String(_PVE_RESERVE_COST);
+            rb.disabled = full;
+            rb.classList.toggle('pve-upg-maxed', full);
+        }
     }
+    const _PVE_RESERVE_COST = 3;   // server.js PVE_RESERVE_COST
+    const _myReserveMax = () => (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {}).reserveMax || 0;
 
     window.buyUpgrade = function(type) { socket.emit('buy-upgrade', { type }); };
 
@@ -4487,13 +4504,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('upgrade-result', ({ ok, type, coins, upgCounts, reason, newMaxHp }) => {
-        if (!ok) { if (reason === 'max') showToast('Upgrade maxim atins!'); return; }
+        if (!ok) { if (reason === 'max') showToast('Upgrade maxim atins!'); else if (reason === 'full') showToast('Rezerva e deja plina'); return; }
         _pveState.myCoins = coins;
+        if (type === 'reserve') ammoState.reserve = _myReserveMax();   // the server filled it; its next packet says the same
         if (upgCounts) Object.assign(_pveUpgCounts, upgCounts);
         if (newMaxHp && playerMeta[socket.id]) playerMeta[socket.id].maxHp = newMaxHp;
         updatePveHud();
         updateUpgradeButtons();
-        const labels = { dmg: 'Damage +5%', spd: 'Viteza +4%', hp: 'HP Max +15', ammo: 'Ammo +12%' };
+        const labels = { dmg: 'Damage +5%', spd: 'Viteza +4%', hp: 'HP Max +15', ammo: 'Incarcator +12%', reserve: 'Rezerva plina' };
         showToast(labels[type] || 'Upgrade aplicat!');
     });
 
@@ -4597,24 +4615,56 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         document.getElementById('waiting-sub-msg').style.display = isHost ? 'none'  : 'block';
     });
 
-    // Ammo: one ink frame, the rounds as small gold blocks inside it (the gaps show the ink)
-    function drawAmmoBar(ctx, x, y, width, height, state) {
-        const maxAmmo = Math.max(1, state.max || 10);
-        const ol = 1.8, gap = 1.6;
-        ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.roundRect(x - ol, y - ol + 2.5, width + ol * 2, height + ol * 2, 3); ctx.fill();
-        ctx.fillStyle = INK; ctx.beginPath(); ctx.roundRect(x - ol, y - ol, width + ol * 2, height + ol * 2, 3); ctx.fill();
-        const segW = (width - gap * (maxAmmo - 1)) / maxAmmo;
-        ctx.fillStyle = '#1B252C';
-        for (let i = 0; i < maxAmmo; i++) ctx.fillRect(x + i * (segW + gap), y, segW, height);
-        ctx.fillStyle = TOY.gold[1];
-        const full = Math.min(state.ammo, maxAmmo);
-        for (let i = 0; i < full; i++) ctx.fillRect(x + i * (segW + gap), y, segW, height);
-        ctx.fillStyle = TOY.gold[0];
-        for (let i = 0; i < full; i++) ctx.fillRect(x + i * (segW + gap), y, segW, height * 0.62);
-        if (state.ammo < maxAmmo && state.reloadProgress > 0) {
-            const sx = x + state.ammo * (segW + gap);
-            ctx.fillStyle = '#FFE08A'; ctx.fillRect(sx, y, segW * state.reloadProgress, height);
-        }
+    // ---------- BOTTOM HUD (DOM): the gun and the health, the ping, the touch reload button ----------
+    // Plain DOM that is touched only when something it shows changes (a number, a bar width, a class), so a frame costs a
+    // few comparisons and no layout work. Rounds ready / reserve come from ammoState (public/ammo.js), the health from the packet.
+    const _hb = { el: null, mag: null, res: null, fill: null, hpfill: null, hptxt: null, hpbar: null, ping: null, pingMs: null, btn: null,
+                  last: { vis: null, mag: -1, res: -1, max: -1, fillPct: -1, cls: '', hp: -1, hpMax: -1, hpPct: -1, hpLow: null } };
+    function _hudInit() {
+        const g = id => document.getElementById(id);
+        _hb.el = g('hud-bottom'); _hb.mag = g('hb-mag'); _hb.res = g('hb-reserve'); _hb.fill = g('hb-fill');
+        _hb.hpfill = g('hb-hpfill'); _hb.hptxt = g('hb-hptxt'); _hb.hpbar = _hb.hpfill && _hb.hpfill.parentNode;
+        _hb.ping = g('hud-ping'); _hb.pingMs = g('hud-ping-ms'); _hb.btn = g('btn-reload');
+        const icon = g('hb-icon'), name = g('hb-name');
+        const wd = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {};
+        if (icon) icon.innerHTML = ARIcons.weaponHtml(wd.id || selectedWeapon || DEFAULT_WEAPON, true);
+        if (name) name.textContent = (wd.name || '').toUpperCase();
+        const L = _hb.last; L.vis = null; L.mag = L.res = L.max = L.fillPct = L.hp = L.hpMax = L.hpPct = -1; L.cls = ''; L.hpLow = null;
+        if (_hb.ping) { _hb.ping.style.display = ''; _hb.ping.className = ''; }
+        if (_hb.pingMs) _hb.pingMs.textContent = '-- ms';
+        if (_hb.btn) _hb.btn.style.display = isDesktop ? 'none' : '';
+    }
+    function _hudHide() {
+        if (_hb.el) _hb.el.style.display = 'none';
+        if (_hb.ping) _hb.ping.style.display = 'none';
+        if (_hb.btn) _hb.btn.style.display = 'none';
+        _hb.last.vis = null;
+    }
+    function _hudPing(ms) {
+        if (!_hb.ping || !_hb.pingMs) return;
+        _hb.pingMs.textContent = ms + ' ms';
+        _hb.ping.className = ms < 90 ? '' : ms < 160 ? 'ping-mid' : 'ping-bad';
+    }
+    function _hudBottom(vis, hp, hpMax) {
+        const e = _hb, L = e.last;
+        if (!e.el) return;
+        if (vis !== L.vis) { e.el.style.display = vis ? '' : 'none'; L.vis = vis; if (e.btn && !isDesktop) e.btn.style.display = vis ? '' : 'none'; }
+        if (!vis) return;
+        const st = ammoState, mag = Math.max(0, st.ammo), res = Math.max(0, st.reserve), max = Math.max(1, st.ammoMax);
+        const rel = st.reloading, dry = mag <= 0 && res <= 0 && !rel, low = !rel && mag > 0 && mag <= Math.ceil(max * 0.25);
+        const cls = (rel ? 'hb-reloading ' : '') + (dry ? 'hb-dry ' : '') + (low ? 'hb-low' : '');
+        if (cls !== L.cls) { e.el.className = cls; L.cls = cls; if (e.btn) e.btn.classList.toggle('is-busy', rel || res <= 0 || mag >= max); }
+        if (mag !== L.mag) { e.mag.textContent = mag; L.mag = mag; }
+        if (res !== L.res) { e.res.textContent = res; L.res = res; }
+        if (max !== L.max) { e.el.style.setProperty('--hb-n', max); L.max = max; }
+        const fillPct = rel ? Math.max(2, Math.floor(st.reloadProgress * 100)) : Math.round(mag / max * 100);
+        if (fillPct !== L.fillPct) { e.fill.style.width = fillPct + '%'; L.fillPct = fillPct; }
+        const h = Math.max(0, Math.ceil(hp)), hm = Math.max(1, Math.round(hpMax));
+        if (h !== L.hp || hm !== L.hpMax) { e.hptxt.textContent = h + ' / ' + hm; L.hp = h; L.hpMax = hm; }
+        const hpPct = Math.min(100, Math.round(h / hm * 100));
+        if (hpPct !== L.hpPct) { e.hpfill.style.width = hpPct + '%'; L.hpPct = hpPct; }
+        const hpLow = hpPct <= 30;
+        if (hpLow !== L.hpLow) { e.hpbar.classList.toggle('hb-hp-low', hpLow); L.hpLow = hpLow; }
     }
 
     // ---------- INTERPOLARE STATE ----------
@@ -4785,8 +4835,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         // ── Client bullet spawn — uses weapon-specific speed + lifetime ──
         const _shotNow = performance.now();
+        // The trigger held on an empty magazine reloads by itself (the server does the same)
+        if (isShooting && !_selfDead && !gameControl.countdownActive && _pendingBurstShots.length === 0 && ARAmmo.autoReload(ammoState, true)) {
+            _reloadHoldUntil = _shotNow + Math.max(300, _rttMs() + 150);
+        }
         if (isShooting && !_shootMustRelease && !_selfDead && !gameControl.countdownActive &&
-            _shotNow >= _clientNextShotAt && ammoState.ammo > 0 && predX !== null &&
+            _shotNow >= _clientNextShotAt && ARAmmo.canFire(ammoState) && predX !== null &&
             aimStartTime !== null && _shotNow - aimStartTime >= _AIM_MS) {
             const _myWdSpawn = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON];
             const _cbspd  = _myWdSpawn.bulletSpeed;
@@ -4819,17 +4873,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Using only the cooldown (0.6 s instead of 0.8 s for Burst) made the client fire bursts
             // the server never fired, and miss the ones it did: the "invisible bullets".
             _clientNextShotAt = _shotBase + (_myWdSpawn.shootCd + (_burstCount - 1) * _burstDelay) * 1000;
-            // Spend the round locally right away; the server confirms it about one RTT later.
-            ammoState.ammo = Math.max(0, ammoState.ammo - 1);
+            // Spend the round locally right away (a shot is one round whatever its pellets); the server confirms it about one RTT later.
+            ARAmmo.spend(ammoState, 1);
             _ammoHoldUntil = _shotNow + Math.max(160, _rttMs() + 100);
-            if (ammoState.ammo === 0) { _shootMustRelease = true; _clientHasReleased = false; }
             if (_myWdSpawn.fireMode === 'semi') { _shootMustRelease = true; _clientHasReleased = false; isShooting = false; }
         }
         // Spawn pending burst bullets cu delay real
         const _cbNow = performance.now();
         while (_pendingBurstShots.length > 0 && _pendingBurstShots[0].spawnAt <= _cbNow) {
             const _pbs = _pendingBurstShots.shift();
-            if (predX !== null && !_selfDead) {
+            // every bullet of a burst is a round of the magazine; a burst that runs dry stops short, as on the server
+            if (predX !== null && !_selfDead && ARAmmo.spend(ammoState, 1) > 0) {
+                _ammoHoldUntil = _cbNow + Math.max(160, _rttMs() + 100);
                 const _bm = _myGunFire().muzzleDist;
                 _clientBullets.push(_newClientBullet(predX + _pbs.odx * _bm, predY + _pbs.ody * _bm, _pbs.dx, _pbs.dy, _pbs.life, _cbNow, predX, predY));
             }
@@ -5136,7 +5191,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     _kitDropAnim.delete(_kid);
                 }
             }
-            ARArena.drawKit(ctx, _kit.x, _kit.y, _kitYOff, _kitNow + _kid * 377, 1, 1);
+            ARArena.drawKit(ctx, _kit.x, _kit.y, _kitYOff, _kitNow + _kid * 377, 1, 1, _kit.ammo);
         }
 
         // --- KIT PICKUP FX ---
@@ -5148,13 +5203,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Kit se estompeaza si urca
             // the kit pops up and away, the heal amount rises in toy green
             ctx.globalAlpha = 1 - _kfT;
-            ARArena.drawKit(ctx, _kf.x, _kf.y, -_kfT * 26, 0, 1 + _kfT * 0.5, 0);
+            ARArena.drawKit(ctx, _kf.x, _kf.y, -_kfT * 26, 0, 1 + _kfT * 0.5, 0, _kf.ammo);
             ctx.globalAlpha = _kfT < 0.4 ? 1 : Math.max(0, 1 - (_kfT - 0.4) / 0.6);
             const _kfS = _kfT < 0.15 ? 0.5 + _kfT / 0.15 * 0.75 : _kfT < 0.3 ? 1.25 - (_kfT - 0.15) / 0.15 * 0.25 : 1;
             ctx.save();
             ctx.translate(_kf.x, _kf.y - 30 - _kfT * 42);
             ctx.scale(_kfS, _kfS);
-            _drawLabel(ctx, '+' + _kf.amount, Math.round(24 / ZOOM), '#66E287', INK, 5 / ZOOM, 'alphabetic', 0, 0, _lblScale * 1.25);
+            _drawLabel(ctx, '+' + _kf.amount, Math.round(24 / ZOOM), _kf.ammo ? '#FFD55E' : '#66E287', INK, 5 / ZOOM, 'alphabetic', 0, 0, _lblScale * 1.25);
             ctx.restore();
         }
         ctx.globalAlpha = 1;
@@ -5389,13 +5444,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const player = _plQ[_qi], px = _plQx[_qi], py = _plQy[_qi];
             const isMe = player.id === socket.id;
             const barH = isMe ? 22 : 13;
-            const ammoH = 6;
             const barW = isMe ? 108 : 70;
             // Bara HP (toti jucatorii) — folosim latestHp pentru update instant, fara delay de interpolatie
-            // Yours ends with the ammo bar on the ring; the others' bar sits 6 units above it
+            // every bar sits 6 units above the ring (the rounds and the health of yours are in the bottom HUD)
             const hpRatio = Math.min(1, Math.max(0, (latestHp[player.id] ?? player.hp) / player.maxHp));
             const barX    = px - barW / 2;
-            const barY    = py - _ringR - barH - (isMe ? 4 + ammoH : 6);
+            const barY    = py - _ringR - barH - 6;
             _drawLabel(ctx, player.name, isMe ? 14 : 12, isMe ? '#66E287' : '#ffffff', INK, 4, 'alphabetic',
                        px, barY - (isMe ? 12 : 10), _lblScale);
             _drawHpBar(ctx, barX, barY, barW, barH, hpRatio, isMe ? 2.5 : 2);
@@ -5403,10 +5457,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Text HP pe bara (cached label per value)
             _drawLabel(ctx, String(Math.ceil(latestHp[player.id] ?? player.hp)), isMe ? 13 : 8, '#ffffff', INK, isMe ? 4 : 3, 'middle',
                        barX + barW / 2, barY + barH / 2, _lblScale);
-
-            if (isMe) {
-                drawAmmoBar(ctx, barX, barY + barH + 4, barW, ammoH, ammoState);
-            }
 
             // Weapon type badge — vizibil pentru toti jucatorii (eu + altii)
             {
@@ -5525,6 +5575,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.globalAlpha = 1;
         }
 
+        // --- BOTTOM HUD: the gun (rounds / reserve) and the health of yours ---
+        {
+            const _myMeta = playerMeta[socket.id];
+            const _myMaxHp = (_myMeta && _myMeta.maxHp) || 500;
+            _hudBottom(!gameEnded && !_selfDead && !isSpectating, latestHp[socket.id] ?? _myMaxHp, _myMaxHp);
+        }
+
         // --- TIMER ZONA (screen space, proportional) --- BR only
         if (!gameEnded && _gameMode !== 'pve') {
             if (gameControl.countdownEndTime) {
@@ -5533,7 +5590,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (_zoneTimerAlpha > 0) {
                 // The label is a cached sprite: text, block and outline are painted again only when the text
                 // (whole seconds, or the phase) or the size changes, not 60-240 times a second
-                const _zFontSz = Math.max(13, Math.round(Math.min(W, H) * 0.03));
+                const _zFontSz = Math.max(11, Math.round(Math.min(W, H) * 0.021));   // a small chip: the match canvas stays the hero
                 const _zt = _zone.waitTimer;
                 const _zSec = _zt > 0 ? Math.ceil(_zt) : 0;
                 const _zSt = _zt > 0 ? 0 : (_zone.r > 0 ? 1 : 2);
@@ -5542,8 +5599,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     _zl.text = _zSt === 0 ? `Zona se restrange in ${_zSec}s` : (_zSt === 1 ? 'Zona se restrange!' : 'Zona inchisa!');
                     if (!_labelMeasure) _labelMeasure = document.createElement('canvas').getContext('2d');
                     _labelMeasure.font = `800 ${_zFontSz}px Sen, Arial`;
-                    _zl.w = _labelMeasure.measureText(_zl.text).width + 34;
-                    _zl.h = _zFontSz + 20;
+                    _zl.w = _labelMeasure.measureText(_zl.text).width + 24;
+                    _zl.h = _zFontSz + 14;
                     _zl.key = 'ZT|' + _zl.text + '|' + _zFontSz;
                 }
                 const _zPad = 8, _zw = _zl.w, _zh = _zl.h;
@@ -5559,7 +5616,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 });
                 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
                 ctx.globalAlpha = _zoneTimerAlpha;
-                ctx.drawImage(_zs.c, W / 2 - _zw / 2 - _zPad, Math.round(H * 0.07) - _zPad, _zs.w, _zs.h);
+                ctx.drawImage(_zs.c, W / 2 - _zw / 2 - _zPad, Math.round(H * 0.035) - _zPad, _zs.w, _zs.h);
                 ctx.globalAlpha = 1;
                 ctx.setTransform(1, 0, 0, 1, 0, 0);
             }
@@ -5589,23 +5646,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
         }
 
-        // --- WEAPON BLOCK (jos-centru, screen space) ---
-        if (!gameEnded && !isSpectating) {
-            const _myWid  = _playerWeapons.get(socket.id) || selectedWeapon;
-            const _myWd   = _WEAPON_DATA[_myWid] || _WEAPON_DATA[DEFAULT_WEAPON];
-            ctx.save();
-            ctx.scale(dpr, dpr);
-            const _bSz  = Math.round(H < 520 ? Math.min(44, Math.max(30, H * 0.105)) : Math.min(86, Math.max(40, Math.min(W * 0.056, H * 0.095))));
-            const _wSz  = _bSz;
-            const _wX   = Math.round(W / 2 - _wSz / 2);
-            const _wY   = H - _bSz - 20 - (window.innerHeight < 520 ? 0 : 4);
-            const _sol  = _bSz < 50 ? 2.5 : 3;
-            const _slip = Math.round(_bSz * 0.1);
-            // Weapon block: orange, white pictogram with an ink drop
-            _drawBlock(ctx, _wX, _wY, _wSz, _wSz, Math.round(_wSz * 0.24), TOY.orange[0], TOY.orange[1], _sol, _slip, 5);
-            _drawWeaponIcon(ctx, _myWd.id, _wX + _wSz / 2, _wY + _wSz / 2 - _slip / 2, _wSz * 0.74, _wSz * 0.5, 1.5);
-            ctx.restore();
-        }
+        // (the weapon block that stood here, an orange square with the gun, is now the gun icon and name of the bottom HUD block)
 
         // --- WATCHDOG ---
         if (lastGameStateTime > 0 && (performance.now() - lastGameStateTime) > 10000) {
@@ -5717,6 +5758,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
     }
 
+    _hudInit();
+    if (_hb.btn) _hb.btn.addEventListener('pointerdown', _onReloadBtn);
     draw();
 }
 

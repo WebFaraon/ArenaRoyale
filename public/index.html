@@ -607,6 +607,24 @@
     <div id="zone-left"></div>
     <div id="zone-right"></div>
 
+    <!-- Bottom of the match: the gun (rounds in the magazine / reserve) and the health, one small block (game.js _hudBottom) -->
+    <div id="hud-bottom" style="display:none">
+        <div class="hb-gun">
+            <span class="hb-name" id="hb-name"></span>
+            <span class="hb-icon" id="hb-icon"></span>
+            <span class="hb-count" id="hb-count"><b id="hb-mag">0</b><i>/</i><em id="hb-reserve">0</em></span>
+            <span class="hb-dry" id="hb-dry">FARA MUNITIE</span>
+            <span class="hb-segs" id="hb-segs"><span id="hb-fill"></span></span>
+        </div>
+        <div class="hb-hp">
+            <span class="hb-hp-lbl">HP</span>
+            <span class="hb-hpbar"><span id="hb-hpfill"></span><b id="hb-hptxt">0</b></span>
+        </div>
+    </div>
+    <div id="hud-ping" style="display:none"><span class="hp-dot" id="hud-ping-dot"></span><span id="hud-ping-ms">-- ms</span></div>
+    <!-- Reload on a touch screen (a keyboard has R) -->
+    <button id="btn-reload" class="btn-reload" style="display:none" aria-label="Reincarca"><svg class="ic" aria-hidden="true"><use href="#refresh-cw"/></svg></button>
+
     <!-- PvE top HUD wrapper -->
     <div id="pve-top-hud" style="display:none">
         <div id="pve-hud">
@@ -655,10 +673,16 @@
             </button>
             <button class="pve-upg-btn" data-type="ammo" onclick="buyUpgrade('ammo')">
                 <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#bolt"/></svg>
-                <span class="pve-upg-name">AMMO</span>
+                <span class="pve-upg-name">INCARCATOR</span>
                 <span class="pve-upg-val">+12%</span>
                 <span class="pve-upg-cost">4</span>
                 <div class="pve-upg-segs"></div>
+            </button>
+            <button class="pve-upg-btn pve-upg-reserve" data-type="reserve" onclick="buyUpgrade('reserve')">
+                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#package"/></svg>
+                <span class="pve-upg-name">MUNITIE</span>
+                <span class="pve-upg-val">rezerva plina</span>
+                <span class="pve-upg-cost">3</span>
             </button>
         </div>
         <button id="pve-skip-btn" onclick="skipWaveBreak()">SKIP</button>
@@ -812,6 +836,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
 <script src="combat-shared.js"></script>
 <script src="netproto.js"></script>
+<script src="ammo.js"></script>
 <script src="interp.js"></script>
 <script src="frame-cap.js"></script>
 <script src="pve-coins.js"></script>

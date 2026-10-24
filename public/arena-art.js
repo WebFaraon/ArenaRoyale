@@ -722,6 +722,22 @@
     kitArt.img.onload = function () { kitArt.state = kitArt.img.naturalWidth > 0 ? 1 : 2; };
     kitArt.img.onerror = function () { kitArt.state = 2; console.warn('[medkit] desen lipsa (se deseneaza varianta veche)'); };
     kitArt.img.src = window.arAsset ? window.arAsset('/images/pickups/medkit.svg') : '/images/pickups/medkit.svg';
+    // the box of ammo (public/images/pickups/ammo_box.svg, the Obiecte Arena "Cutie de munitie"), same size and hover as the medkit
+    const ammoArt = { img: new Image(), state: 0 };
+    ammoArt.img.onload = function () { ammoArt.state = ammoArt.img.naturalWidth > 0 ? 1 : 2; };
+    ammoArt.img.onerror = function () { ammoArt.state = 2; console.warn('[ammo_box] desen lipsa (se deseneaza o cutie simpla)'); };
+    ammoArt.img.src = window.arAsset ? window.arAsset('/images/pickups/ammo_box.svg') : '/images/pickups/ammo_box.svg';
+    function paintAmmoFallback(g) {
+        g.fillStyle = '#0A1013'; g.beginPath(); g.roundRect(-18, -13, 36, 26, 5); g.fill();
+        g.fillStyle = '#6E8B3D'; g.beginPath(); g.roundRect(-15.5, -10.5, 31, 21, 3); g.fill();
+        g.fillStyle = '#FFC53D'; g.fillRect(-9, -3, 4, 9); g.fillRect(-2, -3, 4, 9); g.fillRect(5, -3, 4, 9);
+    }
+    function ammoPainter() {
+        return ammoArt.state === 1 ? function (g) {
+            g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+            g.drawImage(ammoArt.img, -KIT_PAD, -KIT_PAD, KIT_PAD * 2, KIT_PAD * 2);
+        } : paintAmmoFallback;
+    }
     function paintKit(g) {
         const s = KIT_HALF, r = 8, ol = 3, lip = 5;
         g.fillStyle = '#0A1013';
@@ -747,29 +763,30 @@
             g.drawImage(kitArt.img, -KIT_PAD, -KIT_PAD, KIT_PAD * 2, KIT_PAD * 2);
         } : paintKit;
     }
-    // yOff: extra vertical offset (drop-in, pickup); now drives the hover; bob 0 freezes it
-    function drawKit(ctx, x, y, yOff, now, scale, bob) {
+    // yOff: extra vertical offset (drop-in, pickup); now drives the hover; bob 0 freezes it; ammo: a box of ammo instead of the medkit
+    function drawKit(ctx, x, y, yOff, now, scale, bob, ammo) {
         const ph = bob ? Math.sin(now * 0.0042) : 0;
         const lift = (5 + ph * 3) - yOff;
         const sc = scale || 1;
-        const art = kitArt.state === 1;
+        const art = (ammo ? ammoArt : kitArt).state === 1;
         if (art) {
-            // the pickup ring on the ground (the picture's red halo), then the shadow
+            // the pickup ring on the ground (red for a medkit, gold for ammo), then the shadow
             ctx.beginPath(); ctx.arc(x, y + 3.2 * sc, 20 * sc, 0, TAU);
-            ctx.fillStyle = 'rgba(255,75,92,.2)'; ctx.fill();
-            ctx.strokeStyle = 'rgba(255,75,92,.65)'; ctx.lineWidth = 1.9 * sc; ctx.stroke();
+            ctx.fillStyle = ammo ? 'rgba(255,197,61,.2)' : 'rgba(255,75,92,.2)'; ctx.fill();
+            ctx.strokeStyle = ammo ? 'rgba(255,197,61,.7)' : 'rgba(255,75,92,.65)'; ctx.lineWidth = 1.9 * sc; ctx.stroke();
             ctx.fillStyle = 'rgba(0,0,0,.2)';
             ctx.beginPath(); ctx.ellipse(x + 4 * sc, y + 7.2 * sc, 13.6 * sc * (1 - ph * 0.1), 9.6 * sc * (1 - ph * 0.1), 0, 0, TAU); ctx.fill();
         } else {
             ctx.fillStyle = 'rgba(6,22,12,.34)';
             ctx.beginPath(); ctx.ellipse(x + 2, y + 13, 15 * sc * (1 - ph * 0.12), 5.5 * sc * (1 - ph * 0.12), 0, 0, TAU); ctx.fill();
         }
-        const old = zombieSprites.get('kit');
-        const s = sprite(old, KIT_PAD, kitPainter());
-        if (s !== old && s) zombieSprites.set('kit', s);
+        const key = ammo ? 'ammo' : 'kit';
+        const old = zombieSprites.get(key);
+        const s = sprite(old, KIT_PAD, ammo ? ammoPainter() : kitPainter());
+        if (s !== old && s) zombieSprites.set(key, s);
         const half = KIT_PAD * sc;
         if (s) ctx.drawImage(s.c, x - half, y - half - lift, half * 2, half * 2);
-        else { ctx.save(); ctx.translate(x, y - lift); ctx.scale(sc, sc); paintKit(ctx); ctx.restore(); }
+        else { ctx.save(); ctx.translate(x, y - lift); ctx.scale(sc, sc); (ammo ? paintAmmoFallback : paintKit)(ctx); ctx.restore(); }
     }
 
     // ---------- PvE coin: a small flat coin seen from above (public/images/pickups/moneda_pve.svg) ----------
@@ -876,6 +893,7 @@
         }
         if (withBase) for (let st = 0; st < BASE_PAL.length; st++) { const pal = BASE_PAL[st]; need('base' + st, BASE_PAD, function (g) { paintBase(g, pal); }); }
         need('kit', KIT_PAD, kitPainter());
+        need('ammo', KIT_PAD, ammoPainter());
         need('coin', COIN_PAD, coinPainter());
         for (let k = 0; k < SHARD_PAL.length; k++) need('shard' + k, SHARD_PAD, function (g) { paintShard(g, k); });
         return missing;
