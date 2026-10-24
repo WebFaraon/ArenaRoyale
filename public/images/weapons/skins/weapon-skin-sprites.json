@@ -785,6 +785,25 @@
      "trailPollen": true
     }
    }
+  },
+  "sg_golazo": {
+   "weapon": "shotgun",
+   "sprite": "sg_golazo.png",
+   "hands": [
+    [
+     -12,
+     38
+    ],
+    [
+     15,
+     64
+    ]
+   ],
+   "muzzle": [
+    0,
+    106
+   ],
+   "accent": "#FFD23F"
   }
  }
 }

@@ -773,6 +773,7 @@ function _arsRenderSide() {
         if (isEq) foot = `<span class="ars-badge ars-badge-gold">${ico('check')}ECHIPAT</span>`;
         else if (has) foot = `<button type="button" class="ars-blk ars-btn-green ars-mini" onclick="arsEquip('${s.id}')">ECHIPEAZA</button>`;
         else if (s.unlock) foot = `<span class="ars-badge ars-badge-lock">${ico('lock')}${s.unlock.kills} kill-uri</span>`;
+        else if (s.season) foot = `<span class="ars-badge ars-badge-lock">${ico('lock')}DE SEZON</span>`;
         else {
             const gem = !!s.price.diamonds, cost = gem ? s.price.diamonds : s.price.coins;
             const short = (gem ? (p.diamonds || 0) : (p.coins ?? 1000)) < cost;

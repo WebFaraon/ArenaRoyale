@@ -909,6 +909,7 @@ app.post('/api/weapon-skins/buy', async (req, res) => {
     const skin = typeof skinId === 'string' && WEAPON_SKINS.get(skinId);
     if (!skin) return res.json({ ok: false, error: 'Skin invalid' });
     if (skin.unlock) return res.json({ ok: false, error: `Skinul nu se cumpara: se deblocheaza la ${skin.unlock.kills} de killuri cu ${WEAPON_DATA.weapons[skin.weapon].name}` });
+    if (skin.season) return res.json({ ok: false, error: 'Skinul de sezon nu se cumpara: se primeste din sezon' });
     if (ownsWeaponSkin(nickname, skin.id)) return res.json({ ok: false, error: 'Deja detinut', owned: ownedWeaponSkinList(nickname) });
     if (!supabase) return res.json({ ok: false, error: 'Cumpararea are nevoie de baza de date' });
     if (!weaponSkinsColumn) return res.json({ ok: false, error: WEAPON_SKIN_NEEDS_MIGRATION });

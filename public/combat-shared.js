@@ -93,13 +93,15 @@
     }
 
     // Weapon skins (public/data/weapon-skins.json): each skin with its price worked out. A skin without
-    // its own price costs what its rarity costs (data.prices); an unlock skin has no price (price null).
+    // its own price costs what its rarity costs (data.prices); an unlock skin and a season skin (season: true, handed out by
+    // the season, not sold) have no price (price null).
     // "default" is not a skin: it stands for the gun as it is.
     function weaponSkins(data) {
         return (data.skins || []).map(s => ({
             id: s.id, weapon: s.weapon, name: s.name, rarity: s.rarity,
-            price: s.unlock ? null : { ...(s.price || (data.prices || {})[s.rarity]) },
+            price: s.unlock || s.season ? null : { ...(s.price || (data.prices || {})[s.rarity]) },
             unlock: s.unlock ? { kills: s.unlock.kills } : null,
+            season: !!s.season,
         }));
     }
     // What is wrong with weapon-skins.json, given the weapon ids of weapons.json (empty when nothing)
@@ -119,6 +121,8 @@
             if (typeof s.name !== 'string' || !s.name) bad('name');
             if (s.unlock !== undefined && !(s.unlock && posInt(s.unlock.kills) && Object.keys(s.unlock).length === 1)) bad('unlock { kills }');
             if (s.unlock && s.price !== undefined) bad('an unlock skin has no price');
+            if (s.season !== undefined && s.season !== true) bad('season: true');
+            if (s.season && (s.unlock || s.price !== undefined)) bad('a season skin has no price and no unlock');
             if (s.price !== undefined && !priceOk(s.price)) bad('price: { coins } or { diamonds }');
         }
         return errs;

@@ -1,5 +1,5 @@
 {
-  "units": "un skin schimba doar aspectul armei (weapon = id din weapons.json). price lipsa = pretul raritatii (prices); unlock = se primeste automat la N killuri cu arma lui, nu se cumpara",
+  "units": "un skin schimba doar aspectul armei (weapon = id din weapons.json). price lipsa = pretul raritatii (prices); unlock = se primeste automat la N killuri cu arma lui, nu se cumpara; season = skin de sezon, se primeste din sezon (battle pass), nu se cumpara",
   "rarities": ["rare", "epic", "legendary", "mythic"],
   "prices": {
     "rare":      { "coins": 1200 },
@@ -50,6 +50,7 @@
     { "id": "ti_crystal",    "weapon": "ar_titan", "name": "Cristal", "rarity": "epic" },
     { "id": "ti_golem",      "weapon": "ar_titan", "name": "Golem", "rarity": "legendary" },
 
-    { "id": "smg_hornet",   "weapon": "smg",     "name": "Viespe",      "rarity": "mythic" }
+    { "id": "smg_hornet",   "weapon": "smg",     "name": "Viespe",      "rarity": "mythic" },
+    { "id": "sg_golazo",    "weapon": "shotgun", "name": "Golazo",      "rarity": "epic", "season": true }
   ]
 }
