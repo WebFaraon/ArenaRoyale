@@ -2877,35 +2877,28 @@ function _needleBulletSprite(gun, scale) {
     s.noTrail = true;   // the needle leaves pollen, not the accent streak the other bullets leave
     return s;
 }
-// pollen: a hexagon in the skin's colour with an ink outline, painted at 2.5x so the biggest ones stay sharp
-function _hexSprite(scale) {
-    const s = _unitSprite(_SKINFX, 'hex', scale * 2.5, 1.3, g => {
+// pollen: a hexagon in the skin's colour with an ink outline, painted at 2.5x so the biggest ones stay sharp.
+// The dots off the bullets (the artifact's brown trail) are the same hexagon in a light and a dark brown, with a thicker dark ring
+const _DOT_LOOK = [['#FFC21F', '#0B0F1A', 0.34], ['#D9993A', '#2B1A08', 0.5], ['#8A5418', '#1E1205', 0.5]];
+function _hexSprite(scale, kind) {
+    const look = _DOT_LOOK[kind] || _DOT_LOOK[0];
+    const s = _unitSprite(_SKINFX, 'hex' + kind, scale * 2.5, 1.3, g => {
         g.beginPath();
         for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; g.lineTo(Math.cos(a), Math.sin(a)); }
-        g.closePath(); g.fillStyle = '#FFC21F'; g.fill();
-        g.lineWidth = 0.34; g.strokeStyle = '#0B0F1A'; g.lineJoin = 'round'; g.stroke();
+        g.closePath(); g.fillStyle = look[0]; g.fill();
+        g.lineWidth = look[2]; g.strokeStyle = look[1]; g.lineJoin = 'round'; g.stroke();
     });
     s.box = 1.3;
     return s;
 }
-// a spark off a bullet: a small bright dot (light core, amber edge), no outline
-function _sparkSprite(scale) {
-    const s = _unitSprite(_SKINFX, 'spark', scale * 2.5, 1.3, g => {
-        const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1);
-        gr.addColorStop(0, '#FFF3B0'); gr.addColorStop(0.55, '#FFC21F'); gr.addColorStop(1, 'rgba(255,194,31,0)');
-        g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 1, 0, Math.PI * 2); g.fill();
-    });
-    s.box = 1.3;
-    return s;
-}
-// draws a pool's particles in the current (world) transform, each fading out over its life
+// draws a pool's particles (hexagons, the pollen and the dots off the bullets) in the current (world) transform, each fading out over its life
 function _drawSkinPollen(ctx, pool, scale) {
     if (!pool.n) return;
-    const hs = _hexSprite(scale), ss = _sparkSprite(scale);
+    const hs = [_hexSprite(scale, 0), _hexSprite(scale, 1), _hexSprite(scale, 2)], box = hs[0].box;
     for (let i = 0; i < pool.n; i++) {
-        const k = pool.age[i] / pool.life[i], r = pool.size[i], sp = pool.kind[i] === 1 ? ss : hs, box = sp.box;
+        const k = pool.age[i] / pool.life[i], r = pool.size[i];
         ctx.globalAlpha = Math.max(0, 1 - k * k);
-        ctx.drawImage(sp.c, pool.x[i] - r * box, pool.y[i] - r * box, r * box * 2, r * box * 2);
+        ctx.drawImage(hs[pool.kind[i]].c, pool.x[i] - r * box, pool.y[i] - r * box, r * box * 2, r * box * 2);
     }
     ctx.globalAlpha = 1;
 }

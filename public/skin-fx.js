@@ -14,7 +14,7 @@
 })(this, function () {
     'use strict';
 
-    const MAX_PARTICLES = 80;   // alive at once for the whole screen: a full pool just skips the new ones
+    const MAX_PARTICLES = 160;  // alive at once for the whole screen: a full pool just skips the new ones
     const PARTICLE_VIS = 1.6;   // pollen is drawn this much bigger than its raw size: at match zoom the raw size is a dot
 
     const num = (v, min, max, dflt) => (typeof v === 'number' && isFinite(v) ? Math.min(max, Math.max(min, v)) : dflt);
@@ -68,7 +68,7 @@
     }
     function clear(pool) { pool.n = 0; }
 
-    // kind: 0 = pollen (a hexagon with an ink outline), 1 = a spark off a bullet (a small bright dot: at its size an outline would be all there is)
+    // kind: 0 = pollen off the player (amber), 1 / 2 = a light / a dark dot off a bullet
     function spawn(pool, x, y, vx, vy, life, size, kind) {
         if (pool.n >= pool.max) return false;
         const i = pool.n++;
@@ -120,14 +120,15 @@
     }
 
     // Small pollen left along a bullet's path (rate per second per bullet); em = { acc } of that bullet's owner
-    const BULLET_POLLEN_RATE = 24;   // per bullet per second (the artifact: 0.4 a frame at 60 fps)
+    const BULLET_DOT_LIFE = 0.32;    // seconds a dot of the trail stays
+    const BULLET_POLLEN_RATE = 48;   // per bullet per second: a dotted trail close enough to read as a line (the artifact: 0.4 a frame, on a 120 Hz screen)
     function emitBulletPollen(pool, em, fx, x, y, S, dt, rnd) {
         if (!fx || !fx.bullets || !fx.bullets.trailPollen) return 0;
         em.acc = Math.min(3, (em.acc || 0) + BULLET_POLLEN_RATE * dt);
         let n = 0;
         while (em.acc >= 1) {
             em.acc -= 1;
-            if (spawn(pool, x, y, (rnd() - 0.5) * 30 * S, (rnd() - 0.5) * 30 * S, 0.25, 0.7 * S * PARTICLE_VIS * 1.5, 1)) n++;
+            if (spawn(pool, x, y, (rnd() - 0.5) * 30 * S, (rnd() - 0.5) * 30 * S, BULLET_DOT_LIFE, 0.7 * S * PARTICLE_VIS * 2.2, rnd() < 0.5 ? 1 : 2)) n++;
         }
         return n;
     }
