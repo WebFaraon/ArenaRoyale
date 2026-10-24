@@ -16,10 +16,10 @@ const { createGsWriter } = require('../../server-gs');
 const typeIdx = { normal: 0, runner: 1, tank: 2 };
 function world(nPlayers, nBullets, nZombies) {
     const players = [], bullets = [], zombies = [];
-    for (let i = 0; i < nPlayers; i++) players.push({ slot: i, x: 100.37 + i * 83.21, y: 2500.9 - i * 61.7, angle: -3.14 + i * 0.2, hp: 470 - i, kills: i % 7, alive: i % 5 !== 0, ammo: 8 - (i % 9), ammoMax: 10, reloading: i % 3 === 0, reloadProgress: (i % 10) / 10, lastAckSeq: 90000 + i, coins: i * 2 });
+    for (let i = 0; i < nPlayers; i++) players.push({ slot: i, x: 100.37 + i * 83.21, y: 2500.9 - i * 61.7, angle: -3.14 + i * 0.2, hp: 470 - i, kills: i % 7, alive: i % 5 !== 0, ammo: 8 - (i % 9), ammoMax: 10, reloading: i % 3 === 0, reloadProgress: (i % 10) / 10, lastAckSeq: 90000 + i, coins: i * 2, reserve: 120 - i * 7 });
     for (let i = 0; i < nBullets; i++) bullets.push({ id: 5000 + i, x: 40.6 + i * 100.33, y: 1300.1 + i * 7.9, dx: -934.4 + i * 91, dy: 357.2 - i * 33, os: i % Math.max(1, nPlayers) });
     for (let i = 0; i < nZombies; i++) zombies.push({ id: i, x: 500.26 + i * 40.1, y: 800.74, angle: 2.5 - i * 0.7, hp: 100 - i * 3, type: ['normal', 'runner', 'tank'][i % 3], alive: i % 4 !== 3 });
-    return { players, bullets, zombies, kits: [{ id: 3, x: 640.4, y: 210.6, spawnTime: 1000 }], zone: { r: 1234.6, waitTimer: 17.83 }, room: { mode: 'br', base: null } };
+    return { players, bullets, zombies, kits: [{ id: 3, x: 640.4, y: 210.6, spawnTime: 1000, type: ARNet.KIT_HEAL }, { id: 4, x: 700.2, y: 190.1, spawnTime: 1000, type: ARNet.KIT_AMMO }], zone: { r: 1234.6, waitTimer: 17.83 }, room: { mode: 'br', base: null } };
 }
 function sharedOf(w) {
     const P = [], B = [], Z = [], K = [];
@@ -45,8 +45,10 @@ test('players, bullets, zombies, zone and own row survive the trip with quarter-
     assert.equal(sh[3][1] / ARNet.PQ, Math.round(live[0].x * 4) / 4);
     assert.deepEqual(sh[5], [1235, 178]); assert.equal(sh[6], null);
     const o = ARNet.own(ARNet.packOwn(w.players[3]), {});   // slot 3: reloading, progress 0.3
-    assert.equal(o.ammo, w.players[3].ammo); assert.equal(o.max, 10); assert.equal(o.reloading, true); assert.ok(Math.abs(o.reloadProgress - 0.3) < 0.011); assert.equal(o.ack, 90003); assert.equal(o.coins, 6);
-    const o2 = ARNet.own(ARNet.packOwn(w.players[1]), {}); assert.equal(o2.reloading, false); assert.equal(o2.reloadProgress, 1);
+    assert.equal(o.ammo, w.players[3].ammo); assert.equal(o.max, 10); assert.equal(o.reloading, true); assert.ok(Math.abs(o.reloadProgress - 0.3) < 0.011); assert.equal(o.ack, 90003); assert.equal(o.coins, 6); assert.equal(o.reserve, 120 - 3 * 7);
+    const o2 = ARNet.own(ARNet.packOwn(w.players[1]), {}); assert.equal(o2.reloading, false); assert.equal(o2.reloadProgress, 1); assert.equal(o2.reserve, 113);
+    assert.deepEqual(sh[4], [3, 640, 211, 20, ARNet.KIT_HEAL, 4, 700, 190, 20, ARNet.KIT_AMMO], 'kits: five numbers each, the last is the kind');
+    assert.equal(ARNet.PROTO, 3);
     assert.deepEqual(ARNet.packPve({ mode: 'pve', base: { hp: 912.4, maxHp: 1000 }, pveWave: 3, pveWaveBreak: true, pveBreakTimer: 12.34 }), [912, 1000, 3, 1, 123]);
 });
 

@@ -1,4 +1,4 @@
-// Decompose a real gs2 packet (protocol 2) by component, encoded with the same notepack the server uses.
+// Decompose a real gs2 packet (protocol 3) by component, encoded with the same notepack the server uses.
 // node sizes.js [port] [players]
 const { io } = require('socket.io-client'); const parser = require('socket.io-msgpack-parser');
 const np = require('../../node_modules/notepack.io');
@@ -12,7 +12,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await new Promise(r => s.on('connect', r)); s.emit('authenticate', { nickname: nick, token: j.token });
     bots.push(s);
   }
-  const data = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, mode: 'br', xp: 0, proto: 2 };
+  const data = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, mode: 'br', xp: 0, proto: require('../../public/netproto').PROTO };
   code = await new Promise(r => { bots[0].once('room-created', ({ code }) => r(code)); bots[0].emit('create-room', data); });
   for (let i = 1; i < N; i++) { bots[i].emit('join-room', { code, ...data }); await sleep(20); }
   await sleep(300); bots[0].emit('start-game'); await sleep(4500);

@@ -8,7 +8,7 @@ const PORT = +process.argv[2] || 3100, N = 10, sleep = ms => new Promise(r => se
     const s = io(`http://127.0.0.1:${PORT}`, { parser, transports: ['websocket'], reconnection: false, forceNew: true });
     await new Promise(r => s.on('connect', r)); s.emit('authenticate', { nickname: nick, token: j.token }); bots.push(s);
   }
-  const data = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, mode: 'br', xp: 0, proto: 2 };
+  const data = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, mode: 'br', xp: 0, proto: require('../../public/netproto').PROTO };
   const code = await new Promise(r => { bots[0].once('room-created', ({ code }) => r(code)); bots[0].emit('create-room', data); });
   for (let i = 1; i < N; i++) { bots[i].emit('join-room', { code, ...data }); await sleep(20); }
   await sleep(300); bots[0].emit('start-game'); await sleep(4500);

@@ -27,7 +27,7 @@ function createGsWriter(msgpack, sharedCount) {
         header = Buffer.from([0x90 | total]);
         // self check against the parser's own encoding of a packet with real content
         const shared = [7, [1, 2, 3, 4, 5, 6], [], [9, 400, 500, 12, 100, 1], [], [1650, 300], null];
-        const ownRow = [10, 10, 0, 12345, 3];
+        const ownRow = [10, 10, 0, 12345, 3, 96];
         const want = msgpack.encode({ type: 2, data: [event, shared.concat([ownRow])], nsp: '/' });
         const got = Buffer.concat([prefix, header, msgpack.encode(shared).subarray(1), msgpack.encode(ownRow), suffix]);
         if (!want.equals(got) || shared.length !== sharedCount) throw new Error('assembled packet differs from the parser\'s');

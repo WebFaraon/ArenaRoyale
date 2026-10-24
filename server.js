@@ -13,7 +13,9 @@ const { avoidBase } = require('./zombie-steer.js');
 const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
 const ARShared = require('./public/combat-shared');
-const ARNet = require('./public/netproto');           // the state packet, protocol 2 (shared with the client)
+const ARNet = require('./public/netproto');           // the state packet, protocol 3 (shared with the client)
+const KIT_HEAL = ARNet.KIT_HEAL, KIT_AMMO = ARNet.KIT_AMMO;   // the two kinds of kit on the ground (netproto.js)
+const ARAmmo = require('./public/ammo');             // the classic magazine: reload, reserve, ammo boxes (shared with the client)
 const { createGsWriter } = require('./server-gs');
 const notepack = require('notepack.io');             // the encoder socket.io-msgpack-parser uses
 const GS = createGsWriter(notepack, 7);               // 7 shared elements + the client's own row
@@ -744,9 +746,9 @@ const WEAPON_DATA = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'd
     const errs = ARShared.checkWeapons(WEAPON_DATA);
     if (errs.length) throw new Error('public/data/weapons.json: ' + errs.join('; '));
 }
-const WEAPON_RULES   = WEAPON_DATA.rules; // aimDelay, reloadDelay, bulletRadius: the same for every gun
+const WEAPON_RULES   = WEAPON_DATA.rules; // aimDelay, bulletRadius: the same for every gun
 const DEFAULT_WEAPON = WEAPON_DATA.defaultWeapon;
-// id -> how the gun fires (fireMode, bulletSpeed, bulletLife, shootCd, ammoMax, reloadRate, pellets, spread, burstCount, burstDelay)
+// id -> how the gun fires (fireMode, bulletSpeed, bulletLife, shootCd, ammoMax, reserveMax, ammoBox, reloadSeconds, pellets, spread, burstCount, burstDelay)
 const WEAPON_STATS   = {};
 // id -> loadout base values and growth per point (HP/DMG/SPD)
 const WEAPON_LOADOUT = {};
@@ -1037,8 +1039,9 @@ const PVE_UPGRADE_DEFS = {
     dmg:  { baseCost: 6,  costInc: 4, maxUses: 5, apply: (p, n) => { p.damage  = Math.round(p.baseDamage  * (1 + n * 0.05)); } },
     spd:  { baseCost: 5,  costInc: 3, maxUses: 4, apply: (p, n) => { p.speed   = Math.round(p.baseSpeed   * (1 + n * 0.04)); } },
     hp:   { baseCost: 7,  costInc: 4, maxUses: 5, apply: (p, n) => { p.maxHp   = p.baseMaxHp + n * 15; p.hp = Math.min(p.hp + 15, p.maxHp); } },
-    ammo: { baseCost: 4,  costInc: 2, maxUses: 4, apply: (p, n) => { p.ammoMax = Math.round(p.baseAmmoMax * (1 + n * 0.12)); } },
+    ammo: { baseCost: 4,  costInc: 2, maxUses: 4, apply: (p, n) => { ARAmmo.setMagazine(p, Math.round(p.baseAmmoMax * (1 + n * 0.12))); } },   // a bigger magazine
 };
+const PVE_RESERVE_COST = 3;   // the "MUNITIE" button between waves: fills the reserve, as many times as you like
 function pveUpgradeCost(type, count) {
     const d = PVE_UPGRADE_DEFS[type];
     return d ? d.baseCost + count * d.costInc : 999;
@@ -1336,12 +1339,14 @@ function startPveWave(code, room) {
     room.pveWaveBreak  = false;
     room.pveBreakTimer = 0;
     room.pveSkipVotes.clear();
-    // Respawn jucatori langa baza cu ammo plin
+    // Players come back next to the base with full health; a revived one also gets a full magazine and reserve
     room._playerArr.forEach((p, i) => {
         const angle = (i / Math.max(room._playerArr.length, 1)) * Math.PI * 2 + Math.PI / 4;
         p.x = Math.round(PVE_BASE_X + Math.cos(angle) * 240);
         p.y = Math.round(PVE_BASE_Y + Math.sin(angle) * 240);
-        p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
+        // a revived player gets a full magazine and reserve; the ones who lived keep what they have (the reserve is bought between waves)
+        if (!p.alive) ARAmmo.refill(p, p.reserveMax); else ARAmmo.cancelReload(p);
+        p.reloadReq = false; p.lastShotTime = 0;
         p.hp = p.maxHp; p.alive = true;
         p.shooting = false; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = true;
         p.shootCooldown = 0; p.aimTimer = 0; p.burstRemaining = 0; p.burstTimer = 0;
@@ -1471,9 +1476,9 @@ function addPlayer(code, room, socket, data) {
         shooting: false, shootCooldown: 0, aimTimer: 0, needsReleaseToShoot: false, hasReleasedSinceEmpty: false,
         burstRemaining: 0, burstTimer: 0, burstDx: 0, burstDy: 0, burstWeapon: null, inputQ: [],
         ws: {}, // weapon stats of this match (WEAPON STATS)
-        ammo: _ws.ammoMax, ammoMax: _ws.ammoMax,
-        reloading: false, reloadProgress: 0, lastShotTime: 0,
-        weaponReloadRate: _ws.reloadRate, bulletSpeed: _ws.bulletSpeed,
+        ammo: _ws.ammoMax, ammoMax: _ws.ammoMax, reserve: _ws.reserveMax, reserveMax: _ws.reserveMax,   // magazine / its size, reserve / its size (public/ammo.js)
+        reloading: false, reloadProgress: 0, reloadReq: false, lastShotTime: 0,
+        bulletSpeed: _ws.bulletSpeed,
         alive: true, kills: 0, lastDamageTime: 0, rs: Missions.newRoundStats(),
         lastAckSeq: 0, pendingAckSeq: 0,
         coins: 0,
@@ -1550,6 +1555,7 @@ function applyInput(p, data) {
             p.shootDir.y = +data.sdy || 0;
         }
     }
+    if (data.reload === true) p.reloadReq = true;   // R: the reload starts in the tick (never in the middle of a burst)
     if (data.seq !== undefined) p.pendingAckSeq = +data.seq;
 }
 
@@ -1631,26 +1637,13 @@ function startRoomLoop(code, room) {
                 if (player.shootCooldown > 0) player.shootCooldown -= dt;
                 if (player.aimTimer > 0) player.aimTimer -= dt;
 
-                // Reload progresiv per-weapon
-                const _pAmmoMax = player.ammoMax;
-                if (player.ammo < _pAmmoMax && (!player.shooting || player.ammo === 0)) {
-                    const idleSec = (now - player.lastShotTime) / 1000;
-                    if (idleSec >= WEAPON_RULES.reloadDelay) {
-                        player.reloading = true;
-                        player.reloadProgress += player.weaponReloadRate * dt;
-                        while (player.reloadProgress >= 1.0 && player.ammo < _pAmmoMax) {
-                            player.reloadProgress -= 1.0;
-                            player.ammo++;
-                        }
-                        if (player.ammo >= _pAmmoMax) {
-                            player.reloadProgress = 0; player.reloading = false;
-                            player.needsReleaseToShoot = false; player.hasReleasedSinceEmpty = true;
-                        }
-                    }
-                } else if (player.ammo >= _pAmmoMax) {
-                    player.reloading = false; player.reloadProgress = 0;
-                } else {
-                    player.reloading = false; // trage activ — pauza reload, progresul se pastreaza
+                // Reload (the classic magazine, public/ammo.js): R, or the trigger held on an empty magazine, starts it. It
+                // runs reloadSeconds, then the missing rounds move from the reserve into the magazine. Nothing is fired meanwhile.
+                if (player.reloadReq && player.burstRemaining === 0) { player.reloadReq = false; ARAmmo.startReload(player); }
+                if (player.shooting) ARAmmo.autoReload(player, true);
+                if (player.reloading) {
+                    ARAmmo.stepReload(player, dt, (WEAPON_STATS[player.weapon] || WEAPON_STATS[DEFAULT_WEAPON]).reloadSeconds);
+                    if (!player.reloading) { player.needsReleaseToShoot = false; player.hasReleasedSinceEmpty = true; }
                 }
 
                 // Burst continuation — glonturile 2+3 dintr-o rafala
@@ -1661,18 +1654,23 @@ function startRoomLoop(code, room) {
                         const _bw     = player.burstWeapon || player.weapon;
                         const _bwsCur = WEAPON_STATS[_bw] || WEAPON_STATS[DEFAULT_WEAPON];
                         const _bfire  = GUN_FIRE[_bw] || GUN_FIRE[DEFAULT_WEAPON];
-                        wsFor(player, _bw).shots++;
-                        // from the muzzle where the player is now; the hit test starts at the centre (sx, sy)
-                        room.bullets.push({
-                            id: room.nextBulletId++, ownerId: player.id, os: player.slot, weapon: _bw,
-                            x: player.x + player.burstDx * _bfire.muzzle, y: player.y + player.burstDy * _bfire.muzzle,
-                            sx: player.x, sy: player.y,
-                            dx: player.burstDx * player.bulletSpeed,
-                            dy: player.burstDy * player.bulletSpeed,
-                            damage: player.damage, radius: WEAPON_RULES.bulletRadius,
-                            lifetime: _bfire.life, speed: player.bulletSpeed
-                        });
-                        player.burstRemaining--;
+                        // every bullet of a burst costs one round of the magazine; a burst that runs dry stops short
+                        if (ARAmmo.spend(player, 1) > 0) {
+                            wsFor(player, _bw).shots++;
+                            // from the muzzle where the player is now; the hit test starts at the centre (sx, sy)
+                            room.bullets.push({
+                                id: room.nextBulletId++, ownerId: player.id, os: player.slot, weapon: _bw,
+                                x: player.x + player.burstDx * _bfire.muzzle, y: player.y + player.burstDy * _bfire.muzzle,
+                                sx: player.x, sy: player.y,
+                                dx: player.burstDx * player.bulletSpeed,
+                                dy: player.burstDy * player.bulletSpeed,
+                                damage: player.damage, radius: WEAPON_RULES.bulletRadius,
+                                lifetime: _bfire.life, speed: player.bulletSpeed
+                            });
+                            player.burstRemaining--;
+                        } else {
+                            player.burstRemaining = 0;
+                        }
                         if (player.burstRemaining > 0) {
                             player.burstTimer += _bwsCur.burstDelay; // keep the sub-tick remainder
                         } else {
@@ -1680,13 +1678,12 @@ function startRoomLoop(code, room) {
                             player.shootCooldown = _bwsCur.shootCd + Math.min(0, player.burstTimer);
                             player.lastShotTime  = now;
                             if (_bwsCur.fireMode === 'semi') { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
-                            if (player.ammo === 0) { player.shooting = false; player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
                         }
                     }
                 }
 
-                // Tragere — intrerupe reload-ul dar pastreaza progresul partial
-                if (player.shooting && player.shootCooldown <= 0 && player.ammo > 0 && player.aimTimer <= 0 && player.burstRemaining === 0) {
+                // Tragere: o tragere costa un glont din incarcator (indiferent de alice); nu se trage in timpul reload-ului
+                if (player.shooting && player.shootCooldown <= 0 && ARAmmo.canFire(player) && player.aimTimer <= 0 && player.burstRemaining === 0) {
                     const dl = Math.hypot(player.shootDir.x || 0, player.shootDir.y || 0);
                     if (dl >= 0.1) {
                         const dx = player.shootDir.x / dl, dy = player.shootDir.y / dl;
@@ -1711,8 +1708,7 @@ function startRoomLoop(code, room) {
                             });
                         }
                         wsFor(player, player.weapon).shots += _pellets; // every pellet is a shot
-                        player.ammo--;
-                        player.reloading = false;
+                        ARAmmo.spend(player, 1);
                         player.lastShotTime = now;
                         if (_wsCur.fireMode === 'burst') {
                             player.burstRemaining = _wsCur.burstCount - 1;
@@ -1724,7 +1720,6 @@ function startRoomLoop(code, room) {
                             // ticks (SMG fired every 136 ms instead of 120 when ticks were 17 ms).
                             player.shootCooldown = Math.min(0, player.shootCooldown) + _wsCur.shootCd;
                             if (_wsCur.fireMode === 'semi') { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
-                            if (player.ammo === 0) { player.shooting = false; player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
                         }
                     }
                 }
@@ -2087,7 +2082,9 @@ function startRoomLoop(code, room) {
                             const _lost = PveCoins.trim(room.coinDrops, PveCoins.MAX_COINS);
                             if (_lost.length) io.to(code).emit('coin-taken', { ids: _lost, gone: true });
                         } else {
-                            room.healthKits.push({ id: room.nextKitId++, x: zombie.x, y: zombie.y, spawnTime: now });
+                            // a zombie of the Battle Royale drops a medkit and, beside it, a box of ammo
+                            room.healthKits.push({ id: room.nextKitId++, x: zombie.x, y: zombie.y, spawnTime: now, type: KIT_HEAL });
+                            room.healthKits.push({ id: room.nextKitId++, x: Math.max(30, Math.min(ARENA_W - 30, zombie.x + 38)), y: Math.max(30, Math.min(ARENA_H - 30, zombie.y - 22)), spawnTime: now, type: KIT_AMMO });
                         }
                     }
                     keep = false;
@@ -2122,7 +2119,7 @@ function startRoomLoop(code, room) {
                 io.to(code).emit('srv-stats', { tps, ents: allPlayers.length + room.bullets.length });
             }
 
-            // Health kits: pickup + expiry (in place, no new array per tick)
+            // Kits on the ground, a medkit or a box of ammo: pickup + expiry (in place, no new array per tick)
             {
                 const kits = room.healthKits;
                 const pickR = PLAYER_R + 22, pickRSq = pickR * pickR;
@@ -2133,11 +2130,20 @@ function startRoomLoop(code, room) {
                     if (!gone) {
                         for (const p of alivePlayers) {
                             const kx = p.x - kit.x, ky = p.y - kit.y;
-                            if (p.hp < p.maxHp && kx * kx + ky * ky < pickRSq) {
+                            if (kx * kx + ky * ky >= pickRSq) continue;
+                            if (kit.type === KIT_AMMO) {
+                                // a box fills the reserve up to the gun's maximum; with a full reserve it stays on the ground
+                                const added = ARAmmo.addReserve(p, (WEAPON_STATS[p.weapon] || WEAPON_STATS[DEFAULT_WEAPON]).ammoBox, p.reserveMax);
+                                if (added > 0) {
+                                    io.to(p.id).emit('kit-pickup', { amount: added, x: kit.x, y: kit.y, kind: KIT_AMMO });
+                                    gone = true;
+                                    break;
+                                }
+                            } else if (p.hp < p.maxHp) {
                                 const actualHeal = Math.min(200, p.maxHp - p.hp);
                                 p.hp += actualHeal;
                                 if (p.rs) p.rs.kits++;
-                                io.to(p.id).emit('kit-pickup', { amount: actualHeal, x: kit.x, y: kit.y });
+                                io.to(p.id).emit('kit-pickup', { amount: actualHeal, x: kit.x, y: kit.y, kind: KIT_HEAL });
                                 gone = true;
                                 break;
                             }
@@ -2333,7 +2339,7 @@ function triggerRematch(code, room) {
         p.moveDir = { x: 0, y: 0 }; p.shootDir = { x: 0, y: 0 };
         p.shooting = false; p.shootCooldown = 0; p.aimTimer = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
         p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
-        p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
+        ARAmmo.refill(p, p.reserveMax); p.reloadReq = false; p.lastShotTime = 0;
         p.lastDamageTime = 0; p.lastAckSeq = 0; p.pendingAckSeq = 0;
     });
     const rematchMeta = {};
@@ -2472,7 +2478,7 @@ io.on('connection', (socket) => {
             room.zombies = generateZombies(room.obstacles, room._playerArr);
         }
         room._playerArr.forEach(p => {
-            p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
+            ARAmmo.refill(p, p.reserveMax); p.reloadReq = false; p.lastShotTime = 0;
             p.shooting = false; p.shootCooldown = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
             p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
             p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0; p.lastInputAt = 0; p.stalled = false;
@@ -2539,6 +2545,15 @@ io.on('connection', (socket) => {
         if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
         const p = r.room.players[socket.id];
         if (!p) return;
+        if (type === 'reserve') {
+            // the MUNITIE button: fills the reserve, for a flat price, as often as it is needed
+            if (p.reserve >= p.reserveMax) { socket.emit('upgrade-result', { ok: false, reason: 'full' }); return; }
+            if (p.coins < PVE_RESERVE_COST) { socket.emit('upgrade-result', { ok: false }); return; }
+            p.coins -= PVE_RESERVE_COST;
+            p.reserve = p.reserveMax;
+            socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
+            return;
+        }
         const def = PVE_UPGRADE_DEFS[type];
         if (!def) { socket.emit('upgrade-result', { ok: false }); return; }
         const count = p.pveUpgrades[type] || 0;

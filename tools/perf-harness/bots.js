@@ -64,7 +64,7 @@ class Bot {
     const bots = [];
     for (let i = 0; i < N; i++) { const b = new Bot(i, true); await b.connect(); bots.push(b); }
     const host = bots[0];
-    const data = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, weapon: WEAPON, mode: MODE, xp: 0, proto: 2 };
+    const data = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, weapon: WEAPON, mode: MODE, xp: 0, proto: require('../../public/netproto').PROTO };
     let code = JOIN;
     if (!code) {
         code = await new Promise(res => { host.s.once('room-created', ({ code }) => res(code)); host.s.emit('create-room', data); });
