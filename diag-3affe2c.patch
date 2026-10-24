@@ -1,0 +1,1859 @@
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/public/blackbox.js ar-diag/public/blackbox.js
+--- ar-3affe2c/public/blackbox.js	2026-10-24 16:50:13.000000000 +0000
++++ ar-diag/public/blackbox.js	2026-10-24 17:00:43.000000000 +0000
+@@ -15,8 +15,8 @@
+ //     and for how long; a late packet while the page was blocked is not the network's fault;
+ //   - the frame's own cost (js) against the time between frames: a long frame whose JS was short was waited on by
+ //     something else (GPU, raster, the system);
+-//   - the packets: a gap that ends in a burst, with every tick present and the page free, is the network; missing
+-//     tick numbers mean the server did not send them (a slow link's backpressure, or a loaded server).
++//   - the packets: a gap that ends in a burst, with every tick present and the page free, needs the server trace
++//     to distinguish late emission from buffering after emission; missing ticks need a server skip decision.
+ // ============================================
+ (function (root, factory) {
+     const api = factory(root);
+@@ -54,7 +54,7 @@
+         'frame-cost':  'Cadrul însuși a costat prea mult (JS sau desen): vezi câți zombi, gloanțe și jucători erau în scenă.',
+         'main-thread': 'Pagina a fost blocată în afara cadrului (alt script, extensie, GC sau sistemul): nu e rețeaua.',
+         'gc':          'Pagina a fost blocată, iar memoria JS a scăzut brusc în același timp: probabil garbage collection.',
+-        'network':     'Pachetele au fost întârziate și au sosit grămadă, cu pagina liberă și fără tick-uri lipsă: rețea sau WiFi.',
++        'network':     'Pachetele au sosit în rafală, cu pagina liberă și fără tickuri lipsă; urma serverului arată dacă au fost emise târziu sau reținute ulterior.',
+         'server-loop': 'Serverul însuși a fost blocat (event-loop) în același timp cu întârzierea pachetelor: nu e rețeaua ta.',
+         'server-ticks': 'Au lipsit tick-uri: serverul nu le-a trimis acestui client (backpressure pe o conexiune lentă, sau server încărcat).',
+         'render':      'Cadru lung fără blocare de JS: GPU, raster, compositor sau sistemul (termic, alt proces, vsync).',
+@@ -186,7 +186,7 @@
+         return { summary: summary, incidents: incidents, thresholds: { frameSpikeMs: r1(thrF), packetGapMs: r1(thrG), stallMs: STALL_MS, predictionErrorPx: CSP_BAD_PX } };
+     }
+ 
+-    const api = { on: false, analyze: analyze, CAUSES: CAUSES, WINDOW_MS: WINDOW_MS };
++    const api = { on: false, netActive: false, analyze: analyze, CAUSES: CAUSES, WINDOW_MS: WINDOW_MS };
+     if (typeof window === 'undefined' || typeof document === 'undefined') return api;
+ 
+     // ---------- the recorder (browser) ----------
+@@ -212,11 +212,17 @@
+     Ring.prototype.clear = function () { this.n = 0; this.i = 0; };
+ 
+     const frames = new Ring(3, 30000), packets = new Ring(7, 9000), cspR = new Ring(2, 9000), heapR = new Ring(2, 600), pingR = new Ring(2, 200), countsR = new Ring(4, 200);
++    let decodeR = null, handlerR = null, interpR = null, clockR = null; // allocated only after F8
+     let events = [];
+     let hooks = null, startedAt = 0, startedWall = 0, lastFrame = 0, lastPacket = 0, lastTick = -1, lastBeat = 0;
++    let netSession = null, serverReport = null, lastIncidentAsk = -Infinity, pendingSave = null, saveTimer = null;
++    let gameplayFinished = false;
++    let netCaptures = [];
++    let netClockTimer = null;
+     let beatTimer = 0, heapTimer = 0, countTimer = 0, clockTimer = 0, observer = null, indicator = null;
+ 
+     function toast(msg) { try { if (typeof root.showToast === 'function') root.showToast(msg); } catch (e) { /* no toast */ } }
++    function gameplayActive() { try { return !gameplayFinished && !!(hooks && hooks.isGameplayActive && hooks.isGameplayActive()); } catch (_) { return !gameplayFinished; } }
+     function pushEvent(t, type, dur, info) {
+         events.push({ t: t, type: type, dur: dur || 0, info: info === undefined ? null : info });
+         if (events.length > 1500) events = events.slice(-1000);
+@@ -232,6 +238,25 @@
+         const gap = lastPacket ? now - lastPacket : 0, tg = lastTick >= 0 ? tick - lastTick - 1 : 0;
+         lastPacket = now; lastTick = tick;
+         packets.push(now, tick, gap, tg, nPlayers, nBullets, nZombies);
++        if (netSession && gap > 50 && now - lastIncidentAsk > 30000 && hooks && hooks.socket) {
++            lastIncidentAsk = now;
++            const activeSession = netSession, activeSocket = hooks.socket;
++            setTimeout(function () { try {
++                if (api.netActive && netSession === activeSession && hooks && hooks.socket === activeSocket)
++                    activeSocket.emit('netdiag-incident', { tick: tick });
++            } catch (_) { endNet(); } }, 0);
++        }
++    };
++    api.decode = function (start, end, tick) {
++        if (api.netActive && Number.isInteger(tick)) decodeR.push(end, tick, start, end);
++    };
++    api.handler = function (end, tick, start, bufferLength, pendingInputs, interpDelay) {
++        if (!api.netActive) return;
++        handlerR.push(end, tick, end - start, bufferLength, pendingInputs, interpDelay);
++    };
++    api.interp = function (now, tick, age, delay, extrap, bufferLength) {
++        if (!api.netActive) return;
++        interpR.push(now, tick, age, delay, extrap, bufferLength);
+     };
+     api.csp = function (now, err) { cspR.push(now, err); };
+     // The pong carries the server's wall clock and its recent event-loop stalls. The offset between the two clocks is the one of the
+@@ -262,7 +287,8 @@
+     function sampleCounts() { if (hooks && hooks.counts) { const c = hooks.counts(); countsR.push(performance.now(), c[0], c[1], c[2]); } }
+     function onVis() { pushEvent(performance.now(), 'visibility', 0, document.visibilityState); }
+     function onResize() { pushEvent(performance.now(), 'resize', 0, [innerWidth, innerHeight]); }
+-    function onDisc(reason) { pushEvent(performance.now(), 'disconnect', 0, String(reason)); }
++    function endNet() { api.netActive = false; clearInterval(netClockTimer); netClockTimer = null; }
++    function onDisc(reason) { try { pushEvent(performance.now(), 'disconnect', 0, String(reason)); endNet(); } catch (_) { endNet(); } }
+     function onReconn() { pushEvent(performance.now(), 'reconnect', 0, null); }
+ 
+     function header() {
+@@ -291,6 +317,19 @@
+             window: { seconds: r1((now - t0) / 1000), wallStart: new Date(wallStart).toISOString(), wallEnd: new Date(wallNow).toISOString() },
+             header: header(), summary: analysis.summary, thresholds: analysis.thresholds, incidents: analysis.incidents,
+             series: { frames: rec.frames, packets: rec.packets, predictionError: rec.csp, heapBytes: rec.heap, pingMs: rec.pings, sceneCounts: rec.counts, events: rec.events },
++            netDiagnostic: {
++                session: netSession, server: serverReport,
++                captures: netCaptures,
++                decode: decodeR ? decodeR.rows(from, t0).map(function (row) { row[2] = r1(row[2] - t0); row[3] = r1(row[3] - t0); return row; }) : [],
++                handler: handlerR ? handlerR.rows(from, t0) : [],
++                interpolation: interpR ? interpR.rows(from, t0) : [], clock: clockR ? clockR.rows(from, 0) : [],
++                legend: {
++                    decode: '[t ms, tick, decode start ms, decode end ms]',
++                    handler: '[t ms, tick, handler duration ms, state buffer length, pending inputs, interpolation delay ms]',
++                    interpolation: '[t ms, selected tick, snapshot receive age ms, interpolation delay ms, extrapolating, state buffer length]',
++                    clock: '[client send performance.now ms, server receive performance.now ms, server send performance.now ms, client receive performance.now ms, corrected RTT ms, server minus client offset estimate ms, uncertainty at least RTT/2 ms]',
++                },
++            },
+             legend: {
+                 frames: '[t ms, ms since the previous frame, ms the frame\'s own work took]', packets: '[t ms, tick, ms since the previous packet, ticks missing, players, bullets, zombies]',
+                 predictionError: '[t ms, px]', heapBytes: '[t ms, used JS heap]', pingMs: '[t ms, rtt ms]', sceneCounts: '[t ms, zombies, bullets, players]',
+@@ -304,6 +343,23 @@
+     }
+     function save(reason) {
+         if (!api.on) return null;
++        pendingSave = reason;
++        scheduleSave();
++        return null;
++    }
++    function flushPendingSave() {
++        if (!pendingSave || gameplayActive()) return;
++        const reason = pendingSave;
++        clearInterval(saveTimer); saveTimer = null;
++        try { saveNow(reason); pendingSave = null; }
++        catch (_) { if (!saveTimer) saveTimer = setInterval(function () { try { flushPendingSave(); } catch (_) { endNet(); } }, 1000); }
++    }
++    function scheduleSave() {
++        if (!pendingSave) return;
++        if (!saveTimer) saveTimer = setInterval(function () { try { flushPendingSave(); } catch (_) { endNet(); } }, 1000);
++        setTimeout(function () { try { flushPendingSave(); } catch (_) { endNet(); } }, 0);
++    }
++    function saveNow(reason) {
+         const rep = snapshot(reason), d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+         const name = 'arena-blackbox-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.json';
+         root.__arBBLast = rep;
+@@ -319,7 +375,7 @@
+         indicator.className = 'bb-rec'; indicator.setAttribute('role', 'status');
+         document.body.appendChild(indicator);
+         paintIndicator();
+-        clockTimer = setInterval(paintIndicator, 1000);
++        clockTimer = setInterval(function () { try { paintIndicator(); } catch (_) { endNet(); } }, 1000);
+     }
+     function paintIndicator() {
+         if (!indicator) return;
+@@ -329,13 +385,20 @@
+     function hideIndicator() { clearInterval(clockTimer); if (indicator) { indicator.remove(); indicator = null; } }
+ 
+     api.start = function () {
+-        if (api.on || !hooks) return false;
+-        frames.clear(); packets.clear(); cspR.clear(); heapR.clear(); pingR.clear(); countsR.clear(); events = [];
++        if (api.on || !hooks || pendingSave) return false;
++        frames.clear(); packets.clear(); cspR.clear(); heapR.clear(); pingR.clear(); countsR.clear();
++        decodeR = null; handlerR = null; interpR = null; clockR = null;
++        events = [];
++        netSession = null; serverReport = null; netCaptures = []; lastIncidentAsk = -Infinity;
++        api.netActive = false;
+         lastFrame = 0; lastPacket = 0; lastTick = -1;
+         startedAt = performance.now(); startedWall = Date.now(); lastBeat = startedAt;
+         api.on = true;
+-        beatTimer = setInterval(beat, BEAT_MS); heapTimer = setInterval(sampleHeap, 250); countTimer = setInterval(sampleCounts, 1000);
+-        try { observer = new PerformanceObserver(function (list) { list.getEntries().forEach(function (e) { pushEvent(e.startTime, 'longtask', e.duration); }); }); observer.observe({ entryTypes: ['longtask'] }); } catch (e) { observer = null; }
++        if (hooks.socket) try { hooks.socket.emit('netdiag-start'); } catch (_) {}
++        beatTimer = setInterval(function () { try { beat(); } catch (_) { endNet(); } }, BEAT_MS);
++        heapTimer = setInterval(function () { try { sampleHeap(); } catch (_) { endNet(); } }, 250);
++        countTimer = setInterval(function () { try { sampleCounts(); } catch (_) { endNet(); } }, 1000);
++        try { observer = new PerformanceObserver(function (list) { try { list.getEntries().forEach(function (e) { pushEvent(e.startTime, 'longtask', e.duration); }); } catch (_) { endNet(); } }); observer.observe({ entryTypes: ['longtask'] }); } catch (e) { observer = null; }
+         document.addEventListener('visibilitychange', onVis); window.addEventListener('resize', onResize);
+         showIndicator();
+         toast('Black box pornit. F9 salvează acum, F8 oprește și salvează.');
+@@ -343,34 +406,121 @@
+     };
+     api.stop = function (saveReport) {
+         if (!api.on) return null;
+-        const rep = saveReport ? save('stop') : null;
++        let rep = null;
++        try { if (saveReport) rep = save('stop'); } catch (_) {}
++        if (hooks && hooks.socket && netSession) try { hooks.socket.emit('netdiag-stop'); } catch (_) {}
++        endNet();
+         api.on = false;
+         clearInterval(beatTimer); clearInterval(heapTimer); clearInterval(countTimer);
+-        if (observer) { observer.disconnect(); observer = null; }
+-        document.removeEventListener('visibilitychange', onVis); window.removeEventListener('resize', onResize);
+-        hideIndicator();
++        if (observer) { try { observer.disconnect(); } catch (_) {} observer = null; }
++        try { document.removeEventListener('visibilitychange', onVis); } catch (_) {}
++        try { window.removeEventListener('resize', onResize); } catch (_) {}
++        try { hideIndicator(); } catch (_) {}
+         return rep;
+     };
+-    api.save = function (reason) { return save(reason || 'manual'); };
+-    api.report = function () { return api.on ? snapshot('api') : null; };
++    api.save = function (reason) { try { return save(reason || 'manual'); } catch (_) { endNet(); return null; } };
++    api.report = function () { try { return api.on && !gameplayActive() ? snapshot('api') : null; } catch (_) { endNet(); return null; } };
++    api.gameplayEnded = function () { gameplayFinished = true; scheduleSave(); };
++    api.hasPendingSave = function () { return !!pendingSave; };
++    api.whenSaved = function (timeoutMs) {
++        if (!pendingSave) return Promise.resolve();
++        return new Promise(function (resolve) {
++            let poll, deadline;
++            function done() { clearInterval(poll); clearTimeout(deadline); resolve(); }
++            poll = setInterval(function () { if (!pendingSave) done(); }, 20);
++            deadline = setTimeout(done, timeoutMs || 2000);
++        });
++    };
++
++    function onNetReady(data) {
++        if (!api.on || !data || typeof data.session !== 'string') return;
++        netSession = data.session;
++        decodeR = new Ring(4, 9000); handlerR = new Ring(6, 9000);
++        interpR = new Ring(6, 12000); clockR = new Ring(7, 200);
++        api.netActive = true;
++        clearInterval(netClockTimer);
++        const ping = function () { try { if (api.netActive && hooks && hooks.socket) hooks.socket.emit('netdiag-ping', performance.now()); } catch (_) { endNet(); } };
++        ping();
++        netClockTimer = setInterval(ping, 2000);
++    }
++    function onNetPong(clientSend, serverReceive, serverSend) {
++        if (!api.on || !netSession) return;
++        const clientReceive = performance.now();
++        const correctedRtt = (clientReceive - clientSend) - (serverSend - serverReceive);
++        if (!Number.isFinite(correctedRtt) || correctedRtt < 0) return;
++        const offset = ((serverReceive - clientSend) + (serverSend - clientReceive)) / 2;
++        clockR.push(clientSend, serverReceive, serverSend, clientReceive, correctedRtt, offset, correctedRtt / 2);
++    }
++    function onNetReport(data) {
++        if (!api.on || !data || data.session !== netSession) return;
++        serverReport = data;
++        if (data.ok) {
++            // Keep a small incident window while the long report is deferred until match end.
++            setTimeout(function () { try {
++                if (!api.on || netSession !== data.session) return;
++                const from = performance.now() - 8000;
++                netCaptures.push({ id: data.id, incidentTick: data.incidentTick,
++                    packets: packets.rows(from, startedAt),
++                    decode: decodeR ? decodeR.rows(from, startedAt) : [],
++                    handler: handlerR ? handlerR.rows(from, startedAt) : [],
++                    clock: clockR ? clockR.rows(from, 0) : [] });
++                if (netCaptures.length > 3) netCaptures.shift();
++                save('netdiag-incident');
++            } catch (_) { endNet(); } }, 50);
++        }
++    }
++    function onNetQueued(data) {
++        if (api.on && data && data.session === netSession)
++            serverReport = { id: data.id, session: data.session, incidentTick: data.incidentTick, status: 'queued' };
++    }
++    function onNetEnded(data) { if (data && data.session === netSession) { endNet(); scheduleSave(); } }
+ 
+     function onKey(e) {
+         if (e.repeat) return;
+         if (e.key === 'F8') { e.preventDefault(); if (api.on) api.stop(true); else api.start(); }
+         else if (e.key === 'F9') { e.preventDefault(); if (api.on) save('F9'); else toast('Pornește black box-ul cu F8, apoi F9 salvează.'); }
+     }
++    function safeCallback(fn) { return function () { try { return fn.apply(null, arguments); } catch (_) { endNet(); } }; }
++    const safeReady = safeCallback(onNetReady), safePong = safeCallback(onNetPong);
++    const safeReport = safeCallback(onNetReport), safeQueued = safeCallback(onNetQueued), safeEnded = safeCallback(onNetEnded);
++    const safeKey = safeCallback(onKey), safeReconn = safeCallback(onReconn);
+     // game.js: attach({ socket, meta(): extra header fields, counts(): [zombies, bullets, players] }) when a match starts
+     api.attach = function (h) {
+         api.detach();
+         hooks = h;
+-        window.addEventListener('keydown', onKey);
+-        if (h.socket) { h.socket.on('disconnect', onDisc); if (h.socket.io) h.socket.io.on('reconnect', onReconn); }
++        gameplayFinished = false;
++        window.addEventListener('keydown', safeKey);
++        if (h.socket) {
++            h.socket.on('disconnect', onDisc);
++            h.socket.on('netdiag-ready', safeReady);
++            h.socket.on('netdiag-pong', safePong);
++            h.socket.on('netdiag-export-ready', safeReport);
++            h.socket.on('netdiag-export-failed', safeReport);
++            h.socket.on('netdiag-export-queued', safeQueued);
++            h.socket.on('netdiag-ended', safeEnded);
++            if (h.socket.io) h.socket.io.on('reconnect', safeReconn);
++        }
+     };
+     api.detach = function () {   // the match is over: save what there is and stop
+-        window.removeEventListener('keydown', onKey);
++        gameplayFinished = true;
++        window.removeEventListener('keydown', safeKey);
+         if (api.on) api.stop(true);
+-        if (hooks && hooks.socket) { try { hooks.socket.off('disconnect', onDisc); if (hooks.socket.io) hooks.socket.io.off('reconnect', onReconn); } catch (e) { /* socket gone */ } }
++        if (hooks && hooks.socket) { try {
++            hooks.socket.off('disconnect', onDisc);
++            hooks.socket.off('netdiag-ready', safeReady);
++            hooks.socket.off('netdiag-pong', safePong);
++            hooks.socket.off('netdiag-export-ready', safeReport);
++            hooks.socket.off('netdiag-export-failed', safeReport);
++            hooks.socket.off('netdiag-export-queued', safeQueued);
++            hooks.socket.off('netdiag-ended', safeEnded);
++            if (hooks.socket.io) hooks.socket.io.off('reconnect', safeReconn);
++        } catch (e) { /* socket gone */ } }
+         hooks = null;
++        scheduleSave();
+     };
++    for (const name of ['frame', 'packet', 'decode', 'handler', 'interp', 'csp', 'ping', 'event']) {
++        const original = api[name];
++        api[name] = function () { try { return original.apply(api, arguments); } catch (_) { endNet(); return undefined; } };
++    }
+     return api;
+ });
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/public/game.js ar-diag/public/game.js
+--- ar-3affe2c/public/game.js	2026-10-24 16:50:13.000000000 +0000
++++ ar-diag/public/game.js	2026-10-24 17:00:43.000000000 +0000
+@@ -1334,7 +1334,7 @@
+     overlay.innerHTML = `
+         <div class="ar-forcelogout-title">${ico('triangle-alert')}Deconectat</div>
+         <div class="ar-forcelogout-msg">${msg}</div>
+-        <button onclick="location.reload()">OK</button>
++        <button onclick="reloadAfterDiagnostic()">OK</button>
+     `;
+     document.body.appendChild(overlay);
+ }
+@@ -1357,7 +1357,17 @@
+     overlay.className = 'ar-forcelogout ar-newbuild';
+     overlay.innerHTML = `<div class="ar-forcelogout-title">${ico('refresh-cw')}Versiune nouă, se reîncarcă...</div>`;
+     document.body.appendChild(overlay);
+-    setTimeout(() => location.reload(), 2000);
++    setTimeout(reloadAfterDiagnostic, 2000);
++}
++function reloadAfterDiagnostic() {
++    const bb = window.ARBlackBox;
++    const hasReport = bb && (bb.on || (typeof bb.hasPendingSave === 'function' && bb.hasPendingSave()));
++    if (!hasReport || !window._gameCleanup) { location.reload(); return; }
++    try {
++        window._gameCleanup();
++        window._gameCleanup = null;
++        bb.whenSaved(2000).then(() => location.reload(), () => location.reload());
++    } catch (_) { location.reload(); }
+ }
+ function _watchBuild(socket) {
+     socket.on('build', _checkBuild);
+@@ -1513,7 +1523,7 @@
+ }
+ 
+ function logoutToAuth() {
+-    location.reload();
++    reloadAfterDiagnostic();
+ }
+ 
+ async function doLogin() {
+@@ -3196,7 +3206,7 @@
+         document.getElementById('game-ui').style.display     = _isPve ? 'none' : 'block';
+     });
+ 
+-    socket.on('game-reset', () => { location.reload(); });
++    socket.on('game-reset', reloadAfterDiagnostic);
+ 
+     window._gameSocket = socket;
+ }
+@@ -3581,9 +3591,10 @@
+     window.addEventListener('keydown', _onDbgKey);
+ 
+     // Lag black box (blackbox.js): F8 starts it in a match. The hooks below cost one check while it is off.
+-    const _BB = window.ARBlackBox || { on: false, attach() {}, detach() {}, frame() {}, packet() {}, csp() {}, ping() {}, event() {} };
+-    _BB.attach({
++    const _BB = window.ARBlackBox || { on: false, attach() {}, detach() {}, gameplayEnded() {}, frame() {}, packet() {}, csp() {}, ping() {}, event() {} };
++    try { _BB.attach({
+         socket,
++        isGameplayActive: () => !gameEnded || isSpectating,
+         meta: () => ({ mode: _gameMode, weapon: selectedWeapon, resolutionStep: _RS.idx, resolutionScale: _rsScale(), canvas: [canvas.width, canvas.height] }),
+         counts: () => {
+             let z = 0;
+@@ -3591,7 +3602,7 @@
+             const e = stateBuffer[stateBuffer.length - 1];
+             return [z, e ? e.bullets.length : 0, e ? Object.keys(e.players).length : 0];
+         },
+-    });
++    }); } catch (_) { _BB.on = false; _BB.netActive = false; }
+ 
+     // Ping RTT measurement — trimis la fiecare 2s, server echoueaza timestamp
+     socket.on('c-pong', (t, srvNow, srvStalls) => { _pingRtt = Math.round(performance.now() - t); if (_BB.on) _BB.ping(performance.now(), _pingRtt, srvNow, srvStalls); });
+@@ -3864,12 +3875,12 @@
+         window.removeEventListener('keydown', onKeyDown);
+         window.removeEventListener('keyup',   onKeyUp);
+         window.removeEventListener('keydown', _onDbgKey);
+-        _BB.detach();   // saves the report if it was running
+         canvas.removeEventListener('pointermove',  onPointerMove);
+         canvas.removeEventListener('pointerleave', onPointerLeave);
+         canvas.removeEventListener('pointerdown',  onPointerDown);
+         canvas.removeEventListener('pointerup',    onPointerUp);
+         if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
++        try { _BB.gameplayEnded(); _BB.detach(); } catch (_) { _BB.on = false; _BB.netActive = false; }
+         clearInterval(_pingInterval);
+         moveDir.x = 0; moveDir.y = 0;
+         isShooting = false;
+@@ -3928,6 +3939,7 @@
+ 
+     const _own = { ammo: 0, max: 0, reloading: false, reloadProgress: 1, ack: 0, coins: 0 };
+     socket.on(ARNet.EVENT, (pk) => {
++        const _handlerStart = _BB.netActive ? performance.now() : 0;
+         // [tick, players, bullets, zombies, kits, zone, pve, own]: see public/netproto.js
+         const tickNo = pk[0], pFlat = pk[1], bFlat = pk[2], zArr = pk[3], kArr = pk[4], zone2 = pk[5], pve2 = pk[6], ownRow = pk[7];
+ 
+@@ -4163,6 +4175,8 @@
+             latestHp[pid]  = p.hp;
+         }
+ 
++        if (_BB.netActive) _BB.handler(performance.now(), tickNo, _handlerStart, stateBuffer.length, _pendingInputs.length, _interpShow);
++
+     });
+ 
+     socket.on('kill-event', ({ killerName, victimName, byZone, victimId }) => {
+@@ -4581,6 +4595,7 @@
+     });
+ 
+     socket.on('game-rematch', ({ isHost, playersMeta }) => {
++        try { _BB.gameplayEnded(); if (_BB.on) _BB.stop(true); } catch (_) { _BB.on = false; _BB.netActive = false; }
+         resetForNewGame();
+         if (playersMeta) {
+             Object.assign(playerMeta, playersMeta);
+@@ -4633,6 +4648,7 @@
+         const t = loc.t;
+         const extrapolating = t > 1;
+         const nowMs = performance.now();
++        if (_BB.netActive) _BB.interp(nowMs, Math.round(sNew.st / EMIT_MS), nowMs - sNew.t, _interpShow, extrapolating ? 1 : 0, stateBuffer.length);
+ 
+         _ISActiveIds.clear();
+         for (const id in sOld.players) {
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/public/socket-msgpack-parser.js ar-diag/public/socket-msgpack-parser.js
+--- ar-3affe2c/public/socket-msgpack-parser.js	2026-10-24 16:50:13.000000000 +0000
++++ ar-diag/public/socket-msgpack-parser.js	2026-10-24 17:00:43.000000000 +0000
+@@ -222,7 +222,13 @@
+     function Decoder() {}
+     Emitter(Decoder.prototype);
+     Decoder.prototype.add = function (obj) {
++        var diag = global.ARBlackBox;
++        var started = diag && diag.netActive ? performance.now() : 0;
+         var decoded = notepack.decode(obj);
++        if (started && decoded && decoded.data && decoded.data[0] === 'gs2') {
++            try { diag.decode(started, performance.now(), decoded.data[1] && decoded.data[1][0]); }
++            catch (_) { diag.netActive = false; }
++        }
+         this.checkPacket(decoded);
+         this.emit('decoded', decoded);
+     };
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/server-gs.js ar-diag/server-gs.js
+--- ar-3affe2c/server-gs.js	2026-10-24 16:50:13.000000000 +0000
++++ ar-diag/server-gs.js	2026-10-24 17:00:43.000000000 +0000
+@@ -13,6 +13,10 @@
+ const ARNet = require('./public/netproto');
+ 
+ function createGsWriter(msgpack, sharedCount) {
++    // A probe is observational: even a faulty implementation cannot prevent gs2.
++    function probe(diag, method, ...args) {
++        if (diag) try { diag[method](...args); } catch (_) { try { diag.fail(_); } catch (_) {} }
++    }
+     const event = ARNet.EVENT, total = sharedCount + 1;
+     let prefix = null, suffix = null, header = null;
+     try {
+@@ -42,12 +46,24 @@
+         // sharedArr: the shared payload elements (sharedCount of them). Returns what send() needs.
+         begin(sharedArr) { return fast ? msgpack.encode(sharedArr).subarray(1) : sharedArr; },
+         // socket: a socket.io server Socket; ownRow: its own row. Bytes written for the PERF probe.
+-        send(socket, shared, ownRow) {
+-            if (!fast) { socket.emit(event, shared.concat([ownRow])); return 0; }
++        send(socket, shared, ownRow, diag, slot) {
++            if (!fast) {
++                probe(diag, 'decision', slot, 'fallback');
++                socket.emit(event, shared.concat([ownRow])); return 0;
++            }
+             const conn = socket.client;
+-            if (conn.conn.readyState !== 'open') return 0;
+-            const buf = Buffer.concat([prefix, header, shared, msgpack.encode(ownRow), suffix]);
++            if (conn.conn.readyState !== 'open') {
++                probe(diag, 'decision', slot, 'closed');
++                return 0;
++            }
++            const ownStart = diag ? performance.now() : 0;
++            const ownBytes = msgpack.encode(ownRow);
++            const ownEncodeEnd = diag ? performance.now() : 0;
++            const buf = Buffer.concat([prefix, header, shared, ownBytes, suffix]);
++            const ownEnd = diag ? performance.now() : 0;
++            probe(diag, 'beforeWrite', slot, buf, ownStart, ownEncodeEnd, ownEnd, conn);
+             conn.writeToEngine(buf, {});
++            probe(diag, 'afterWrite', slot, conn);
+             return buf.length;
+         },
+     };
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/server.js ar-diag/server.js
+--- ar-3affe2c/server.js	2026-10-24 16:50:13.000000000 +0000
++++ ar-diag/server.js	2026-10-24 17:00:43.000000000 +0000
+@@ -17,6 +17,13 @@
+ const { createGsWriter } = require('./server-gs');
+ const notepack = require('notepack.io');             // the encoder socket.io-msgpack-parser uses
+ const GS = createGsWriter(notepack, 7);               // 7 shared elements + the client's own row
++const { NetDiagnostic, COL: NET_COL } = require('./tools/net-diagnostic');
++const NET_DIAG = new NetDiagnostic(undefined, { isAuthorized: (socket, userId) => {
++    const proof = diagSocketProof.get(socket);
++    return !!supabase && !!proof && proof.id === userId &&
++        proof.nickname === socket._nickname && sessionTokens.get(proof.nickname) === proof.token &&
++        connectedAccounts.get(proof.nickname) === socket.id;
++} }); // inert unless enabled and the live Supabase identity was verified
+ // PERF=1: per-second game loop stats to perf.jsonl (tools/perf-probe.js); nothing runs without it
+ const PERF = process.env.PERF === '1' ? require('./tools/perf-probe') : null;
+ 
+@@ -171,6 +178,8 @@
+ // ---------- SESSION TOKENS ----------
+ // nickname → token  (in-memory; se goleste la restart server)
+ const sessionTokens = new Map();
++const diagVerifiedSessions = new Map(); // nickname -> { token, id }, only after real password verification
++const diagSocketProof = new WeakMap();
+ 
+ // Who is asking: a logged-in client proves it with the session token issued at login/register (an in-memory check, no
+ // hashing). The password is still accepted, for pages loaded before this change (the build check reloads them on their
+@@ -281,6 +290,7 @@
+     if (!supabase) {
+         const token = crypto.randomBytes(32).toString('hex');
+         sessionTokens.set(nickname, token);
++        diagVerifiedSessions.delete(nickname);
+         if (!ownedSkins.has(nickname)) ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
+         const skin = skinFromAvatar(memAvatars.get(nickname), nickname);
+         return res.json({ ok: true, token, player: { nickname, avatar: skin, skin, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname), weapon_stats: sanitizeWeaponStats(weaponStatsMem.get(nickname)),
+@@ -299,6 +309,10 @@
+ 
+         const token = crypto.randomBytes(32).toString('hex');
+         sessionTokens.set(existing.nickname, token);
++        if (NET_DIAG.enabled && NET_DIAG.allowedUserId && existing.id !== null &&
++            existing.id !== undefined && String(existing.id) === NET_DIAG.allowedUserId)
++            diagVerifiedSessions.set(existing.nickname, { token, id: String(existing.id) });
++        else diagVerifiedSessions.delete(existing.nickname);
+ 
+         // Misiuni zilnice: sase din pool, alese pe zi (missions.js)
+         const missions = await missionsForLogin(existing.nickname);
+@@ -374,6 +388,7 @@
+         }
+         const token = crypto.randomBytes(32).toString('hex');
+         sessionTokens.set(nickname, token);
++        diagVerifiedSessions.delete(nickname); // registration does not return a verified user ID
+         const missions = await missionsForLogin(nickname);
+         ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
+         weaponSkinMem.delete(nickname);
+@@ -1579,7 +1594,9 @@
+     let tickNo = 0;
+     let next = performance.now() + INTERVAL_MS; // when the next tick is due
+ 
+-    function tick(lateMs) {
++    function tick(lateMs, scheduledDue) {
++        const _netState = NET_DIAG.forRoom(code);
++        const _netStart = _netState ? performance.now() : 0;
+         const tickStart = Date.now();
+         if (PERF) PERF.tickStart(room, lateMs);
+         try {
+@@ -2160,6 +2177,7 @@
+             // What every client shares is packed and encoded ONCE per tick; each client then gets its own small row
+             // appended (server-gs.js). Positions travel as quarter pixels, players are named by their slot number,
+             // only live zombies are listed (one missing from the packet has died: game.js).
++            const _netPackStart = _netState ? performance.now() : 0;
+             ARNet.packPlayers(_pScratch, allPlayers);
+             ARNet.packBullets(_bScratch, room.bullets, false);
+             ARNet.packBullets(_bScratch, _expiredBullets, true);
+@@ -2167,7 +2185,22 @@
+             ARNet.packKits(_kScratch, room.healthKits, now);
+             if (PERF) PERF.mark(room, 'snapshot');
+             tickNo++;
+-            const _shared = GS.begin([tickNo, _pScratch, _bScratch, _zScratch, _kScratch, ARNet.packZone(zone), ARNet.packPve(room)]);
++            const _zoneRow = ARNet.packZone(zone), _pveRow = ARNet.packPve(room);
++            const _netSlot = _netState ? NET_DIAG.begin(_netState, tickNo, scheduledDue, _netStart, _netStart - scheduledDue) : -1;
++            const _netEncodeStart = _netSlot >= 0 ? performance.now() : 0;
++            if (_netSlot >= 0) {
++                NET_DIAG.mark(_netSlot, NET_COL.simEnd, _netPackStart);
++                NET_DIAG.mark(_netSlot, NET_COL.packStart, _netPackStart);
++                if (_netPackStart - _netStart > 50) NET_DIAG.incident(_netState.socket, tickNo, 'server-simulation');
++                NET_DIAG.mark(_netSlot, NET_COL.encodeStart, _netEncodeStart);
++                if (_netEncodeStart - _netPackStart > 50) NET_DIAG.incident(_netState.socket, tickNo, 'server-snapshot');
++            }
++            const _shared = GS.begin([tickNo, _pScratch, _bScratch, _zScratch, _kScratch, _zoneRow, _pveRow]);
++            if (_netSlot >= 0) {
++                const _netPackEnd = performance.now();
++                NET_DIAG.mark(_netSlot, NET_COL.encodeEnd, _netPackEnd);
++                if (_netPackEnd - _netEncodeStart > 50) NET_DIAG.incident(_netState.socket, tickNo, 'server-encoding');
++            }
+             let _sentBytes = 0;
+             // Slow clients: the newest state only, never a queue of old ones. A client is skipped this tick when
+             //  - its connection has more than BACKLOG_BYTES waiting to be written (it is not reading fast enough), or
+@@ -2176,6 +2209,8 @@
+             //    every KEEPALIVE_MS, so the first thing it sees on coming back is the latest state.
+             // (Dead players, the countdown and PvE breaks send no inputs: those are not counted as silence.)
+             for (const p of allPlayers) {
++                const _netTarget = _netSlot >= 0 && p.id === _netState.socketId;
++                const _netAge = _netTarget && p.lastInputAt ? tickStart - p.lastInputAt : -1;
+                 let silentSkip = false;
+                 if (!p.alive || room.countdownActive || room.pveWaveBreak || room.gameEnded || !p.lastInputAt) {
+                     if (p.lastInputAt) p.lastInputAt = tickStart;
+@@ -2188,17 +2223,27 @@
+                     } else if (p.stalled) { p.stalled = false; console.log('[' + code + '] ' + p.name + ': raspunde din nou'); }
+                 }
+                 const sock = io.sockets.sockets.get(p.id);
+-                if (!sock) continue;
++                if (!sock) {
++                    if (_netTarget) NET_DIAG.decision(_netSlot, 'noSocket', _netAge);
++                    continue;
++                }
+                 const ws = sock.conn && sock.conn.transport && sock.conn.transport.socket, raw = ws && ws._socket;
+                 if (raw && raw.writableLength > BACKLOG_BYTES) {
++                    if (_netTarget) NET_DIAG.sample(_netSlot, sock.client, false);
++                    if (_netTarget) NET_DIAG.decision(_netSlot, 'rawBacklog', _netAge);
+                     if (!p.backlogged) { p.backlogged = true; console.log('[' + code + '] ' + p.name + ': conexiune lenta (' + raw.writableLength + ' B in asteptare), primeste doar ultima stare'); }
+                     continue;
+                 } else if (p.backlogged) { p.backlogged = false; console.log('[' + code + '] ' + p.name + ': conexiunea s-a eliberat'); }
+                 if (silentSkip) {
+-                    if (tickStart < p.nextKeepAt) continue;
++                    if (tickStart < p.nextKeepAt) {
++                        if (_netTarget) NET_DIAG.sample(_netSlot, sock.client, false);
++                        if (_netTarget) NET_DIAG.decision(_netSlot, 'silent', _netAge);
++                        continue;
++                    }
+                     p.nextKeepAt = tickStart + KEEPALIVE_MS;
+                 }
+-                const n = GS.send(sock, _shared, ARNet.packOwn(p));
++                if (_netTarget) NET_DIAG.mark(_netSlot, NET_COL.inputAge, _netAge);
++                const n = GS.send(sock, _shared, ARNet.packOwn(p), _netTarget ? NET_DIAG : null, _netSlot);
+                 if (n) _sentBytes = n;
+             }
+             if (PERF) {
+@@ -2224,7 +2269,8 @@
+         if (!room.gameStarted || !rooms.has(code) || room.gameEnded) return;
+         const now = performance.now();
+         if (now - next > INTERVAL_MS * MAX_CATCHUP) next = now;   // far behind (a long stall): drop the backlog
+-        if (now >= next) { tick(now - next); next += INTERVAL_MS; }
++        const scheduledDue = next;
++        if (now >= next) { tick(now - next, scheduledDue); next += INTERVAL_MS; }
+         if (!room.gameStarted || !rooms.has(code) || room.gameEnded) return;
+         const remaining = next - performance.now();
+         if (SPIN) {
+@@ -2301,6 +2347,8 @@
+ }
+ 
+ function triggerRematch(code, room) {
++    const diagState = NET_DIAG.forRoom(code);
++    if (diagState) { try { diagState.socket.emit('netdiag-ended', { session: diagState.session, reason: 'rematch' }); } catch (_) {} NET_DIAG.release(diagState.socket); }
+     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
+     room.gameStarted  = false;
+     room.gameEnded    = false;
+@@ -2349,6 +2397,8 @@
+ }
+ 
+ function closeRoom(code, room) {
++    const diagState = NET_DIAG.forRoom(code);
++    if (diagState) { try { diagState.socket.emit('netdiag-ended', { session: diagState.session, reason: 'room-closed' }); } catch (_) {} NET_DIAG.release(diagState.socket); }
+     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); }
+     io.to(code).emit('game-reset');
+     rooms.delete(code);
+@@ -2383,6 +2433,9 @@
+         }
+         connectedAccounts.set(nickname, socket.id);
+         socket._nickname = nickname;
++        const verified = diagVerifiedSessions.get(nickname);
++        if (verified && verified.token === token) diagSocketProof.set(socket, { ...verified, nickname });
++        else diagSocketProof.delete(socket);
+         // Notify friends this player is online + send back which friends are online
+         notifyFriendsPresence(nickname, 'friend-online');
+         getFriendNicknames(nickname).then(friends => {
+@@ -2523,6 +2576,36 @@
+     // the echo, plus the server's clock and its recent event-loop stalls (the client's black box uses them; the game ignores them)
+     socket.on('c-ping', (t) => { const now = Date.now(); socket.emit('c-pong', t, now, _srvStalls.filter(x => now - x[0] < 6000)); });
+ 
++    // Explicitly opt in from Blackbox. One selected socket globally, no snapshots changed.
++    const diagRate = { start: -Infinity, incident: -Infinity, ping: -Infinity };
++    function diagAllow(kind, gap) {
++        const now = performance.now();
++        if (now - diagRate[kind] < gap) return false;
++        diagRate[kind] = now; return true;
++    }
++    socket.on('netdiag-start', async () => { try {
++        if (!NET_DIAG.enabled || !supabase || !NET_DIAG.allowedUserId || !diagAllow('start', 10000)) return;
++        const proof = diagSocketProof.get(socket);
++        if (!proof || proof.id !== NET_DIAG.allowedUserId || !NET_DIAG.isAuthorized(socket, proof.id)) return;
++        const { data, error } = await supabase.from('players').select('id,nickname').eq('id', proof.id).maybeSingle();
++        if (error || !data || String(data.id) !== proof.id || data.nickname !== proof.nickname ||
++            !socket.connected || !NET_DIAG.isAuthorized(socket, proof.id)) return;
++        const r = fastGetRoom(socket);
++        if (!r || !r.room.gameStarted) return;
++        const session = NET_DIAG.claim(socket, r.code);
++        if (session) socket.emit('netdiag-ready', { session });
++    } catch (error) { NET_DIAG.fail(error); } });
++    socket.on('netdiag-incident', data => { try {
++        if (!NET_DIAG.active || NET_DIAG.active.socket !== socket || !data || !Number.isSafeInteger(data.tick) || data.tick < 0 || !diagAllow('incident', 30000)) return;
++        NET_DIAG.incident(socket, data.tick, 'client-gap');
++    } catch (error) { NET_DIAG.fail(error); } });
++    socket.on('netdiag-ping', sent => { try {
++        if (!NET_DIAG.active || NET_DIAG.active.socket !== socket || !Number.isFinite(sent) || !diagAllow('ping', 1500)) return;
++        const received = performance.now();
++        socket.emit('netdiag-pong', sent, received, performance.now());
++    } catch (error) { NET_DIAG.fail(error); } });
++    socket.on('netdiag-stop', () => NET_DIAG.release(socket));
++
+     socket.on('pve-skip', () => {
+         const r = fastGetRoom(socket);
+         if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
+@@ -2552,6 +2635,7 @@
+     });
+ 
+     socket.on('disconnect', () => {
++        NET_DIAG.release(socket);
+         if (socket._nickname && connectedAccounts.get(socket._nickname) === socket.id) {
+             connectedAccounts.delete(socket._nickname);
+             notifyFriendsPresence(socket._nickname, 'friend-offline');
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/tools/net-diagnostic-export-worker.js ar-diag/tools/net-diagnostic-export-worker.js
+--- ar-3affe2c/tools/net-diagnostic-export-worker.js	1970-01-01 00:00:00.000000000 +0000
++++ ar-diag/tools/net-diagnostic-export-worker.js	2026-10-24 10:52:45.000000000 +0000
+@@ -0,0 +1,63 @@
++// Runs only when the server diagnostic is explicitly enabled. No game socket traffic.
++const { parentPort } = require('worker_threads');
++const { promises: fs } = require('fs');
++const path = require('path');
++const MAX_FILES = 20;
++
++async function prune(dir) {
++    const all = await fs.readdir(dir);
++    // A killed worker can leave a temporary file; remove it after the next start.
++    for (const name of all.filter(name => /^\.arena-netdiag-[0-9a-f]{24}\.tmp$/.test(name))) {
++        try { if (Date.now() - (await fs.stat(path.join(dir, name))).mtimeMs > 3600000) await fs.unlink(path.join(dir, name)); } catch (_) {}
++    }
++    const names = all.filter(name => /^arena-netdiag-[0-9a-f]{24}\.json$/.test(name));
++    if (names.length <= MAX_FILES) return;
++    const dated = await Promise.all(names.map(async name => {
++        try { return { name, mtime: (await fs.stat(path.join(dir, name))).mtimeMs }; }
++        catch (_) { return null; }
++    }));
++    const sorted = dated.filter(Boolean).sort((a, b) => a.mtime - b.mtime);
++    for (const old of sorted.slice(0, Math.max(0, sorted.length - MAX_FILES)))
++        try { await fs.unlink(path.join(dir, old.name)); } catch (_) {}
++}
++
++parentPort.on('message', async message => {
++    const { id, dir, session, incidentTick, reason, wallEnd, serverNow,
++        columns, decisions, rows, events } = message;
++    try {
++        await fs.mkdir(dir, { recursive: true, mode: 0o700 });
++        const realDir = await fs.realpath(dir);
++        const realPublic = await fs.realpath(path.join(__dirname, '..', 'public'));
++        const compare = value => process.platform === 'win32' ? value.toLowerCase() : value;
++        if (compare(realDir) === compare(realPublic) || compare(realDir).startsWith(compare(realPublic + path.sep)))
++            throw new Error('diagnostic directory is public');
++        const stat = await fs.stat(dir);
++        if (!stat.isDirectory() || (process.platform !== 'win32' &&
++            ((stat.mode & 0o077) || (typeof process.getuid === 'function' && stat.uid !== process.getuid()))))
++            throw new Error('diagnostic directory is not private');
++        const width = columns.length, data = [];
++        for (let i = 0; i < rows.length; i += width) data.push(Array.from(rows.subarray(i, i + width)));
++        const eventRows = [];
++        for (let i = 0; i < events.length; i += 3) eventRows.push(Array.from(events.subarray(i, i + 3)));
++        const report = { version: 2, session, incidentTick, reason, wallEnd, serverNow,
++            columns, decisions, events: eventRows, rows: data };
++        const file = path.join(dir, `arena-netdiag-${id}.json`);
++        const temp = path.join(dir, `.arena-netdiag-${id}.tmp`);
++        let handle;
++        try {
++            handle = await fs.open(temp, 'wx', 0o600);
++            await handle.writeFile(JSON.stringify(report));
++            await handle.sync();
++            await handle.close(); handle = null;
++            await fs.link(temp, file); // atomic publication; never overwrite an existing report
++        } finally {
++            if (handle) await handle.close();
++            try { await fs.unlink(temp); } catch (_) {}
++        }
++        try { await prune(dir); } catch (_) { /* the export itself succeeded */ }
++        parentPort.postMessage({ id, ok: true, session, incidentTick, reason });
++    } catch (error) {
++        parentPort.postMessage({ id, ok: false, session, incidentTick, reason,
++            error: error && error.code ? String(error.code) : 'EXPORT_FAILED' });
++    }
++});
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/tools/net-diagnostic.js ar-diag/tools/net-diagnostic.js
+--- ar-3affe2c/tools/net-diagnostic.js	1970-01-01 00:00:00.000000000 +0000
++++ ar-diag/tools/net-diagnostic.js	2026-10-24 10:47:37.000000000 +0000
+@@ -0,0 +1,292 @@
++// Opt-in, one authorized socket. Exports run off the game thread and socket.
++const { randomBytes } = require('crypto');
++const { PerformanceObserver } = require('perf_hooks');
++const { Worker } = require('worker_threads');
++const path = require('path');
++const os = require('os');
++
++const COLUMNS = [
++    'tick', 'due', 'start', 'simEnd', 'packStart', 'encodeStart', 'encodeEnd',
++    'ownStart', 'ownEncodeEnd', 'ownEnd',
++    'writeStart', 'writeEnd', 'bytes', 'rawBefore', 'rawAfter', 'engineBefore',
++    'engineAfter', 'wsBefore', 'wsAfter', 'writableBefore', 'decision', 'inputAge',
++    'packetCreate', 'flush', 'transportDrain', 'loopDelay',
++];
++const COL = Object.fromEntries(COLUMNS.map((name, index) => [name, index]));
++const DECISION = Object.freeze({ pending: 0, sent: 1, silent: 2, rawBacklog: 3,
++    noSocket: 4, closed: 5, fallback: 6, sendError: 7 });
++const CAPACITY = 6000; // 100 seconds at 60 Hz, about 1.1 MiB
++const COOLDOWN_MS = 30000;
++function packetSlot(state, data) {
++    if (!Buffer.isBuffer(data)) return -1;
++    const serial = state.packets.get(data);
++    return serial === undefined || state.count - serial > CAPACITY ? -1 : (serial % CAPACITY) * COLUMNS.length;
++}
++
++class NetDiagnostic {
++    constructor(enabled = process.env.AR_NET_DIAG === '1', options = {}) {
++        this.enabled = enabled;
++        this.allowedUserId = options.allowedUserId === undefined ? process.env.AR_NET_DIAG_USER_ID : options.allowedUserId;
++        this.isAuthorized = options.isAuthorized || (() => false);
++        this.exportDir = options.exportDir || process.env.AR_NET_DIAG_DIR || path.join(os.tmpdir(), `arena-netdiag-${typeof process.getuid === 'function' ? process.getuid() : 'local'}`);
++        this.active = null;
++        this.worker = null;
++        this.pending = new Map();
++        this.lastError = null;
++    }
++
++    fail(error) {
++        try {
++            this.lastError = error;
++            for (const pending of this.pending.values()) clearTimeout(pending.timeout);
++            this.pending.clear();
++            const state = this.active;
++            if (state) this.release(state.socket);
++            this.closeWorkerIfIdle();
++        } catch (cleanupError) { this.lastError = cleanupError; this.active = null; }
++    }
++
++    closeWorkerIfIdle() {
++        try {
++            if (this.active || this.pending.size || !this.worker) return;
++            const worker = this.worker;
++            this.worker = null;
++            worker.terminate().catch(error => { this.lastError = error; });
++        } catch (error) { this.lastError = error; }
++    }
++
++    ensureWorker() {
++        if (this.worker) return true;
++        if (!path.isAbsolute(this.exportDir)) throw new Error('diagnostic export directory must be absolute');
++        const dir = path.resolve(this.exportDir), publicDir = path.resolve(__dirname, '..', 'public');
++        const compare = value => process.platform === 'win32' ? value.toLowerCase() : value;
++        if (compare(dir) === compare(publicDir) || compare(dir).startsWith(compare(publicDir + path.sep)))
++            throw new Error('diagnostic export directory is public');
++        const worker = new Worker(path.join(__dirname, 'net-diagnostic-export-worker.js'));
++        worker.on('message', result => {
++            try {
++                const pending = this.pending.get(result.id);
++                if (pending) clearTimeout(pending.timeout);
++                this.pending.delete(result.id);
++                if (pending && this.active === pending.state)
++                    pending.state.socket.emit(result.ok ? 'netdiag-export-ready' : 'netdiag-export-failed', result);
++                this.closeWorkerIfIdle();
++            } catch (error) { this.fail(error); }
++        });
++        worker.on('error', error => { if (this.worker !== worker) return; this.worker = null; this.fail(error); });
++        worker.on('exit', code => { if (this.worker !== worker) return; this.worker = null; if (code) this.fail(new Error(`diagnostic worker exit ${code}`)); });
++        worker.unref();
++        this.worker = worker;
++        return true;
++    }
++
++    claim(socket, roomCode) {
++        try { return this._claim(socket, roomCode); }
++        catch (error) { this.fail(error); return null; }
++    }
++
++    _claim(socket, roomCode) {
++        if (!this.enabled || !this.allowedUserId || !this.isAuthorized(socket, this.allowedUserId) || this.active || !roomCode) return null;
++        const conn = socket.client && socket.client.conn;
++        const transport = conn && conn.transport;
++        if (!conn || !transport || transport.name !== 'websocket') return null;
++        try { this.ensureWorker(); } catch (error) { this.fail(error); return null; }
++        const session = randomBytes(8).toString('hex');
++        const state = {
++            socket, socketId: socket.id, roomCode, session, conn, transport,
++            rows: new Float64Array(CAPACITY * COLUMNS.length), count: 0,
++            packets: new WeakMap(), batch: new Int32Array(CAPACITY), batchCount: 0,
++            lastIncident: -Infinity, reportTimer: null, incidentTick: 0,
++            events: new Float64Array(3 * 300), eventCount: 0, lagTimer: null, gcObserver: null,
++        };
++        state.recordEvent = (at, duration, type) => { try {
++            const base = (state.eventCount++ % 300) * 3;
++            state.events[base] = at;
++            state.events[base + 1] = duration;
++            state.events[base + 2] = type; // 1: event loop timer late, 2: GC
++        } catch (error) { this.fail(error); } };
++        state.onPacket = packet => { try {
++            const slot = packetSlot(state, packet.data);
++            if (slot >= 0) this.mark(slot, COL.packetCreate, performance.now());
++        } catch (error) { this.fail(error); } };
++        state.onFlush = packets => { try {
++            const at = performance.now();
++            state.batchCount = 0;
++            for (const packet of packets) {
++                const slot = packetSlot(state, packet.data);
++                if (slot < 0 || state.batchCount === CAPACITY) continue;
++                this.mark(slot, COL.flush, at);
++                state.batch[state.batchCount++] = slot;
++                const queuedAt = state.rows[slot + COL.packetCreate];
++                if (queuedAt > 0 && at - queuedAt > 50)
++                    this.incident(state.socket, state.rows[slot + COL.tick], 'engine-queued');
++            }
++        } catch (error) { this.fail(error); } };
++        state.onTransportDrain = () => { try {
++            const at = performance.now();
++            for (let i = 0; i < state.batchCount; i++) {
++                const slot = state.batch[i];
++                this.mark(slot, COL.transportDrain, at);
++                const flushedAt = state.rows[slot + COL.flush];
++                if (flushedAt > 0 && at - flushedAt > 50)
++                    this.incident(state.socket, state.rows[slot + COL.tick], 'transport-drain');
++            }
++            state.batchCount = 0;
++        } catch (error) { this.fail(error); } };
++        this.active = state;
++        try {
++        conn.on('packetCreate', state.onPacket);
++        conn.on('flush', state.onFlush);
++        transport.on('drain', state.onTransportDrain);
++        let lastBeat = performance.now();
++        state.lagTimer = setInterval(() => { try {
++            const at = performance.now(), late = at - lastBeat - 25;
++            lastBeat = at;
++            if (late >= 15) state.recordEvent(at - late, late, 1);
++        } catch (error) { this.fail(error); } }, 25);
++        try {
++            state.gcObserver = new PerformanceObserver(list => { try {
++                for (const entry of list.getEntries()) state.recordEvent(entry.startTime, entry.duration, 2);
++            } catch (error) { this.fail(error); } });
++            state.gcObserver.observe({ entryTypes: ['gc'] });
++        } catch (_) { state.gcObserver = null; }
++        return session;
++        } catch (error) { this.fail(error); return null; }
++    }
++
++    release(socket) {
++        try {
++        const state = this.active;
++        if (!state || state.socket !== socket) return;
++        this.active = null;
++        for (const cleanup of [
++            () => clearTimeout(state.reportTimer), () => clearInterval(state.lagTimer),
++            () => state.gcObserver && state.gcObserver.disconnect(),
++            () => state.conn.off('packetCreate', state.onPacket),
++            () => state.conn.off('flush', state.onFlush),
++            () => state.transport.off('drain', state.onTransportDrain),
++        ]) { try { cleanup(); } catch (error) { this.lastError = error; } }
++        this.closeWorkerIfIdle();
++        } catch (error) { this.lastError = error; this.active = null; }
++    }
++
++    forRoom(roomCode) {
++        try {
++            const state = this.active;
++            return state && state.roomCode === roomCode ? state : null;
++        } catch (error) { this.fail(error); return null; }
++    }
++
++    begin(state, tick, due, start, late) {
++        if (!state || state !== this.active) return -1;
++        const slot = (state.count++ % CAPACITY) * COLUMNS.length;
++        state.rows.fill(-1, slot, slot + COLUMNS.length);
++        state.rows[slot + COL.tick] = tick;
++        state.rows[slot + COL.due] = due;
++        state.rows[slot + COL.start] = start;
++        state.rows[slot + COL.loopDelay] = late;
++        state.rows[slot + COL.decision] = DECISION.pending;
++        if (late > 50) this.incident(state.socket, tick, 'server-tick');
++        return slot;
++    }
++
++    mark(slot, column, value) {
++        if (slot >= 0 && this.active) this.active.rows[slot + column] = value;
++    }
++
++    decision(slot, reason, inputAge) {
++        this.mark(slot, COL.decision, DECISION[reason]);
++        if (inputAge !== undefined) this.mark(slot, COL.inputAge, inputAge);
++    }
++
++    beforeWrite(slot, buf, ownStart, ownEncodeEnd, ownEnd, conn) {
++        const state = this.active;
++        if (!state || slot < 0) return;
++        state.packets.set(buf, state.count - 1);
++        this.mark(slot, COL.ownStart, ownStart);
++        this.mark(slot, COL.ownEncodeEnd, ownEncodeEnd);
++        this.mark(slot, COL.ownEnd, ownEnd);
++        this.mark(slot, COL.bytes, buf.length);
++        this.mark(slot, COL.writeStart, performance.now());
++        this.sample(slot, conn, false);
++    }
++
++    afterWrite(slot, conn) {
++        this.mark(slot, COL.writeEnd, performance.now());
++        this.sample(slot, conn, true);
++        this.decision(slot, 'sent');
++        const state = this.active;
++        if (state && slot >= 0 && state.rows[slot + COL.writeEnd] - state.rows[slot + COL.writeStart] > 50)
++            this.incident(state.socket, state.rows[slot + COL.tick], 'server-write');
++    }
++
++    sample(slot, conn, after) {
++        const engine = conn.conn, transport = engine.transport;
++        const ws = transport && transport.socket, raw = ws && ws._socket;
++        this.mark(slot, after ? COL.rawAfter : COL.rawBefore, raw ? raw.writableLength : -1);
++        this.mark(slot, after ? COL.engineAfter : COL.engineBefore, engine.writeBuffer ? engine.writeBuffer.length : -1);
++        this.mark(slot, after ? COL.wsAfter : COL.wsBefore, ws ? ws.bufferedAmount : -1);
++        if (!after) this.mark(slot, COL.writableBefore, transport && transport.writable ? 1 : 0);
++    }
++
++    // Delay export until the incident has two seconds of aftermath. The game loop only sets a timer.
++    incident(socket, tick, reason) {
++        const state = this.active, now = performance.now();
++        if (!state || state.socket !== socket || this.pending.size || now - state.lastIncident < COOLDOWN_MS) return false;
++        state.lastIncident = now;
++        state.incidentTick = Number.isInteger(tick) ? tick : 0;
++        if (state.reportTimer) clearTimeout(state.reportTimer);
++        state.reportTimer = setTimeout(() => { try {
++            if (this.active !== state) return;
++            state.reportTimer = null;
++            const prepStart = performance.now();
++            const end = performance.now(), from = end - 8000, selected = [];
++            const n = Math.min(state.count, CAPACITY), first = state.count - n;
++            for (let i = first; i < state.count; i++) {
++                const base = (i % CAPACITY) * COLUMNS.length;
++                if (state.rows[base + COL.start] >= from) selected.push(base);
++            }
++            const rows = new Float64Array(selected.length * COLUMNS.length);
++            for (let i = 0; i < selected.length; i++)
++                rows.set(state.rows.subarray(selected[i], selected[i] + COLUMNS.length), i * COLUMNS.length);
++            const events = new Float64Array(900), eventN = Math.min(state.eventCount, 300), eventFirst = state.eventCount - eventN;
++            let eventCount = 0;
++            for (let i = eventFirst; i < state.eventCount; i++) {
++                const base = (i % 300) * 3;
++                if (state.events[base] >= from) events.set(state.events.subarray(base, base + 3), eventCount++ * 3);
++            }
++            const id = randomBytes(12).toString('hex');
++            const timeout = setTimeout(() => { try {
++                if (!this.pending.has(id)) return;
++                this.pending.delete(id);
++                if (this.active === state) socket.emit('netdiag-export-failed',
++                    { id, ok: false, session: state.session, incidentTick: state.incidentTick, error: 'EXPORT_TIMEOUT' });
++                const worker = this.worker; this.worker = null;
++                if (worker) worker.terminate().catch(error => { this.lastError = error; });
++            } catch (error) { this.fail(error); } }, 15000);
++            timeout.unref();
++            this.pending.set(id, { state, timeout });
++            this.worker.postMessage({ id, dir: this.exportDir, session: state.session,
++                reason, incidentTick: state.incidentTick, wallEnd: new Date().toISOString(),
++                serverNow: end, columns: COLUMNS, decisions: DECISION,
++                rows, events: events.subarray(0, eventCount * 3) }, [rows.buffer, events.buffer]);
++            state.lastExportPrepMs = performance.now() - prepStart;
++            socket.emit('netdiag-export-queued', { id, session: state.session,
++                incidentTick: state.incidentTick, prepMs: state.lastExportPrepMs });
++        } catch (error) { this.fail(error); }
++        }, 2000);
++        return true;
++    }
++}
++
++// Diagnostic failures must never escape into a game tick or an Engine.IO callback.
++for (const name of ['begin', 'mark', 'decision', 'beforeWrite', 'afterWrite', 'sample', 'incident']) {
++    const original = NetDiagnostic.prototype[name];
++    NetDiagnostic.prototype[name] = function (...args) {
++        try { return original.apply(this, args); }
++        catch (error) { try { this.fail(error); } catch (_) { this.active = null; }
++            return name === 'begin' ? -1 : name === 'incident' ? false : undefined; }
++    };
++}
++
++module.exports = { NetDiagnostic, COLUMNS, COL, DECISION };
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/tools/NET_DIAGNOSTIC.md ar-diag/tools/NET_DIAGNOSTIC.md
+--- ar-3affe2c/tools/NET_DIAGNOSTIC.md	1970-01-01 00:00:00.000000000 +0000
++++ ar-diag/tools/NET_DIAGNOSTIC.md	2026-10-24 10:56:33.000000000 +0000
+@@ -0,0 +1,70 @@
++# Network diagnostic (local worktree)
++
++The server trace stays off unless both `AR_NET_DIAG=1` and
++`AR_NET_DIAG_USER_ID=<Supabase players.id of the test account>` are set. Only a
++successful password login backed by Supabase records a diagnostic identity;
++activation also re-reads that ID and nickname from Supabase. Local fallback
++login, failed database reads, and nickname matching alone cannot activate it.
++Only this identity can claim the one global diagnostic slot with F8 during a match. No
++change is made to `gs2`, its tick rate, or its payload. The ordinary browser
++Blackbox still works when the server trace is disabled.
++
++The diagnostic events are limited per socket: start once per 10 seconds,
++incident once per 30 seconds, and ping once per 1.5 seconds. Server incident
++exports have an additional 30 second cooldown. Stop is always accepted.
++Only one export may be pending; a worker job times out after 15 seconds.
++
++Server samples stay in a fixed ring of 6,000 rows (1,279,200 bytes including
++the event and batch arrays). An incident captures at most the preceding eight
++seconds, two seconds after detection. The main thread copies bounded typed
++arrays; a worker builds JSON and writes a temporary file with mode `0600`,
++syncs it, and atomically publishes a complete report in a
++directory with mode `0700`. The default directory is under the OS temporary
++directory, named `arena-netdiag-<OS user ID>` (or `-local` on Windows). The
++name remains the same across process restarts, and at most 20 published
++reports are retained. Stale temporary files are removed on a later export.
++Set `AR_NET_DIAG_DIR` to an absolute,
++private directory if persistence is needed. A directory under `public/` is
++rejected. Existing directories with group or other permissions or a different
++owner are rejected on Linux. The worker reports only a random file ID, session ID, and tick over
++the gameplay socket; it never sends the report content through Socket.IO.
++Retrieve server files from that private directory separately. There is no
++HTTP endpoint for them. The worker retains at most 20 diagnostic files in the
++directory, deleting the oldest files with its own naming pattern.
++
++The browser's F9 and F8 report saves wait until gameplay has ended. During a
++long match, up to three small eight second incident windows are kept in memory
++so their packet/decode/handler rows survive the 90 second rolling window.
++Forced departure stops the game loop before a queued browser export runs; a
++temporary disconnect or reconnect keeps the queued report until that end.
++Room reset and build reload wait briefly for an already queued browser save
++after stopping the game loop; a diagnostic failure cannot hold the reload
++longer than two seconds.
++The server file, if already queued, can still be recovered by its ID. Disconnect
++and rematch stop the old diagnostic session; a new match needs a new F8 claim
++and receives a new session ID. The browser report includes the session ID,
++server export ID, and clock samples for correlation.
++
++`packetCreate` means Engine.IO accepted the buffer, `flush` means Engine.IO
++passed it to the WebSocket transport, and `transportDrain` means that
++transport's send callback ran. None proves remote TCP acknowledgement or
++physical arrival. `rawBefore`/`rawAfter` and `wsBefore`/`wsAfter` measure
++different queues. The browser/server clock offset is estimated from diagnostic
++ping samples, with uncertainty of at least half the corrected RTT under
++symmetric paths. Comparing successive server and browser intervals does not
++require clock synchronization.
++
++Run local checks from this worktree with dependencies installed:
++
++```powershell
++node --test tools/tests/*.test.js
++node tools/tests/net-diagnostic.bench.js
++```
++
++The benchmark uses an in-memory mock connection. It measures probe cost, not
++production network latency. A later VPS trial requires separate approval.
++Use one authorized test account, observe CPU/RSS and errors, collect the
++server file and browser JSON, and compare the matched session and tick IDs.
++If `transportDrain` is prompt but browser parser entry is late, a packet
++capture or browser NetLog is still needed to distinguish TCP delivery from
++browser network-thread scheduling.
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/tools/tests/fake-supabase.js ar-diag/tools/tests/fake-supabase.js
+--- ar-3affe2c/tools/tests/fake-supabase.js	2026-10-24 16:50:13.000000000 +0000
++++ ar-diag/tools/tests/fake-supabase.js	2026-10-24 17:00:43.000000000 +0000
+@@ -20,6 +20,11 @@
+         req.on('end', () => {
+             const url = new URL(req.url, 'http://x');
+             if (req.method === 'GET' && url.pathname === '/rest/v1/players') {
++                if (url.searchParams.get('select') === 'id,nickname') state.diagReads = (state.diagReads || 0) + 1;
++                if (url.searchParams.get('select') === 'id,nickname' && state.failDiagRead) {
++                    res.writeHead(503, { 'content-type': 'application/json' });
++                    return res.end(JSON.stringify({ code: 'PGRST000', message: 'unavailable' }));
++                }
+                 if (url.searchParams.get('select') === 'password_hash') state.passwordReads++;
+                 res.writeHead(200, { 'content-type': 'application/json' });
+                 return res.end(/object/.test(req.headers.accept || '') ? JSON.stringify(state.row) : JSON.stringify([state.row]));
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/tools/tests/net-diagnostic.bench.js ar-diag/tools/tests/net-diagnostic.bench.js
+--- ar-3affe2c/tools/tests/net-diagnostic.bench.js	1970-01-01 00:00:00.000000000 +0000
++++ ar-diag/tools/tests/net-diagnostic.bench.js	2026-10-24 10:48:42.000000000 +0000
+@@ -0,0 +1,79 @@
++// Local microbenchmark only. Run with NODE_PATH pointing at a local dependency install.
++const { EventEmitter } = require('node:events');
++const { once } = require('node:events');
++const fs = require('node:fs');
++const path = require('node:path');
++const { createGsWriter } = require('../../server-gs');
++const { NetDiagnostic, COL } = require('../net-diagnostic');
++const msgpack = require('notepack.io');
++
++const RUNS = 5, N = 30000;
++const writer = createGsWriter(msgpack, 7);
++const engine = new EventEmitter();
++const transport = new EventEmitter();
++transport.name = 'websocket';
++transport.writable = true;
++transport.socket = { bufferedAmount: 0, _socket: { writableLength: 0 } };
++engine.transport = transport;
++engine.readyState = 'open';
++engine.writeBuffer = [];
++const socket = new EventEmitter();
++socket.id = 'benchmark';
++socket._nickname = 'benchmark';
++socket._verifiedId = 'benchmark';
++socket.client = { conn: engine, writeToEngine(buf) {
++    const packet = { type: 'message', data: buf };
++    engine.emit('packetCreate', packet);
++    engine.writeBuffer.push(packet);
++    engine.emit('flush', engine.writeBuffer);
++    engine.writeBuffer = [];
++    transport.emit('drain');
++} };
++const shared = writer.begin([1, [], [], [], [], null, null]);
++const own = [10, 10, 0, 0, 1, 0];
++const diag = new NetDiagnostic(true, { allowedUserId: 'benchmark', isAuthorized: (socket, id) => socket._verifiedId === id });
++diag.claim(socket, 'ROOM');
++
++function measure(active) {
++    const start = performance.now();
++    let bytes = 0;
++    for (let i = 0; i < N; i++) {
++        const slot = active ? diag.begin(diag.active, i + 1, 0, 0, 0) : -1;
++        if (active) { diag.mark(slot, COL.simEnd, 1); diag.mark(slot, COL.packStart, 1); diag.mark(slot, COL.encodeStart, 2); diag.mark(slot, COL.encodeEnd, 3); }
++        bytes += writer.send(socket, shared, own, active ? diag : null, slot);
++    }
++    return { nsPerSnapshot: Math.round((performance.now() - start) * 1e6 / N), bytes };
++}
++
++measure(false); measure(true); // warm up JIT
++const off = [], on = [];
++for (let i = 0; i < RUNS; i++) {
++    if (i % 2) { on.push(measure(true)); off.push(measure(false)); }
++    else { off.push(measure(false)); on.push(measure(true)); }
++}
++const fixedServerBufferBytes = diag.active.rows.byteLength + diag.active.batch.byteLength + diag.active.events.byteLength;
++function median(rows) { return rows.map(r => r.nsPerSnapshot).sort((a, b) => a - b)[Math.floor(rows.length / 2)]; }
++async function finish() {
++const dir = fs.mkdtempSync(path.join(__dirname, '.diag-bench-'));
++try {
++    diag.exportDir = dir;
++    for (let tick = 1; tick <= 480; tick++) {
++        const now = performance.now(), slot = diag.begin(diag.active, tick, now, now, 0);
++        for (let col = 3; col < 26; col++) diag.mark(slot, col, now + col / 1000);
++    }
++    diag.active.lastIncident = -Infinity;
++    const ready = once(socket, 'netdiag-export-ready');
++    diag.incident(socket, 480, 'benchmark');
++    const [notice] = await ready;
++    const exportBytes = fs.statSync(path.join(dir, `arena-netdiag-${notice.id}.json`)).size;
++    const exportPrepMs = +diag.active.lastExportPrepMs.toFixed(3);
++    console.log(JSON.stringify({ node: process.version, iterationsPerRun: N, runs: RUNS,
++    offNs: off.map(x => x.nsPerSnapshot), onNs: on.map(x => x.nsPerSnapshot),
++    medianOffNs: median(off), medianOnNs: median(on), addedNs: median(on) - median(off),
++    addedMsPerSecondAt60Hz: +((median(on) - median(off)) * 60 / 1e6).toFixed(4),
++    fixedServerBufferBytes, exportPrepMs, exportBytes,
++    payloadBytesSame: off.every(x => x.bytes === on[0].bytes) && on.every(x => x.bytes === on[0].bytes),
++}));
++} finally { diag.release(socket); fs.rmSync(dir, { recursive: true, force: true }); }
++}
++finish().catch(error => { console.error(error); process.exitCode = 1; });
+diff -ruN --strip-trailing-cr '--exclude=node_modules' '--exclude=.env' '--exclude=perf.jsonl' ar-3affe2c/tools/tests/net-diagnostic.test.js ar-diag/tools/tests/net-diagnostic.test.js
+--- ar-3affe2c/tools/tests/net-diagnostic.test.js	1970-01-01 00:00:00.000000000 +0000
++++ ar-diag/tools/tests/net-diagnostic.test.js	2026-10-24 10:56:27.000000000 +0000
+@@ -0,0 +1,627 @@
++const test = require('node:test');
++const assert = require('node:assert/strict');
++const { EventEmitter } = require('node:events');
++const fs = require('node:fs');
++const path = require('node:path');
++const vm = require('node:vm');
++const http = require('node:http');
++const { once } = require('node:events');
++const { spawn } = require('node:child_process');
++const { Worker } = require('node:worker_threads');
++const { NetDiagnostic, COL, DECISION } = require('../net-diagnostic');
++
++function fakeSocket(id = 'socket-one') {
++    const engine = new EventEmitter();
++    const transport = new EventEmitter();
++    transport.name = 'websocket';
++    transport.writable = true;
++    transport.socket = { bufferedAmount: 0, _socket: { writableLength: 0 } };
++    engine.transport = transport;
++    engine.writeBuffer = [];
++    engine.readyState = 'open';
++    const socket = new EventEmitter();
++    socket.id = id;
++    socket._nickname = 'netdiag_local';
++    socket._verifiedId = 'user-1';
++    socket.client = { conn: engine };
++    return { socket, engine, transport };
++}
++
++test('disabled by default, one active socket, and listeners removed on release', () => {
++    const { socket, engine, transport } = fakeSocket();
++    const disabled = new NetDiagnostic(false, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id });
++    assert.equal(disabled.claim(socket, 'ROOM'), null);
++    assert.equal(disabled.worker, null);
++    const diag = new NetDiagnostic(true, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id });
++    assert.match(diag.claim(socket, 'ROOM'), /^[0-9a-f]{16}$/);
++    assert.equal(diag.claim(fakeSocket('second').socket, 'ROOM'), null);
++    assert.equal(diag.forRoom('OTHER'), null);
++    assert.ok(diag.forRoom('ROOM'));
++    diag.release(socket);
++    assert.equal(diag.active, null);
++    assert.equal(engine.listenerCount('packetCreate'), 0);
++    assert.equal(engine.listenerCount('flush'), 0);
++    assert.equal(transport.listenerCount('drain'), 0);
++});
++
++test('only the explicitly authorized account can claim the one slot', () => {
++    const other = fakeSocket('other');
++    const diag = new NetDiagnostic(true, { allowedUserId: 'authorized', isAuthorized: (socket, id) => socket._verifiedId === id });
++    assert.equal(diag.claim(other.socket, 'ROOM'), null);
++    assert.equal(diag.active, null);
++    other.socket._nickname = 'authorized';
++    assert.equal(diag.claim(other.socket, 'ROOM'), null, 'nickname alone is insufficient');
++    other.socket._verifiedId = 'authorized';
++    assert.ok(diag.claim(other.socket, 'ROOM'));
++    diag.release(other.socket);
++    assert.equal(diag.worker, null);
++});
++
++test('an export path inside the web root is rejected before activation', () => {
++    const { socket } = fakeSocket();
++    const diag = new NetDiagnostic(true, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id,
++        exportDir: path.join(__dirname, '../../public/diagnostics') });
++    assert.equal(diag.claim(socket, 'ROOM'), null);
++    assert.equal(diag.worker, null);
++    assert.equal(diag.active, null);
++    assert.match(String(diag.lastError), /public/);
++});
++
++test('probe and Engine.IO observer failures cannot prevent a gameplay write', () => {
++    const msgpack = require('notepack.io');
++    const { createGsWriter } = require('../../server-gs');
++    const { socket, engine, transport } = fakeSocket();
++    let writes = 0;
++    socket.client.writeToEngine = () => { writes++; };
++    const writer = createGsWriter(msgpack, 7);
++    const shared = writer.begin([1, [], [], [], [], null, null]);
++    const throwing = { beforeWrite() { throw Error('probe'); }, afterWrite() { throw Error('probe'); },
++        decision() { throw Error('probe'); }, fail() {} };
++    assert.ok(writer.send(socket, shared, [1], throwing, 0) > 0);
++    assert.equal(writes, 1);
++    const diag = new NetDiagnostic(true, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id });
++    diag.claim(socket, 'ROOM');
++    diag.active.packets = { get() { throw Error('observer'); } };
++    assert.doesNotThrow(() => engine.emit('packetCreate', { data: Buffer.from([1]) }));
++    assert.equal(diag.active, null);
++    assert.equal(engine.listenerCount('packetCreate'), 0);
++    assert.equal(transport.listenerCount('drain'), 0);
++    assert.equal(writes, 1);
++});
++
++test('large incident export stays off the gameplay socket and preserves bounded memory', async () => {
++    const dir = fs.mkdtempSync(path.join(__dirname, '.diag-backlog-'));
++    const { socket, engine } = fakeSocket();
++    const diag = new NetDiagnostic(true, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id, exportDir: dir });
++    const sent = [];
++    socket.on('netdiag-export-queued', data => sent.push(['queued', data]));
++    socket.on('netdiag-export-ready', data => sent.push(['ready', data]));
++    socket.on('netdiag-report', data => sent.push(['report', data]));
++    diag.claim(socket, 'ROOM');
++    for (let tick = 1; tick <= 480; tick++) {
++        const now = performance.now();
++        const slot = diag.begin(diag.active, tick, now - 0.25, now, 0.25);
++        for (let col = 3; col < 26; col++) diag.mark(slot, col, now + col / 1000);
++    }
++    assert.equal(diag.active.rows.byteLength, 6000 * 26 * 8);
++    assert.equal(diag.incident(socket, 480, 'client-gap'), true);
++    const [notice] = await once(socket, 'netdiag-export-ready');
++    const file = path.join(dir, `arena-netdiag-${notice.id}.json`);
++    assert.ok(fs.statSync(file).size > 65536);
++    assert.equal(sent.some(x => x[0] === 'report'), false);
++    assert.ok(sent.every(x => JSON.stringify(x[1]).length < 512));
++    assert.equal(engine.transport.socket._socket.writableLength, 0);
++    diag.release(socket);
++    fs.rmSync(dir, { recursive: true, force: true });
++});
++
++test('export errors become a small failure notice and never escape a timer', async () => {
++    const dir = fs.mkdtempSync(path.join(__dirname, '.diag-invalid-'));
++    const file = path.join(dir, 'file');
++    fs.writeFileSync(file, 'file');
++    const { socket } = fakeSocket();
++    const diag = new NetDiagnostic(true, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id, exportDir: file });
++    try {
++        diag.claim(socket, 'ROOM');
++        assert.equal(diag.incident(socket, 1, 'client-gap'), true);
++        const [notice] = await once(socket, 'netdiag-export-failed');
++        assert.equal(notice.ok, false);
++        assert.equal(notice.error, 'EEXIST');
++        assert.ok(diag.active);
++    } finally { diag.release(socket); fs.rmSync(dir, { recursive: true, force: true }); }
++});
++
++test('an exception while preparing a timed export disables the probe safely', async () => {
++    const { socket, engine } = fakeSocket();
++    const diag = new NetDiagnostic(true, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id });
++    diag.claim(socket, 'ROOM');
++    const slot = diag.begin(diag.active, 1, performance.now(), performance.now(), 0);
++    assert.ok(slot >= 0);
++    diag.active.rows.subarray = () => { throw Error('timed export probe'); };
++    diag.incident(socket, 1, 'client-gap');
++    await new Promise(resolve => setTimeout(resolve, 2100));
++    assert.equal(diag.active, null);
++    assert.match(String(diag.lastError), /timed export probe/);
++    assert.equal(engine.listenerCount('flush'), 0);
++});
++
++test('private worker export retains at most twenty local reports', async () => {
++    const dir = fs.mkdtempSync(path.join(__dirname, '.diag-retain-'));
++    const worker = new Worker(path.join(__dirname, '../net-diagnostic-export-worker.js'));
++    try {
++        for (let i = 0; i < 21; i++) {
++            const id = i.toString(16).padStart(24, '0');
++            const result = once(worker, 'message');
++            worker.postMessage({ id, dir, session: 'test', incidentTick: i, reason: 'test',
++                wallEnd: new Date().toISOString(), serverNow: i, columns: ['tick'], decisions: {},
++                rows: new Float64Array([i]), events: new Float64Array(0) });
++            assert.equal((await result)[0].ok, true);
++            await new Promise(resolve => setTimeout(resolve, 2));
++        }
++        const files = fs.readdirSync(dir);
++        assert.equal(files.length, 20);
++        assert.ok(!files.includes(`arena-netdiag-${'0'.repeat(24)}.json`));
++    } finally { await worker.terminate(); fs.rmSync(dir, { recursive: true, force: true }); }
++});
++
++test('worker publishes only complete JSON and removes stale temporary files', async () => {
++    const dir = fs.mkdtempSync(path.join(__dirname, '.diag-atomic-'));
++    const stale = path.join(dir, `.arena-netdiag-${'a'.repeat(24)}.tmp`);
++    fs.writeFileSync(stale, 'incomplete');
++    const old = new Date(Date.now() - 7200000);
++    fs.utimesSync(stale, old, old);
++    const worker = new Worker(path.join(__dirname, '../net-diagnostic-export-worker.js'));
++    const id = 'b'.repeat(24), file = path.join(dir, `arena-netdiag-${id}.json`);
++    try {
++        const result = once(worker, 'message');
++        worker.postMessage({ id, dir, session: 'atomic', incidentTick: 1, reason: 'test',
++            wallEnd: new Date().toISOString(), serverNow: 1, columns: ['tick'], decisions: {},
++            rows: new Float64Array(250000), events: new Float64Array(0) });
++        let mainThreadRan = false;
++        await new Promise(resolve => setImmediate(() => { mainThreadRan = true; resolve(); }));
++        assert.equal(mainThreadRan, true, 'worker serialization does not block the main event loop');
++        const [notice] = await result;
++        assert.equal(notice.ok, true);
++        assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).rows.length, 250000);
++        assert.equal(fs.existsSync(stale), false);
++        assert.equal(fs.existsSync(path.join(dir, `.arena-netdiag-${id}.tmp`)), false);
++        const duplicate = once(worker, 'message');
++        worker.postMessage({ id, dir, session: 'duplicate', incidentTick: 2, reason: 'test',
++            wallEnd: new Date().toISOString(), serverNow: 2, columns: ['tick'], decisions: {},
++            rows: new Float64Array([2]), events: new Float64Array(0) });
++        assert.equal((await duplicate)[0].ok, false, 'published reports cannot be overwritten');
++        assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).session, 'atomic');
++    } finally { await worker.terminate(); fs.rmSync(dir, { recursive: true, force: true }); }
++});
++
++test('worker shutdown cannot leave a partially published report', { timeout: 10000 }, async () => {
++    const dir = fs.mkdtempSync(path.join(__dirname, '.diag-shutdown-'));
++    const id = 'c'.repeat(24), temp = path.join(dir, `.arena-netdiag-${id}.tmp`);
++    const file = path.join(dir, `arena-netdiag-${id}.json`);
++    const worker = new Worker(path.join(__dirname, '../net-diagnostic-export-worker.js'));
++    try {
++        worker.postMessage({ id, dir, session: 'shutdown', incidentTick: 1, reason: 'test',
++            wallEnd: new Date().toISOString(), serverNow: 1, columns: ['tick'], decisions: {},
++            rows: new Float64Array(500000), events: new Float64Array(0) });
++        for (let i = 0; i < 300 && !fs.existsSync(temp) && !fs.existsSync(file); i++)
++            await new Promise(resolve => setTimeout(resolve, 5));
++        assert.ok(fs.existsSync(temp) || fs.existsSync(file), 'worker began publication');
++        await worker.terminate();
++        if (fs.existsSync(file)) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).session, 'shutdown');
++        if (fs.existsSync(temp)) assert.ok(fs.statSync(temp).size >= 0);
++    } finally { await worker.terminate(); fs.rmSync(dir, { recursive: true, force: true }); }
++});
++
++test('default export directory is stable across process instances', () => {
++    const a = new NetDiagnostic(false), b = new NetDiagnostic(false);
++    assert.equal(a.exportDir, b.exportDir);
++    assert.ok(path.isAbsolute(a.exportDir));
++    assert.match(path.basename(a.exportDir), /^arena-netdiag-(?:\d+|local)$/);
++});
++
++test('worker refuses a nonprivate export directory on Unix', { skip: process.platform === 'win32' }, async () => {
++    const dir = fs.mkdtempSync(path.join(__dirname, '.diag-perms-'));
++    fs.chmodSync(dir, 0o755);
++    const worker = new Worker(path.join(__dirname, '../net-diagnostic-export-worker.js'));
++    try {
++        const result = once(worker, 'message');
++        worker.postMessage({ id: 'd'.repeat(24), dir, session: 'private', incidentTick: 1,
++            reason: 'test', wallEnd: new Date().toISOString(), serverNow: 1,
++            columns: ['tick'], decisions: {}, rows: new Float64Array([1]), events: new Float64Array(0) });
++        assert.equal((await result)[0].ok, false);
++        assert.deepEqual(fs.readdirSync(dir), []);
++    } finally { await worker.terminate(); fs.rmSync(dir, { recursive: true, force: true }); }
++});
++
++test('scheduledDue follows the reset deadline when catch-up ticks are dropped', () => {
++    const source = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
++    const match = source.match(/function loop\(\) \{[\s\S]*?const now = performance\.now\(\);([\s\S]*?)if \(!room\.gameStarted/);
++    assert.ok(match, 'game loop deadline accounting is present');
++    function run(now) {
++        const context = { now, next: 100, INTERVAL_MS: 16, MAX_CATCHUP: 10, got: null,
++            tick(late, due) { context.got = [late, due]; } };
++        vm.runInNewContext(match[1], context);
++        return context.got;
++    }
++    assert.deepEqual(run(1000), [0, 1000]);
++    assert.deepEqual(run(150), [50, 100]);
++});
++
++test('game cleanup ends the recording after RAF cancellation and disconnect is not a match end', () => {
++    const source = fs.readFileSync(path.join(__dirname, '../../public/game.js'), 'utf8');
++    assert.match(source, /isGameplayActive: \(\) => !gameEnded \|\| isSpectating/);
++    const cleanup = source.match(/window\._gameCleanup = \(\) => \{([\s\S]*?)\n    \};/);
++    assert.ok(cleanup);
++    assert.ok(cleanup[1].indexOf('cancelAnimationFrame(rafId)') < cleanup[1].indexOf('_BB.gameplayEnded(); _BB.detach()'));
++    assert.match(source, /socket\.on\('game-rematch',[\s\S]*?_BB\.gameplayEnded\(\)/);
++    assert.match(source, /socket\.on\('game-reset', reloadAfterDiagnostic\)/);
++    assert.match(source, /bb\.whenSaved\(2000\)\.then\(\(\) => location\.reload\(\)/);
++});
++
++test('correlates packet create, Engine.IO flush and WebSocket transport drain by buffer', () => {
++    const { socket, engine, transport } = fakeSocket();
++    const diag = new NetDiagnostic(true, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id });
++    diag.claim(socket, 'ROOM');
++    const state = diag.active;
++    const due = performance.now() - 4;
++    const slot = diag.begin(state, 42, due, performance.now(), 4);
++    const buf = Buffer.from([1, 2, 3]);
++    diag.beforeWrite(slot, buf, performance.now(), performance.now(), performance.now(), socket.client);
++    const packet = { type: 'message', data: buf };
++    engine.emit('packetCreate', packet);
++    engine.writeBuffer.push(packet);
++    transport.writable = false;
++    diag.afterWrite(slot, socket.client);
++    assert.equal(state.rows[slot + COL.engineAfter], 1);
++    assert.equal(state.rows[slot + COL.decision], DECISION.sent);
++    engine.emit('flush', engine.writeBuffer);
++    engine.writeBuffer = [];
++    transport.emit('drain');
++    assert.ok(state.rows[slot + COL.packetCreate] > 0);
++    assert.ok(state.rows[slot + COL.flush] >= state.rows[slot + COL.packetCreate]);
++    assert.ok(state.rows[slot + COL.transportDrain] >= state.rows[slot + COL.flush]);
++    diag.release(socket);
++});
++
++test('incident export is bounded, asynchronous, and contains explicit skip reason', async () => {
++    const { socket } = fakeSocket();
++    const dir = fs.mkdtempSync(path.join(__dirname, '.diag-export-'));
++    const diag = new NetDiagnostic(true, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id, exportDir: dir });
++    const session = diag.claim(socket, 'ROOM');
++    const state = diag.active;
++    const slot = diag.begin(state, 73, performance.now(), performance.now(), 0);
++    diag.decision(slot, 'silent', 621);
++    const report = new Promise(resolve => socket.once('netdiag-export-ready', resolve));
++    assert.equal(diag.incident(socket, 73, 'client-gap'), true);
++    assert.equal(diag.incident(socket, 74, 'client-gap'), false);
++    const notice = await report;
++    const exported = JSON.parse(fs.readFileSync(path.join(dir, `arena-netdiag-${notice.id}.json`), 'utf8'));
++    assert.equal(exported.session, session);
++    assert.equal(exported.incidentTick, 73);
++    assert.equal(exported.rows.length, 1);
++    assert.equal(exported.rows[0][COL.decision], DECISION.silent);
++    assert.equal(exported.rows[0][COL.inputAge], 621);
++    diag.release(socket);
++    fs.rmSync(dir, { recursive: true, force: true });
++});
++
++test('browser parser calls decode hook once and preserves the decoded gs2 packet', () => {
++    const events = [];
++    const root = { ARBlackBox: { on: true, netActive: true, decode: (...args) => events.push(args) } };
++    const context = { self: root, performance, Uint8Array, ArrayBuffer, DataView, TextEncoder, TextDecoder };
++    const source = fs.readFileSync(path.join(__dirname, '../../public/socket-msgpack-parser.js'), 'utf8');
++    vm.runInNewContext(source, context);
++    const parser = root.msgpackParser;
++    const data = { type: 2, data: ['gs2', [123, [], [], [], [], null, null, null]], nsp: '/' };
++    const encoded = parser.Encoder.prototype.encode(data)[0];
++    const decoder = new parser.Decoder();
++    let decoded;
++    decoder.on('decoded', packet => { decoded = packet; });
++    decoder.add(encoded);
++    assert.equal(decoded.data[1][0], 123);
++    assert.equal(events.length, 1);
++    assert.equal(events[0][2], 123);
++    assert.ok(events[0][1] >= events[0][0]);
++    root.ARBlackBox.netActive = false;
++    decoder.add(encoded);
++    assert.equal(events.length, 1);
++    root.ARBlackBox.netActive = true;
++    root.ARBlackBox.decode = () => { throw Error('browser probe'); };
++    assert.doesNotThrow(() => decoder.add(encoded));
++    assert.equal(decoded.data[1][0], 123);
++    assert.equal(root.ARBlackBox.netActive, false);
++});
++
++test('browser defers large export until gameplay ends and clears diagnostic listeners', async () => {
++    const window = { addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1 };
++    const document = { hidden: false, addEventListener() {}, removeEventListener() {}, querySelector() { return null; },
++        body: { appendChild() {} }, createElement() { return { setAttribute() {}, remove() {}, click() {}, className: '', innerHTML: '' }; } };
++    let nextTimer = 0, stringifyCount = 0, active = true;
++    const timers = new Set();
++    const context = { self: window, window, document, navigator: { userAgent: 'test', platform: 'test', language: 'en' },
++        screen: { width: 800, height: 600 }, innerWidth: 800, innerHeight: 600, performance,
++        setInterval() { const id = ++nextTimer; timers.add(id); return id; }, clearInterval(id) { timers.delete(id); },
++        setTimeout, clearTimeout, Date, PerformanceObserver, Blob, URL,
++        JSON: { stringify(value) { stringifyCount++; return JSON.stringify(value); } } };
++    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../public/blackbox.js'), 'utf8'), context);
++    const bb = window.ARBlackBox, socket = new EventEmitter();
++    socket.connected = true;
++    bb.attach({ socket, meta: () => ({}), counts: () => [0, 0, 1], isGameplayActive: () => active });
++    assert.equal(bb.start(), true);
++    socket.emit('netdiag-ready', { session: 'match-a' });
++    socket.emit('netdiag-export-queued', { id: 'export-a', session: 'match-a', incidentTick: 44 });
++    socket.emit('netdiag-export-ready', { id: 'export-a', session: 'match-a', incidentTick: 44, ok: true });
++    assert.equal(stringifyCount, 0);
++    await new Promise(resolve => setTimeout(resolve, 75));
++    assert.equal(stringifyCount, 0);
++    bb.save('F9');
++    assert.equal(stringifyCount, 0);
++    const beforeDisconnect = timers.size;
++    socket.emit('disconnect', 'test');
++    assert.equal(bb.netActive, false);
++    assert.ok(timers.size < beforeDisconnect);
++    socket.connected = false;
++    socket.emit('reconnect');
++    socket.emit('netdiag-ended', { session: 'match-a' });
++    await new Promise(resolve => setTimeout(resolve, 10));
++    assert.equal(stringifyCount, 0, 'disconnect and reconnect do not end gameplay');
++    assert.equal(bb.report(), null, 'manual report cannot snapshot during gameplay');
++    bb.stop(true);
++    assert.equal(stringifyCount, 0);
++    bb.gameplayEnded();
++    bb.detach();
++    assert.equal(bb.hasPendingSave(), true);
++    await new Promise(resolve => setTimeout(resolve, 10));
++    await bb.whenSaved(100);
++    assert.equal(bb.hasPendingSave(), false);
++    assert.equal(stringifyCount, 1);
++    assert.equal(window.__arBBLast.netDiagnostic.session, 'match-a');
++    assert.equal(window.__arBBLast.netDiagnostic.server.id, 'export-a');
++    assert.equal(window.__arBBLast.netDiagnostic.captures[0].incidentTick, 44);
++    assert.equal(socket.listenerCount('netdiag-ready'), 0);
++    assert.equal(socket.listenerCount('netdiag-export-ready'), 0);
++    assert.equal(timers.size, 0);
++});
++
++test('release at rematch gives the next match a distinct session and no old listeners', () => {
++    const { socket, engine, transport } = fakeSocket();
++    const diag = new NetDiagnostic(true, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id });
++    const first = diag.claim(socket, 'ROOM');
++    diag.begin(diag.active, 120, performance.now(), performance.now(), 0);
++    diag.release(socket);
++    assert.equal(engine.listenerCount('flush'), 0);
++    assert.equal(transport.listenerCount('drain'), 0);
++    const second = diag.claim(socket, 'ROOM');
++    assert.notEqual(second, first);
++    const slot = diag.begin(diag.active, 1, performance.now(), performance.now(), 0);
++    assert.equal(diag.active.rows[slot + COL.tick], 1);
++    diag.release(socket);
++});
++
++test('browser Blackbox keeps bounded decode/handler/interpolation rows and asks once for a gap', async () => {
++    const window = { addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1 };
++    const document = {
++        hidden: false, addEventListener() {}, removeEventListener() {}, querySelector() { return null; },
++        body: { appendChild() {} },
++        createElement() { return { setAttribute() {}, remove() {}, className: '', innerHTML: '' }; },
++    };
++    const context = { self: window, window, document, navigator: { userAgent: 'test', platform: 'test', language: 'en' },
++        screen: { width: 800, height: 600 }, innerWidth: 800, innerHeight: 600,
++        performance, setInterval, clearInterval, setTimeout, clearTimeout, Date,
++        PerformanceObserver, Blob, URL,
++    };
++    const source = fs.readFileSync(path.join(__dirname, '../../public/blackbox.js'), 'utf8');
++    vm.runInNewContext(source, context);
++    const blackbox = window.ARBlackBox;
++    const socket = new EventEmitter();
++    const requested = [];
++    socket.on('netdiag-incident', data => requested.push(data.tick));
++    blackbox.attach({ socket, meta: () => ({}), counts: () => [0, 0, 1] });
++    try {
++        assert.equal(blackbox.start(), true);
++        socket.emit('netdiag-ready', { session: 'session-one' });
++        const t = performance.now();
++        blackbox.decode(t, t + 1, 10);
++        blackbox.packet(t + 2, 10, 1, 0, 0);
++        blackbox.handler(t + 3, 10, t + 2, 1, 0, 34);
++        blackbox.interp(t + 4, 10, 2, 34, 0, 1);
++        blackbox.packet(t + 70, 11, 1, 0, 0);
++        blackbox.packet(t + 140, 12, 1, 0, 0);
++        await new Promise(resolve => setTimeout(resolve, 10));
++        assert.deepEqual(requested, [11]);
++        const report = blackbox.report();
++        assert.equal(report.netDiagnostic.session, 'session-one');
++        assert.equal(report.netDiagnostic.decode.length, 1);
++        assert.equal(report.netDiagnostic.handler.length, 1);
++        assert.equal(report.netDiagnostic.interpolation.length, 1);
++    } finally {
++        blackbox.stop(false);
++        blackbox.detach();
++    }
++});
++
++test('real local Socket.IO/Engine.IO path records all handoff stages without changing gs2', async () => {
++    const { Server } = require('socket.io');
++    const { io: connect } = require('../perf-harness/node_modules/socket.io-client');
++    const parser = require('socket.io-msgpack-parser');
++    const msgpack = require('notepack.io');
++    const { createGsWriter } = require('../../server-gs');
++    const httpServer = http.createServer();
++    const io = new Server(httpServer, { parser, transports: ['websocket'], perMessageDeflate: false });
++    const diag = new NetDiagnostic(true, { allowedUserId: 'user-1', isAuthorized: (socket, id) => socket._verifiedId === id });
++    const writer = createGsWriter(msgpack, 7);
++    const connection = once(io, 'connection');
++    httpServer.listen(0, '127.0.0.1');
++    await once(httpServer, 'listening');
++    const client = connect(`ws://127.0.0.1:${httpServer.address().port}`, {
++        parser, transports: ['websocket'], reconnection: false,
++    });
++    try {
++        const [socket] = await connection;
++        socket._nickname = 'netdiag_local';
++        socket._verifiedId = 'user-1';
++        const session = diag.claim(socket, 'ROOM');
++        assert.ok(session);
++        const slot = diag.begin(diag.active, 91, performance.now(), performance.now(), 0);
++        const received = once(client, 'gs2');
++        writer.send(socket, writer.begin([91, [], [], [], [], null, null]), [1, 2, 3], diag, slot);
++        const [payload] = await received;
++        assert.equal(payload[0], 91);
++        await new Promise(resolve => setTimeout(resolve, 20));
++        const row = diag.active.rows;
++        assert.equal(row[slot + COL.decision], DECISION.sent);
++        assert.ok(row[slot + COL.packetCreate] > 0);
++        assert.ok(row[slot + COL.flush] >= row[slot + COL.packetCreate]);
++        assert.ok(row[slot + COL.transportDrain] >= row[slot + COL.flush]);
++        diag.release(socket);
++    } finally {
++        client.disconnect();
++        await new Promise(resolve => io.close(resolve));
++        httpServer.close();
++    }
++});
++
++test('full local server keeps gs2 running when disabled or Supabase is unavailable', { timeout: 25000 }, async () => {
++    const { io: connect } = require('../perf-harness/node_modules/socket.io-client');
++    const parser = require('socket.io-msgpack-parser');
++    const ARNet = require('../../public/netproto');
++    for (const diagnosticFlag of ['0', '1']) {
++    const port = 42000 + Math.floor(Math.random() * 1000);
++    const child = spawn(process.execPath, ['server.js'], {
++        cwd: path.join(__dirname, '../..'),
++        env: { ...process.env, PORT: String(port), SUPABASE_URL: '', SUPABASE_SERVICE_KEY: '',
++            LAG_LOG: '0', AR_NET_DIAG: diagnosticFlag, AR_NET_DIAG_USER_ID: 'user-1' }, stdio: 'ignore',
++    });
++    let client;
++    try {
++        let ready = false;
++        for (let i = 0; i < 50 && !ready; i++) {
++            try { await fetch(`http://127.0.0.1:${port}/api/build`); ready = true; }
++            catch (_) { await new Promise(resolve => setTimeout(resolve, 100)); }
++        }
++        assert.ok(ready);
++        const login = await (await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
++            method: 'POST', headers: { 'content-type': 'application/json' },
++            body: JSON.stringify({ nickname: 'netdiag_local', password: 'x' }),
++        })).json();
++        client = connect(`http://127.0.0.1:${port}`, { parser, transports: ['websocket'], reconnection: false });
++        await once(client, 'connect');
++        client.emit('authenticate', { nickname: 'netdiag_local', token: login.token });
++        const roomCreated = once(client, 'room-created');
++        client.emit('create-room', { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, mode: 'br', xp: 0, proto: ARNet.PROTO });
++        await roomCreated;
++        const started = once(client, 'game-start');
++        client.emit('start-game');
++        await started;
++        let claims = 0;
++        client.on('netdiag-ready', () => claims++);
++        client.emit('netdiag-start');
++        const [packet] = await once(client, 'gs2');
++        assert.ok(Number.isInteger(packet[0]));
++        await new Promise(resolve => setTimeout(resolve, 100));
++        assert.equal(claims, 0, `diagnostic flag ${diagnosticFlag} without Supabase`);
++    } finally { if (client) client.disconnect(); child.kill(); }
++    }
++});
++
++test('full local game server grants one diagnostic slot and exports matched ticks', { timeout: 15000 }, async () => {
++    const { io: connect } = require('../perf-harness/node_modules/socket.io-client');
++    const parser = require('socket.io-msgpack-parser');
++    const ARNet = require('../../public/netproto');
++    const { fakeSupabase, makeRow } = require('./fake-supabase');
++    const db = fakeSupabase({ row: { ...makeRow(), id: 'user-1', nickname: 'netdiag_local' } });
++    await new Promise(resolve => db.listen(0, '127.0.0.1', resolve));
++    const port = 41000 + Math.floor(Math.random() * 1000);
++    const child = spawn(process.execPath, ['server.js'], {
++        cwd: path.join(__dirname, '../..'),
++        env: { ...process.env, PORT: String(port), SUPABASE_URL: `http://127.0.0.1:${db.address().port}`, SUPABASE_SERVICE_KEY: 'test-key',
++            LAG_LOG: '0', AR_NET_DIAG: '1', AR_NET_DIAG_USER_ID: 'user-1',
++            AR_NET_DIAG_DIR: path.join(__dirname, '.diag-server-export') }, stdio: 'ignore',
++    });
++    let client;
++    try {
++        let ready = false;
++        for (let i = 0; i < 50 && !ready; i++) {
++            try { await fetch(`http://127.0.0.1:${port}/api/build`); ready = true; }
++            catch (_) { await new Promise(resolve => setTimeout(resolve, 100)); }
++        }
++        assert.ok(ready, 'local game server started');
++        const login = await (await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
++            method: 'POST', headers: { 'content-type': 'application/json' },
++            body: JSON.stringify({ nickname: 'netdiag_local', password: 'secret' }),
++        })).json();
++        assert.equal(login.ok, true);
++        client = connect(`http://127.0.0.1:${port}`, { parser, transports: ['websocket'], reconnection: false });
++        await once(client, 'connect');
++        client.emit('authenticate', { nickname: 'netdiag_local', token: login.token });
++        const roomCreated = once(client, 'room-created');
++        client.emit('create-room', { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, mode: 'br', xp: 0, proto: ARNet.PROTO });
++        await roomCreated;
++        const gameStarted = once(client, 'game-start');
++        client.emit('start-game');
++        await gameStarted;
++        const diagnosticReady = once(client, 'netdiag-ready');
++        client.emit('netdiag-start');
++        const [claim] = await diagnosticReady;
++        assert.match(claim.session, /^[0-9a-f]{16}$/);
++        const [packet] = await once(client, 'gs2');
++        assert.ok(Number.isInteger(packet[0]));
++        let gsCount = 0, pongCount = 0, legacyReports = 0;
++        client.on('gs2', () => gsCount++);
++        client.on('netdiag-pong', () => pongCount++);
++        client.on('netdiag-report', () => legacyReports++);
++        for (let i = 0; i < 20; i++) client.emit('netdiag-ping', performance.now());
++        const reportPromise = once(client, 'netdiag-export-ready');
++        for (let i = 0; i < 20; i++) client.emit('netdiag-incident', { tick: packet[0] });
++        const [notice] = await reportPromise;
++        const report = JSON.parse(fs.readFileSync(path.join(__dirname, '.diag-server-export', `arena-netdiag-${notice.id}.json`), 'utf8'));
++        assert.equal(report.session, claim.session);
++        assert.equal(report.reason, 'client-gap');
++        assert.ok(report.rows.some(row => row[COL.tick] === packet[0]));
++        assert.ok(report.rows.some(row => row[COL.decision] === DECISION.sent));
++        assert.equal(pongCount, 1);
++        assert.equal(legacyReports, 0);
++        assert.ok(gsCount > 30, 'snapshots continue during export');
++    } finally {
++        if (client) client.disconnect();
++        child.kill(); db.close();
++        fs.rmSync(path.join(__dirname, '.diag-server-export'), { recursive: true, force: true });
++    }
++});
++
++test('Supabase read failure and a different user ID deny activation', { timeout: 20000 }, async () => {
++    const { io: connect } = require('../perf-harness/node_modules/socket.io-client');
++    const parser = require('socket.io-msgpack-parser');
++    const ARNet = require('../../public/netproto');
++    const { startServer, post, makeRow } = require('./fake-supabase');
++    for (const scenario of [
++        { userId: 'user-1', failRead: true },
++        { userId: 'another-user', failRead: false },
++    ]) {
++        const state = { row: { ...makeRow(), id: 'user-1', nickname: 'netdiag_local' }, failDiagRead: scenario.failRead };
++        const server = await startServer(state, { AR_NET_DIAG: '1', AR_NET_DIAG_USER_ID: scenario.userId });
++        let client;
++        try {
++        const login = await post(server.port, '/api/auth/login', { nickname: 'netdiag_local', password: 'secret' });
++        assert.equal(login.ok, true);
++        client = connect(`http://127.0.0.1:${server.port}`, { parser, transports: ['websocket'], reconnection: false });
++        await once(client, 'connect');
++        client.emit('authenticate', { nickname: 'netdiag_local', token: login.token });
++        const roomCreated = once(client, 'room-created');
++        client.emit('create-room', { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, mode: 'br', xp: 0, proto: ARNet.PROTO });
++        await roomCreated;
++        const started = once(client, 'game-start');
++        client.emit('start-game');
++        await started;
++        let claims = 0;
++        client.on('netdiag-ready', () => claims++);
++        client.emit('netdiag-start');
++        const [packet] = await once(client, 'gs2');
++        assert.ok(Number.isInteger(packet[0]));
++        await new Promise(resolve => setTimeout(resolve, 150));
++        if (scenario.failRead) assert.ok(state.diagReads >= 1, 'activation attempted a live Supabase read');
++        else assert.equal(state.diagReads || 0, 0, 'another user ID is denied before querying');
++        assert.equal(claims, 0);
++        } finally { if (client) client.disconnect(); server.stop(); }
++    }
++});
