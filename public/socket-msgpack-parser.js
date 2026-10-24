@@ -222,7 +222,13 @@
     function Decoder() {}
     Emitter(Decoder.prototype);
     Decoder.prototype.add = function (obj) {
+        var diag = global.ARBlackBox;
+        var started = diag && diag.netActive ? performance.now() : 0;
         var decoded = notepack.decode(obj);
+        if (started && decoded && decoded.data && decoded.data[0] === 'gs2') {
+            try { diag.decode(started, performance.now(), decoded.data[1] && decoded.data[1][0]); }
+            catch (_) { diag.netActive = false; }
+        }
         this.checkPacket(decoded);
         this.emit('decoded', decoded);
     };

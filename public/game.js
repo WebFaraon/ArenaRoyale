@@ -1333,7 +1333,7 @@ function showForceLogout(msg) {
     overlay.innerHTML = `
         <div class="ar-forcelogout-title">${ico('triangle-alert')}Deconectat</div>
         <div class="ar-forcelogout-msg">${msg}</div>
-        <button onclick="location.reload()">OK</button>
+        <button onclick="reloadAfterDiagnostic()">OK</button>
     `;
     document.body.appendChild(overlay);
 }
@@ -1356,7 +1356,17 @@ function _checkBuild(build) {
     overlay.className = 'ar-forcelogout ar-newbuild';
     overlay.innerHTML = `<div class="ar-forcelogout-title">${ico('refresh-cw')}Versiune nouă, se reîncarcă...</div>`;
     document.body.appendChild(overlay);
-    setTimeout(() => location.reload(), 2000);
+    setTimeout(reloadAfterDiagnostic, 2000);
+}
+function reloadAfterDiagnostic() {
+    const bb = window.ARBlackBox;
+    const hasReport = bb && (bb.on || (typeof bb.hasPendingSave === 'function' && bb.hasPendingSave()));
+    if (!hasReport || !window._gameCleanup) { location.reload(); return; }
+    try {
+        window._gameCleanup();
+        window._gameCleanup = null;
+        bb.whenSaved(2000).then(() => location.reload(), () => location.reload());
+    } catch (_) { location.reload(); }
 }
 function _watchBuild(socket) {
     socket.on('build', _checkBuild);
@@ -1512,7 +1522,7 @@ function authSuccess(nickname, password, player, token) {
 }
 
 function logoutToAuth() {
-    location.reload();
+    reloadAfterDiagnostic();
 }
 
 async function doLogin() {
@@ -3195,7 +3205,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
         document.getElementById('game-ui').style.display     = _isPve ? 'none' : 'block';
     });
 
-    socket.on('game-reset', () => { location.reload(); });
+    socket.on('game-reset', reloadAfterDiagnostic);
 
     window._gameSocket = socket;
 }
@@ -3588,9 +3598,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     window.addEventListener('keydown', _onDbgKey);
 
     // Lag black box (blackbox.js): F8 starts it in a match. The hooks below cost one check while it is off.
-    const _BB = window.ARBlackBox || { on: false, attach() {}, detach() {}, frame() {}, packet() {}, csp() {}, ping() {}, event() {} };
-    _BB.attach({
+    const _BB = window.ARBlackBox || { on: false, attach() {}, detach() {}, gameplayEnded() {}, frame() {}, packet() {}, csp() {}, ping() {}, event() {} };
+    try { _BB.attach({
         socket,
+        isGameplayActive: () => !gameEnded || isSpectating,
         meta: () => ({ mode: _gameMode, weapon: selectedWeapon, resolutionStep: _RS.idx, resolutionScale: _rsScale(), canvas: [canvas.width, canvas.height] }),
         counts: () => {
             let z = 0;
@@ -3598,7 +3609,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const e = stateBuffer[stateBuffer.length - 1];
             return [z, e ? e.bullets.length : 0, e ? Object.keys(e.players).length : 0];
         },
-    });
+    }); } catch (_) { _BB.on = false; _BB.netActive = false; }
 
     // Ping RTT measurement — trimis la fiecare 2s, server echoueaza timestamp
     socket.on('c-pong', (t, srvNow, srvStalls) => { _pingRtt = Math.round(performance.now() - t); _hudPing(_pingRtt); if (_BB.on) _BB.ping(performance.now(), _pingRtt, srvNow, srvStalls); });
@@ -3884,12 +3895,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('keyup',   onKeyUp);
         window.removeEventListener('keydown', _onDbgKey);
-        _BB.detach();   // saves the report if it was running
         canvas.removeEventListener('pointermove',  onPointerMove);
         canvas.removeEventListener('pointerleave', onPointerLeave);
         canvas.removeEventListener('pointerdown',  onPointerDown);
         canvas.removeEventListener('pointerup',    onPointerUp);
         if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        try { _BB.gameplayEnded(); _BB.detach(); } catch (_) { _BB.on = false; _BB.netActive = false; }
         clearInterval(_pingInterval);
         if (_hb.btn) _hb.btn.removeEventListener('pointerdown', _onReloadBtn);
         _hudHide();
@@ -3950,6 +3961,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     const _own = { ammo: 0, max: 0, reloading: false, reloadProgress: 1, ack: 0, coins: 0, reserve: 0 };
     socket.on(ARNet.EVENT, (pk) => {
+        const _handlerStart = _BB.netActive ? performance.now() : 0;
         // [tick, players, bullets, zombies, kits, zone, pve, own]: see public/netproto.js
         const tickNo = pk[0], pFlat = pk[1], bFlat = pk[2], zArr = pk[3], kArr = pk[4], zone2 = pk[5], pve2 = pk[6], ownRow = pk[7];
 
@@ -4173,6 +4185,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             prevHp[pid]    = p.hp;
             latestHp[pid]  = p.hp;
         }
+
+        if (_BB.netActive) _BB.handler(performance.now(), tickNo, _handlerStart, stateBuffer.length, _pendingInputs.length, _interpShow);
 
     });
 
@@ -4599,6 +4613,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('game-rematch', ({ isHost, playersMeta }) => {
+        try { _BB.gameplayEnded(); if (_BB.on) _BB.stop(true); } catch (_) { _BB.on = false; _BB.netActive = false; }
         resetForNewGame();
         if (playersMeta) {
             Object.assign(playerMeta, playersMeta);
@@ -4683,6 +4698,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const t = loc.t;
         const extrapolating = t > 1;
         const nowMs = performance.now();
+        if (_BB.netActive) _BB.interp(nowMs, Math.round(sNew.st / EMIT_MS), nowMs - sNew.t, _interpShow, extrapolating ? 1 : 0, stateBuffer.length);
 
         _ISActiveIds.clear();
         for (const id in sOld.players) {

@@ -19,6 +19,13 @@ const ARAmmo = require('./public/ammo');             // the classic magazine: re
 const { createGsWriter } = require('./server-gs');
 const notepack = require('notepack.io');             // the encoder socket.io-msgpack-parser uses
 const GS = createGsWriter(notepack, 7);               // 7 shared elements + the client's own row
+const { NetDiagnostic, COL: NET_COL } = require('./tools/net-diagnostic');
+const NET_DIAG = new NetDiagnostic(undefined, { isAuthorized: (socket, userId) => {
+    const proof = diagSocketProof.get(socket);
+    return !!supabase && !!proof && proof.id === userId &&
+        proof.nickname === socket._nickname && sessionTokens.get(proof.nickname) === proof.token &&
+        connectedAccounts.get(proof.nickname) === socket.id;
+} }); // inert unless enabled and the live Supabase identity was verified
 // PERF=1: per-second game loop stats to perf.jsonl (tools/perf-probe.js); nothing runs without it
 const PERF = process.env.PERF === '1' ? require('./tools/perf-probe') : null;
 
@@ -173,6 +180,8 @@ const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)
 // ---------- SESSION TOKENS ----------
 // nickname → token  (in-memory; se goleste la restart server)
 const sessionTokens = new Map();
+const diagVerifiedSessions = new Map(); // nickname -> { token, id }, only after real password verification
+const diagSocketProof = new WeakMap();
 
 // Who is asking: a logged-in client proves it with the session token issued at login/register (an in-memory check, no
 // hashing). The password is still accepted, for pages loaded before this change (the build check reloads them on their
@@ -283,6 +292,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!supabase) {
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(nickname, token);
+        diagVerifiedSessions.delete(nickname);
         if (!ownedSkins.has(nickname)) ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
         const skin = skinFromAvatar(memAvatars.get(nickname), nickname);
         return res.json({ ok: true, token, player: { nickname, avatar: skin, skin, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname), weapon_stats: sanitizeWeaponStats(weaponStatsMem.get(nickname)),
@@ -301,6 +311,10 @@ app.post('/api/auth/login', async (req, res) => {
 
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(existing.nickname, token);
+        if (NET_DIAG.enabled && NET_DIAG.allowedUserId && existing.id !== null &&
+            existing.id !== undefined && String(existing.id) === NET_DIAG.allowedUserId)
+            diagVerifiedSessions.set(existing.nickname, { token, id: String(existing.id) });
+        else diagVerifiedSessions.delete(existing.nickname);
 
         // Misiuni zilnice: sase din pool, alese pe zi (missions.js)
         const missions = await missionsForLogin(existing.nickname);
@@ -376,6 +390,7 @@ app.post('/api/auth/register', async (req, res) => {
         }
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(nickname, token);
+        diagVerifiedSessions.delete(nickname); // registration does not return a verified user ID
         const missions = await missionsForLogin(nickname);
         ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
         weaponSkinMem.delete(nickname);
@@ -1585,7 +1600,9 @@ function startRoomLoop(code, room) {
     let tickNo = 0;
     let next = performance.now() + INTERVAL_MS; // when the next tick is due
 
-    function tick(lateMs) {
+    function tick(lateMs, scheduledDue) {
+        const _netState = NET_DIAG.forRoom(code);
+        const _netStart = _netState ? performance.now() : 0;
         const tickStart = Date.now();
         if (PERF) PERF.tickStart(room, lateMs);
         try {
@@ -2166,6 +2183,7 @@ function startRoomLoop(code, room) {
             // What every client shares is packed and encoded ONCE per tick; each client then gets its own small row
             // appended (server-gs.js). Positions travel as quarter pixels, players are named by their slot number,
             // only live zombies are listed (one missing from the packet has died: game.js).
+            const _netPackStart = _netState ? performance.now() : 0;
             ARNet.packPlayers(_pScratch, allPlayers);
             ARNet.packBullets(_bScratch, room.bullets, false);
             ARNet.packBullets(_bScratch, _expiredBullets, true);
@@ -2173,7 +2191,22 @@ function startRoomLoop(code, room) {
             ARNet.packKits(_kScratch, room.healthKits, now);
             if (PERF) PERF.mark(room, 'snapshot');
             tickNo++;
-            const _shared = GS.begin([tickNo, _pScratch, _bScratch, _zScratch, _kScratch, ARNet.packZone(zone), ARNet.packPve(room)]);
+            const _zoneRow = ARNet.packZone(zone), _pveRow = ARNet.packPve(room);
+            const _netSlot = _netState ? NET_DIAG.begin(_netState, tickNo, scheduledDue, _netStart, _netStart - scheduledDue) : -1;
+            const _netEncodeStart = _netSlot >= 0 ? performance.now() : 0;
+            if (_netSlot >= 0) {
+                NET_DIAG.mark(_netSlot, NET_COL.simEnd, _netPackStart);
+                NET_DIAG.mark(_netSlot, NET_COL.packStart, _netPackStart);
+                if (_netPackStart - _netStart > 50) NET_DIAG.incident(_netState.socket, tickNo, 'server-simulation');
+                NET_DIAG.mark(_netSlot, NET_COL.encodeStart, _netEncodeStart);
+                if (_netEncodeStart - _netPackStart > 50) NET_DIAG.incident(_netState.socket, tickNo, 'server-snapshot');
+            }
+            const _shared = GS.begin([tickNo, _pScratch, _bScratch, _zScratch, _kScratch, _zoneRow, _pveRow]);
+            if (_netSlot >= 0) {
+                const _netPackEnd = performance.now();
+                NET_DIAG.mark(_netSlot, NET_COL.encodeEnd, _netPackEnd);
+                if (_netPackEnd - _netEncodeStart > 50) NET_DIAG.incident(_netState.socket, tickNo, 'server-encoding');
+            }
             let _sentBytes = 0;
             // Slow clients: the newest state only, never a queue of old ones. A client is skipped this tick when
             //  - its connection has more than BACKLOG_BYTES waiting to be written (it is not reading fast enough), or
@@ -2182,6 +2215,8 @@ function startRoomLoop(code, room) {
             //    every KEEPALIVE_MS, so the first thing it sees on coming back is the latest state.
             // (Dead players, the countdown and PvE breaks send no inputs: those are not counted as silence.)
             for (const p of allPlayers) {
+                const _netTarget = _netSlot >= 0 && p.id === _netState.socketId;
+                const _netAge = _netTarget && p.lastInputAt ? tickStart - p.lastInputAt : -1;
                 let silentSkip = false;
                 if (!p.alive || room.countdownActive || room.pveWaveBreak || room.gameEnded || !p.lastInputAt) {
                     if (p.lastInputAt) p.lastInputAt = tickStart;
@@ -2194,17 +2229,27 @@ function startRoomLoop(code, room) {
                     } else if (p.stalled) { p.stalled = false; console.log('[' + code + '] ' + p.name + ': raspunde din nou'); }
                 }
                 const sock = io.sockets.sockets.get(p.id);
-                if (!sock) continue;
+                if (!sock) {
+                    if (_netTarget) NET_DIAG.decision(_netSlot, 'noSocket', _netAge);
+                    continue;
+                }
                 const ws = sock.conn && sock.conn.transport && sock.conn.transport.socket, raw = ws && ws._socket;
                 if (raw && raw.writableLength > BACKLOG_BYTES) {
+                    if (_netTarget) NET_DIAG.sample(_netSlot, sock.client, false);
+                    if (_netTarget) NET_DIAG.decision(_netSlot, 'rawBacklog', _netAge);
                     if (!p.backlogged) { p.backlogged = true; console.log('[' + code + '] ' + p.name + ': conexiune lenta (' + raw.writableLength + ' B in asteptare), primeste doar ultima stare'); }
                     continue;
                 } else if (p.backlogged) { p.backlogged = false; console.log('[' + code + '] ' + p.name + ': conexiunea s-a eliberat'); }
                 if (silentSkip) {
-                    if (tickStart < p.nextKeepAt) continue;
+                    if (tickStart < p.nextKeepAt) {
+                        if (_netTarget) NET_DIAG.sample(_netSlot, sock.client, false);
+                        if (_netTarget) NET_DIAG.decision(_netSlot, 'silent', _netAge);
+                        continue;
+                    }
                     p.nextKeepAt = tickStart + KEEPALIVE_MS;
                 }
-                const n = GS.send(sock, _shared, ARNet.packOwn(p));
+                if (_netTarget) NET_DIAG.mark(_netSlot, NET_COL.inputAge, _netAge);
+                const n = GS.send(sock, _shared, ARNet.packOwn(p), _netTarget ? NET_DIAG : null, _netSlot);
                 if (n) _sentBytes = n;
             }
             if (PERF) {
@@ -2230,7 +2275,8 @@ function startRoomLoop(code, room) {
         if (!room.gameStarted || !rooms.has(code) || room.gameEnded) return;
         const now = performance.now();
         if (now - next > INTERVAL_MS * MAX_CATCHUP) next = now;   // far behind (a long stall): drop the backlog
-        if (now >= next) { tick(now - next); next += INTERVAL_MS; }
+        const scheduledDue = next;
+        if (now >= next) { tick(now - next, scheduledDue); next += INTERVAL_MS; }
         if (!room.gameStarted || !rooms.has(code) || room.gameEnded) return;
         const remaining = next - performance.now();
         if (SPIN) {
@@ -2307,6 +2353,8 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
 }
 
 function triggerRematch(code, room) {
+    const diagState = NET_DIAG.forRoom(code);
+    if (diagState) { try { diagState.socket.emit('netdiag-ended', { session: diagState.session, reason: 'rematch' }); } catch (_) {} NET_DIAG.release(diagState.socket); }
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
     room.gameStarted  = false;
     room.gameEnded    = false;
@@ -2355,6 +2403,8 @@ function triggerRematch(code, room) {
 }
 
 function closeRoom(code, room) {
+    const diagState = NET_DIAG.forRoom(code);
+    if (diagState) { try { diagState.socket.emit('netdiag-ended', { session: diagState.session, reason: 'room-closed' }); } catch (_) {} NET_DIAG.release(diagState.socket); }
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); }
     io.to(code).emit('game-reset');
     rooms.delete(code);
@@ -2389,6 +2439,9 @@ io.on('connection', (socket) => {
         }
         connectedAccounts.set(nickname, socket.id);
         socket._nickname = nickname;
+        const verified = diagVerifiedSessions.get(nickname);
+        if (verified && verified.token === token) diagSocketProof.set(socket, { ...verified, nickname });
+        else diagSocketProof.delete(socket);
         // Notify friends this player is online + send back which friends are online
         notifyFriendsPresence(nickname, 'friend-online');
         getFriendNicknames(nickname).then(friends => {
@@ -2529,6 +2582,36 @@ io.on('connection', (socket) => {
     // the echo, plus the server's clock and its recent event-loop stalls (the client's black box uses them; the game ignores them)
     socket.on('c-ping', (t) => { const now = Date.now(); socket.emit('c-pong', t, now, _srvStalls.filter(x => now - x[0] < 6000)); });
 
+    // Explicitly opt in from Blackbox. One selected socket globally, no snapshots changed.
+    const diagRate = { start: -Infinity, incident: -Infinity, ping: -Infinity };
+    function diagAllow(kind, gap) {
+        const now = performance.now();
+        if (now - diagRate[kind] < gap) return false;
+        diagRate[kind] = now; return true;
+    }
+    socket.on('netdiag-start', async () => { try {
+        if (!NET_DIAG.enabled || !supabase || !NET_DIAG.allowedUserId || !diagAllow('start', 10000)) return;
+        const proof = diagSocketProof.get(socket);
+        if (!proof || proof.id !== NET_DIAG.allowedUserId || !NET_DIAG.isAuthorized(socket, proof.id)) return;
+        const { data, error } = await supabase.from('players').select('id,nickname').eq('id', proof.id).maybeSingle();
+        if (error || !data || String(data.id) !== proof.id || data.nickname !== proof.nickname ||
+            !socket.connected || !NET_DIAG.isAuthorized(socket, proof.id)) return;
+        const r = fastGetRoom(socket);
+        if (!r || !r.room.gameStarted) return;
+        const session = NET_DIAG.claim(socket, r.code);
+        if (session) socket.emit('netdiag-ready', { session });
+    } catch (error) { NET_DIAG.fail(error); } });
+    socket.on('netdiag-incident', data => { try {
+        if (!NET_DIAG.active || NET_DIAG.active.socket !== socket || !data || !Number.isSafeInteger(data.tick) || data.tick < 0 || !diagAllow('incident', 30000)) return;
+        NET_DIAG.incident(socket, data.tick, 'client-gap');
+    } catch (error) { NET_DIAG.fail(error); } });
+    socket.on('netdiag-ping', sent => { try {
+        if (!NET_DIAG.active || NET_DIAG.active.socket !== socket || !Number.isFinite(sent) || !diagAllow('ping', 1500)) return;
+        const received = performance.now();
+        socket.emit('netdiag-pong', sent, received, performance.now());
+    } catch (error) { NET_DIAG.fail(error); } });
+    socket.on('netdiag-stop', () => NET_DIAG.release(socket));
+
     socket.on('pve-skip', () => {
         const r = fastGetRoom(socket);
         if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
@@ -2567,6 +2650,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
+        NET_DIAG.release(socket);
         if (socket._nickname && connectedAccounts.get(socket._nickname) === socket.id) {
             connectedAccounts.delete(socket._nickname);
             notifyFriendsPresence(socket._nickname, 'friend-offline');
