@@ -323,10 +323,10 @@ A full-width tray at the top of the center column: a floodlit pitch (mown stripe
 ### Match HUD
 The canvas mirrors the DOM blocks through `_drawBlock` and the `TOY` face/lip pairs in game.js.
 - **HP bar:** an ink frame around a sunk dark track; the fill is a small block (green, then gold, then red as HP drops) with a lip and a bevel. The HP number and the name use the ink stroke.
-- **Ammo:** one ink frame with the rounds as gold blocks inside it; a reloading round fills in pale gold.
+- **Gun and health block (bottom, DOM `#hud-bottom`):** one small slate block, bottom centre. Left: the gun's white icon, the rounds in the magazine large and the reserve small ("24 / 96"), and a thin segmented gold bar under them (one segment per round). Right: "HP" and a green bar with "312 / 470" on it (red at 30% or less). While reloading the bar fills sky blue with the progress and the magazine number dims; with no rounds at all "FARA MUNITIE" replaces the numbers; the magazine number turns red at a quarter of the magazine. There is no ammo bar over the head any more (the name and the health bar stay).
+- **Ping chip (bottom left, `#hud-ping`)** and the round **reload button** on touch screens (`#btn-reload`, sky blue, right edge): small slate / sky blocks with the ink outline and the lip.
 - **Weapon badge** (next to the bar): a slate block with a white pictogram.
-- **Bottom squares:** the bullet sprite in a slate block and the weapon in an orange block. On laptops they are `min(86px, 5.6vw, 9.5vh)`.
-- **Zone banner:** a slate block while the zone waits, red while it shrinks, with white stroked text.
+- **Zone banner:** a small slate block while the zone waits, red while it shrinks, with white stroked text (text about 2.1% of the short screen side).
 - **Damage popups:** they slam in at 1.5x, tilted, then settle, float up and fade over 820ms. Heavy hits (60 and above) are bigger and gold, normal hits pink-red, both with a thick ink stroke.
 - **PvE base:** a stone hexagon fort in the style of the trees and guns (`ARArena.drawBase`): ink outline, a darker lip under every part, a bevel on the top-left edges, a ground shadow. The stone never changes; the core, the tower lights and the floor trim show the state: green over half, gold to a quarter, red under it, with a ring that pulses round the core (faster when red). Its bar is the player's bar made bigger (150 x 20, "BAZĂ" above it, the number on it), drawn with the names above the tree crowns.
 - **Zombie bars:** the player's bar made small (ink frame, sunk track, a toy block for the fill), only on a zombie that is hurt; at full health there is none.
