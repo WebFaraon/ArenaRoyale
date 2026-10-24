@@ -610,14 +610,12 @@
     <!-- Bottom of the match: the gun (rounds in the magazine / reserve) and the health, one small block (game.js _hudBottom) -->
     <div id="hud-bottom" style="display:none">
         <div class="hb-gun">
-            <span class="hb-name" id="hb-name"></span>
             <span class="hb-icon" id="hb-icon"></span>
             <span class="hb-count" id="hb-count"><b id="hb-mag">0</b><i>/</i><em id="hb-reserve">0</em></span>
             <span class="hb-dry" id="hb-dry">FARA MUNITIE</span>
-            <span class="hb-segs" id="hb-segs"><span id="hb-fill"></span></span>
+            <span class="hb-segs" id="hb-segs"></span>
         </div>
         <div class="hb-hp">
-            <span class="hb-hp-lbl">HP</span>
             <span class="hb-hpbar"><span id="hb-hpfill"></span><b id="hb-hptxt">0</b></span>
         </div>
     </div>
@@ -681,7 +679,7 @@
             <button class="pve-upg-btn pve-upg-reserve" data-type="reserve" onclick="buyUpgrade('reserve')">
                 <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#package"/></svg>
                 <span class="pve-upg-name">MUNITIE</span>
-                <span class="pve-upg-val">rezerva plina</span>
+                <span class="pve-upg-val">+ gloante</span>
                 <span class="pve-upg-cost">3</span>
             </button>
         </div>
@@ -705,7 +703,6 @@
     <div class="hud-actions">
     <button id="btn-debug-toggle" onclick="window._toggleDbg && window._toggleDbg()" title="Debug overlay">DBG</button>
     <button id="btn-settings-game" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
-    <button id="btn-leave-game" onclick="showLeaveConfirm()" title="Iesi din joc"><svg class="ic" aria-hidden="true"><use href="#x"/></svg><span>IESI</span></button>
     </div>
 
     <div id="leave-confirm">
@@ -784,6 +781,13 @@
                     <div><div class="settings-name">Ecran complet</div><div class="settings-hint" id="set-fs-hint">Ascunde bara browserului</div></div>
                 </div>
                 <button class="settings-btn" id="set-fs">INTRA</button>
+            </div>
+            <div class="settings-row" id="set-row-leave" style="display:none">
+                <div class="settings-label">
+                    <img class="pic" src="/images/ui/iesi_din_cont.svg" alt="" aria-hidden="true" draggable="false">
+                    <div><div class="settings-name">Meci</div><div class="settings-hint">Parasesti runda si te intorci in lobby</div></div>
+                </div>
+                <button class="settings-btn settings-logout" onclick="closeSettings(); showLeaveConfirm()">IESI DIN MECI</button>
             </div>
             <div class="settings-row" id="set-row-logout">
                 <div class="settings-label">

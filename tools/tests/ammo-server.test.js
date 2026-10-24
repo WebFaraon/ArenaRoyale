@@ -46,7 +46,7 @@ test('a new match starts with a full magazine and a full reserve (weapons.json)'
     await withServer(async (base) => {
         const c = await player(base, 'smg', 'am_start');
         const w = WEAPONS.smg;
-        assert.deepEqual([c.own[0], c.own[1], c.own[2], c.own[5]], [w.ammoMax, w.ammoMax, 0, w.reserveMax]);
+        assert.deepEqual([c.own[0], c.own[1], c.own[2], c.own[5]], [w.ammoMax, w.ammoMax, 0, w.reserveStart]);
         c.s.close();
     });
 });
@@ -73,7 +73,7 @@ test('holding the trigger empties the magazine, reloads by itself, and fires aga
         // the trigger is still held: it fires again at once, so the magazine starts to go down; the reserve paid for the reload
         await sleep(200);
         assert.ok(c.own[0] < w.ammoMax, 'it fires again');
-        assert.equal(c.own[5], w.reserveMax - w.ammoMax, 'the reserve gave one magazine');
+        assert.equal(c.own[5], w.reserveStart - w.ammoMax, 'the reserve gave one magazine');
         c.s.close();
     });
 });
@@ -93,7 +93,7 @@ test('R fills only what is missing, from the reserve, and does nothing with a fu
         assert.ok(reloadOf(c.own), 'R started the reload');
         while (Date.now() - t0 < 5000 && reloadOf(c.own)) await sleep(20);
         assert.equal(c.own[0], w.ammoMax, 'the magazine is full again');
-        assert.equal(c.own[5], w.reserveMax - (w.ammoMax - left), 'only the missing rounds left the reserve');
+        assert.equal(c.own[5], w.reserveStart - (w.ammoMax - left), 'only the missing rounds left the reserve');
         c.s.close();
     });
 });

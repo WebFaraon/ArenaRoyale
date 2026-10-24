@@ -763,7 +763,7 @@ const WEAPON_DATA = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'd
 }
 const WEAPON_RULES   = WEAPON_DATA.rules; // aimDelay, bulletRadius: the same for every gun
 const DEFAULT_WEAPON = WEAPON_DATA.defaultWeapon;
-// id -> how the gun fires (fireMode, bulletSpeed, bulletLife, shootCd, ammoMax, reserveMax, ammoBox, reloadSeconds, pellets, spread, burstCount, burstDelay)
+// id -> how the gun fires (fireMode, bulletSpeed, bulletLife, shootCd, ammoMax, reserveStart (the reserve you begin with), ammoBox, reloadSeconds, pellets, spread, burstCount, burstDelay)
 const WEAPON_STATS   = {};
 // id -> loadout base values and growth per point (HP/DMG/SPD)
 const WEAPON_LOADOUT = {};
@@ -1056,7 +1056,7 @@ const PVE_UPGRADE_DEFS = {
     hp:   { baseCost: 7,  costInc: 4, maxUses: 5, apply: (p, n) => { p.maxHp   = p.baseMaxHp + n * 15; p.hp = Math.min(p.hp + 15, p.maxHp); } },
     ammo: { baseCost: 4,  costInc: 2, maxUses: 4, apply: (p, n) => { ARAmmo.setMagazine(p, Math.round(p.baseAmmoMax * (1 + n * 0.12))); } },   // a bigger magazine
 };
-const PVE_RESERVE_COST = 3;   // the "MUNITIE" button between waves: fills the reserve, as many times as you like
+const PVE_RESERVE_COST = 3;   // the "MUNITIE" button between waves: a pack of rounds (the starting reserve), as many times as you like
 function pveUpgradeCost(type, count) {
     const d = PVE_UPGRADE_DEFS[type];
     return d ? d.baseCost + count * d.costInc : 999;
@@ -1360,7 +1360,7 @@ function startPveWave(code, room) {
         p.x = Math.round(PVE_BASE_X + Math.cos(angle) * 240);
         p.y = Math.round(PVE_BASE_Y + Math.sin(angle) * 240);
         // a revived player gets a full magazine and reserve; the ones who lived keep what they have (the reserve is bought between waves)
-        if (!p.alive) ARAmmo.refill(p, p.reserveMax); else ARAmmo.cancelReload(p);
+        if (!p.alive) ARAmmo.refill(p, p.reserveStart); else ARAmmo.cancelReload(p);
         p.reloadReq = false; p.lastShotTime = 0;
         p.hp = p.maxHp; p.alive = true;
         p.shooting = false; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = true;
@@ -1491,7 +1491,7 @@ function addPlayer(code, room, socket, data) {
         shooting: false, shootCooldown: 0, aimTimer: 0, needsReleaseToShoot: false, hasReleasedSinceEmpty: false,
         burstRemaining: 0, burstTimer: 0, burstDx: 0, burstDy: 0, burstWeapon: null, inputQ: [],
         ws: {}, // weapon stats of this match (WEAPON STATS)
-        ammo: _ws.ammoMax, ammoMax: _ws.ammoMax, reserve: _ws.reserveMax, reserveMax: _ws.reserveMax,   // magazine / its size, reserve / its size (public/ammo.js)
+        ammo: _ws.ammoMax, ammoMax: _ws.ammoMax, reserve: _ws.reserveStart, reserveStart: _ws.reserveStart,   // magazine / its size, reserve / the reserve you begin with; only the magazine has a size, the reserve grows with boxes and purchases (public/ammo.js)
         reloading: false, reloadProgress: 0, reloadReq: false, lastShotTime: 0,
         bulletSpeed: _ws.bulletSpeed,
         alive: true, kills: 0, lastDamageTime: 0, rs: Missions.newRoundStats(),
@@ -2149,8 +2149,8 @@ function startRoomLoop(code, room) {
                             const kx = p.x - kit.x, ky = p.y - kit.y;
                             if (kx * kx + ky * ky >= pickRSq) continue;
                             if (kit.type === KIT_AMMO) {
-                                // a box fills the reserve up to the gun's maximum; with a full reserve it stays on the ground
-                                const added = ARAmmo.addReserve(p, (WEAPON_STATS[p.weapon] || WEAPON_STATS[DEFAULT_WEAPON]).ammoBox, p.reserveMax);
+                                // a box always goes in: the reserve has no ceiling
+                                const added = ARAmmo.addReserve(p, (WEAPON_STATS[p.weapon] || WEAPON_STATS[DEFAULT_WEAPON]).ammoBox);
                                 if (added > 0) {
                                     io.to(p.id).emit('kit-pickup', { amount: added, x: kit.x, y: kit.y, kind: KIT_AMMO });
                                     gone = true;
@@ -2387,7 +2387,7 @@ function triggerRematch(code, room) {
         p.moveDir = { x: 0, y: 0 }; p.shootDir = { x: 0, y: 0 };
         p.shooting = false; p.shootCooldown = 0; p.aimTimer = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
         p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
-        ARAmmo.refill(p, p.reserveMax); p.reloadReq = false; p.lastShotTime = 0;
+        ARAmmo.refill(p, p.reserveStart); p.reloadReq = false; p.lastShotTime = 0;
         p.lastDamageTime = 0; p.lastAckSeq = 0; p.pendingAckSeq = 0;
     });
     const rematchMeta = {};
@@ -2531,7 +2531,7 @@ io.on('connection', (socket) => {
             room.zombies = generateZombies(room.obstacles, room._playerArr);
         }
         room._playerArr.forEach(p => {
-            ARAmmo.refill(p, p.reserveMax); p.reloadReq = false; p.lastShotTime = 0;
+            ARAmmo.refill(p, p.reserveStart); p.reloadReq = false; p.lastShotTime = 0;
             p.shooting = false; p.shootCooldown = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
             p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
             p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0; p.lastInputAt = 0; p.stalled = false;
@@ -2629,11 +2629,10 @@ io.on('connection', (socket) => {
         const p = r.room.players[socket.id];
         if (!p) return;
         if (type === 'reserve') {
-            // the MUNITIE button: fills the reserve, for a flat price, as often as it is needed
-            if (p.reserve >= p.reserveMax) { socket.emit('upgrade-result', { ok: false, reason: 'full' }); return; }
+            // the MUNITIE button: a pack of rounds (the gun's starting reserve) for a flat price, as often as the coins allow
             if (p.coins < PVE_RESERVE_COST) { socket.emit('upgrade-result', { ok: false }); return; }
             p.coins -= PVE_RESERVE_COST;
-            p.reserve = p.reserveMax;
+            ARAmmo.addReserve(p, p.reserveStart);
             socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
             return;
         }

@@ -1920,16 +1920,12 @@ button:disabled { cursor: not-allowed; }
     border: 1px solid var(--rule-hi);
     color: var(--chalk-2);
 }
-#btn-leave-game { gap: .45em; padding: 0 12px; font-weight: 800; font-size: .8rem; letter-spacing: .1em; }
-#btn-leave-game .ic { width: 1.05em; height: 1.05em; }
 #btn-settings-game { width: 36px; }
 #btn-settings-game .ic { width: 1.1em; height: 1.1em; }
 #btn-debug-toggle { padding: 0 10px; font-weight: 800; font-size: .75rem; letter-spacing: .1em; }
 @media (hover: hover) and (pointer: fine) {
-    #btn-leave-game:hover { background: var(--alert); border-color: var(--alert); color: var(--ink); }
     #btn-settings-game:hover, #btn-debug-toggle:hover { background: var(--board-up); color: var(--chalk); }
 }
-#btn-leave-game:active { background: var(--alert); color: var(--ink); transition-duration: 0s; }
 #btn-debug-toggle.active { color: var(--lane); border-color: var(--lane); }
 
 /* kill notification: a stamped orange tag */
@@ -2398,7 +2394,6 @@ button:disabled { cursor: not-allowed; }
     .friend-remove-btn { width: 36px; height: 36px; }
     .hud-actions { top: max(8px, var(--safe-t)); right: max(8px, var(--safe-r)); gap: 5px; }
     #btn-leave-game, #btn-settings-game, #btn-debug-toggle { height: 30px; }
-    #btn-leave-game { padding: 0 9px; font-size: .75rem; }
     #btn-settings-game { width: 30px; }
     #btn-debug-toggle { padding: 0 8px; }
     #game-ui { top: max(8px, var(--safe-t)); left: max(8px, var(--safe-l)); }
@@ -3403,7 +3398,6 @@ button:disabled { cursor: not-allowed; }
     100% { opacity: 0; transform: translateX(-8px); }
 }
 
-#btn-leave-game { --c: var(--c-red); --cl: var(--l-red); --ch: var(--h-red); }
 .hud-actions { gap: 8px; }
 #btn-leave-game, #btn-settings-game, #btn-debug-toggle { height: 42px; min-height: 42px; }
 #btn-settings-game { width: 44px; padding: 0 0 3px; }
@@ -4985,15 +4979,16 @@ button:disabled { cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) { .bb-rec .bb-dot { animation: none; } }
 
 /* ---------- Match HUD: gun + health, ping, reload button (game.js _hudBottom) ---------- */
+/* --hk is the HUD scale: 1 on a laptop, smaller on a phone (game.js _hudScale); every HUD block takes it as `zoom` */
 #hud-bottom {
     position: absolute;
     left: 50%;
-    bottom: max(12px, var(--safe-b));
+    bottom: max(10px, var(--safe-b));
     transform: translateX(-50%);
     z-index: 10;
     display: flex;
     align-items: center;
-    padding: 6px 12px 10px 10px;
+    padding: 5px 11px 8px 9px;
     background: var(--c-slate);
     border: var(--o) solid var(--ink-line);
     border-radius: 12px;
@@ -5002,63 +4997,69 @@ button:disabled { cursor: not-allowed; }
     font-weight: 800;
     text-shadow: var(--stroke-sm);
     pointer-events: none;
-    --hb-n: 10;
+    zoom: var(--hk, 1);
 }
 .hb-gun {
     display: grid;
-    grid-template-columns: 46px auto;
+    grid-template-columns: 42px auto;
     column-gap: 8px;
-    row-gap: 4px;
+    row-gap: 3px;
     align-items: center;
-    padding-right: 12px;
+    padding-right: 11px;
     border-right: 3px solid rgba(0, 0, 0, .35);
-    min-width: 124px;
+    width: 132px;
+    box-sizing: content-box;
 }
-.hb-name { grid-column: 1 / -1; font-size: .7rem; letter-spacing: .14em; color: #B7C5CE; line-height: 1; }
-.hb-icon { width: 46px; height: 24px; }
+.hb-icon { width: 42px; height: 22px; }
 .hb-icon .wicon { width: 100%; height: 100%; filter: drop-shadow(0 2px 0 var(--ink-line)); }
-.hb-count { display: flex; align-items: baseline; gap: 3px; line-height: 1; white-space: nowrap; min-width: 78px; }
-.hb-count b { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hb-count { display: flex; align-items: baseline; gap: 3px; line-height: 1; white-space: nowrap; }
+.hb-count b { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .hb-count i, .hb-count em { font-style: normal; font-size: 1rem; color: #B7C5CE; font-variant-numeric: tabular-nums; }
 .hb-dry { display: none; color: var(--h-red); font-size: .78rem; letter-spacing: .06em; line-height: 1.1; }
+/* the magazine: one cell per round (game.js builds them), a cell is lit or not, so the bar has no soft edge to shimmer */
 .hb-segs {
     grid-column: 1 / -1;
-    position: relative;
-    height: 8px;
+    display: flex;
+    gap: var(--hb-gap, 2px);
+    height: 15px;
+    padding: 2px;
     border: 2px solid var(--ink-line);
-    border-radius: 5px;
+    border-radius: 7px;
     background: #0F171B;
-    overflow: hidden;
     box-sizing: border-box;
     text-shadow: none;
 }
-.hb-segs #hb-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: var(--c-gold); }
-.hb-segs::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: repeating-linear-gradient(90deg, transparent 0, transparent calc(100% / var(--hb-n) - 2px), #0F171B calc(100% / var(--hb-n) - 2px), #0F171B calc(100% / var(--hb-n)));
-}
+.hb-segs > i { flex: 1 1 0; min-width: 0; border-radius: 2px; background: #25343D; }
+.hb-segs > i.on { background: var(--c-gold); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .4), inset 0 -2px 0 rgba(0, 0, 0, .22); }
 #hud-bottom.hb-reloading .hb-count { opacity: .5; }
-#hud-bottom.hb-reloading #hb-fill { background: var(--c-sky); }
+#hud-bottom.hb-reloading .hb-segs > i.on { background: var(--c-sky); }
 #hud-bottom.hb-low #hb-mag { color: var(--h-red); }
 #hud-bottom.hb-dry .hb-count { display: none; }
 #hud-bottom.hb-dry .hb-dry { display: block; }
-#hud-bottom.hb-dry #hb-fill { width: 0 !important; }
-.hb-hp { display: flex; flex-direction: column; gap: 3px; padding-left: 12px; min-width: 128px; }
-.hb-hp-lbl { font-size: .7rem; letter-spacing: .14em; color: var(--h-green); line-height: 1; }
+/* the health: the bar of the old head tag, now the only one of yours: a sunk track in an ink frame, the fill a toy block */
+.hb-hp { padding-left: 11px; }
 .hb-hpbar {
+    --f: #46D46A; --l: #24903C;
     position: relative;
-    height: 17px;
-    border: 2px solid var(--ink-line);
-    border-radius: 9px;
-    background: #0F171B;
+    display: block;
+    width: 128px;
+    height: 26px;
+    border: 2.5px solid var(--ink-line);
+    border-radius: 13px;
+    background: #1B252C;
+    box-shadow: 0 3px 0 rgba(0, 0, 0, .4);
     overflow: hidden;
     box-sizing: border-box;
 }
-.hb-hpbar #hb-hpfill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: var(--c-green); }
-.hb-hpbar.hb-hp-low #hb-hpfill { background: var(--c-red); }
-.hb-hpbar b { position: absolute; inset: 0; display: grid; place-items: center; font-size: .78rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.hb-hpbar #hb-hpfill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 100%; min-width: 22px;
+    border-radius: 11px;
+    background: linear-gradient(to bottom, var(--f) 0 70%, var(--l) 70% 100%);
+}
+.hb-hpbar #hb-hpfill::after { content: ''; position: absolute; left: 10px; right: 10px; top: 3px; height: 3px; background: rgba(255, 255, 255, .35); }
+.hb-hpbar.hb-hp-mid { --f: #FFC72E; --l: #C68A07; }
+.hb-hpbar.hb-hp-low { --f: #FF4B5C; --l: #B11F2E; }
+.hb-hpbar b { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: 1px; font-size: 1rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 
 #hud-ping {
     position: absolute;
@@ -5107,17 +5108,10 @@ button:disabled { cursor: not-allowed; }
 .btn-reload:active { transform: translateY(3px); box-shadow: inset 0 -2px 0 var(--l-sky), inset 0 2px 0 rgba(255, 255, 255, .3), 0 1px 0 rgba(0, 0, 0, .45); }
 .btn-reload.is-busy { filter: saturate(.4) brightness(.8); }
 
-@media (max-height: 520px), (max-width: 640px) {
-    #hud-bottom { padding: 4px 9px 8px 8px; }
-    .hb-gun { min-width: 108px; padding-right: 9px; grid-template-columns: 38px auto; column-gap: 6px; }
-    .hb-icon { width: 38px; height: 20px; }
-    .hb-count { min-width: 64px; }
-    .hb-count b { font-size: 1.3rem; }
-    .hb-hp { min-width: 96px; padding-left: 9px; }
-    .hb-hpbar { height: 15px; }
-    .hb-hpbar b { font-size: .66rem; }
-    #hud-ping { height: 24px; font-size: .72rem; }
-}
-
 /* the ammo reserve button of the wave break: one wide block under the four upgrades */
 .pve-upg-btn.pve-upg-reserve { grid-column: 1 / -1; flex-direction: row; justify-content: center; gap: 12px; padding-top: clamp(6px, 1.2dvh, 10px); padding-bottom: clamp(8px, 1.4dvh, 12px); }
+
+/* ---------- Match HUD scale: --hk (game.js _hudScale) is 1 on a laptop and smaller on a phone, so the blocks keep their share of the screen ---------- */
+#hud-ping, #game-ui, #pve-top-hud, #spectator-hud { zoom: var(--hk, 1); }
+#btn-reload { zoom: var(--hk-btn, 1); }   /* the corner buttons (.hud-actions) are not scaled: they are already finger-sized */
+#set-row-leave .settings-btn { white-space: nowrap; }

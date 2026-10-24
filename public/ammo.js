@@ -8,7 +8,7 @@
 // State: any object with { ammo, ammoMax, reserve, reloading, reloadProgress } (the server's player, the client's
 // ammoState). Every function changes it in place and allocates nothing: they run on every tick.
 //   ammo, ammoMax   rounds in the magazine / its size (a PvE upgrade can grow it)
-//   reserve         rounds in the reserve (never above the gun's reserveMax)
+//   reserve         rounds in the reserve: no ceiling, boxes and purchases keep adding (only the magazine has a size)
 //   reloading       a reload is running; reloadProgress is 0..1
 // ============================================
 (function (root, factory) {
@@ -62,16 +62,16 @@
         return k;
     }
 
-    // An ammo box: n rounds into the reserve, never above reserveMax; returns how many went in (0 = nothing, leave the box)
-    function addReserve(s, n, reserveMax) {
-        const add = Math.max(0, Math.min(n, reserveMax - s.reserve));
+    // An ammo box, a purchase: n rounds into the reserve, which has no ceiling; returns how many went in
+    function addReserve(s, n) {
+        const add = Math.max(0, n);
         s.reserve += add;
         return add;
     }
 
-    // Full magazine and full reserve: a new match, a revived player
-    function refill(s, reserveMax) {
-        s.ammo = s.ammoMax; s.reserve = reserveMax; cancelReload(s);
+    // Full magazine and the gun's starting reserve: a new match, a revived player
+    function refill(s, reserveStart) {
+        s.ammo = s.ammoMax; s.reserve = reserveStart; cancelReload(s);
     }
 
     // A bigger magazine (the PvE AMMO upgrade). The rounds you have stay; the next reload fills the new size.

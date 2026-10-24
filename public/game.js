@@ -3329,7 +3329,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const ammoState      = { ammo: 0, ammoMax: 1, reserve: 0, reloading: false, reloadProgress: 0 };
     const _AMMO_FULL = () => {
         const wd = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {};
-        ammoState.ammoMax = wd.ammoMax || 1; ammoState.ammo = ammoState.ammoMax; ammoState.reserve = wd.reserveMax || 0;
+        ammoState.ammoMax = wd.ammoMax || 1; ammoState.ammo = ammoState.ammoMax; ammoState.reserve = wd.reserveStart || 0;
         ammoState.reloading = false; ammoState.reloadProgress = 0;
     };
     _AMMO_FULL();
@@ -3904,6 +3904,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         clearInterval(_pingInterval);
         if (_hb.btn) _hb.btn.removeEventListener('pointerdown', _onReloadBtn);
         _hudHide();
+        window.removeEventListener('resize', _hudScale);
+        document.documentElement.style.removeProperty('--hk');
+        document.documentElement.style.removeProperty('--hk-btn');
         moveDir.x = 0; moveDir.y = 0;
         isShooting = false;
         aimStartTime = null;
@@ -4449,17 +4452,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 }
             }
         });
-        // MUNITIE: fills the reserve for a flat price, as often as it is needed; nothing to buy when the reserve is full
+        // MUNITIE: a pack of rounds (the gun's starting reserve) for a flat price, as often as the coins allow; the reserve has no ceiling
         const rb = document.querySelector('.pve-upg-btn[data-type="reserve"]');
         if (rb) {
-            const full = ammoState.reserve >= _myReserveMax();
-            rb.querySelector('.pve-upg-cost').textContent = full ? 'PLIN' : String(_PVE_RESERVE_COST);
-            rb.disabled = full;
-            rb.classList.toggle('pve-upg-maxed', full);
+            rb.querySelector('.pve-upg-val').textContent = '+' + _myReservePack() + ' gloante';
+            rb.querySelector('.pve-upg-cost').textContent = String(_PVE_RESERVE_COST);
         }
     }
     const _PVE_RESERVE_COST = 3;   // server.js PVE_RESERVE_COST
-    const _myReserveMax = () => (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {}).reserveMax || 0;
+    const _myReservePack = () => (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {}).reserveStart || 0;
 
     window.buyUpgrade = function(type) { socket.emit('buy-upgrade', { type }); };
 
@@ -4518,14 +4519,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('upgrade-result', ({ ok, type, coins, upgCounts, reason, newMaxHp }) => {
-        if (!ok) { if (reason === 'max') showToast('Upgrade maxim atins!'); else if (reason === 'full') showToast('Rezerva e deja plina'); return; }
+        if (!ok) { if (reason === 'max') showToast('Upgrade maxim atins!'); return; }
         _pveState.myCoins = coins;
-        if (type === 'reserve') ammoState.reserve = _myReserveMax();   // the server filled it; its next packet says the same
         if (upgCounts) Object.assign(_pveUpgCounts, upgCounts);
         if (newMaxHp && playerMeta[socket.id]) playerMeta[socket.id].maxHp = newMaxHp;
         updatePveHud();
         updateUpgradeButtons();
-        const labels = { dmg: 'Damage +5%', spd: 'Viteza +4%', hp: 'HP Max +15', ammo: 'Incarcator +12%', reserve: 'Rezerva plina' };
+        const labels = { dmg: 'Damage +5%', spd: 'Viteza +4%', hp: 'HP Max +15', ammo: 'Incarcator +12%', reserve: 'Munitie +' + _myReservePack() };
         showToast(labels[type] || 'Upgrade aplicat!');
     });
 
@@ -4633,18 +4633,29 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // ---------- BOTTOM HUD (DOM): the gun and the health, the ping, the touch reload button ----------
     // Plain DOM that is touched only when something it shows changes (a number, a bar width, a class), so a frame costs a
     // few comparisons and no layout work. Rounds ready / reserve come from ammoState (public/ammo.js), the health from the packet.
-    const _hb = { el: null, mag: null, res: null, fill: null, hpfill: null, hptxt: null, hpbar: null, ping: null, pingMs: null, btn: null,
-                  last: { vis: null, mag: -1, res: -1, max: -1, fillPct: -1, cls: '', hp: -1, hpMax: -1, hpPct: -1, hpLow: null } };
+    const _hb = { el: null, mag: null, res: null, segs: null, cells: [], hpfill: null, hptxt: null, hpbar: null, ping: null, pingMs: null, btn: null,
+                  last: { vis: null, mag: -1, res: -1, max: -1, lit: -1, cls: '', hp: -1, hpPct: -1, hpBand: -1 } };
+    // HUD scale (--hk, taken by the blocks in style.css as `zoom`): 1 on a laptop, smaller on a phone, in proportion to the screen.
+    // 1180x660 CSS px is the size the blocks were drawn for; below it they shrink with the smaller side, never under 0.5 on a touch
+    // screen (0.8 with a mouse, where a small window is no reason for a tiny HUD).
+    function _hudScale() {
+        const k = Math.max(isDesktop ? 0.8 : 0.5, Math.min(1, window.innerWidth / 1180, window.innerHeight / 660));
+        const st = document.documentElement.style;
+        st.setProperty('--hk', k.toFixed(3));
+        st.setProperty('--hk-btn', Math.max(0.8, k).toFixed(3));   // the reload button you press stays a finger wide: it shrinks less
+    }
     function _hudInit() {
+        _hudScale();
+        window.addEventListener('resize', _hudScale);
         const g = id => document.getElementById(id);
-        _hb.el = g('hud-bottom'); _hb.mag = g('hb-mag'); _hb.res = g('hb-reserve'); _hb.fill = g('hb-fill');
+        _hb.el = g('hud-bottom'); _hb.mag = g('hb-mag'); _hb.res = g('hb-reserve'); _hb.segs = g('hb-segs'); _hb.cells = [];
         _hb.hpfill = g('hb-hpfill'); _hb.hptxt = g('hb-hptxt'); _hb.hpbar = _hb.hpfill && _hb.hpfill.parentNode;
         _hb.ping = g('hud-ping'); _hb.pingMs = g('hud-ping-ms'); _hb.btn = g('btn-reload');
-        const icon = g('hb-icon'), name = g('hb-name');
+        const icon = g('hb-icon');
         const wd = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {};
         if (icon) icon.innerHTML = ARIcons.weaponHtml(wd.id || selectedWeapon || DEFAULT_WEAPON, true);
-        if (name) name.textContent = (wd.name || '').toUpperCase();
-        const L = _hb.last; L.vis = null; L.mag = L.res = L.max = L.fillPct = L.hp = L.hpMax = L.hpPct = -1; L.cls = ''; L.hpLow = null;
+        const L = _hb.last; L.vis = null; L.mag = L.res = L.max = L.lit = L.hp = L.hpPct = L.hpBand = -1; L.cls = '';
+        if (_hb.segs) _hb.segs.textContent = '';
         if (_hb.ping) { _hb.ping.style.display = ''; _hb.ping.className = ''; }
         if (_hb.pingMs) _hb.pingMs.textContent = '-- ms';
         if (_hb.btn) _hb.btn.style.display = isDesktop ? 'none' : '';
@@ -4671,15 +4682,30 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (cls !== L.cls) { e.el.className = cls; L.cls = cls; if (e.btn) e.btn.classList.toggle('is-busy', rel || res <= 0 || mag >= max); }
         if (mag !== L.mag) { e.mag.textContent = mag; L.mag = mag; }
         if (res !== L.res) { e.res.textContent = res; L.res = res; }
-        if (max !== L.max) { e.el.style.setProperty('--hb-n', max); L.max = max; }
-        const fillPct = rel ? Math.max(2, Math.floor(st.reloadProgress * 100)) : Math.round(mag / max * 100);
-        if (fillPct !== L.fillPct) { e.fill.style.width = fillPct + '%'; L.fillPct = fillPct; }
+        // The magazine is one lit/unlit cell per round (a size change rebuilds the cells; a round fired only flips one class),
+        // a reload lights them one after the other. No fractional edge to shimmer while you shoot.
+        if (max !== L.max) {
+            const n = Math.min(max, 80);
+            e.segs.textContent = '';
+            e.cells.length = 0;
+            for (let i = 0; i < n; i++) e.cells.push(e.segs.appendChild(document.createElement('i')));
+            e.segs.style.setProperty('--hb-gap', (n <= 12 ? 2 : n <= 36 ? 1 : 0) + 'px');
+            L.max = max; L.lit = -1;
+        }
+        const n = e.cells.length;
+        const lit = Math.min(n, rel ? Math.max(1, Math.ceil(st.reloadProgress * n)) : mag);
+        if (lit !== L.lit) {
+            const from = L.lit < 0 ? 0 : Math.min(L.lit, lit), to = L.lit < 0 ? n : Math.max(L.lit, lit);
+            for (let i = from; i < to; i++) e.cells[i].classList.toggle('on', i < lit);
+            L.lit = lit;
+        }
+        // The health: the number in the bar, the bar's colour by how much is left (green, gold under half, red under a quarter)
         const h = Math.max(0, Math.ceil(hp)), hm = Math.max(1, Math.round(hpMax));
-        if (h !== L.hp || hm !== L.hpMax) { e.hptxt.textContent = h + ' / ' + hm; L.hp = h; L.hpMax = hm; }
-        const hpPct = Math.min(100, Math.round(h / hm * 100));
+        if (h !== L.hp) { e.hptxt.textContent = h; L.hp = h; }
+        const ratio = Math.min(1, h / hm), hpPct = Math.round(ratio * 100);
         if (hpPct !== L.hpPct) { e.hpfill.style.width = hpPct + '%'; L.hpPct = hpPct; }
-        const hpLow = hpPct <= 30;
-        if (hpLow !== L.hpLow) { e.hpbar.classList.toggle('hb-hp-low', hpLow); L.hpLow = hpLow; }
+        const band = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
+        if (band !== L.hpBand) { e.hpbar.classList.toggle('hb-hp-mid', band === 1); e.hpbar.classList.toggle('hb-hp-low', band === 2); L.hpBand = band; }
     }
 
     // ---------- INTERPOLARE STATE ----------
@@ -5459,6 +5485,55 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let _qi = 0; _qi < _plN; _qi++) {
             const player = _plQ[_qi], px = _plQx[_qi], py = _plQy[_qi];
             const isMe = player.id === socket.id;
+            // Your own health and rounds are in the bottom HUD only: over your head there is just the name, so the view stays clear.
+            // The other players keep their bar, 6 units above the ring, with the number on it and the badge of their gun.
+            if (isMe) {
+                _drawLabel(ctx, player.name, 14, '#66E287', INK, 4, 'alphabetic', px, py - _ringR - 8, _lblScale);
+                continue;
+            }
+            const barH = 13, barW = 70;
+            // latestHp for an instant update, without the interpolation delay
+            const hpNow   = latestHp[player.id] ?? player.hp;
+            const hpRatio = Math.min(1, Math.max(0, hpNow / player.maxHp));
+            const barX    = px - barW / 2;
+            const barY    = py - _ringR - barH - 6;
+            _drawLabel(ctx, player.name, 12, '#ffffff', INK, 4, 'alphabetic', px, barY - 10, _lblScale);
+            _drawHpBar(ctx, barX, barY, barW, barH, hpRatio, 2);
+            _drawLabel(ctx, String(Math.ceil(hpNow)), 8, '#ffffff', INK, 3, 'middle', barX + barW / 2, barY + barH / 2, _lblScale);
+            const _wd = _WEAPON_DATA[_playerWeapons.get(player.id) || DEFAULT_WEAPON] || _WEAPON_DATA[DEFAULT_WEAPON];
+            _drawBadge(ctx, _wd, barX + barW + 4, barY, barH, _lblScale);
+        }
+        ctx.imageSmoothingQuality = 'low'; // back to the default for the rest of the frame
+        // The mythic skins' pollen: moved once, drawn over the players (only the particles of the pool; none = nothing to do)
+        if (_skinPool.n) { ARSkinFx.step(_skinPool, _skinDt); ctx.setTransform(_wm); _drawSkinPollen(ctx, _skinPool, _lblScale); }
+
+        // --- COROANE --- (trees from sprites: above the players and zombies; see-through over whoever is under)
+        {
+            let _crN = 0;
+            for (let i = 0; i < _plN; i++) { _crX[_crN] = _plQx[i]; _crY[_crN] = _plQy[i]; _crR[_crN] = PLAYER_HIT_R; _crN++; }
+            for (let i = 0; i < _zVisible; i++) { const z = _zVisibleList[i]; _crX[_crN] = z.x; _crY[_crN] = z.y; _crR[_crN] = (_ZB_DEFS[z.type || 0] || _ZB_DEFS[0]).r; _crN++; }
+            for (let _oi = 0; _oi < _obstacles.length; _oi++) {
+                const obs = _obstacles[_oi];
+                if (obs.type !== 'tree') continue;
+                const _om = obs.r * 1.6 + 12;
+                if (obs.x + _om < visLeft || obs.x - _om > visRight || obs.y + _om < visTop || obs.y - _om > visBottom) continue;
+                ARArena.drawCrown(ctx, obs, obs.x + _obsShakeX(_oi, _obsNow), obs.y, dtSec, _crX, _crY, _crR, _crN);
+            }
+        }
+
+        // --- NUME + HP --- (above the crowns, so a tag is never hidden)
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        if (_gameMode === 'pve') {   // the base's bar: the player's, made bigger, over the fort
+            const _bBarW = 150, _bBarH = 20, _bBarX = _PVE_BASE.x - _bBarW / 2, _bBarY = _PVE_BASE.y - _PVE_BASE_R - 52;
+            const _bRatio = Math.max(0, Math.min(1, _pveState.baseHp / (_pveState.baseMaxHp || 1000)));
+            _drawLabel(ctx, 'BAZĂ', 14, '#66E287', INK, 4, 'alphabetic', _PVE_BASE.x, _bBarY - 10, _lblScale);
+            _drawHpBar(ctx, _bBarX, _bBarY, _bBarW, _bBarH, _bRatio, 2.5);
+            _drawLabel(ctx, String(Math.ceil(_pveState.baseHp)), 13, '#ffffff', INK, 4, 'middle', _PVE_BASE.x, _bBarY + _bBarH / 2, _lblScale);
+        }
+        for (let _qi = 0; _qi < _plN; _qi++) {
+            const player = _plQ[_qi], px = _plQx[_qi], py = _plQy[_qi];
+            const isMe = player.id === socket.id;
             const barH = isMe ? 22 : 13;
             const barW = isMe ? 108 : 70;
             // Bara HP (toti jucatorii) — folosim latestHp pentru update instant, fara delay de interpolatie
@@ -5466,9 +5541,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const hpRatio = Math.min(1, Math.max(0, (latestHp[player.id] ?? player.hp) / player.maxHp));
             const barX    = px - barW / 2;
             const barY    = py - _ringR - barH - 6;
-            _drawLabel(ctx, player.name, isMe ? 14 : 12, isMe ? '#66E287' : '#ffffff', INK, 4, 'alphabetic',
-                       px, barY - (isMe ? 12 : 10), _lblScale);
-            _drawHpBar(ctx, barX, barY, barW, barH, hpRatio, isMe ? 2.5 : 2);
+            if (isMe) {
+                // Your own health is in the bottom HUD only: nothing over your head but the name, so the view stays clear
+                _drawLabel(ctx, player.name, 14, '#66E287', INK, 4, 'alphabetic', px, py - _ringR - 8, _lblScale);
+                continue;
+            }
+            _drawLabel(ctx, player.name, 12, '#ffffff', INK, 4, 'alphabetic', px, barY - 10, _lblScale);
+            _drawHpBar(ctx, barX, barY, barW, barH, hpRatio, 2);
 
             // Text HP pe bara (cached label per value)
             _drawLabel(ctx, String(Math.ceil(latestHp[player.id] ?? player.hp)), isMe ? 13 : 8, '#ffffff', INK, isMe ? 4 : 3, 'middle',
@@ -5606,7 +5685,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (_zoneTimerAlpha > 0) {
                 // The label is a cached sprite: text, block and outline are painted again only when the text
                 // (whole seconds, or the phase) or the size changes, not 60-240 times a second
-                const _zFontSz = Math.max(11, Math.round(Math.min(W, H) * 0.021));   // a small chip: the match canvas stays the hero
+                const _zFontSz = Math.max(9, Math.round(Math.min(W, H) * 0.021));   // a small chip: the match canvas stays the hero
                 const _zt = _zone.waitTimer;
                 const _zSec = _zt > 0 ? Math.ceil(_zt) : 0;
                 const _zSt = _zt > 0 ? 0 : (_zone.r > 0 ? 1 : 2);

@@ -60,7 +60,7 @@
         return {
             fireMode: w.fireMode,
             bulletSpeed: w.bulletSpeed, bulletLife: w.bulletLife, shootCd: w.shootCd,
-            ammoMax: w.ammoMax, reserveMax: w.reserveMax, ammoBox: w.ammoBox, reloadSeconds: w.reload.seconds,
+            ammoMax: w.ammoMax, reserveStart: w.reserveStart, ammoBox: w.ammoBox, reloadSeconds: w.reload.seconds,
             pellets: w.pellets || 1, spread: w.spread || 0,
             burstCount: burst ? w.burst.count : 1, burstDelay: burst ? w.burst.delay : 0,
         };
@@ -82,7 +82,7 @@
             if (w.fireMode === 'burst' && !(w.burst && Number.isInteger(w.burst.count) && w.burst.count >= 2 && num(w.burst.delay, 0.001))) bad('burst {count >= 2, delay}');
             for (const k of ['bulletSpeed', 'bulletLife', 'shootCd']) if (!num(w[k], 0.001)) bad(k);
             if (!Number.isInteger(w.ammoMax) || w.ammoMax < 1) bad('ammoMax');
-            if (!Number.isInteger(w.reserveMax) || w.reserveMax < w.ammoMax) bad('reserveMax (a whole number, at least one magazine)');
+            if (!Number.isInteger(w.reserveStart) || w.reserveStart < w.ammoMax) bad('reserveStart (a whole number, at least one magazine)');
             if (!Number.isInteger(w.ammoBox) || w.ammoBox < 1) bad('ammoBox');
             if (!(w.reload && num(w.reload.seconds, 0.001))) bad('reload {seconds}');
             if (w.pellets !== undefined && !(Number.isInteger(w.pellets) && w.pellets >= 1 && num(w.spread, 0))) bad('pellets / spread');

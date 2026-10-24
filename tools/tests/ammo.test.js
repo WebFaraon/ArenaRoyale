@@ -64,7 +64,7 @@ test('spend never goes below zero; a burst that runs out stops short', () => {
 test('Falcon: a 30-round magazine fires 10 bursts of 3, and each bullet costs one round', () => {
     const f = WEAPONS.weapons.burst;
     assert.equal(f.ammoMax, 30); assert.equal(f.burst.count, 3);
-    const s = st({ ammo: f.ammoMax, ammoMax: f.ammoMax, reserve: f.reserveMax });
+    const s = st({ ammo: f.ammoMax, ammoMax: f.ammoMax, reserve: f.reserveStart });
     let bursts = 0;
     while (A.canFire(s)) { let fired = 0; for (let i = 0; i < f.burst.count && s.ammo > 0; i++) fired += A.spend(s, 1); assert.equal(fired, 3); bursts++; }
     assert.equal(bursts, 10); assert.equal(s.ammo, 0);
@@ -72,14 +72,21 @@ test('Falcon: a 30-round magazine fires 10 bursts of 3, and each bullet costs on
     const t = st({ ammo: 30 }); for (let i = 0; i < 3; i++) A.spend(t, 1); assert.equal(t.ammo, 27);
 });
 
-test('an ammo box fills the reserve up to the gun\'s maximum, and is left alone when the reserve is full', () => {
+test('an ammo box or a purchase adds to the reserve with no ceiling, only the magazine has a size', () => {
     const s = st({ reserve: 80 });
-    assert.equal(A.addReserve(s, 48, 96), 16); assert.equal(s.reserve, 96);
-    assert.equal(A.addReserve(s, 48, 96), 0, 'full reserve: the box stays on the ground');
-    assert.equal(A.addReserve(st({ reserve: 0 }), 48, 96), 48);
+    assert.equal(A.addReserve(s, 48), 48); assert.equal(s.reserve, 128);
+    assert.equal(A.addReserve(s, 48), 48); assert.equal(s.reserve, 176);
+    for (let i = 0; i < 20; i++) A.addReserve(s, 60);
+    assert.equal(s.reserve, 176 + 1200, 'hundreds of rounds in the reserve are fine');
+    assert.equal(A.addReserve(st({ reserve: 0 }), 48), 48);
+    assert.equal(A.addReserve(s, -5), 0, 'nothing negative goes in');
+    // a big reserve still reloads only the missing rounds, one magazine at a time
+    const t = st({ ammo: 0, reserve: 500 });
+    A.startReload(t); A.stepReload(t, 5, 2);
+    assert.equal(t.ammo, 30); assert.equal(t.reserve, 470);
 });
 
-test('refill: a new match or a revived player gets a full magazine, a full reserve and no reload', () => {
+test('refill: a new match or a revived player gets a full magazine, the starting reserve and no reload', () => {
     const s = st({ ammo: 3, reserve: 4, reloading: true, reloadProgress: 0.6 });
     A.refill(s, 90);
     assert.deepEqual([s.ammo, s.reserve, s.reloading, s.reloadProgress], [30, 90, false, 0]);
@@ -102,10 +109,10 @@ test('cancelling a reload (death, a new match) leaves the magazine and the reser
 test('weapons.json: every gun has a magazine, a reserve of whole magazines, a box and a reload time', () => {
     assert.deepEqual(ARShared.checkWeapons(WEAPONS), []);
     for (const [id, w] of Object.entries(WEAPONS.weapons)) {
-        assert.ok(w.reserveMax >= w.ammoMax, id + ' reserve');
-        assert.ok(w.ammoBox >= 1 && w.ammoBox <= w.reserveMax, id + ' box');
+        assert.ok(w.reserveStart >= w.ammoMax, id + ' reserve');
+        assert.ok(w.ammoBox >= 1 && w.ammoBox <= w.reserveStart, id + ' box');
         assert.ok(w.reload.seconds > 0, id + ' reload');
         const ws = ARShared.weaponStats(w);
-        assert.equal(ws.reserveMax, w.reserveMax); assert.equal(ws.ammoBox, w.ammoBox); assert.equal(ws.reloadSeconds, w.reload.seconds);
+        assert.equal(ws.reserveStart, w.reserveStart); assert.equal(ws.ammoBox, w.ammoBox); assert.equal(ws.reloadSeconds, w.reload.seconds);
     }
 });
