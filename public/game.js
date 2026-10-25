@@ -3498,8 +3498,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // They arrive by events (struct-add / -hp / -upd / -del, pve-inv), not in gs2. The art is public/images/pve/barricades/<material><state><h|v>.svg
     // (from the Baricade si Turete artifact): 4 materials, whole / damaged / broken, lying down or standing up, so nothing is ever rotated.
     const _structs     = [];   // on the field: { id, x, y, o, t, hp, maxHp, by }
+    const _turrets     = [];   // the turrets (round, server.js room.turrets): { id, k: 't', x, y, t, hp, maxHp, by, ang (drawn), tang (aimed), flash }
+    const _turretFx    = [];   // tracers of the shots: { x0, y0, x1, y1, t0, tier }
     const _structDying = [];   // broken ones, drawn as pieces for a second: { s, t0 }
-    const _bar = { inv: 0, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
+    const _bar = { inv: 0, invT: 0, kind: 'b', place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
     const _structFx = [];      // the effects: break, repair, upgrade { k, x, y, o, t0, parts }
     // colours of the chips by material (wood, stone, metal, obsidian): light, dark, highlight
     const _BAR_PAL = [['#D9A24E', '#8F5A1E', '#F4D48A'], ['#A39B8E', '#6B655B', '#D2CBBF'], ['#9AA7B4', '#5E6B78', '#D3DCE5'], ['#6A52B0', '#241C42', '#B79CF5']];
@@ -3516,25 +3518,70 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const w = o ? 68 : 136, h = o ? 136 : 68;
         return _labelSprite('BAR|' + tier + st + o, scale, w, h, g => g.drawImage(im, 0, 0, w, h));
     }
+    // ---- turrets: the base stays, the head turns to what it fires at; the art is public/images/pve/turrets/{base,head}<level>.svg (100 x 100 units, the base disc has the radius 31) ----
+    const _TUR_PAL = [['#A9C46A', '#4F5A2A', '#E4F0B0'], ['#6C9BD8', '#2F4A7A', '#CFE3FF'], ['#8FF3FF', '#24505E', '#FFFFFF']];
+    const _TUR_COL = ['#FFE27A', '#FFB84A', '#7FE9FF'];   // the tracer by level
+    function _turImg(part, tier) {
+        const key = 'T' + part + (tier + 1);
+        let im = _bar.imgs.get(key);
+        if (!im) { im = new Image(); im.src = arAsset('/images/pve/turrets/' + part + (tier + 1) + '.svg'); _bar.imgs.set(key, im); }
+        return im.complete && im.naturalWidth ? im : null;
+    }
+    function _turSprite(part, tier, scale) {
+        const im = _turImg(part, tier);
+        if (!im) return null;
+        return _labelSprite('TUR|' + part + tier, scale, 100, 100, g => g.drawImage(im, 0, 0, 100, 100));
+    }
+    function _drawTurret(ctx, t, scale, alpha, ang, k) {
+        const b = _turSprite('base', t.t, scale), h = _turSprite('head', t.t, scale);
+        ctx.globalAlpha = alpha;
+        ctx.save(); ctx.translate(t.x, t.y); if (k !== 1) ctx.scale(k, k);
+        if (b) ctx.drawImage(b.c, -b.w / 2, -b.h / 2, b.w, b.h);
+        if (h) { ctx.rotate(ang - Math.PI / 2); ctx.drawImage(h.c, -h.w / 2, -h.h / 2, h.w, h.h); }   // the barrel is drawn pointing down: 0 deg is +y
+        ctx.restore();
+        ctx.globalAlpha = 1;
+    }
+    // the muzzle flashes and the tracers of the shots, over the zombies
+    function _drawTurretFx(ctx, now) {
+        for (let i = _turretFx.length - 1; i >= 0; i--) {
+            const f = _turretFx[i], age = now - f.t0;
+            if (age >= 110) { _turretFx.splice(i, 1); continue; }
+            const a = 1 - age / 110, col = _TUR_COL[f.tier];
+            ctx.globalAlpha = a; ctx.lineCap = 'round';
+            ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = (f.tier === 2 ? 5.5 : 4) ; ctx.beginPath(); ctx.moveTo(f.x0, f.y0); ctx.lineTo(f.x1, f.y1); ctx.stroke();
+            ctx.strokeStyle = col; ctx.lineWidth = (f.tier === 2 ? 3 : 1.8); ctx.beginPath(); ctx.moveTo(f.x0, f.y0); ctx.lineTo(f.x1, f.y1); ctx.stroke();
+            ctx.fillStyle = col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6;
+            _star(ctx, f.x0, f.y0, 8 + 5 * a); ctx.fill(); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+    }
     function _barEls() {
         const g = id => document.getElementById(id);
-        return _bar.els = { slot: g('pb-barricade'), n: g('pb-barricade-n'), cost: g('pb-barricade-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar'), val: g('pve-barricade-val') };
+        return _bar.els = { slot: g('pb-barricade'), n: g('pb-barricade-n'), cost: g('pb-barricade-cost'), tslot: g('pb-turret'), tn: g('pb-turret-n'), tcost: g('pb-turret-cost'), tval: g('pve-turret-val'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar'), val: g('pve-barricade-val') };
     }
     function _barUi() {
         const e = _bar.els || _barEls();
-        if (e.slot) { e.slot.classList.toggle('is-empty', _bar.inv <= 0 && !_bar.place); e.slot.classList.toggle('is-on', _bar.place); }
+        if (e.slot) { e.slot.classList.toggle('is-empty', _bar.inv <= 0 && !(_bar.place && _bar.kind === 'b')); e.slot.classList.toggle('is-on', _bar.place && _bar.kind === 'b'); }
         if (e.n) e.n.textContent = _bar.inv;
         if (e.cost) e.cost.textContent = 'x' + _bar.inv;
         if (e.val) e.val.textContent = 'in inventar: ' + _bar.inv;
-        const pc = document.querySelector('.pve-upg-barricade .pve-upg-cost'); if (pc) pc.textContent = ARStructs.BUY_COST;
+        if (e.tslot) { e.tslot.classList.toggle('is-empty', _bar.invT <= 0 && !(_bar.place && _bar.kind === 't')); e.tslot.classList.toggle('is-on', _bar.place && _bar.kind === 't'); }
+        if (e.tn) e.tn.textContent = _bar.invT;
+        if (e.tcost) e.tcost.textContent = 'x' + _bar.invT;
+        if (e.tval) e.tval.textContent = 'in inventar: ' + _bar.invT;
+        const pc = document.querySelector('.pve-upg-btn[data-type="barricade"] .pve-upg-cost'); if (pc) pc.textContent = ARStructs.BUY_COST;
+        const tc = document.querySelector('.pve-upg-btn[data-type="turret"] .pve-upg-cost'); if (tc) tc.textContent = ARStructs.TURRET_BUY_COST;
         if (e.pbar) e.pbar.style.display = _bar.place && !isDesktop ? '' : 'none';
     }
     // 1 (or the slot): the placement mode, with the ghost in front of you. While it is on, the trigger does not fire.
-    function _barPlaceMode(on) {
-        if (on === undefined) on = !_bar.place;
+    // kind: 'b' barricade (key 1) or 't' turret (key 2); the same key again, or Esc, puts the ghost away; the other key swaps it
+    function _barPlaceMode(on, kind) {
+        if (kind) { if (on === undefined) on = !(_bar.place && _bar.kind === kind); } else if (on === undefined) on = !_bar.place;
         if (on) {
             if (_gameMode !== 'pve' || _selfDead || gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
-            if (_bar.inv <= 0) return;
+            const k = kind || _bar.kind;
+            if ((k === 't' ? _bar.invT : _bar.inv) <= 0) return;
+            _bar.kind = k; _bar.why = null;
             isShooting = false; aimStartTime = null;
         }
         _bar.place = !!on;
@@ -3543,7 +3590,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     function _barPlace() {
         if (!_bar.place || predX === null) return;
         if (_bar.why) return;   // the ghost is red: nothing to say
-        socket.emit('place-struct', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), o: _bar.g.o });
+        if (_bar.kind === 't') socket.emit('place-turret', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y) });
+        else socket.emit('place-struct', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), o: _bar.g.o });
     }
     function _barUse() { if (_bar.use && !_bar.place) socket.emit('use-struct', { id: _bar.use.id }); }
     // Where the ghost stands and whether the barricade can go there (the same check the server makes)
@@ -3551,10 +3599,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (!_bar.place) return;
         if (_selfDead || gameEnded || _pveState.waveBreak) { _barPlaceMode(false); return; }
         if (predX === null) return;
-        ARStructs.placement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g);
         const pl = _bar.pl; pl.length = 0;
         for (const id in players) { const p = players[id]; if (p.alive && p.hp > 0) pl.push(id === socket.id ? { x: predX, y: predY } : p); }
-        _bar.why = ARStructs.checkPlace(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, players: pl, playerR: PLAYER_HIT_R, count: _structs.length });
+        if (_bar.kind === 't') {
+            ARStructs.turretPlacement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g);
+            _bar.why = ARStructs.checkPlaceTurret(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, turretCount: _turrets.length });
+            return;
+        }
+        ARStructs.placement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g);
+        _bar.why = ARStructs.checkPlace(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, count: _structs.length });
     }
     // The barricade within reach of you, and what E would do to it (the prompt changes only when that does)
     function _barUseTick() {
@@ -3562,10 +3615,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (predX !== null && !_bar.place && !_selfDead && !_pveState.waveBreak) {
             const reach = PLAYER_HIT_R + ARStructs.BARRICADE.useRange;
             for (let i = 0; i < _structs.length; i++) { const d = ARStructs.distToRect(predX, predY, _structs[i]); if (d <= reach && d < bd) { bd = d; best = _structs[i]; } }
+            for (let i = 0; i < _turrets.length; i++) { const d = ARStructs.turretDist(predX, predY, _turrets[i]); if (d <= PLAYER_HIT_R + ARStructs.TURRET.useRange && d < bd) { bd = d; best = _turrets[i]; } }
         }
         _bar.use = best;
-        const act = best && !_bar.work.has(best.id) ? ARStructs.useAction(best) : null;   // not while it is being worked on
-        const cost = !act ? 0 : act === 'repair' ? ARStructs.repairCost(best) : ARStructs.upgradeCost(best);
+        const tur = best && best.k === 't';
+        const act = best && !_bar.work.has(best.id) ? (tur ? ARStructs.turretUseAction(best) : ARStructs.useAction(best)) : null;   // not while it is being worked on
+        const cost = !act ? 0 : tur ? (act === 'repair' ? ARStructs.turretRepairCost(best) : ARStructs.turretUpgradeCost(best)) : act === 'repair' ? ARStructs.repairCost(best) : ARStructs.upgradeCost(best);
         const can = _pveState.myCoins >= cost;
         const key = act ? act + cost + (can ? 'y' : 'n') : '';
         if (key === _bar.useKey) return;
@@ -3584,16 +3639,22 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // ---- effects: pieces, dust, rings, sparkles (all of them over a second or less) ----
     // k: 'break' | 'repair' | 'upgrade'; the particles are worked out once here and moved by the age in _drawStructFx
     function _fxSpawn(k, s, now) {
-        const parts = [], len = ARStructs.halfW(s) > ARStructs.halfH(s) ? ARStructs.halfW(s) : ARStructs.halfH(s);
-        const horiz = !s.o, r = Math.random;
+        const tur = s.k === 't';
+        const parts = [], len = tur ? ARStructs.TURRET.r : ARStructs.halfW(s) > ARStructs.halfH(s) ? ARStructs.halfW(s) : ARStructs.halfH(s);
+        const horiz = tur || !s.o, r = Math.random;
         const n = k === 'break' ? 18 : k === 'upgrade' ? 12 : 7;
         for (let i = 0; i < n; i++) {
             const along = (r() * 2 - 1) * len * 0.9;
+            if (tur) { const a = r() * Math.PI * 2, d = r() * len * 0.8; parts.push({ ox: Math.cos(a) * d, oy: Math.sin(a) * d, a: r() * Math.PI * 2, v: 0.5 + r(), rot: r() * Math.PI, rs: (r() - 0.5) * 9, sz: 3.5 + r() * 4, c: (r() * 3) | 0 }); continue; }
             parts.push({ ox: horiz ? along : (r() * 2 - 1) * 12, oy: horiz ? (r() * 2 - 1) * 12 : along,
                          a: r() * Math.PI * 2, v: 0.5 + r(), rot: r() * Math.PI, rs: (r() - 0.5) * 9, sz: 3.5 + r() * 4, c: (r() * 3) | 0 });
         }
-        _structFx.push({ k, x: s.x, y: s.y, o: s.o, t: s.t, t0: now, parts, len });
+        _structFx.push({ k, x: s.x, y: s.y, o: s.o, t: s.t, t0: now, parts, len, round: tur, pal: tur ? _TUR_PAL[s.t] : null });
         if (_structFx.length > 40) _structFx.shift();
+    }
+    function _fxShape(ctx, f, hw, hh) {   // the outline of the thing the effect plays over: a barricade's rectangle or a turret's disc
+        ctx.beginPath();
+        if (f.round) ctx.arc(f.x, f.y, hw + 2, 0, Math.PI * 2); else ctx.roundRect(f.x - hw - 2, f.y - hh - 2, hw * 2 + 4, hh * 2 + 4, 8);
     }
     function _star(ctx, x, y, r) {   // a four-point sparkle
         ctx.beginPath();
@@ -3606,8 +3667,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const f = _structFx[i], dur = f.k === 'break' ? 1100 : f.k === 'upgrade' ? 1000 : 900, t = (now - f.t0) / dur;
             if (t >= 1) { _structFx.splice(i, 1); continue; }
             const e = 1 - (1 - t) * (1 - t);     // ease out
-            const hw = f.o ? 17 : 54, hh = f.o ? 54 : 17;
-            const pal = _BAR_PAL[f.t] || _BAR_PAL[0];
+            const hw = f.round ? ARStructs.TURRET.r : f.o ? 17 : 54, hh = f.round ? ARStructs.TURRET.r : f.o ? 54 : 17;
+            const pal = f.pal || _BAR_PAL[f.t] || _BAR_PAL[0];
             ctx.save();
             if (f.k === 'break') {
                 // a ring of shock, puffs of dust, and the chips flying out
@@ -3632,7 +3693,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             } else if (f.k === 'repair') {
                 // a green glow over the barricade and plus signs rising from it
                 ctx.fillStyle = 'rgba(70,212,106,' + (0.5 * (1 - t)).toFixed(3) + ')';
-                ctx.beginPath(); ctx.roundRect(f.x - hw - 2, f.y - hh - 2, hw * 2 + 4, hh * 2 + 4, 8); ctx.fill();
+                _fxShape(ctx, f, hw, hh); ctx.fill();
                 ctx.globalAlpha = 1 - t * t; ctx.lineCap = 'round';
                 for (let k = 0; k < f.parts.length; k++) {
                     const p = f.parts[k], px = f.x + p.ox, py = f.y + p.oy - 10 - 44 * e * p.v, sz = 4 + p.sz * 0.5;
@@ -3643,7 +3704,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 }
             } else {
                 // upgrade: a flash, a golden ring spreading out, sparkles bursting
-                if (t < 0.4) { ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - t / 0.4)).toFixed(3) + ')'; ctx.beginPath(); ctx.roundRect(f.x - hw - 2, f.y - hh - 2, hw * 2 + 4, hh * 2 + 4, 8); ctx.fill(); }
+                if (t < 0.4) { ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - t / 0.4)).toFixed(3) + ')'; _fxShape(ctx, f, hw, hh); ctx.fill(); }
                 ctx.lineWidth = 5 * (1 - t) + 1; ctx.strokeStyle = 'rgba(255,199,46,' + (0.9 * (1 - t)).toFixed(3) + ')';
                 ctx.beginPath(); ctx.arc(f.x, f.y, 16 + (f.len + 16) * e, 0, Math.PI * 2); ctx.stroke();
                 ctx.globalAlpha = 1 - t * t; ctx.lineWidth = 1.6; ctx.strokeStyle = '#0B0F1A'; ctx.fillStyle = '#FFD84A';
@@ -3659,9 +3720,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // The ring over a barricade somebody is repairing or upgrading: it fills over the time the work takes
     function _drawWorkRings(ctx, now, visL, visT, visR, visB) {
         _bar.work.forEach((w, id) => {
-            const s = _structs.find(q => q.id === id);
+            const s = _structs.find(q => q.id === id) || _turrets.find(q => q.id === id);
             if (!s) return;
-            const hh = ARStructs.halfH(s), cx = s.x, cy = s.y - hh - 34;
+            const tur = s.k === 't';
+            const hh = tur ? ARStructs.TURRET.r : ARStructs.halfH(s), cx = s.x, cy = s.y - hh - 34;
             if (cx < visL - 30 || cx > visR + 30 || cy < visT - 30 || cy > visB + 30) return;
             const p = Math.max(0, Math.min(1, (now - w.t0) / w.dur)), rep = w.action === 'repair';
             const col = rep ? '#46D46A' : '#FFC72E';
@@ -3669,7 +3731,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.fillStyle = col;
             for (let k = 0; k < 3; k++) {
                 const ph = ((now / 220) + k / 3) % 1, seed = Math.floor(now / 220 + k * 7);
-                const hx = (((seed * 9301 + 49297) % 233280) / 233280 - 0.5) * 2 * (s.o ? 12 : 48), hy = (((seed * 7919 + 1237) % 233280) / 233280 - 0.5) * 2 * (s.o ? 48 : 12);
+                const hx = (((seed * 9301 + 49297) % 233280) / 233280 - 0.5) * 2 * (tur ? 22 : s.o ? 12 : 48), hy = (((seed * 7919 + 1237) % 233280) / 233280 - 0.5) * 2 * (tur ? 22 : s.o ? 48 : 12);
                 ctx.globalAlpha = 1 - ph; ctx.beginPath(); ctx.arc(s.x + hx, s.y + hy - ph * 16, 2.6, 0, Math.PI * 2); ctx.fill();
             }
             ctx.globalAlpha = 1;
@@ -3685,7 +3747,22 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.stroke();
         });
     }
+    function _drawTurrets(ctx, scale, visL, visT, visR, visB, now) {
+        const R = ARStructs.TURRET.r;
+        for (let i = 0; i < _turrets.length; i++) {
+            const t = _turrets[i];
+            if (t.x + R + 24 < visL || t.x - R - 24 > visR || t.y + R + 24 < visT || t.y - R - 24 > visB) continue;
+            // the head turns towards what it was last fired at (at most 12 rad/s), it does not jump
+            const dt = Math.min(0.1, Math.max(0, (now - (t._ft || now)) / 1000)); t._ft = now;
+            let da = t.tang - t.ang; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+            const step = 12 * dt; t.ang += Math.abs(da) <= step ? da : Math.sign(da) * step;
+            const pop = t.pop ? Math.max(0, 1 - (now - t.pop) / 380) : 0;
+            _drawTurret(ctx, t, scale, 1, t.ang, 1 + 0.2 * pop * pop);
+            if (t.hp < t.maxHp) _drawHpBar(ctx, t.x - 24, t.y - R - 17, 48, 7, Math.max(0, t.hp / t.maxHp), 1.6);
+        }
+    }
     function _drawStructs(ctx, scale, zoom, visL, visT, visR, visB, now) {
+        _drawTurrets(ctx, scale, visL, visT, visR, visB, now);
         for (let i = 0; i < _structs.length; i++) {
             const s = _structs[i];
             const hw = ARStructs.halfW(s), hh = ARStructs.halfH(s);
@@ -3702,6 +3779,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let i = _structDying.length - 1; i >= 0; i--) {
             const d = _structDying[i], age = now - d.t0;
             if (age >= 1000) { _structDying.splice(i, 1); continue; }
+            if (d.s.k === 't') { _drawTurret(ctx, d.s, scale, 1 - age / 1000, d.s.ang, 1); continue; }
             const sp = _barSprite(d.s.t, 2, d.s.o, scale);
             if (!sp) continue;
             ctx.globalAlpha = 1 - age / 1000;
@@ -3711,7 +3789,20 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _drawStructFx(ctx, now);
         _drawWorkRings(ctx, now, visL, visT, visR, visB);
         // the ghost
-        if (_bar.place && predX !== null) {
+        if (_bar.place && predX !== null && _bar.kind === 't') {
+            const g = _bar.g, ok = !_bar.why, R = ARStructs.TURRET.r;
+            ctx.save();
+            ctx.lineWidth = 2 / zoom; ctx.strokeStyle = ok ? 'rgba(70,212,106,.55)' : 'rgba(255,75,92,.45)'; ctx.fillStyle = ok ? 'rgba(70,212,106,.07)' : 'rgba(255,75,92,.06)';
+            ctx.setLineDash([10 / zoom, 8 / zoom]);
+            ctx.beginPath(); ctx.arc(g.x, g.y, ARStructs.TURRET.tiers[0].range, 0, Math.PI * 2); ctx.fill(); ctx.stroke();   // how far it will reach
+            ctx.restore();
+            _drawTurret(ctx, { x: g.x, y: g.y, t: 0 }, scale, 0.65, Math.atan2(g.y - _PVE_BASE.y, g.x - _PVE_BASE.x), 1);
+            ctx.save();
+            ctx.lineWidth = 3 / zoom; ctx.strokeStyle = ok ? '#46D46A' : '#FF4B5C'; ctx.setLineDash([8 / zoom, 6 / zoom]);
+            ctx.beginPath(); ctx.arc(g.x, g.y, R + 3, 0, Math.PI * 2); ctx.stroke();
+            ctx.restore();
+            if (!ok) { ctx.fillStyle = 'rgba(255,75,92,.28)'; ctx.beginPath(); ctx.arc(g.x, g.y, R, 0, Math.PI * 2); ctx.fill(); }
+        } else if (_bar.place && predX !== null) {
             const g = _bar.g, ok = !_bar.why;
             const sp = _barSprite(0, 0, g.o, scale);
             ctx.globalAlpha = 0.6;
@@ -3727,6 +3818,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     // Same slide-out the server applies to a player after moving (obstacles, then the PvE base)
     function _pushOutOfSolids(x, y) {
+        for (let i = 0; i < _turrets.length; i++) {              // a turret is a wall as well (server.js: before the rocks)
+            const t = _turrets[i], ox = x - t.x, oy = y - t.y, m = ARStructs.TURRET.r + PLAYER_HIT_R, dSq = ox * ox + oy * oy;
+            if (dSq >= m * m) continue;
+            const d = Math.sqrt(dSq);
+            if (d > 0) { x = t.x + ox / d * m; y = t.y + oy / d * m; } else x = t.x + m;
+        }
         for (let i = 0; i < _tanks.length; i += 3) {            // a tank first, as on the server: the rocks and barricades have the last word
             const ox = x - _tanks[i], oy = y - _tanks[i + 1], m = _tanks[i + 2] + PLAYER_HIT_R, dSq = ox * ox + oy * oy;
             if (dSq >= m * m) continue;
@@ -3810,7 +3907,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             window.__arZombies = () => _zombies.filter(z => z && z.hp > 0).map(z => [z.x, z.y]);
             window.__arMe = () => [predX, predY];
             window.__arStructs = () => _structs.map(s => ({ ...s }));   // PvE barricades as the client has them
-            window.__arBar = () => ({ inv: _bar.inv, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins, work: [..._bar.work.keys()], fx: _structFx.length });
+            window.__arTurrets = () => _turrets.map(s => ({ ...s }));   // and the turrets
+            window.__arBar = () => ({ inv: _bar.inv, invT: _bar.invT, kind: _bar.kind, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins, work: [..._bar.work.keys()], fx: _structFx.length });
             window.__arObs = () => _obstacles; // the obstacles as the client has them (map sprites tests)
             window.__arIS = () => _IS; // the other players as last rendered (interpolation)
             window.__arBullets = () => { const o = [], bl = _IS.bullets, age = _IS.bulletAge || 0; if (bl) for (const b of bl) { if (b.ownerId !== socket.id) o.push(b.id, b.x + b.dx * age, b.y + b.dy * age); } return o; }; // enemy bullets as drawn (id, x, y)
@@ -4067,7 +4165,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const k = e.key.toLowerCase();
         if (k === 'r' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { _tryReload(); return; }
         if (_gameMode === 'pve' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            if (k === '1') { _barPlaceMode(); return; }
+            if (k === '1') { _barPlaceMode(undefined, 'b'); return; }
+            if (k === '2') { _barPlaceMode(undefined, 't'); return; }
             if (k === 'escape' && _bar.place) { _barPlaceMode(false); return; }
             if (k === 'e') { _barUse(); return; }
         }
@@ -4637,7 +4736,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const k in _obsShake) delete _obsShake[k];
         gameControl.countdownEndTime = null;
         _pveHudReset();
-        _structs.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
+        _structs.length = 0; _turrets.length = 0; _turretFx.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.invT = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
         _footsteps.length = 0;
         for (const k in _footTimers) delete _footTimers[k];
         for (const k in _footSide)   delete _footSide[k];
@@ -4710,6 +4809,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         });
         // MUNITIE: a pack of rounds (the gun's starting reserve) for a flat price, as often as the coins allow; the reserve has no ceiling
         const bb = document.getElementById('pve-barricade-val'); if (bb) bb.textContent = 'in inventar: ' + _bar.inv;
+        const tb = document.getElementById('pve-turret-val'); if (tb) tb.textContent = 'in inventar: ' + _bar.invT;
         const rb = document.querySelector('.pve-upg-btn[data-type="reserve"]');
         if (rb) {
             rb.querySelector('.pve-upg-val').textContent = '+' + _myReservePack() + ' gloante';
@@ -4813,10 +4913,49 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     // ---- barricades ----
-    socket.on('pve-inv', ({ barricade }) => {
-        _bar.inv = barricade | 0;
-        if (_bar.inv <= 0 && _bar.place) _bar.place = false;   // that was the last one
+    socket.on('pve-inv', ({ barricade, turret }) => {
+        _bar.inv = barricade | 0; _bar.invT = turret | 0;
+        if ((_bar.kind === 't' ? _bar.invT : _bar.inv) <= 0 && _bar.place) _bar.place = false;   // that was the last one
         _barUi();
+    });
+    // ---- turrets (events turret-add / -hp / -upd / -del, turret-shots: [turret id, angle x100, zombie id] a shot) ----
+    socket.on('turret-add', (s) => {
+        const a = (s.a | 0) / 100;
+        _turrets.push({ id: s.id, k: 't', x: s.x, y: s.y, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, ang: a, tang: a, flash: 0, pop: performance.now() });
+        _pveFeed(`${s.by} a plasat o tureta`);
+    });
+    socket.on('turret-hp', (rows) => {
+        for (let i = 0; i < rows.length; i++) { const t = _turrets.find(q => q.id === rows[i][0]); if (t) t.hp = rows[i][1]; }
+    });
+    socket.on('turret-upd', (u) => {
+        const t = _turrets.find(q => q.id === u.id);
+        if (t) {
+            const up = u.t > t.t, now = performance.now();
+            t.t = u.t; t.hp = u.hp; t.maxHp = u.mhp;
+            if (up) t.pop = now;
+            _fxSpawn(up ? 'upgrade' : 'repair', t, now);
+        }
+        _bar.useKey = '-';
+    });
+    socket.on('turret-del', ({ id, broke }) => {
+        const i = _turrets.findIndex(q => q.id === id);
+        if (i === -1) return;
+        const now = performance.now();
+        if (broke) { _structDying.push({ s: _turrets[i], t0: now }); _fxSpawn('break', _turrets[i], now); }
+        _bar.work.delete(id);
+        _turrets.splice(i, 1);
+    });
+    socket.on('turret-shots', (rows) => {
+        const now = performance.now();
+        for (let i = 0; i + 2 < rows.length; i += 3) {
+            const t = _turrets.find(q => q.id === rows[i]);
+            if (!t) continue;
+            const a = rows[i + 1] / 100, z = _zombies[rows[i + 2]];
+            t.tang = a; t.flash = now;
+            const mx = t.x + Math.cos(a) * 42, my = t.y + Math.sin(a) * 42;
+            _turretFx.push({ x0: mx, y0: my, x1: z ? z.x : mx + Math.cos(a) * 200, y1: z ? z.y : my + Math.sin(a) * 200, t0: now, tier: t.t });
+        }
+        if (_turretFx.length > 80) _turretFx.splice(0, _turretFx.length - 80);
     });
     socket.on('struct-add', (s) => {
         _structs.push({ id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by });
@@ -5114,6 +5253,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const b = _structs[i], bw = (b.o ? 5 : 12), bh = (b.o ? 12 : 5);
             g.fillRect(b.x * k - bw / 2, b.y * k - bh / 2, bw, bh); g.strokeRect(b.x * k - bw / 2, b.y * k - bh / 2, bw, bh);
         }
+        g.fillStyle = '#8FC2FF'; g.strokeStyle = '#0F171B'; g.lineWidth = 1.5;
+        for (let i = 0; i < _turrets.length; i++) { g.beginPath(); g.arc(_turrets[i].x * k, _turrets[i].y * k, 5, 0, Math.PI * 2); g.fill(); g.stroke(); }
         // zombies (the tanks bigger), then the team on top
         g.lineWidth = 2; g.strokeStyle = '#0F171B';
         for (let i = 0; i < _zombies.length; i++) {
@@ -5831,6 +5972,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
             if (_hurt > 0) _drawZombieBars(ctx, _zHurt, _hurt, _ZB_DEFS);
         }
+        if (_turretFx.length) _drawTurretFx(ctx, _zNow);
 
         // --- JUCATORI ---
         // The ring sits just outside the default hands and the labels stack on it
@@ -6228,7 +6370,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // the build slot and the prompts (onclick: assigned again on every match, never stacked)
     {
         const e = _barEls();
-        if (e.slot) e.slot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(); };
+        if (e.slot) e.slot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'b'); };
+        if (e.tslot) e.tslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 't'); };
         if (e.use) e.use.onclick = _barUse;
         const ok = document.getElementById('pve-place-ok'), no = document.getElementById('pve-place-x');
         if (ok) ok.onclick = _barPlace;

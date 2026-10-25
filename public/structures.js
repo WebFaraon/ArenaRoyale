@@ -33,6 +33,80 @@
     };
     const BUY_COST = BARRICADE.tiers[0].total;   // a new barricade (wood), bought from the wave-break panel
 
+    // The turret: a round base (the radius of a player) with a head that turns to its target. Solid for players and zombies like a rock,
+    // it has health, zombies break it, E repairs / upgrades it like a barricade (same second of standing still). The numbers are
+    // provisional: range = from its centre; cd = seconds between shots; dmg per shot. dps (30 / 55 / 91) stays under what a player does
+    // with a rifle times a few, six of them being the most a room may have.
+    const TURRET = {
+        r: 31,
+        maxPerRoom: 6,
+        detectRange: 130,              // like the barricades: a zombie with no player to chase goes for a turret this close (to its surface)
+        placeDist: 80, placeRange: 140, useRange: 16, repairShare: 0.5, workMs: 1000,
+        tiers: [
+            { id: 'mg',     name: 'Mitraliera', hp: 300, total: 20, up: 0,  range: 320, cd: 0.20, dmg: 6 },
+            { id: 'twin',   name: 'Dubla',      hp: 500, total: 45, up: 25, range: 340, cd: 0.18, dmg: 10 },
+            { id: 'energy', name: 'Energie',    hp: 800, total: 90, up: 45, range: 380, cd: 0.35, dmg: 32 },
+        ],
+    };
+    const TURRET_BUY_COST = TURRET.tiers[0].total;
+
+    // How far the circle (px, py) is from the surface of a turret (0 = touching or inside)
+    function turretDist(px, py, t) { return Math.max(0, Math.hypot(px - t.x, py - t.y) - TURRET.r); }
+    // Pushes a circle (centre in out.x / out.y, radius r) out of a turret; true when it moved.
+    function turretPushOut(out, r, t) {
+        const dx = out.x - t.x, dy = out.y - t.y, m = TURRET.r + r, dSq = dx * dx + dy * dy;
+        if (dSq >= m * m) return false;
+        if (dSq > 1e-9) { const d = Math.sqrt(dSq); out.x = t.x + dx / d * m; out.y = t.y + dy / d * m; }
+        else out.x = t.x + m;
+        return true;
+    }
+    function turretPushOutAll(out, r, list) {
+        let moved = false;
+        for (let i = 0; i < list.length; i++) if (turretPushOut(out, r, list[i])) moved = true;
+        return moved;
+    }
+    // The turret nearest to (px, py) within `range` of its surface, or null; out.d gets that distance
+    function nearestTurretInRange(px, py, list, range, out) {
+        let best = null, bd = range;
+        for (let i = 0; i < list.length; i++) {
+            const d = turretDist(px, py, list[i]);
+            if (d < bd) { bd = d; best = list[i]; }
+        }
+        if (out) out.d = best ? bd : Infinity;
+        return best;
+    }
+    function turretRepairCost(t) {
+        const missing = Math.max(0, t.maxHp - t.hp);
+        if (missing <= 0) return 0;
+        return Math.max(1, Math.ceil(missing / t.maxHp * TURRET.tiers[t.t].total * TURRET.repairShare));
+    }
+    function turretUpgradeCost(t) { return t.t >= TURRET.tiers.length - 1 ? 0 : TURRET.tiers[t.t + 1].up; }
+    function turretUseAction(t) {
+        if (t.hp < t.maxHp) return 'repair';
+        return t.t < TURRET.tiers.length - 1 ? 'upgrade' : null;
+    }
+    function turretPlacement(px, py, dx, dy, out) {
+        const l = Math.hypot(dx, dy) || 1;
+        out.x = px + dx / l * TURRET.placeDist;
+        out.y = py + dy / l * TURRET.placeDist;
+        return out;
+    }
+    // Can a turret stand here? ctx as for checkPlace, plus turrets []; returns null when it can, else the reason
+    function checkPlaceTurret(t, ctx) {
+        if (ctx.turretCount >= TURRET.maxPerRoom) return 'limit';
+        const r = TURRET.r;
+        if (t.x - r < 20 || t.x + r > ctx.w - 20 || t.y - r < 20 || t.y + r > ctx.h - 20) return 'edge';
+        for (let i = 0; i < ctx.obstacles.length; i++) {
+            const ob = ctx.obstacles[i];
+            if (Math.hypot(ob.x - t.x, ob.y - t.y) < ob.r + r) return 'blocked';
+        }
+        if (ctx.base && Math.hypot(ctx.base.x - t.x, ctx.base.y - t.y) < ctx.base.r + r + 4) return 'blocked';
+        for (let i = 0; i < ctx.structs.length; i++) if (distToRect(t.x, t.y, ctx.structs[i]) < r + 2) return 'blocked';
+        for (let i = 0; i < ctx.turrets.length; i++) if (Math.hypot(ctx.turrets[i].x - t.x, ctx.turrets[i].y - t.y) < r * 2 + 4) return 'blocked';
+        for (let i = 0; i < ctx.players.length; i++) if (Math.hypot(ctx.players[i].x - t.x, ctx.players[i].y - t.y) < r + ctx.playerR + 2) return 'player';
+        return null;
+    }
+
     // half sizes of the rectangle of a structure
     function halfW(s) { return (s.o ? BARRICADE.short : BARRICADE.long) / 2; }
     function halfH(s) { return (s.o ? BARRICADE.long : BARRICADE.short) / 2; }
@@ -160,9 +234,10 @@
         }
         if (ctx.base && distToRect(ctx.base.x, ctx.base.y, s) < ctx.base.r + 4) return 'blocked';
         for (let i = 0; i < ctx.structs.length; i++) if (rectsOverlap(s, ctx.structs[i], 2)) return 'blocked';
+        if (ctx.turrets) for (let i = 0; i < ctx.turrets.length; i++) if (distToRect(ctx.turrets[i].x, ctx.turrets[i].y, s) < TURRET.r + 2) return 'blocked';
         for (let i = 0; i < ctx.players.length; i++) if (distToRect(ctx.players[i].x, ctx.players[i].y, s) < ctx.playerR + 2) return 'player';
         return null;
     }
 
-    return { BARRICADE, BUY_COST, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
+    return { BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
 });

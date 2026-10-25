@@ -4,6 +4,7 @@
 // ============================================
 'use strict';
 const ARStructs = require('./public/structures.js');
+const { segCircleT } = require('./game-physics.js');
 
 // A zombie that chases a player must not run into the base head-on: the base is a big solid circle, and the trees
 // and rocks' small push-away (server.js) is not enough to get round something this wide, so it used to stop against
@@ -151,4 +152,23 @@ function pickTarget(hunts, playerDist, playerRange, structDist, structRange) {
     return 'base';
 }
 
-module.exports = { avoidBase, avoidStructs, pickTarget, BEND, STRUCT_BEND };
+// The zombie a turret at (tx, ty) fires at: the nearest live one within `range` of its centre that it has a clear line to. A tree, a rock
+// or the base in the way (`blockers`, circles { x, y, r }) stops the shot; barricades and other zombies do not. null when there is none.
+function turretTarget(tx, ty, range, zombies, blockers) {
+    let best = null, bestSq = range * range;
+    for (let i = 0; i < zombies.length; i++) {
+        const z = zombies[i];
+        if (!z.alive || z.hp <= 0) continue;
+        const dx = z.x - tx, dy = z.y - ty, dSq = dx * dx + dy * dy;
+        if (dSq >= bestSq) continue;
+        let clear = true;
+        for (let b = 0; b < blockers.length; b++) {
+            const o = blockers[b];
+            if (segCircleT(tx, ty, z.x, z.y, o.x, o.y, o.r) >= 0) { clear = false; break; }
+        }
+        if (clear) { best = z; bestSq = dSq; }
+    }
+    return best;
+}
+
+module.exports = { avoidBase, avoidStructs, pickTarget, turretTarget, BEND, STRUCT_BEND };

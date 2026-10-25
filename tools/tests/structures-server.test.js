@@ -29,7 +29,7 @@ async function pveClient(base, nick) {
     await new Promise(r => s.on('connect', r));
     s.emit('authenticate', { nickname: nick, token: lj.token });
     const c = { s, ev: {} };
-    for (const name of ['pve-wave-start', 'pve-inv', 'struct-result', 'struct-add', 'upgrade-result']) s.on(name, (d) => { (c.ev[name] = c.ev[name] || []).push(d); });
+    for (const name of ['pve-wave-start', 'pve-inv', 'struct-result', 'struct-add', 'turret-add', 'upgrade-result']) s.on(name, (d) => { (c.ev[name] = c.ev[name] || []).push(d); });
     s.on('gs2', () => s.emit('input', { seq: 1, dx: 0, dy: 0, angle: 0, shooting: false }));
     s.emit('create-room', { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, weapon: 'smg', mode: 'pve', xp: 0, proto: ARNet.PROTO });
     await new Promise(r => s.once('room-created', r));
@@ -72,6 +72,24 @@ test('rubbish in place-struct / use-struct does not hurt the server', async () =
         const c = await pveClient(base, 'st_junk');
         for (const d of [null, 5, 'x', {}, { x: 'a', y: {} }, { x: NaN, y: Infinity, o: 7 }, { id: {} }]) { c.s.emit('place-struct', d); c.s.emit('use-struct', d); }
         await sleep(500);
+        const r = await fetch(`${base}/api/build`);
+        assert.ok(r.ok, 'the server still answers');
+        c.s.close();
+    });
+});
+
+test('no turret in the inventory: placing is refused; buying outside the wave break does nothing; rubbish does not hurt', async () => {
+    await withServer(async (base) => {
+        const c = await pveClient(base, 'st_turret');
+        c.s.emit('place-turret', { x: 1500, y: 1500 });
+        await sleep(300);
+        assert.deepEqual(c.ev['struct-result'].pop(), { ok: false, action: 'place', reason: 'none' });
+        c.s.emit('buy-upgrade', { type: 'turret' });
+        await sleep(300);
+        assert.equal(c.ev['pve-inv'], undefined, 'no purchase during a wave');
+        assert.equal(c.ev['turret-add'], undefined);
+        for (const d of [null, 5, 'x', {}, { x: 'a', y: {} }, { x: NaN, y: Infinity }]) c.s.emit('place-turret', d);
+        await sleep(400);
         const r = await fetch(`${base}/api/build`);
         assert.ok(r.ok, 'the server still answers');
         c.s.close();

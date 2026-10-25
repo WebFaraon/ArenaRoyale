@@ -200,3 +200,35 @@ test('a pocket that no way leads out of is not a reason to spin: the zombie ends
     }
     assert.ok(flips < 20, 'direction changed sharply ' + flips + ' times in the last 20 s');
 });
+
+// ---- turretTarget: who a turret fires at ----
+const { turretTarget } = require('../../zombie-steer.js');
+const zb = (id, x, y, hp = 100) => ({ id, x, y, hp, alive: true });
+
+test('a turret fires at the nearest zombie in its range', () => {
+    const z = [zb(1, 400, 0), zb(2, 200, 0), zb(3, 300, 0)];
+    assert.equal(turretTarget(0, 0, 320, z, []).id, 2);
+    assert.equal(turretTarget(0, 0, 150, z, []), null, 'none in range');
+    assert.equal(turretTarget(0, 0, 200, z, []), null, 'the edge of the range is out');
+});
+
+test('a dead zombie is not a target', () => {
+    const z = [{ ...zb(1, 100, 0), alive: false }, { ...zb(2, 150, 0), hp: 0 }, zb(3, 250, 0)];
+    assert.equal(turretTarget(0, 0, 320, z, []).id, 3);
+});
+
+test('a rock or a tree in the way stops the shot: the next one it can see is the target', () => {
+    const rock = { x: 100, y: 0, r: 30 };
+    const z = [zb(1, 200, 0), zb(2, 250, 120)];
+    assert.equal(turretTarget(0, 0, 320, z, [rock]).id, 2, 'the near one is behind the rock');
+    assert.equal(turretTarget(0, 0, 320, [zb(1, 200, 0)], [rock]), null, 'nothing else to see');
+    assert.equal(turretTarget(0, 0, 320, [zb(1, 200, 0)], [{ x: 100, y: 200, r: 30 }]).id, 1, 'a rock beside the line does not matter');
+    assert.equal(turretTarget(0, 0, 320, [zb(1, 200, 0)], [{ x: 300, y: 0, r: 30 }]).id, 1, 'nor one behind the zombie');
+});
+
+test('turretTarget does not allocate or change the list', () => {
+    const z = [zb(1, 100, 0), zb(2, 200, 0)];
+    const copy = JSON.stringify(z);
+    turretTarget(0, 0, 320, z, [{ x: 50, y: 50, r: 10 }]);
+    assert.equal(JSON.stringify(z), copy);
+});

@@ -151,3 +151,76 @@ test('segmentHits / blockerBetween: what stands between a zombie and a player', 
     assert.equal(S.blockerBetween(500, 540, 700, 700, [w], 28, 20), null, 'leaning on it but the player is the other way');
     assert.equal(S.blockerBetween(500, 700, 500, 400, [w], 28, 20), null, 'in the way but not leaning on it');
 });
+
+// ---- the turrets ----
+const TU = S.TURRET;
+const tur = (x, y, t = 0, hp, maxHp) => ({ id: 1, k: 't', x, y, t, hp: hp === undefined ? TU.tiers[t].hp : hp, maxHp: maxHp === undefined ? TU.tiers[t].hp : maxHp });
+
+test('turret numbers: three levels that cost more and hit harder, six at most, the radius of a player', () => {
+    assert.equal(TU.tiers.length, 3);
+    assert.equal(TU.maxPerRoom, 6);
+    assert.equal(TU.r, 31);
+    assert.equal(S.TURRET_BUY_COST, TU.tiers[0].total);
+    let dps = 0;
+    TU.tiers.forEach((t, i) => {
+        const d = t.dmg / t.cd;
+        assert.ok(d > dps, 'level ' + (i + 1) + ' has more dps');
+        dps = d;
+        if (i) { assert.ok(t.hp > TU.tiers[i - 1].hp && t.range >= TU.tiers[i - 1].range); assert.equal(t.total, TU.tiers[i - 1].total + t.up, 'the total is the sum of the upgrades'); }
+    });
+});
+
+test('a turret is round: distance to the surface, and a circle pushed out of it', () => {
+    const t = tur(500, 500);
+    assert.equal(S.turretDist(500 + 31 + 20, 500, t), 20);
+    assert.equal(S.turretDist(510, 500, t), 0, 'inside');
+    const o = { x: 500 + 40, y: 500 };
+    assert.equal(S.turretPushOut(o, 30, t), true);
+    assert.ok(Math.abs(Math.hypot(o.x - 500, o.y - 500) - 61) < 1e-9, 'out to the sum of the radii');
+    const free = { x: 700, y: 500 };
+    assert.equal(S.turretPushOut(free, 30, t), false);
+    const centre = { x: 500, y: 500 };
+    assert.equal(S.turretPushOut(centre, 30, t), true);
+    assert.ok(Math.hypot(centre.x - 500, centre.y - 500) >= 61 - 1e-9, 'even from the exact centre');
+});
+
+test('E at a turret: repair when hurt, upgrade while there is a level above, nothing at the top; the prices', () => {
+    assert.equal(S.turretUseAction(tur(0, 0, 0)), 'upgrade');
+    assert.equal(S.turretUseAction(tur(0, 0, 0, 100)), 'repair');
+    assert.equal(S.turretUseAction(tur(0, 0, 2)), null);
+    assert.equal(S.turretUpgradeCost(tur(0, 0, 0)), TU.tiers[1].up);
+    assert.equal(S.turretUpgradeCost(tur(0, 0, 2)), 0);
+    assert.equal(S.turretRepairCost(tur(0, 0, 0)), 0, 'nothing missing, nothing to pay');
+    const half = S.turretRepairCost(tur(0, 0, 1, 250, 500));
+    assert.equal(half, Math.ceil(0.5 * TU.tiers[1].total * TU.repairShare));
+    assert.ok(S.turretRepairCost(tur(0, 0, 1, 499, 500)) >= 1, 'at least one coin');
+});
+
+test('where a turret may stand: not on rocks, the base, barricades, turrets or players; the edge; six at most', () => {
+    const base = { obstacles: [], base: null, structs: [], turrets: [], players: [], playerR: 30, w: 3000, h: 3000, turretCount: 0 };
+    const t = tur(1000, 1000);
+    assert.equal(S.checkPlaceTurret(t, base), null);
+    assert.equal(S.checkPlaceTurret(t, { ...base, obstacles: [{ x: 1040, y: 1000, r: 20 }] }), 'blocked');
+    assert.equal(S.checkPlaceTurret(t, { ...base, base: { x: 1100, y: 1000, r: 85 } }), 'blocked');
+    assert.equal(S.checkPlaceTurret(t, { ...base, structs: [{ x: 1000 + 31 + 17 + 1, y: 1000, o: 1, t: 0, hp: 300, maxHp: 300 }] }), 'blocked', 'a barricade too close');
+    assert.equal(S.checkPlaceTurret(t, { ...base, turrets: [tur(1050, 1000)] }), 'blocked');
+    assert.equal(S.checkPlaceTurret(t, { ...base, turrets: [tur(1070, 1000)] }), null, 'one next to the other is fine');
+    assert.equal(S.checkPlaceTurret(t, { ...base, players: [{ x: 1040, y: 1000 }] }), 'player');
+    assert.equal(S.checkPlaceTurret(tur(30, 1000), base), 'edge');
+    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 6 }), 'limit');
+    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 5 }), null);
+});
+
+test('a barricade is not placed on a turret either', () => {
+    const w = { x: 1000, y: 1000, o: 0, t: 0, hp: 300, maxHp: 300 };
+    const ctx = { obstacles: [], base: null, structs: [], players: [], playerR: 30, w: 3000, h: 3000, count: 0 };
+    assert.equal(S.checkPlace(w, { ...ctx, turrets: [tur(1000, 1000 + 17 + 31 + 1)] }), 'blocked');
+    assert.equal(S.checkPlace(w, { ...ctx, turrets: [tur(1000, 1000 + 17 + 31 + 5)] }), null);
+    assert.equal(S.checkPlace(w, ctx), null, 'the context of the server before turrets (no list) still works');
+});
+
+test('the ghost of a turret goes in front of the player', () => {
+    const o = { x: 0, y: 0 };
+    S.turretPlacement(100, 100, 0, 1, o);
+    assert.deepEqual([o.x, o.y], [100, 100 + TU.placeDist]);
+});
