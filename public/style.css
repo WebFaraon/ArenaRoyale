@@ -5149,25 +5149,23 @@ button:disabled { cursor: not-allowed; }
 .pt-out { flex: 1; font-size: .66rem; letter-spacing: .08em; color: #FF8F9B; }
 .pt-row.is-out { opacity: .8; }
 .pt-row.is-out .pt-bar { display: none; }
-/* wave: top centre, one compact row (wave, zombies left, the base) and a thin progress bar */
-#pve-wave { left: 50%; top: max(12px, var(--safe-t)); transform: translateX(-50%); width: 318px; padding: 5px 12px 8px; }
-.pw-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.pw-cell { display: flex; flex-direction: column; gap: 2px; }
-.pw-mid { align-items: center; }
-.pw-num { font-size: 1.6rem; line-height: 1; color: var(--c-orange); text-shadow: var(--stroke); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.pw-num i { font-style: normal; font-size: .85rem; color: #B7C5CE; margin-left: 1px; }
-.pw-left { font-size: 1.4rem; line-height: 1; text-shadow: var(--stroke); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.pw-left i { font-style: normal; font-size: .85rem; color: #B7C5CE; margin-left: 3px; }
-.pw-base { flex: 1; min-width: 92px; gap: 4px; }
-.pw-base .pw-lbl { display: flex; justify-content: space-between; }
-.pw-base .pw-lbl b { font-size: .68rem; letter-spacing: 0; color: #fff; }
-.pw-base .pve-base-bar-outer { width: auto; height: 11px; }
+/* wave: top centre, one low wide row (wave, zombies left, the base) and a thin progress bar */
+#pve-wave { left: 50%; top: max(12px, var(--safe-t)); transform: translateX(-50%); width: 520px; padding: 4px 14px 6px; }
+.pw-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.pw-cell { display: flex; align-items: baseline; gap: 7px; }
+.pw-num { font-size: 1.35rem; line-height: 1; color: var(--c-orange); text-shadow: var(--stroke); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pw-num i { font-style: normal; font-size: .8rem; color: #B7C5CE; margin-left: 1px; }
+.pw-left { font-size: 1.2rem; line-height: 1; text-shadow: var(--stroke); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pw-left i { font-style: normal; font-size: .8rem; color: #B7C5CE; margin-left: 3px; }
+.pw-base { flex: 1; min-width: 150px; align-items: center; gap: 8px; }
+.pw-base .pve-base-bar-outer { flex: 1; width: auto; height: 11px; }
 .pw-base .pve-base-bar-inner { background: linear-gradient(to bottom, #46D46A 0 70%, #24903C 70% 100%); box-shadow: none; }
-.pw-bar { position: relative; height: 9px; margin-top: 5px; border: 2.5px solid var(--ink-line); border-radius: 999px; background: #1B252C; box-sizing: border-box; overflow: hidden; }
+.pw-hp { min-width: 2.4em; text-align: right; font-size: .78rem; letter-spacing: 0; color: #fff; font-variant-numeric: tabular-nums; }
+.pw-bar { position: relative; height: 7px; margin-top: 4px; border: 2.5px solid var(--ink-line); border-radius: 999px; background: #1B252C; box-sizing: border-box; overflow: hidden; }
 #pve-wave-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 999px; background: linear-gradient(to bottom, #FF4B5C 0 70%, #B11F2E 70% 100%); }
 /* warning pill under the wave block */
 #pve-warn {
-    position: absolute; left: 50%; top: calc(max(12px, var(--safe-t)) + 70px); transform: translateX(-50%);
+    position: absolute; left: 50%; top: calc(max(12px, var(--safe-t)) + 52px); transform: translateX(-50%);
     display: none; align-items: center; gap: 9px; padding: 5px 16px 8px;
     background: var(--c-red); border: var(--o) solid var(--ink-line); border-radius: 999px;
     box-shadow: inset 0 -4px 0 var(--l-red), inset 0 2px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45);
@@ -5188,26 +5186,27 @@ button:disabled { cursor: not-allowed; }
 .pf-item.is-bad { background: #6D2B35; box-shadow: inset 0 -3px 0 #4D1B24, 0 3px 0 rgba(0, 0, 0, .4); }
 @keyframes pfLife { 0% { opacity: 0; transform: translateX(14px); } 5% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
 /* build bar (bottom right): the slots are not live yet */
-#pve-build { position: absolute; right: max(12px, var(--safe-r)); bottom: max(10px, var(--safe-b)); display: flex; gap: 8px; }
+#pve-build { position: absolute; right: max(12px, var(--safe-r)); bottom: max(10px, var(--safe-b)); display: flex; gap: 10px; }
 .pb-slot {
-    position: relative; width: 76px; height: 86px; padding: 6px 4px 5px;
+    position: relative; width: 98px; height: 122px; padding: 9px 6px 8px;
     display: flex; flex-direction: column; align-items: center; justify-content: space-between;
-    background: var(--c-slate); border: var(--o) solid var(--ink-line); border-radius: 12px;
+    background: var(--c-slate); border: var(--o) solid var(--ink-line); border-radius: 14px;
     box-shadow: inset 0 -4px 0 var(--l-slate), inset 0 2px 0 rgba(255, 255, 255, .1), 0 4px 0 rgba(0, 0, 0, .45);
     color: #fff; text-shadow: var(--stroke-sm); box-sizing: border-box;
 }
 .pb-slot.is-soon { opacity: .6; filter: saturate(.7); }
-.pb-key { position: absolute; left: 6px; top: 4px; font-style: normal; font-size: .72rem; font-weight: 800; color: #B7C5CE; }
-.pb-ic { width: 58px; height: 44px; margin-top: 3px; object-fit: contain; pointer-events: none; }
-.pb-name { font-size: .72rem; font-weight: 800; line-height: 1; }
-.pb-cost { font-style: normal; font-size: .8rem; font-weight: 800; line-height: 1; padding: 1px 8px 3px; border: 2px solid var(--ink-line); border-radius: 7px; background: var(--c-gold); color: #fff; }
+.pb-key { position: absolute; left: 9px; top: 6px; font-style: normal; font-size: .82rem; font-weight: 800; color: #B7C5CE; }
+.pb-ic { width: 70px; height: 54px; margin-top: 6px; object-fit: contain; pointer-events: none; }
+.pb-name { font-size: .86rem; font-weight: 800; line-height: 1; letter-spacing: .02em; }
+.pb-cost { display: block; box-sizing: border-box; min-width: 56px; max-width: 100%; font-style: normal; font-size: .92rem; font-weight: 800; line-height: 1; text-align: center; padding: 3px 9px 5px; border: 2px solid var(--ink-line); border-radius: 8px; background: var(--c-gold); color: #fff; white-space: nowrap; }
+.pb-slot.is-soon .pb-cost { background: transparent; border-color: transparent; color: #B7C5CE; font-size: .72rem; letter-spacing: .1em; padding: 4px 0 5px; }
 
 /* PvE barricades: the build slot, the E prompt, the placement buttons, the panel tile */
 #pve-build { pointer-events: none; }
 .pb-slot:not(.is-soon) { pointer-events: auto; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .pb-slot.is-empty { opacity: .55; }
 .pb-slot.is-on { border-color: var(--c-gold); box-shadow: inset 0 -4px 0 var(--l-slate), 0 0 0 3px rgba(255, 199, 46, .55), 0 4px 0 rgba(0, 0, 0, .45); transform: translateY(-4px); }
-.pb-n { position: absolute; right: 6px; top: 4px; font-style: normal; font-size: .72rem; font-weight: 800; color: #fff; }
+.pb-n { position: absolute; right: 9px; top: 6px; font-style: normal; font-size: .82rem; font-weight: 800; color: #fff; }
 #pve-use, #pve-place-bar { position: absolute; left: 50%; bottom: calc(max(10px, var(--safe-b)) + 74px); transform: translateX(-50%); pointer-events: auto; }
 #pve-use {
     --c: var(--c-green); --l: var(--l-green);

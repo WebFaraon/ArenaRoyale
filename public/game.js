@@ -3503,9 +3503,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _structFx = [];      // the effects: break, repair, upgrade { k, x, y, o, t0, parts }
     // colours of the chips by material (wood, stone, metal, obsidian): light, dark, highlight
     const _BAR_PAL = [['#D9A24E', '#8F5A1E', '#F4D48A'], ['#A39B8E', '#6B655B', '#D2CBBF'], ['#9AA7B4', '#5E6B78', '#D3DCE5'], ['#6A52B0', '#241C42', '#B79CF5']];
-    const _BAR_WHY = { none: 'Nu ai baricade', busy: 'Altcineva lucreaza la ea', far: 'Prea departe', blocked: 'Loc ocupat', edge: 'Prea aproape de margine', player: 'Un jucator e in cale',
-                       limit: 'Maxim 20 de baricade', coins: 'Nu ai destule monede', max: 'Nivel maxim', gone: 'Baricada nu mai exista',
-                       moving: 'Stai pe loc ca sa lucrezi la ea', moved: 'Lucrul s-a oprit: trebuie sa stai pe loc' };
     function _barImg(tier, st, o) {
         const key = ARStructs.BARRICADE.tiers[tier].id + st + (o ? 'v' : 'h');
         let im = _bar.imgs.get(key);
@@ -3537,7 +3534,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (on === undefined) on = !_bar.place;
         if (on) {
             if (_gameMode !== 'pve' || _selfDead || gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
-            if (_bar.inv <= 0) { showToast(_BAR_WHY.none); return; }
+            if (_bar.inv <= 0) return;
             isShooting = false; aimStartTime = null;
         }
         _bar.place = !!on;
@@ -3545,7 +3542,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _barPlace() {
         if (!_bar.place || predX === null) return;
-        if (_bar.why) { showToast(_BAR_WHY[_bar.why] || 'Nu se poate aici'); return; }
+        if (_bar.why) return;   // the ghost is red: nothing to say
         socket.emit('place-struct', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), o: _bar.g.o });
     }
     function _barUse() { if (_bar.use && !_bar.place) socket.emit('use-struct', { id: _bar.use.id }); }
@@ -4421,7 +4418,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
             const newKills = me.kills || 0;
             // _myLastKills == -1 inseamna primul pachet dupa reset; nu notifica (ar putea fi stale)
-            if (_myLastKills >= 0 && newKills > _myLastKills && !gameControl.countdownActive) showKillNotif(newKills);
+            if (_myLastKills >= 0 && newKills > _myLastKills && !gameControl.countdownActive && _gameMode !== 'pve') showKillNotif(newKills);   // in PvE the team counter says it
             if (myKillsEl.textContent !== String(newKills)) myKillsEl.textContent = newKills;
             _myLastKills = newKills;
         }
@@ -4779,14 +4776,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('upgrade-result', ({ ok, type, coins, upgCounts, reason, newMaxHp }) => {
-        if (!ok) { if (reason === 'max') showToast('Upgrade maxim atins!'); return; }
+        if (!ok) return;
         _pveState.myCoins = coins;
         if (upgCounts) Object.assign(_pveUpgCounts, upgCounts);
         if (newMaxHp && playerMeta[socket.id]) playerMeta[socket.id].maxHp = newMaxHp;
         updatePveHud();
         updateUpgradeButtons();
-        const labels = { dmg: 'Damage +5%', spd: 'Viteza +4%', hp: 'HP Max +15', ammo: 'Incarcator +12%', reserve: 'Munitie +' + _myReservePack(), barricade: 'Baricada in inventar: ' + _bar.inv };
-        showToast(labels[type] || 'Upgrade aplicat!');
     });
 
     socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued }) => {
@@ -4810,13 +4805,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _clientNextShotAt = 0; _ammoHoldUntil = 0; _pendingBurstShots.length = 0;
         moveDir.x = 0; moveDir.y = 0;
         _pendingInputs.length = 0;
-        showToast(`WAVE ${wave} / ${total}`);
     });
 
     socket.on('pve-subwave', ({ remaining, queued }) => {
         _ph.queued = queued || 0; _ph.slow = 0;
         if (_BB.on) ARBlackBox.event('pve-subwave', remaining);
-        showToast(remaining > 0 ? 'Intariri!' : '');
     });
 
     // ---- barricades ----
@@ -4852,12 +4845,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _bar.work.delete(id);
         _structs.splice(i, 1);
     });
-    socket.on('struct-result', ({ ok, action, reason }) => {
-        if (!ok) { showToast(_BAR_WHY[reason] || 'Nu se poate'); return; }
-        if (action === 'repair') showToast('Baricada reparata');
-        else if (action === 'upgrade') showToast('Baricada imbunatatita');
-        // a placed one: the ghost stays out while there are more in the inventory (pve-inv says when there are none)
-    });
+    // No messages for the barricades (the ghost is red when a place is no good, the ring and the sparks say a job is done or lost);
+    // a placed one: the ghost stays out while there are more in the inventory (pve-inv says when there are none)
+    socket.on('struct-result', () => {});
 
     socket.on('pve-skip-status', ({ votes, total }) => {
         const btn = document.getElementById('pve-skip-btn');

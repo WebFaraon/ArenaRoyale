@@ -625,7 +625,8 @@ function flushWeaponStats(p) {
 }
 // The end of a player's match: round stats, missions and weapon totals, in one write (after the tick)
 function endPlayerRound(p, isWinner, info) {
-    const ws = takeWeaponStats(p), id = p.id, name = p.name, kills = p.kills;
+    // kills_total is player kills: in PvE p.kills counts zombies (for the team counter of the HUD), which are kept in the round stats instead
+    const ws = takeWeaponStats(p), id = p.id, name = p.name, kills = info && info.mode === 'pve' ? 0 : p.kills;
     setImmediate(() => updatePlayerRoundEnd(id, name, kills, isWinner, { ...info, ws }));
 }
 // Weapon missions read the same counts: BR player kills and PvE zombie kills per weapon
@@ -1030,7 +1031,7 @@ function _sweepCoins(code, room) {
     if (_coinOut.gone.length) io.to(code).emit('coin-taken', { ids: _coinOut.gone.slice(), gone: true });
 }
 const PVE_BREAK_DURATION = 15;
-const PVE_TOTAL_WAVES    = 10;
+const PVE_TOTAL_WAVES    = 20;
 // [normal, runner, tank] per wave
 const PVE_WAVES = [
     [8,  0, 0],
@@ -1042,7 +1043,17 @@ const PVE_WAVES = [
     [14, 8, 4],
     [16, 8, 5],
     [16,10, 5],
-    [20,12, 6],
+    [20,12, 6],     // wave 10: 38 (the old finale)
+    [22,12, 6],
+    [22,14, 7],
+    [24,14, 8],
+    [24,16, 9],
+    [26,18, 9],
+    [28,18,10],
+    [28,20,11],
+    [30,22,12],
+    [32,22,13],
+    [34,24,15],     // wave 20: 73
 ];
 const PVE_ZOMBIE_DEFS = {
     // hunts: goes for a player in range first (then a barricade, then the base); false = never goes for a player or hits one, only barricades and the base
@@ -2220,7 +2231,7 @@ function startRoomLoop(code, room) {
                         if (_zws) _zws.zombieKills++; // weapon missions read this (missionWeaponKills)
                         if (_zOwner && _zOwner.rs) {
                             _zOwner.rs.zKills++;
-                            if (room.mode === 'pve') _zOwner.rs.pveKills++;
+                            if (room.mode === 'pve') { _zOwner.rs.pveKills++; _zOwner.kills++; }   // the team counter of the HUD (kills travels in gs2); not the BR total, see endPlayerRound
                         }
                         if (room.mode === 'pve') {
                             // The coins (the same count as before) drop around the zombie and lie there; whoever touches them gets them
