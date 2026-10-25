@@ -3292,6 +3292,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _tanks          = [];  // the tanks of the latest packet, [x, y, r] each: a player cannot push them, so to the prediction they are a wall
     let   _zSeenGen       = 0;   // state packet counter, to spot zombies missing from the latest one
     const _zombieDeathFx  = [];
+    let _gjX = null, _gjY = null, _gjBurst = 0;   // the camera of the last frame, and the frames left of the burst of tile builds after a jump
     const _pveState = { baseHp: 1000, baseMaxHp: 1000, wave: 0, waveBreak: false, breakTimer: 0, breakTimerMax: 15, myCoins: 0 };
     const _playerDeathFx  = [];  // { x, y, startTime, shards }
     const _prevPlayerAlive = {};
@@ -3501,7 +3502,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _turrets     = [];   // the turrets (round, server.js room.turrets): { id, k: 't', x, y, t, hp, maxHp, by, ang (drawn), tang (aimed), flash }
     const _turretFx    = [];   // tracers of the shots: { x0, y0, x1, y1, t0, tier }
     const _structDying = [];   // broken ones, drawn as pieces for a second: { s, t0 }
-    const _bar = { inv: 0, invT: 0, kind: 'b', place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
+    const _bar = { inv: 0, invT: 0, kind: 'b', act: null, can: true, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
     const _structFx = [];      // the effects: break, repair, upgrade { k, x, y, o, t0, parts }
     // colours of the chips by material (wood, stone, metal, obsidian): light, dark, highlight
     const _BAR_PAL = [['#D9A24E', '#8F5A1E', '#F4D48A'], ['#A39B8E', '#6B655B', '#D2CBBF'], ['#9AA7B4', '#5E6B78', '#D3DCE5'], ['#6A52B0', '#241C42', '#B79CF5']];
@@ -3541,19 +3542,43 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ctx.restore();
         ctx.globalAlpha = 1;
     }
-    // the muzzle flashes and the tracers of the shots, over the zombies
+    // The shots: a muzzle flash and a bullet that flies from the barrel to the zombie (the energy one is a bolt with a tail), a spark where it lands.
+    // The hit itself was at once on the server; the bullet is only what you see, so it is quick (1800 units/s).
+    const _TUR_SPEED = 1800;
     function _drawTurretFx(ctx, now) {
         for (let i = _turretFx.length - 1; i >= 0; i--) {
             const f = _turretFx[i], age = now - f.t0;
-            if (age >= 110) { _turretFx.splice(i, 1); continue; }
-            const a = 1 - age / 110, col = _TUR_COL[f.tier];
-            ctx.globalAlpha = a; ctx.lineCap = 'round';
-            ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = (f.tier === 2 ? 5.5 : 4) ; ctx.beginPath(); ctx.moveTo(f.x0, f.y0); ctx.lineTo(f.x1, f.y1); ctx.stroke();
-            ctx.strokeStyle = col; ctx.lineWidth = (f.tier === 2 ? 3 : 1.8); ctx.beginPath(); ctx.moveTo(f.x0, f.y0); ctx.lineTo(f.x1, f.y1); ctx.stroke();
-            ctx.fillStyle = col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6;
-            _star(ctx, f.x0, f.y0, 8 + 5 * a); ctx.fill(); ctx.stroke();
+            if (age >= f.dur + 90) { _turretFx.splice(i, 1); continue; }
+            const col = _TUR_COL[f.tier], en = f.tier === 2;
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            if (age < f.dur) {
+                const u = age / f.dur, bx = f.x0 + (f.x1 - f.x0) * u, by = f.y0 + (f.y1 - f.y0) * u, L = en ? 26 : 15, tail = Math.min(L, u * f.len);
+                const tx = bx - f.dx * tail, ty = by - f.dy * tail;
+                if (en) {   // a ball of energy with a fading tail
+                    ctx.lineWidth = 6;   // the tail in three steps of rising strength (no gradient made every frame)
+                    for (let s3 = 0; s3 < 3; s3++) {
+                        ctx.strokeStyle = 'rgba(127,233,255,' + (0.25 + 0.3 * s3).toFixed(2) + ')';
+                        ctx.beginPath(); ctx.moveTo(tx + (bx - tx) * s3 / 3, ty + (by - ty) * s3 / 3); ctx.lineTo(bx, by); ctx.stroke();
+                    }
+                    ctx.fillStyle = col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(bx, by, 2.6, 0, Math.PI * 2); ctx.fill();
+                } else {    // a short round with an ink edge, like the bullets of the guns
+                    ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 5.4; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke();
+                    ctx.strokeStyle = col; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke();
+                }
+            } else {      // it landed: a small spark that goes out in 90 ms
+                const a = 1 - (age - f.dur) / 90;
+                ctx.globalAlpha = a; ctx.fillStyle = col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
+                _star(ctx, f.x1, f.y1, (en ? 11 : 7) * (0.6 + 0.4 * a)); ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+            if (age < 70) {   // the muzzle flash
+                const a = 1 - age / 70;
+                ctx.globalAlpha = a; ctx.fillStyle = col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6;
+                _star(ctx, f.x0, f.y0, 6 + 6 * a); ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
         }
-        ctx.globalAlpha = 1;
     }
     function _barEls() {
         const g = id => document.getElementById(id);
@@ -3622,6 +3647,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const act = best && !_bar.work.has(best.id) ? (tur ? ARStructs.turretUseAction(best) : ARStructs.useAction(best)) : null;   // not while it is being worked on
         const cost = !act ? 0 : tur ? (act === 'repair' ? ARStructs.turretRepairCost(best) : ARStructs.turretUpgradeCost(best)) : act === 'repair' ? ARStructs.repairCost(best) : ARStructs.upgradeCost(best);
         const can = _pveState.myCoins >= cost;
+        _bar.act = act; _bar.can = can;   // for the highlight on the thing E would work on
         const key = act ? act + cost + (can ? 'y' : 'n') : '';
         if (key === _bar.useKey) return;
         _bar.useKey = key;
@@ -3747,8 +3773,20 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.stroke();
         });
     }
-    function _drawTurrets(ctx, scale, visL, visT, visR, visB, now) {
+    function _drawTurrets(ctx, scale, zoom, visL, visT, visR, visB, now) {
         const R = ARStructs.TURRET.r;
+        // the reach of a turret shows only when you are near it (it fades in from 230 units away to full at 150)
+        if (predX !== null && !_bar.place) {
+            for (let i = 0; i < _turrets.length; i++) {
+                const t = _turrets[i], d = Math.hypot(predX - t.x, predY - t.y);
+                if (d >= 230) continue;
+                const a = Math.min(1, (230 - d) / 80), rg = ARStructs.TURRET.tiers[t.t].range;
+                ctx.save();
+                ctx.globalAlpha = a; ctx.lineWidth = 2 / zoom; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.setLineDash([10 / zoom, 8 / zoom]);
+                ctx.beginPath(); ctx.arc(t.x, t.y, rg, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                ctx.restore();
+            }
+        }
         for (let i = 0; i < _turrets.length; i++) {
             const t = _turrets[i];
             if (t.x + R + 24 < visL || t.x - R - 24 > visR || t.y + R + 24 < visT || t.y - R - 24 > visB) continue;
@@ -3762,7 +3800,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
     }
     function _drawStructs(ctx, scale, zoom, visL, visT, visR, visB, now) {
-        _drawTurrets(ctx, scale, visL, visT, visR, visB, now);
         for (let i = 0; i < _structs.length; i++) {
             const s = _structs[i];
             const hw = ARStructs.halfW(s), hh = ARStructs.halfH(s);
@@ -3775,6 +3812,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             } else if (sp) ctx.drawImage(sp.c, s.x - sp.w / 2, s.y - sp.h / 2, sp.w, sp.h);
             if (s.hp < s.maxHp) _drawHpBar(ctx, s.x - 24, s.y - hh - 15, 48, 7, Math.max(0, s.hp / s.maxHp), 1.6);
         }
+        _drawTurrets(ctx, scale, zoom, visL, visT, visR, visB, now);   // over the barricades (a turret stands behind a wall and looks over it)
         // the pieces of a broken one, fading out over a second
         for (let i = _structDying.length - 1; i >= 0; i--) {
             const d = _structDying[i], age = now - d.t0;
@@ -3788,6 +3826,22 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
         _drawStructFx(ctx, now);
         _drawWorkRings(ctx, now, visL, visT, visR, visB);
+        // what E would work on is outlined, in the colour of the job (green repair, gold upgrade, red when the coins are short, white when
+        // there is nothing to do), so two things side by side are told apart
+        if (_bar.use && !_bar.place && predX !== null) {
+            const u = _bar.use, col = !_bar.act ? '#FFFFFF' : !_bar.can ? '#FF4B5C' : _bar.act === 'repair' ? '#46D46A' : '#FFC72E';
+            const pulse = 0.65 + 0.35 * Math.sin(now / 160);
+            ctx.save();
+            ctx.strokeStyle = col; ctx.lineJoin = 'round';
+            for (let pass = 0; pass < 2; pass++) {
+                ctx.globalAlpha = pass ? 0.95 : 0.3 * pulse; ctx.lineWidth = (pass ? 3 : 9) ;
+                ctx.beginPath();
+                if (u.k === 't') ctx.arc(u.x, u.y, ARStructs.TURRET.r + 5, 0, Math.PI * 2);
+                else { const hw = ARStructs.halfW(u), hh = ARStructs.halfH(u); ctx.roundRect(u.x - hw - 4, u.y - hh - 4, hw * 2 + 8, hh * 2 + 8, 9); }
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
         // the ghost
         if (_bar.place && predX !== null && _bar.kind === 't') {
             const g = _bar.g, ok = !_bar.why, R = ARStructs.TURRET.r;
@@ -4952,8 +5006,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (!t) continue;
             const a = rows[i + 1] / 100, z = _zombies[rows[i + 2]];
             t.tang = a; t.flash = now;
-            const mx = t.x + Math.cos(a) * 42, my = t.y + Math.sin(a) * 42;
-            _turretFx.push({ x0: mx, y0: my, x1: z ? z.x : mx + Math.cos(a) * 200, y1: z ? z.y : my + Math.sin(a) * 200, t0: now, tier: t.t });
+            // the twin turret fires from its two barrels in turn (7 units either side of the axis)
+            let off = 0; if (t.t === 1) { t.alt = !t.alt; off = t.alt ? 7 : -7; }
+            const ca = Math.cos(a), sa = Math.sin(a);
+            const mx = t.x + ca * 42 - sa * off, my = t.y + sa * 42 + ca * off;
+            const x1 = z ? z.x : mx + ca * 200, y1 = z ? z.y : my + sa * 200, dx = x1 - mx, dy = y1 - my, len = Math.hypot(dx, dy) || 1;
+            _turretFx.push({ x0: mx, y0: my, x1, y1, dx: dx / len, dy: dy / len, len, dur: Math.max(35, Math.min(170, len / _TUR_SPEED * 1000)), t0: now, tier: t.t });
         }
         if (_turretFx.length > 80) _turretFx.splice(0, _turretFx.length - 80);
     });
@@ -4997,7 +5055,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_BB.on) ARBlackBox.event('pve-wave-break', wave);
         _pveState.waveBreak = true;
         _pveState.breakTimer = timer;
-        _pveState.breakTimerMax = timer;
+        _pveState.breakTimerMax = timer; _pveState.breakAt = performance.now();
         isShooting = false; moveDir.x = 0; moveDir.y = 0;
         _pendingInputs.length = 0;
         keysHeld.clear();
@@ -5609,7 +5667,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const _gNow = performance.now();
         ARArena.beginFrame(dpr * ZOOM, _gNow);
         if (_warmLeft) _warmLeft = ARArena.warm(_ZB_DEFS, _gameMode === 'pve');   // zombie, base, coin, kit and shard sprites, a few a frame from the start
-        ARGround.beginFrame(gameControl.countdownActive || _spriteBurst0);
+        // a big jump of the camera (a PvE wave putting everybody back by the base): a few frames with six tile builds each instead of two,
+        // so the vector stand-ins do not stay on screen for long
+        if (predX !== null) {
+            if (_gjX !== null && Math.hypot(predX - _gjX, predY - _gjY) > 500) _gjBurst = 10;
+            _gjX = predX; _gjY = predY;
+        }
+        ARGround.beginFrame(gameControl.countdownActive || _spriteBurst0 || (_gjBurst > 0 && _gjBurst-- > 0));
         const _lblScale = dpr * ZOOM;
 
         const visLeft   = -_ox / _sq;
@@ -5622,6 +5686,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // frame needs no clear before it: one full-canvas fill less (~0.2 ms/frame at 1280x720 in a software raster).
         if (!ARGround.paintsAll()) ctx.clearRect(visLeft, visTop, visRight - visLeft, visBottom - visTop);
         ARGround.draw(ctx, visLeft, visTop, visRight, visBottom, _lblScale, ARArena.isScaleStable(), _gNow, _ox, _oy);
+        // In the last seconds of the wave break the ground by the base is built, one tile a frame, so it is there when the wave starts and
+        // everybody is put back: the tiles you are not near go idle after 20 s and would all have to be made in that first frame
+        if (_gameMode === 'pve' && _pveState.waveBreak && _gNow - _pveState.breakAt > Math.max(0, _pveState.breakTimerMax * 1000 - 9000)) {
+            const hw = (visRight - visLeft) / 2 + 260, hh = (visBottom - visTop) / 2 + 260;
+            ARGround.warm(_PVE_BASE.x - hw, _PVE_BASE.y - hh, _PVE_BASE.x + hw, _PVE_BASE.y + hh, _lblScale, ARArena.isScaleStable(), _gNow, _ox, _oy, 1);
+        }
         // (no flowers: the pitch stays clean)
         // Particule ambient (world-space, se misca independent de camera)
         {

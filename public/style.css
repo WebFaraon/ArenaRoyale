@@ -1988,7 +1988,7 @@ button:disabled { cursor: not-allowed; }
     top: max(12px, var(--safe-t));
     left: 50%;
     transform: translateX(-50%);
-    z-index: 200;
+    z-index: 30;   /* under the end-of-match board (40) and the leave confirmation (60): they dim all of it */
     display: flex;
     align-items: stretch;
     gap: 6px;

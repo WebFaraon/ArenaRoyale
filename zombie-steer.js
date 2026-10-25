@@ -39,6 +39,7 @@ function avoidBase(zx, zy, ddx, ddy, base, r, out) {
 const STRUCT_BEND = 60;
 // How far the row of barricades that `s` is part of reaches along its length (barricades of the same direction, in line with it and
 // touching or nearly): the coordinate along the axis of its two ends (lo, hi) and of `s` itself (c)
+const _rowExt = { lo: 0, hi: 0, c: 0 };   // one object reused: the result is used at once, and this runs for every zombie leaning on a wall every tick
 function rowExtent(s, structs) {
     const along = (w) => s.o ? w.y : w.x, cross = (w) => s.o ? w.x : w.y, half = (w) => s.o ? ARStructs.halfH(w) : ARStructs.halfW(w);
     let lo = along(s) - half(s), hi = along(s) + half(s), grew = true;
@@ -51,7 +52,8 @@ function rowExtent(s, structs) {
             if (wl <= hi + 8 && wh >= lo - 8 && (wl < lo || wh > hi)) { lo = Math.min(lo, wl); hi = Math.max(hi, wh); grew = true; }
         }
     }
-    return { lo, hi, c: along(s) };
+    _rowExt.lo = lo; _rowExt.hi = hi; _rowExt.c = along(s);
+    return _rowExt;
 }
 // Which way round a wall to go, as the sense of the slide: +1 turns the way `n` rotates a quarter turn (so the same sense goes round every
 // face of the rectangle: it is a way round, not "left" or "right"), -1 the other way. The way with the shorter trip zombie -> the end of
