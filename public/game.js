@@ -4778,8 +4778,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         document.getElementById('pve-top-hud').style.display = 'none';
         _pveState.baseHp = 1000; _pveState.wave = 0; _pveState.waveBreak = false; _pveState.myCoins = 0;
         Object.keys(_pveUpgCounts).forEach(k => _pveUpgCounts[k] = 0);
-        const skipBtn = document.getElementById('pve-skip-btn');
-        if (skipBtn) { skipBtn.disabled = false; skipBtn.textContent = 'SKIP'; }
+        _pbkGoReset(); _pbk.res = null;
         _playerDeathFx.length = 0;
         for (const k in _prevPlayerAlive) delete _prevPlayerAlive[k];
         _healthKits.clear();
@@ -4826,6 +4825,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _setHudText('pve-upgrade-coins', _pveState.myCoins);
     }
 
+    // ---------- PvE between-waves panel (#pve-upgrade-panel): results + team | shop | next wave ----------
+    // Prices and maxima mirror server.js (PVE_UPGRADE_DEFS, PVE_RESERVE_COST, ARStructs.BUY_COST / TURRET_BUY_COST); the server decides every purchase.
     const _PVE_UPG_CLIENT = {
         dmg:  { baseCost: 6,  costInc: 4, maxUses: 5 },
         spd:  { baseCost: 5,  costInc: 3, maxUses: 4 },
@@ -4833,50 +4834,177 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ammo: { baseCost: 4,  costInc: 2, maxUses: 4 },
     };
     const _pveUpgCounts = { dmg: 0, spd: 0, hp: 0, ammo: 0 };
-
+    const _PVE_RESERVE_COST = 3;   // server.js PVE_RESERVE_COST
+    const _myReservePack = () => (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {}).reserveStart || 0;
     function _pveUpgCost(type, count) {
         const d = _PVE_UPG_CLIENT[type];
         return d ? d.baseCost + count * d.costInc : 999;
     }
 
-    function updateUpgradeButtons() {
-        Object.keys(_PVE_UPG_CLIENT).forEach(type => {
-            const btn = document.querySelector(`.pve-upg-btn[data-type="${type}"]`);
-            if (!btn) return;
-            const d = _PVE_UPG_CLIENT[type];
-            const count = _pveUpgCounts[type] || 0;
-            const maxed = count >= d.maxUses;
-            const cost  = maxed ? null : _pveUpgCost(type, count);
-            btn.querySelector('.pve-upg-cost').textContent = maxed ? 'MAX' : String(cost);
-            btn.disabled = maxed;
-            btn.classList.toggle('pve-upg-maxed', maxed);
-            // Segmente progres
-            const segsEl = btn.querySelector('.pve-upg-segs');
-            if (segsEl) {
-                segsEl.innerHTML = '';
-                for (let i = 0; i < d.maxUses; i++) {
-                    const seg = document.createElement('span');
-                    seg.className = 'pve-upg-seg' + (i < count ? ' active' : '');
-                    segsEl.appendChild(seg);
-                }
-            }
-        });
-        // MUNITIE: a pack of rounds (the gun's starting reserve) for a flat price, as often as the coins allow; the reserve has no ceiling
-        const bb = document.getElementById('pve-barricade-val'); if (bb) bb.textContent = 'in inventar: ' + _bar.inv;
-        const tb = document.getElementById('pve-turret-val'); if (tb) tb.textContent = 'in inventar: ' + _bar.invT;
-        const rb = document.querySelector('.pve-upg-btn[data-type="reserve"]');
-        if (rb) {
-            rb.querySelector('.pve-upg-val').textContent = '+' + _myReservePack() + ' gloante';
-            rb.querySelector('.pve-upg-cost').textContent = String(_PVE_RESERVE_COST);
+    // The cards, in the order of the ALL tab. tab: build | support | weapon. locked: not in the game yet ("IN CURAND").
+    // lvl(n): what the n levels bought so far give; tag(): the small line in the corner of the picture.
+    const _PBK_CARDS = [
+        { id: 'barricade', tab: 'build', name: 'Baricada', img: '/images/pve/icon_barricade_wood.svg', cost: () => ARStructs.BUY_COST,
+          desc: 'Opreste zombii. O pui cu 1; cu E o repari sau o urci de nivel.', tag: () => 'In inventar: ' + _bar.inv },
+        { id: 'turret', tab: 'build', name: 'Tureta', img: '/images/pve/icon_turret_mg.svg', cost: () => ARStructs.TURRET_BUY_COST,
+          desc: 'Trage singura in zombii din raza ei. O pui cu 2; cu E o repari sau o urci de nivel.', tag: () => 'In inventar: ' + _bar.invT },
+        { id: 'dmg', tab: 'weapon', name: 'Damage', ic: 'crosshair', col: 'o', desc: 'Gloantele tale lovesc mai tare: +5% pe nivel.', lvl: n => '+' + n * 5 + '%' },
+        { id: 'ammo', tab: 'weapon', name: 'Incarcator', ic: 'bolt', col: 'y', desc: 'Un incarcator mai mare: +12% gloante pe nivel.', lvl: n => '+' + n * 12 + '%' },
+        { id: 'reserve', tab: 'weapon', name: 'Munitie', ic: 'package', col: 'y', cost: () => _PVE_RESERVE_COST,
+          desc: () => 'Un pachet de ' + _myReservePack() + ' gloante pentru arma ta, de cate ori vrei.', tag: () => 'Acum: ' + (ammoState.reserve | 0) + ' gloante' },
+        { id: 'hp', tab: 'support', name: 'HP Max', ic: 'heart-pulse', col: 'r', desc: 'Mai multa viata: +15 pe nivel.', lvl: n => '+' + n * 15 },
+        { id: 'spd', tab: 'support', name: 'Viteza', ic: 'gauge', col: 's', desc: 'Alergi mai repede: +4% pe nivel.', lvl: n => '+' + n * 4 + '%' },
+        { id: 'medkit', tab: 'support', name: 'Medkit', ic: 'heart', col: 'g', locked: true, desc: 'Reface o parte din viata. Il poti folosi si pe un coechipier.' },
+        { id: 'shield', tab: 'support', name: 'Scut', ic: 'shield', col: 's', locked: true, desc: 'Viata extra care dispare prima cand esti lovit.' },
+        { id: 'mine', tab: 'build', name: 'Mina', ic: 'bomb', col: 'o', locked: true, desc: 'Explodeaza la contact si loveste zona din jur.' },
+    ];
+    const _pbk = { tab: 'all', cards: null, iv: 0, res: null, ready: new Set(), votes: 0, total: 1, voted: false, nextWave: 2, shownTeam: '' };
+    const _$ = id => document.getElementById(id);
+
+    function _pbkBuild() {
+        const host = _$('pbk-cards');
+        host.textContent = '';
+        _pbk.cards = new Map();
+        for (const c of _PBK_CARDS) {
+            const el = document.createElement('div');
+            el.className = 'pbk-c' + (c.locked ? ' is-locked' : '');
+            el.dataset.tab = c.tab;
+            const pic = c.img ? `<img src="${c.img}" alt="" aria-hidden="true" draggable="false">` : ico(c.ic);
+            el.innerHTML = `<div class="pbk-c-ic${c.col ? ' is-' + c.col : ''}">${pic}<span class="pbk-c-tag"></span></div>` +
+                `<div class="pbk-c-name">${c.name}</div><div class="pbk-c-desc"></div>` +
+                (c.locked ? `<div class="pbk-lock">${ico('lock')}IN CURAND</div>`
+                    : (_PVE_UPG_CLIENT[c.id] ? '<div class="pbk-lvl"><span class="pbk-lvl-n"></span><span class="pbk-lvl-v"></span></div><div class="pbk-segs"></div>' : '') +
+                      '<button class="pbk-buy" type="button"></button>');
+            el.querySelector('.pbk-c-desc').textContent = typeof c.desc === 'function' ? c.desc() : c.desc;
+            const buy = el.querySelector('.pbk-buy');
+            if (buy) buy.addEventListener('click', () => window.buyUpgrade(c.id));
+            host.appendChild(el);
+            _pbk.cards.set(c.id, { c, el, buy, tag: el.querySelector('.pbk-c-tag'), desc: el.querySelector('.pbk-c-desc'), segs: el.querySelector('.pbk-segs'),
+                lvlN: el.querySelector('.pbk-lvl-n'), lvlV: el.querySelector('.pbk-lvl-v'), buyKey: '', segKey: -1, txt: '' });
         }
+        _$('pbk-tabs').addEventListener('click', e => {
+            const b = e.target.closest('.pbk-tab');
+            if (!b) return;
+            _pbk.tab = b.dataset.tab; _pbkTabs();
+        });
     }
-    const _PVE_RESERVE_COST = 3;   // server.js PVE_RESERVE_COST
-    const _myReservePack = () => (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {}).reserveStart || 0;
+    function _pbkTabs() {
+        for (const b of _$('pbk-tabs').children) b.classList.toggle('is-on', b.dataset.tab === _pbk.tab);
+        for (const { c, el } of _pbk.cards.values()) el.style.display = (_pbk.tab === 'all' || c.tab === _pbk.tab) ? '' : 'none';
+    }
+
+    // Cheap and idempotent: only what changed is written (called at every purchase, coin and inventory change while the panel is up)
+    function updateUpgradeButtons() {
+        if (!_pbk.cards) _pbkBuild();
+        const coins = _pveState.myCoins | 0;
+        for (const k of _pbk.cards.values()) {
+            const c = k.c;
+            const tag = c.tag ? c.tag() : '';
+            if (k.txt !== tag) { k.txt = tag; k.tag.textContent = tag; }
+            if (typeof c.desc === 'function') { const d = c.desc(); if (k.descTxt !== d) { k.descTxt = d; k.desc.textContent = d; } }
+            if (c.locked) continue;
+            const stat = _PVE_UPG_CLIENT[c.id];
+            let label, cost = 0, maxed = false;
+            if (stat) {
+                const n = _pveUpgCounts[c.id] | 0;
+                maxed = n >= stat.maxUses;
+                cost = maxed ? 0 : _pveUpgCost(c.id, n);
+                label = maxed ? 'MAX' : String(cost);
+                if (k.segKey !== n) {
+                    k.segKey = n;
+                    k.segs.textContent = '';
+                    for (let i = 0; i < stat.maxUses; i++) { const s = document.createElement('span'); s.className = 'pbk-seg' + (i < n ? ' on' : ''); k.segs.appendChild(s); }
+                    k.lvlN.textContent = 'NIVEL ' + n + ' / ' + stat.maxUses;
+                    k.lvlV.textContent = n ? c.lvl(n) + ' acum' : '';
+                }
+            } else { cost = c.cost(); label = String(cost); }
+            const poor = !maxed && coins < cost;
+            const key = label + (maxed ? 'm' : poor ? 'p' : 'o');
+            if (k.buyKey !== key) {
+                k.buyKey = key;
+                k.buy.textContent = label;
+                k.buy.disabled = maxed || poor;
+                k.buy.classList.toggle('is-max', maxed);
+                k.buy.classList.toggle('is-poor', poor);
+            }
+        }
+        _setHudText('pbk-earned', '+' + (_pbkMine() ? _pbkMine()[3] : 0) + ' in acest val');
+        _pbkInv();
+    }
+    function _pbkInv() {
+        const el = _$('pbk-inv');
+        const s = `${_bar.inv}|${_bar.invT}|${ammoState.reserve | 0}`;
+        if (el.__k === s) return;
+        el.__k = s;
+        el.innerHTML = `<span class="pbk-inv-h">INVENTAR</span><span class="pbk-pill">Baricada x${_bar.inv}</span><span class="pbk-pill">Tureta x${_bar.invT}</span><span class="pbk-pill">Munitie ${ammoState.reserve | 0}</span>`;
+    }
+    const _pbkMine = () => { const r = _pbk.res; if (!r) return null; for (const row of r.rows) if (row[0] === socket.id) return row; return null; };
 
     window.buyUpgrade = function(type) { socket.emit('buy-upgrade', { type }); };
 
+    function _pbkTeam() {
+        const host = _$('pbk-team-rows');
+        const ids = _ph.ids || [];
+        const sig = ids.join('|') + '#' + ids.map(id => _pbk.ready.has(id) ? 1 : 0).join('');
+        if (sig === _pbk.shownTeam) return;
+        _pbk.shownTeam = sig;
+        host.textContent = '';
+        ids.forEach((id, i) => {
+            const row = document.createElement('div'); row.className = 'pbk-trow';
+            const dot = document.createElement('span'); dot.className = 'pbk-tdot'; dot.style.background = _pveColor(id, i);
+            const nm = document.createElement('span'); nm.className = 'pbk-tname';
+            const meta = playerMeta[id] || {};
+            nm.textContent = (meta.name || '') + (id === socket.id ? ' (tu)' : '');
+            const st = document.createElement('span'); st.className = 'pbk-tstat' + (_pbk.ready.has(id) ? ' is-rdy' : '');
+            st.textContent = _pbk.ready.has(id) ? 'GATA' : 'CUMPARA...';
+            row.append(dot, nm, st); host.appendChild(row);
+        });
+        _setHudText('pbk-ready-n', `${_pbk.ready.size} / ${Math.max(1, ids.length)}`);
+    }
+    function _pbkResults() {
+        const r = _pbk.res, mine = _pbkMine();
+        let team = 0;
+        if (r) for (const row of r.rows) team += row[1];
+        _setHudText('pbk-st-kills', mine ? mine[1] : 0);
+        _setHudText('pbk-st-team', team);
+        _setHudText('pbk-st-dmg', mine ? mine[2] : 0);
+        _setHudText('pbk-st-coins', mine ? mine[3] : 0);
+        const mv = _$('pbk-mvp');
+        if (r && r.mvp) { mv.style.display = ''; mv.textContent = 'MVP: ' + ((playerMeta[r.mvp] && playerMeta[r.mvp].name) || '') + (r.mvp === socket.id ? ' (tu)' : ''); }
+        else mv.style.display = 'none';
+        _setHudText('pbk-earned', '+' + (mine ? mine[3] : 0) + ' in acest val');
+    }
+    const _PBK_ZOMBIES = [['Normali', '#7DBB45', '#0A1013'], ['Rapizi', '#B4D84A', '#0A1013'], ['Tank', '#4F7A2A', '#8B97A1']];
+    function _pbkNext(next, nextWave) {
+        _setHudText('pbk-next-n', nextWave);
+        const host = _$('pbk-next-rows');
+        host.textContent = '';
+        const arr = next || [0, 0, 0], total = arr[0] + arr[1] + arr[2];
+        _setHudText('pbk-next-total', total);
+        for (let i = 0; i < 3; i++) {
+            if (!arr[i]) continue;
+            const row = document.createElement('div'); row.className = 'pbk-nrow';
+            row.innerHTML = '<span class="pbk-ndot"></span><span class="pbk-nlbl"></span><span class="pbk-nbar"><i></i></span><span class="pbk-ncnt"></span>';
+            const [lbl, col, ring] = _PBK_ZOMBIES[i];
+            const dot = row.firstChild; dot.style.background = col; dot.style.borderColor = ring;
+            row.children[1].textContent = lbl;
+            const fill = row.querySelector('i'); fill.style.background = col; fill.style.width = Math.round(arr[i] / total * 100) + '%';
+            row.lastChild.textContent = arr[i];
+            host.appendChild(row);
+        }
+        _$('pbk-next-hint').textContent = !next ? '' : arr[2] ? 'Tank-urile sparg baricadele si turetele si merg spre baza. Pregateste-te.'
+            : nextWave >= (_pveState.totalWaves || 20) ? 'Ultimul val.' : 'Zombii vin spre jucatori si spre baza.';
+    }
+    function _pbkClock() {
+        const left = Math.max(0, Math.ceil(_pveState.breakTimerMax - (performance.now() - _pveState.breakAt) / 1000));
+        _setHudText('pbk-time', Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0'));
+        _pbkTeam();
+    }
+
     function showPvePanel() {
-        const panel = document.getElementById('pve-upgrade-panel');
+        const panel = _$('pve-upgrade-panel');
+        updateUpgradeButtons(); _pbkTabs(); _pbkResults(); _pbkClock();
+        clearInterval(_pbk.iv); _pbk.iv = setInterval(_pbkClock, 250);
         panel.style.transition = 'none';
         panel.style.opacity    = '0';
         panel.style.display    = 'flex';
@@ -4886,7 +5014,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }));
     }
     function hidePvePanel(cb) {
-        const panel = document.getElementById('pve-upgrade-panel');
+        const panel = _$('pve-upgrade-panel');
+        clearInterval(_pbk.iv);
         if (panel.style.display === 'none') { if (cb) cb(); return; }
         panel.style.transition = 'opacity 0.35s ease';
         panel.style.opacity    = '0';
@@ -4897,15 +5026,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (cb) cb();
         }, 360);
     }
+    function _pbkGoReset() {
+        _pbk.voted = false; _pbk.ready.clear(); _pbk.shownTeam = '';
+        const b = _$('pve-skip-btn'); if (b) b.disabled = false;
+        _setHudText('pbk-go-txt', 'GATA');
+    }
     window.skipWaveBreak = function() {
+        if (_pbk.voted) return;
+        _pbk.voted = true;
         socket.emit('pve-skip');
-        const btn = document.getElementById('pve-skip-btn');
-        if (btn) { btn.disabled = true; btn.textContent = 'Vot inregistrat'; }
+        _$('pve-skip-btn').disabled = true;
+        _setHudText('pbk-go-txt', 'AI VOTAT');
     };
 
     socket.on('pve-coins', ({ coins, earned, x, y }) => {
         _pveState.myCoins = coins;
         updatePveHud();
+        if (_pveState.waveBreak && _pbk.cards) updateUpgradeButtons();
         if (earned && x !== undefined && y !== undefined) {
             // coins picked up one after another over a pile add up in one popup
             const _now = performance.now(), _last = _coinFloats[_coinFloats.length - 1];
@@ -4936,10 +5073,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (newMaxHp && playerMeta[socket.id]) playerMeta[socket.id].maxHp = newMaxHp;
         updatePveHud();
         updateUpgradeButtons();
+        const k = _pbk.cards && _pbk.cards.get(type);
+        if (k) { k.el.classList.remove('is-pop'); void k.el.offsetWidth; k.el.classList.add('is-pop'); }
     });
 
     socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued }) => {
-        _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0;
+        _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0; if (total) _pveState.totalWaves = total;
         const _of = document.getElementById('pve-wave-of'); if (_of && total) _of.textContent = total;
         if (_BB.on) ARBlackBox.event('wave-start', wave);   // the server puts everyone back by the base here: a jump, by design
         _waveStartAt = performance.now();
@@ -4969,6 +5108,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // ---- barricades ----
     socket.on('pve-inv', ({ barricade, turret }) => {
         _bar.inv = barricade | 0; _bar.invT = turret | 0;
+        if (_pveState.waveBreak && _pbk.cards) updateUpgradeButtons();
         if ((_bar.kind === 't' ? _bar.invT : _bar.inv) <= 0 && _bar.place) _bar.place = false;   // that was the last one
         _barUi();
     });
@@ -5046,16 +5186,20 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // a placed one: the ghost stays out while there are more in the inventory (pve-inv says when there are none)
     socket.on('struct-result', () => {});
 
-    socket.on('pve-skip-status', ({ votes, total }) => {
-        const btn = document.getElementById('pve-skip-btn');
-        if (btn) btn.textContent = votes >= total ? 'SKIP' : `SKIP (${votes}/${total})`;
+    // who has pressed GATA (ids), for the team list and the "n / total" of the header
+    socket.on('pve-skip-status', ({ ids }) => {
+        _pbk.ready = new Set(ids || []);
+        _pbkTeam();
     });
+    // The numbers of the wave that just ended: rows [id, kills, damage taken, coins earned] and the MVP
+    socket.on('pve-wave-results', (r) => { _pbk.res = r; _pbkResults(); });
 
-    socket.on('pve-wave-break', ({ wave, nextWave, timer }) => {
+    socket.on('pve-wave-break', ({ wave, nextWave, timer, next }) => {
         if (_BB.on) ARBlackBox.event('pve-wave-break', wave);
         _pveState.waveBreak = true;
         _pveState.breakTimer = timer;
         _pveState.breakTimerMax = timer; _pveState.breakAt = performance.now();
+        _pbkGoReset(); _pbk.res = null;
         isShooting = false; moveDir.x = 0; moveDir.y = 0;
         _pendingInputs.length = 0;
         keysHeld.clear();
@@ -5065,10 +5209,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         setTimeout(() => {
             if (!_pveState.waveBreak) return; // wave a inceput deja (skip rapid)
             if (_BB.on) ARBlackBox.event('pve-panel', wave);
-            document.getElementById('pve-upgrade-wave-info').innerHTML = `Wave ${wave}${ico('arrow-right')}${nextWave}`;
-            document.getElementById('pve-upgrade-coins').textContent = _pveState.myCoins;
-            const skipBtn = document.getElementById('pve-skip-btn');
-            if (skipBtn) { skipBtn.disabled = false; skipBtn.textContent = 'SKIP'; }
+            _setHudText('pbk-done-title', 'VALUL ' + wave);
+            _setHudText('pbk-next-lbl', 'VALUL ' + nextWave + ' INCEPE IN');
+            _setHudText('pve-upgrade-coins', _pveState.myCoins);
+            _pbkNext(next, nextWave);
             updateUpgradeButtons();
             showPvePanel();
             // Animare timer bar porneaza de la starea curenta a timerului
@@ -5251,6 +5395,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (!e.rows) return;
         // the roster: one row per player, in slot order; rebuilt only when somebody joins or leaves
         const ids = Object.keys(players).sort((a, b) => ((playerMeta[a] && playerMeta[a].slot) | 0) - ((playerMeta[b] && playerMeta[b].slot) | 0));
+        _ph.ids = ids;
         const key = ids.join('|');
         if (key !== _ph.roster) {
             _ph.roster = key; _ph.rows.clear(); e.rows.textContent = '';

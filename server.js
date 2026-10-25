@@ -1018,6 +1018,7 @@ function _payCoins(code, taken) {
         const p = taken[ci];
         if (!p._coinGot) continue;
         p.coins += p._coinGot;
+        if (p.wv) p.wv.coins += p._coinGot;   // the break panel: coins earned in this wave
         io.to(p.id).emit('pve-coins', { coins: p.coins, earned: p._coinGot, x: p.x, y: p.y });
         p._coinGot = 0;
     }
@@ -1505,6 +1506,20 @@ function assignPveSpawnPositions(players) {
     });
 }
 
+// The numbers of the wave that just ended, for the break panel: one row per player [id, kills, damage taken, coins earned] and the MVP
+// (most kills; nobody if there were none; the first on a tie). Not in gs2.
+function pveWaveResults(room) {
+    const rows = [];
+    let mvp = null, best = 0;
+    for (const p of room._playerArr) {
+        const w = p.wv || { k0: p.kills, dmg: 0, coins: 0 };
+        const k = Math.max(0, p.kills - w.k0);
+        rows.push([p.id, k, Math.round(w.dmg), w.coins]);
+        if (k > best) { best = k; mvp = p.id; }
+    }
+    return { wave: room.pveWave, rows, mvp };
+}
+
 function startPveWave(code, room) {
     if (!rooms.has(code) || room.gameEnded || room.pveWaveActive) return;
     room.pveWave++;
@@ -1514,6 +1529,7 @@ function startPveWave(code, room) {
     room.pveSkipVotes.clear();
     // Players come back next to the base with full health; a revived one also gets a full magazine and reserve
     room._playerArr.forEach((p, i) => {
+        p.wv = { k0: p.kills, dmg: 0, coins: 0 };   // this wave's numbers for the break panel (kills = the counter now; the rest from zero)
         const angle = (i / Math.max(room._playerArr.length, 1)) * Math.PI * 2 + Math.PI / 4;
         p.x = Math.round(PVE_BASE_X + Math.cos(angle) * 240);
         p.y = Math.round(PVE_BASE_Y + Math.sin(angle) * 240);
@@ -2228,6 +2244,7 @@ function startRoomLoop(code, room) {
                         let attacked = false;
                         for (const p of hunts ? alivePlayers : _noPlayers) {   // a type that does not hunt never hits a player
                             if (Math.hypot(p.x - zombie.x, p.y - zombie.y) < def.attackR) {
+                                if (p.wv) p.wv.dmg += Math.min(def.dmg, Math.max(0, p.hp));
                                 p.hp -= def.dmg; p.lastDamageTime = now;
                                 zombie.attackCooldown = def.attackCd;
                                 if (p.hp <= 0) eliminatePlayer(code, room, p, 'zombie');
@@ -2283,9 +2300,15 @@ function startRoomLoop(code, room) {
                         room.pveBreakTimer = PVE_BREAK_DURATION;
                         room.pveSkipVotes.clear();
                         room._playerArr.forEach(p => { p.moveDir.x = 0; p.moveDir.y = 0; p.shooting = false; });
-                        io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION });
-                        // the panel covers the pitch after 1 s (game.js): the coins still lying around are handed out just before
-                        setTimeout(() => { if (rooms.has(code) && room.pveWaveBreak) _sweepCoins(code, room); }, 900);
+                        // next = what the next wave brings [normal, runner, tank] for the preview (nothing after the last wave)
+                        io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION, next: PVE_WAVES[room.pveWave] || null });
+                        // the panel covers the pitch after 1 s (game.js): the coins still lying around are handed out just before,
+                        // then the numbers of the wave go out (coins included)
+                        setTimeout(() => {
+                            if (!rooms.has(code) || !room.pveWaveBreak) return;
+                            _sweepCoins(code, room);
+                            io.to(code).emit('pve-wave-results', pveWaveResults(room));
+                        }, 900);
                     }
                 }
             }
@@ -2876,7 +2899,7 @@ io.on('connection', (socket) => {
         room.pveSkipVotes.add(socket.id);
         const total = room._playerArr.length;
         const votes = room.pveSkipVotes.size;
-        io.to(code).emit('pve-skip-status', { votes, total });
+        io.to(code).emit('pve-skip-status', { votes, total, ids: [...room.pveSkipVotes] });
         if (votes >= total) startPveWave(code, room);
     });
 

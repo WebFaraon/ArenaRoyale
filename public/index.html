@@ -669,63 +669,64 @@
         </div>
     </div>
 
-    <!-- PvE Upgrade Panel -->
+    <!-- PvE between-waves panel: results + team (left), shop (centre), next wave (right). Built by game.js (_pbk*) -->
     <div id="pve-upgrade-panel" style="display:none">
-        <div class="pve-upg-header">
-            <span class="pve-upg-title"><svg class="ic" aria-hidden="true"><use href="#chevrons-up"/></svg>UPGRADE</span>
-            <span id="pve-upgrade-wave-info" class="pve-upg-wave">Wave 1<svg class="ic" aria-hidden="true"><use href="#arrow-right"/></svg>2</span>
+        <div class="pbk-fit" id="pbk-fit">
+            <header class="pbk-head">
+                <div class="pbk-box pbk-done">
+                    <span class="pbk-check"><svg class="ic" aria-hidden="true"><use href="#check"/></svg></span>
+                    <span class="pbk-done-txt"><b id="pbk-done-title">VALUL 1</b><em>TERMINAT</em></span>
+                </div>
+                <div class="pbk-box pbk-time">
+                    <div class="pbk-time-row">
+                        <span class="pbk-time-lbl" id="pbk-next-lbl">VALUL 2 INCEPE IN</span>
+                        <b class="pbk-time-num" id="pbk-time">0:15</b>
+                        <span class="pbk-ready"><b id="pbk-ready-n">0 / 1</b> jucatori gata</span>
+                    </div>
+                    <div class="pve-upg-timer-wrap"><div class="pve-upg-timer-bar" id="pve-upg-timer-bar"></div></div>
+                </div>
+                <div class="pbk-box pbk-coins">
+                    <img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false">
+                    <span class="pbk-coins-txt"><b id="pve-upgrade-coins">0</b><em id="pbk-earned">+0 in acest val</em></span>
+                </div>
+                <button id="pve-skip-btn" class="pbk-go" onclick="skipWaveBreak()"><svg class="ic" aria-hidden="true"><use href="#check"/></svg><span id="pbk-go-txt">GATA</span></button>
+            </header>
+            <div class="pbk-body">
+                <aside class="pbk-left">
+                    <section class="pbk-card pbk-res">
+                        <div class="pbk-card-h"><span>REZULTATE VAL</span><span class="pbk-mvp" id="pbk-mvp" style="display:none"></span></div>
+                        <div class="pbk-stats">
+                            <div class="pbk-stat is-hot"><b id="pbk-st-kills">0</b><em>ELIMINARILE TALE</em></div>
+                            <div class="pbk-stat"><b id="pbk-st-team">0</b><em>ZOMBI ELIMINATI</em></div>
+                            <div class="pbk-stat"><b id="pbk-st-dmg">0</b><em>DAUNE PRIMITE</em></div>
+                            <div class="pbk-stat is-gold"><b id="pbk-st-coins">0</b><em>MONEDE CASTIGATE</em></div>
+                        </div>
+                    </section>
+                    <section class="pbk-card pbk-team">
+                        <div class="pbk-card-h"><span>ECHIPA</span></div>
+                        <div id="pbk-team-rows"></div>
+                    </section>
+                </aside>
+                <main class="pbk-mid">
+                    <div class="pbk-tabs" id="pbk-tabs" role="tablist">
+                        <button class="pbk-tab is-on" data-tab="all" role="tab">TOATE</button>
+                        <button class="pbk-tab" data-tab="build" role="tab">CONSTRUCTII</button>
+                        <button class="pbk-tab" data-tab="support" role="tab">SUPORT</button>
+                        <button class="pbk-tab" data-tab="weapon" role="tab">ARME</button>
+                    </div>
+                    <div class="pbk-cards" id="pbk-cards"></div>
+                    <div class="pbk-inv" id="pbk-inv"></div>
+                </main>
+                <aside class="pbk-right">
+                    <section class="pbk-card pbk-next">
+                        <div class="pbk-card-h"><span>URMATORUL VAL</span><b class="pbk-next-n" id="pbk-next-n">2</b></div>
+                        <div class="pbk-next-total"><b id="pbk-next-total">0</b><span>zombi vin spre voi</span></div>
+                        <div id="pbk-next-rows"></div>
+                        <div class="pbk-next-hint" id="pbk-next-hint"></div>
+                    </section>
+                </aside>
+            </div>
         </div>
-        <div class="pve-upg-coins"><img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false"><span id="pve-upgrade-coins">0</span><span class="pve-upg-coins-lbl">monede</span></div>
-        <div class="pve-upg-grid">
-            <button class="pve-upg-btn" data-type="dmg" onclick="buyUpgrade('dmg')">
-                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#crosshair"/></svg>
-                <span class="pve-upg-name">DAMAGE</span>
-                <span class="pve-upg-val">+5%</span>
-                <span class="pve-upg-cost">6</span>
-                <div class="pve-upg-segs"></div>
-            </button>
-            <button class="pve-upg-btn" data-type="spd" onclick="buyUpgrade('spd')">
-                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#gauge"/></svg>
-                <span class="pve-upg-name">VITEZA</span>
-                <span class="pve-upg-val">+4%</span>
-                <span class="pve-upg-cost">5</span>
-                <div class="pve-upg-segs"></div>
-            </button>
-            <button class="pve-upg-btn" data-type="hp" onclick="buyUpgrade('hp')">
-                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#heart-pulse"/></svg>
-                <span class="pve-upg-name">HP MAX</span>
-                <span class="pve-upg-val">+15</span>
-                <span class="pve-upg-cost">7</span>
-                <div class="pve-upg-segs"></div>
-            </button>
-            <button class="pve-upg-btn" data-type="ammo" onclick="buyUpgrade('ammo')">
-                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#bolt"/></svg>
-                <span class="pve-upg-name">INCARCATOR</span>
-                <span class="pve-upg-val">+12%</span>
-                <span class="pve-upg-cost">4</span>
-                <div class="pve-upg-segs"></div>
-            </button>
-            <button class="pve-upg-btn pve-upg-reserve pve-upg-barricade" data-type="barricade" onclick="buyUpgrade('barricade')">
-                <img class="pic pve-upg-icon" src="/images/pve/icon_barricade_wood.svg" alt="" aria-hidden="true" draggable="false">
-                <span class="pve-upg-name">BARICADA</span>
-                <span class="pve-upg-val" id="pve-barricade-val">in inventar: 0</span>
-                <span class="pve-upg-cost">5</span>
-            </button>
-            <button class="pve-upg-btn pve-upg-reserve pve-upg-barricade" data-type="turret" onclick="buyUpgrade('turret')">
-                <img class="pic pve-upg-icon" src="/images/pve/icon_turret_mg.svg" alt="" aria-hidden="true" draggable="false">
-                <span class="pve-upg-name">TURETA</span>
-                <span class="pve-upg-val" id="pve-turret-val">in inventar: 0</span>
-                <span class="pve-upg-cost">20</span>
-            </button>
-            <button class="pve-upg-btn pve-upg-reserve" data-type="reserve" onclick="buyUpgrade('reserve')">
-                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#package"/></svg>
-                <span class="pve-upg-name">MUNITIE</span>
-                <span class="pve-upg-val">+ gloante</span>
-                <span class="pve-upg-cost">3</span>
-            </button>
-        </div>
-        <button id="pve-skip-btn" onclick="skipWaveBreak()">SKIP</button>
-        <div class="pve-upg-timer-wrap"><div class="pve-upg-timer-bar" id="pve-upg-timer-bar"></div></div>
     </div>
 
     <!-- Spectator HUD -->
