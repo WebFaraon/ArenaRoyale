@@ -90,13 +90,13 @@ test('the barricade range is smaller than the player range, so a zombie does not
 // A zombie after a player behind barricades: the same loop as the server (direction to the target, steering, step, push out of every
 // barricade), with a barricade as a { x, y, o } the way structures.js has it. Returns the steps it took to get within `near` of the target.
 function chaseBehind(from, to, structs, r = 20, speed = 62, near = 25, maxSteps = 6000) {
-    const z = { x: from.x, y: from.y }, out = { x: 0, y: 0 }, dt = 1 / 60;
+    const z = { x: from.x, y: from.y }, out = { x: 0, y: 0 }, memo = { sense: 0, sid: 0, n: 0 }, dt = 1 / 60;
     for (let i = 0; i < maxSteps; i++) {
         let dx = to.x - z.x, dy = to.y - z.y;
         const l = Math.hypot(dx, dy);
         if (l < near) return i;
         dx /= l; dy /= l;
-        avoidStructs(z.x, z.y, dx, dy, to.x, to.y, structs, r, out);
+        avoidStructs(z.x, z.y, dx, dy, to.x, to.y, structs, r, out, memo);
         const m = Math.hypot(out.x, out.y) || 1;
         z.x += out.x / m * speed * dt; z.y += out.y / m * speed * dt;
         ARStructs.pushOutAll(z, r, structs);
@@ -141,4 +141,62 @@ test('round the end of the wall it does not dither at the corner (it used to sto
     assert.ok(chaseBehind({ x: 1730, y: 1400 }, { x: 1470, y: 1470 }, [bar(1550, 1470, 1)]) > 0);
     assert.ok(chaseBehind({ x: 1470, y: 1730 }, { x: 1470, y: 1300 }, [bar(1470, 1550, 0)]) > 0);
     assert.ok(chaseBehind({ x: 1400, y: 1730 }, { x: 1500, y: 1300 }, [bar(1470, 1550, 0)]) > 0);
+});
+
+// The way round is picked once and kept (the memo): at a head-on tie, with the zombie nudged from side to side, it never turns back
+test('the way round a wall is kept: a zombie dead centre in front of a wall does not flip sides when it is nudged', () => {
+    const wall = [bar(500, 550)], out = { x: 0, y: 0 }, memo = { sense: 0, sid: 0, n: 0 };
+    let sign = 0;
+    for (let i = 0; i < 200; i++) {
+        const jitter = (i % 2 ? 0.3 : -0.3);
+        avoidStructs(500 + jitter, 590, 0, -1, 500, 100, wall, 20, out, memo);
+        const s = Math.sign(out.x);
+        if (s !== 0) { if (sign === 0) sign = s; assert.equal(s, sign, 'the slide stays on the same side (step ' + i + ')'); }
+    }
+    assert.notEqual(sign, 0, 'it did slide');
+});
+
+test('head-on to the short end of a wall it goes round the end and does not flip from side to side (it used to stand there spinning)', () => {
+    // the zombie and the player at almost the same height, the wall lying between them: the pull meets the end face
+    assert.ok(chaseBehind({ x: 706, y: 1016 }, { x: 1045, y: 1033 }, [bar(829, 1020, 0)]) > 0);
+    assert.ok(chaseBehind({ x: 1400, y: 1016 }, { x: 800, y: 1022 }, [bar(1100, 1020, 0)]) > 0);
+    assert.ok(chaseBehind({ x: 1016, y: 706 }, { x: 1033, y: 1045 }, [bar(1020, 829, 1)]) > 0, 'the same, standing');
+});
+
+test('while it leans on a wall the pull along the wall the other way does not cancel the slide (it used to stop where the two balanced)', () => {
+    // a wall with the target up and to the right, the zombie already near its left end: it goes on to the left end, it does not stand still
+    const out = { x: 0, y: 0 }, memo = { sense: 0, sid: 0, n: 0 };
+    const w = [bar(1018, 1146, 0)];
+    let z = { x: 940, y: 1243 };
+    for (let i = 0; i < 600; i++) {
+        let dx = 1088 - z.x, dy = 1063 - z.y; const l = Math.hypot(dx, dy); if (l < 25) return;
+        dx /= l; dy /= l;
+        avoidStructs(z.x, z.y, dx, dy, 1088, 1063, w, 20, out, memo);
+        const m = Math.hypot(out.x, out.y) || 1;
+        z.x += out.x / m * 62 / 60; z.y += out.y / m * 62 / 60;
+        ARStructs.pushOutAll(z, 20, w);
+    }
+    assert.fail('it never got to the player: ' + JSON.stringify(z));
+});
+
+test('two walls it leans on together: it follows the nearer one and does not stand between them with the slides cancelling', () => {
+    assert.ok(chaseBehind({ x: 939, y: 1309 }, { x: 1030, y: 972 }, [bar(963, 1040, 0), { ...bar(1101, 1063, 1), id: 2 }]) > 0);
+});
+
+test('a pocket that no way leads out of is not a reason to spin: the zombie ends up still, not flipping direction each step', () => {
+    // a U open away from the player, the player in it: unreachable by steering; what matters is that it settles
+    const box = [bar(500, 580), { ...bar(420, 500, 1), id: 2 }, { ...bar(580, 500, 1), id: 3 }];   // open at the top, the zombie comes from below
+    const z = { x: 500, y: 700 }, out = { x: 0, y: 0 }, memo = { sense: 0, sid: 0, n: 0 };
+    let flips = 0, last = null;
+    for (let i = 0; i < 1800; i++) {
+        let dx = 500 - z.x, dy = 480 - z.y; const l = Math.hypot(dx, dy); dx /= l; dy /= l;
+        avoidStructs(z.x, z.y, dx, dy, 500, 480, box, 20, out, memo);
+        const a = Math.atan2(out.y, out.x);
+        if (last !== null && i > 600) { let da = Math.abs(a - last); if (da > Math.PI) da = 2 * Math.PI - da; if (da > 1.0) flips++; }
+        last = a;
+        const m = Math.hypot(out.x, out.y) || 1;
+        z.x += out.x / m * 62 / 60; z.y += out.y / m * 62 / 60;
+        ARStructs.pushOutAll(z, 20, box); ARStructs.pushOutAll(z, 20, box);
+    }
+    assert.ok(flips < 20, 'direction changed sharply ' + flips + ' times in the last 20 s');
 });

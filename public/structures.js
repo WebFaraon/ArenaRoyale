@@ -20,9 +20,9 @@
         detectRange: 130,              // a zombie that has no player to chase goes for a barricade this close (a player is 320 away)
         placeDist: 80,                 // the ghost: this far in front of the player (to the centre of the barricade)
         placeRange: 140,               // the server takes a placement no further than this from the player
-        useRange: 70,                  // E (repair / upgrade) works within this of its surface
+        useRange: 16,                  // E (repair / upgrade) works when the edge of the player is this close to its surface: up against it
         repairShare: 0.5,              // fully repairing costs this share of the price of the tier
-        workMs: 1000,                  // a repair or an upgrade takes this long (the player stays within reach; the cost is paid when it ends)
+        workMs: 1000,                  // a repair or an upgrade takes this long (the player stands still up against it; the cost is paid when it ends)
         // by tier: hp, total price (what it is worth), the price of the upgrade INTO the tier
         tiers: [
             { id: 'wood',  name: 'Lemn',     hp: 300,  total: 5,  up: 0 },
@@ -91,6 +91,33 @@
         return best;
     }
 
+    // Does the segment (x1, y1) -> (x2, y2) cross the rectangle of `s` grown by `pad` on every side?
+    function segmentHits(x1, y1, x2, y2, s, pad) {
+        const hw = halfW(s) + pad, hh = halfH(s) + pad;
+        let t0 = 0, t1 = 1;
+        const dx = x2 - x1, dy = y2 - y1;
+        const lo = [s.x - hw - x1, s.y - hh - y1], hi = [s.x + hw - x1, s.y + hh - y1], d = [dx, dy];
+        for (let a = 0; a < 2; a++) {
+            if (Math.abs(d[a]) < 1e-9) { if (lo[a] > 0 || hi[a] < 0) return false; continue; }
+            let ta = lo[a] / d[a], tb = hi[a] / d[a];
+            if (ta > tb) { const t = ta; ta = tb; tb = t; }
+            if (ta > t0) t0 = ta;
+            if (tb < t1) t1 = tb;
+            if (t0 > t1) return false;
+        }
+        return true;
+    }
+    // The barricade a circle at (zx, zy) is leaning on (its surface within `reach`) that stands between it and (px, py): the straight way
+    // to that point crosses it grown by `pad`. null when there is none.
+    function blockerBetween(zx, zy, px, py, list, reach, pad) {
+        let best = null, bd = reach;
+        for (let i = 0; i < list.length; i++) {
+            const d = distToRect(zx, zy, list[i]);
+            if (d <= bd && segmentHits(zx, zy, px, py, list[i], pad)) { bd = d; best = list[i]; }
+        }
+        return best;
+    }
+
     // A barricade as a blocker for things that must not land on it (the coins): a rectangle {x, y, hw, hh}
     function asBlocker(s) { return { x: s.x, y: s.y, hw: halfW(s), hh: halfH(s) }; }
 
@@ -137,5 +164,5 @@
         return null;
     }
 
-    return { BARRICADE, BUY_COST, halfW, halfH, distToRect, nearestPoint, nearestInRange, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
+    return { BARRICADE, BUY_COST, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
 });

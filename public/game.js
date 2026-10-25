@@ -3289,6 +3289,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _vig = { c: null, w: 0, h: 0, dpr: 0 };   // the cached zone vignette
     const _zl = { sec: -1, st: -1, fs: 0, text: '', key: '', w: 0, h: 0 }; // the cached zone label (see TIMER ZONA)
     const _zombies        = [];  // by zombie id (server.js), hp -1 = dead / not drawn
+    const _tanks          = [];  // the tanks of the latest packet, [x, y, r] each: a player cannot push them, so to the prediction they are a wall
     let   _zSeenGen       = 0;   // state packet counter, to spot zombies missing from the latest one
     const _zombieDeathFx  = [];
     const _pveState = { baseHp: 1000, baseMaxHp: 1000, wave: 0, waveBreak: false, breakTimer: 0, breakTimerMax: 15, myCoins: 0 };
@@ -3503,7 +3504,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // colours of the chips by material (wood, stone, metal, obsidian): light, dark, highlight
     const _BAR_PAL = [['#D9A24E', '#8F5A1E', '#F4D48A'], ['#A39B8E', '#6B655B', '#D2CBBF'], ['#9AA7B4', '#5E6B78', '#D3DCE5'], ['#6A52B0', '#241C42', '#B79CF5']];
     const _BAR_WHY = { none: 'Nu ai baricade', busy: 'Altcineva lucreaza la ea', far: 'Prea departe', blocked: 'Loc ocupat', edge: 'Prea aproape de margine', player: 'Un jucator e in cale',
-                       limit: 'Maxim 20 de baricade', coins: 'Nu ai destule monede', max: 'Nivel maxim', gone: 'Baricada nu mai exista' };
+                       limit: 'Maxim 20 de baricade', coins: 'Nu ai destule monede', max: 'Nivel maxim', gone: 'Baricada nu mai exista',
+                       moving: 'Stai pe loc ca sa lucrezi la ea', moved: 'Lucrul s-a oprit: trebuie sa stai pe loc' };
     function _barImg(tier, st, o) {
         const key = ARStructs.BARRICADE.tiers[tier].id + st + (o ? 'v' : 'h');
         let im = _bar.imgs.get(key);
@@ -3728,6 +3730,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     // Same slide-out the server applies to a player after moving (obstacles, then the PvE base)
     function _pushOutOfSolids(x, y) {
+        for (let i = 0; i < _tanks.length; i += 3) {            // a tank first, as on the server: the rocks and barricades have the last word
+            const ox = x - _tanks[i], oy = y - _tanks[i + 1], m = _tanks[i + 2] + PLAYER_HIT_R, dSq = ox * ox + oy * oy;
+            if (dSq >= m * m) continue;
+            const d = Math.sqrt(dSq);
+            if (d > 0) { x = _tanks[i] + ox / d * m; y = _tanks[i + 1] + oy / d * m; } else x = _tanks[i] + m;
+        }
         for (let i = 0; i < _obstacles.length; i++) {
             const o = _obstacles[i];
             const ox = x - o.x, oy = y - o.y, m = o.r + PLAYER_HIT_R, dSq = ox * ox + oy * oy;
@@ -4261,6 +4269,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Live zombies only, 6 values each: id, x, y, angle x100, hp, type. One that is no longer
             // listed has died (its last position is kept for the death effect; hp -1 = not drawn).
             const _zGen = ++_zSeenGen;
+            _tanks.length = 0;
             for (let _zi = 0; _zi < zArr.length; _zi += 6) {
                 const _zid = zArr[_zi];
                 const _zb = _zombies[_zid] || (_zombies[_zid] = { hp: -1 });
@@ -4271,6 +4280,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 if (_zPrevHp < 0) { _zb.x = _zb.sx; _zb.y = _zb.sy; _zb.angle = _zb.sa; }
                 _zb.hp = zArr[_zi + 4];
                 _zb.type = zArr[_zi + 5] || 0;
+                if (_zb.type === 2 && _zb.hp > 0 && _gameMode === 'pve') _tanks.push(_zb.sx, _zb.sy, _ZB_DEFS[2].r);
                 if (_zb.type === 2 && _zPrevHp < 0 && _gameMode === 'pve') _pveWarnTank(_zb.sx, _zb.sy);   // a tank has come into the packet
                 _zb.seen = _zGen;
                 if (_zPrevHp > 0 && _zPrevHp - _zb.hp > 0.5) {
@@ -4611,7 +4621,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (gameControl.pendingSeason) { ARArena.setMapSeason(gameControl.pendingSeason); ARGround.setTheme(gameControl.pendingSeason); delete gameControl.pendingSeason; }
         _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
         _zoneTimerAlpha = 0;
-        _zombies.length = 0;
+        _zombies.length = 0; _tanks.length = 0;
         _zombieDeathFx.length = 0;
         const _pp = document.getElementById('pve-upgrade-panel');
         _pp.style.transition = ''; _pp.style.opacity = '1'; _pp.style.display = 'none';

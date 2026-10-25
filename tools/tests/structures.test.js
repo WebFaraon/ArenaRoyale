@@ -128,3 +128,26 @@ test('a barricade as a blocker for coins: its rectangle, centred', () => {
     assert.deepEqual(S.asBlocker(bar({ x: 500, y: 600, o: 0 })), { x: 500, y: 600, hw: 54, hh: 17 });
     assert.deepEqual(S.asBlocker(bar({ x: 500, y: 600, o: 1 })), { x: 500, y: 600, hw: 17, hh: 54 });
 });
+
+test('a repair or an upgrade needs the player up against the barricade, not just near it', () => {
+    const S2 = require('../../public/structures.js');
+    assert.ok(S2.BARRICADE.useRange <= 20, 'the reach is the width of a hand');
+    const w = { x: 500, y: 500, o: 0, t: 0, hp: 300, maxHp: 300 };       // lying: 108 x 34, its top at y = 483
+    const playerR = 30;
+    assert.ok(S2.distToRect(500, 483 - playerR, w) <= playerR + S2.BARRICADE.useRange, 'standing against it');
+    assert.ok(S2.distToRect(500, 483 - 80, w) > playerR + S2.BARRICADE.useRange, 'a step away is too far');
+});
+
+test('segmentHits / blockerBetween: what stands between a zombie and a player', () => {
+    const w = { id: 1, x: 500, y: 500, o: 0, t: 0, hp: 300, maxHp: 300 };    // x 446..554, y 483..517
+    assert.equal(S.segmentHits(500, 600, 500, 400, w, 0), true, 'straight through');
+    assert.equal(S.segmentHits(300, 600, 300, 400, w, 0), false, 'beside it');
+    assert.equal(S.segmentHits(300, 600, 300, 400, w, 20), false, 'beside it, grown by 20, still clear');
+    assert.equal(S.segmentHits(430, 600, 430, 400, w, 20), true, 'grazing it: the body of a zombie would catch');
+    assert.equal(S.segmentHits(500, 600, 500, 550, w, 0), false, 'a segment that stops short of it');
+    assert.equal(S.segmentHits(446, 483, 446, 483, w, 0), true, 'a point on the edge');
+    const near = S.blockerBetween(500, 540, 500, 400, [w], 28, 20);
+    assert.equal(near && near.id, 1, 'leaning on it, with it in the way');
+    assert.equal(S.blockerBetween(500, 540, 700, 700, [w], 28, 20), null, 'leaning on it but the player is the other way');
+    assert.equal(S.blockerBetween(500, 700, 500, 400, [w], 28, 20), null, 'in the way but not leaning on it');
+});

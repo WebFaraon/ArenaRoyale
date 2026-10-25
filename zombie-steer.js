@@ -52,33 +52,92 @@ function rowExtent(s, structs) {
     }
     return { lo, hi, c: along(s) };
 }
-function avoidStructs(zx, zy, ddx, ddy, tx, ty, structs, r, out) {
+// Which way round a wall to go, as the sense of the slide: +1 turns the way `n` rotates a quarter turn (so the same sense goes round every
+// face of the rectangle: it is a way round, not "left" or "right"), -1 the other way. The way with the shorter trip zombie -> the end of
+// the face -> target; a tie goes to +1. `n` is the unit vector out of the wall at the nearest point, `ext` the reach of the row.
+const _cand = { x: 0, y: 0 };
+function pickSense(zx, zy, tx, ty, s, ext, nx, ny, r) {
+    const ax = s.o ? 0 : 1, ay = s.o ? 1 : 0, cx = -ay, cy = ax;       // along the wall, across it
+    const m = r + 4, tx0 = -ny, ty0 = nx;                               // the slide direction for +1
+    const endFace = Math.abs(ax * tx0 + ay * ty0) < 0.5;                // the pull meets a short end of the row, not a long side
+    let best = 0, bestCost = Infinity;
+    for (let k = 0; k < 2; k++) {
+        const sense = k === 0 ? 1 : -1, tdx = tx0 * sense, tdy = ty0 * sense;
+        let px, py;
+        if (!endFace) {
+            const up = ax * tdx + ay * tdy > 0;                         // the end of the row this sense slides towards
+            const d = (up ? ext.hi - ext.c : ext.c - ext.lo) + m;
+            px = s.x + ax * (up ? d : -d); py = s.y + ay * (up ? d : -d);
+        } else {
+            const up = ax * nx + ay * ny > 0;                           // the end face it is pressed against
+            const d = (up ? ext.hi - ext.c : ext.c - ext.lo) + m, w = (s.o ? 17 : 17) + m;
+            const cu = cx * tdx + cy * tdy > 0;                         // the corner of that face this sense slides towards
+            px = s.x + ax * (up ? d : -d) + cx * (cu ? w : -w); py = s.y + ay * (up ? d : -d) + cy * (cu ? w : -w);
+        }
+        const cost = Math.hypot(px - zx, py - zy) + Math.hypot(tx - px, ty - py);
+        if (cost < bestCost - 1e-6) { bestCost = cost; best = sense; }
+    }
+    return best;
+}
+
+// `memo` (optional, one per zombie: { sense, sid, n }) makes the choice stick: the way round is picked when the zombie first leans on a wall
+// and kept while it is still leaning on that wall (6 s at most), so it cannot flip from one tick to the next at a corner. Only the wall it
+// leans on hardest (the nearest) decides the slide; any other wall it is near only stops the pull into it. (The slides of two walls round
+// which the zombie goes in opposite senses would cancel and leave it standing between them.)
+const _asP = { x: 0, y: 0 };
+const _lw = [], _ld = [], _lnx = [], _lny = [];
+function avoidStructs(zx, zy, ddx, ddy, tx, ty, structs, r, out, memo) {
     out.x = ddx; out.y = ddy;
-    const p = { x: 0, y: 0 };
-    for (let i = 0; i < structs.length; i++) {
+    const infl = r + STRUCT_BEND;
+    let nl = 0, prim = -1, primD = Infinity;
+    for (let i = 0; i < structs.length && nl < 8; i++) {
         const s = structs[i];
-        ARStructs.nearestPoint(zx, zy, s, p);
-        const vx = zx - p.x, vy = zy - p.y;
-        const infl = r + STRUCT_BEND, dSq = vx * vx + vy * vy;
+        ARStructs.nearestPoint(zx, zy, s, _asP);
+        const vx = zx - _asP.x, vy = zy - _asP.y, dSq = vx * vx + vy * vy;
         if (dSq >= infl * infl || dSq === 0) continue;
         const d = Math.sqrt(dSq), nx = vx / d, ny = vy / d;      // out of the wall, towards the zombie
-        const inward = out.x * nx + out.y * ny;                  // < 0: the pull goes into the wall
-        if (inward >= 0) continue;
-        let sx = -ny, sy = nx;                                   // along the wall
-        // the end of the wall (of the whole row, when barricades are put side by side) with the shorter way round: zombie -> end -> target
-        const ax = s.o ? 0 : 1, ay = s.o ? 1 : 0;
-        const ext = rowExtent(s, structs);
-        const e1x = s.x + ax * (ext.hi - ext.c + r + 4), e1y = s.y + ay * (ext.hi - ext.c + r + 4);
-        const e2x = s.x - ax * (ext.c - ext.lo + r + 4), e2y = s.y - ay * (ext.c - ext.lo + r + 4);
-        const c1 = Math.hypot(e1x - zx, e1y - zy) + Math.hypot(tx - e1x, ty - e1y);
-        const c2 = Math.hypot(e2x - zx, e2y - zy) + Math.hypot(tx - e2x, ty - e2y);
-        const along = ax * sx + ay * sy;                         // ~ +-1 against the long side of the wall, ~ 0 at its end (past the end: round the corner)
-        if (Math.abs(along) >= 0.5) {
-            if ((c1 <= c2 ? along : -along) < 0) { sx = -sx; sy = -sy; }   // toward the chosen end
-        } else if (out.x * sx + out.y * sy < 0) { sx = -sx; sy = -sy; }    // at the end: the way the target pulls
-        const k = Math.min(1, Math.max(0, (infl - d) / STRUCT_BEND));
-        out.x = out.x - k * inward * nx - k * inward * sx;
-        out.y = out.y - k * inward * ny - k * inward * sy;
+        if (out.x * nx + out.y * ny >= 0) continue;              // the pull does not go into this wall
+        _lw[nl] = s; _ld[nl] = d; _lnx[nl] = nx; _lny[nl] = ny;
+        if (d < primD) { primD = d; prim = nl; }
+        nl++;
+    }
+    if (nl && memo && memo.sid) {                                // keep the wall it was going round unless another is clearly nearer
+        for (let j = 0; j < nl; j++) if (_lw[j].id === memo.sid && _ld[j] <= primD + 10) { prim = j; break; }
+    }
+    // The wall it leans on hardest decides the way round; another wall near it slides the same way if its own best way round agrees, and
+    // otherwise only stops the pull into it.
+    let psx = 0, psy = 0;
+    if (prim >= 0) {
+        const s = _lw[prim], nx = _lnx[prim], ny = _lny[prim];
+        let sense = memo && memo.sid === s.id ? memo.sense : 0;
+        if (!sense) {
+            sense = pickSense(zx, zy, tx, ty, s, rowExtent(s, structs), nx, ny, r);
+            if (memo) { memo.sense = sense; memo.sid = s.id; memo.n = 0; }
+        }
+        psx = -ny * sense; psy = nx * sense;
+    }
+    for (let pass = 0; pass < 2; pass++) {
+        for (let j = 0; j < nl; j++) {
+            if ((j === prim) !== (pass === 1)) continue;         // the others first, then the one it leans on hardest
+            const nx = _lnx[j], ny = _lny[j], inward = out.x * nx + out.y * ny;
+            if (inward >= 0) continue;
+            const k = Math.min(1, Math.max(0, (infl - _ld[j]) / STRUCT_BEND));
+            let sx = psx, sy = psy;
+            if (j !== prim) {
+                const sense = pickSense(zx, zy, tx, ty, _lw[j], rowExtent(_lw[j], structs), nx, ny, r);
+                sx = -ny * sense; sy = nx * sense;
+                if (sx * psx + sy * psy < 0) { out.x -= k * inward * nx; out.y -= k * inward * ny; continue; }
+            }
+            // Touching the wall (k = 1) the part of the pull that goes into it is replaced by a slide the chosen way, at least as strong as that
+            // part; a pull along the wall the other way is dropped (added to the slide it would cancel it and leave the zombie standing where
+            // the two balance). Further off the pull fades into the slide.
+            const a = out.x * sx + out.y * sy, na = a + k * (Math.max(0, a) - inward - a);
+            out.x = out.x - k * inward * nx - a * sx + na * sx;
+            out.y = out.y - k * inward * ny - a * sy + na * sy;
+        }
+    }
+    if (memo) {
+        if (prim < 0 || ++memo.n > 360) { memo.sense = 0; memo.sid = 0; memo.n = 0; }
     }
     return out;
 }
