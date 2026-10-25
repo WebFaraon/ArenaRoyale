@@ -14,6 +14,7 @@ test('the approved table: health 300 / 600 / 1000 / 1600, price 5 / 13 / 25 / 43
     for (let i = 1; i < 4; i++) assert.equal(S.BARRICADE.tiers[i].total - S.BARRICADE.tiers[i - 1].total, S.BARRICADE.tiers[i].up);
     assert.equal(S.BARRICADE.maxPerRoom, 20);
     assert.equal(S.BUY_COST, 5);
+    assert.equal(S.BARRICADE.workMs, 1000, 'a repair or an upgrade takes a second');
 });
 
 test('the shape: 108 x 34 lying down, 34 x 108 standing up', () => {
@@ -121,4 +122,9 @@ test('placement: free ground is fine; the arena edge, a tree, the base, another 
     assert.equal(S.checkPlace(bar({ x: 600, y: 600 }), ctxOf({ structs: [bar({ id: 2, x: 600, y: 700 })] })), null);
     assert.equal(S.checkPlace(bar({ x: 600, y: 600 }), ctxOf({ players: [{ x: 600, y: 600 - 17 - 20 }] })), 'player');
     assert.equal(S.checkPlace(bar({ x: 600, y: 600 }), ctxOf({ count: 20 })), 'limit');
+});
+
+test('a barricade as a blocker for coins: its rectangle, centred', () => {
+    assert.deepEqual(S.asBlocker(bar({ x: 500, y: 600, o: 0 })), { x: 500, y: 600, hw: 54, hh: 17 });
+    assert.deepEqual(S.asBlocker(bar({ x: 500, y: 600, o: 1 })), { x: 500, y: 600, hw: 17, hh: 54 });
 });

@@ -20,8 +20,8 @@
     const MAX_COINS = 160;       // on the ground in a room at once: the oldest go first
     const COIN_CLEAR = 10;       // a coin is kept this far from a tree, rock or the base
 
-    // n places around (ox, oy), 16-52 units out, never inside an obstacle (blockers: {x, y, r}) and inside the arena. A coin that finds
-    // no free spot in a few tries stays by the zombie. rng() in [0, 1).
+    // n places around (ox, oy), 16-52 units out, never inside an obstacle (blockers: a circle {x, y, r} or a rectangle {x, y, hw, hh},
+    // the PvE barricades) and inside the arena. A coin that finds no free spot in a few tries stays by the zombie. rng() in [0, 1).
     function scatter(ox, oy, n, blockers, arenaW, arenaH, rng) {
         const out = [];
         for (let i = 0; i < n; i++) {
@@ -32,7 +32,12 @@
                 x = Math.max(24, Math.min(arenaW - 24, x)); y = Math.max(24, Math.min(arenaH - 24, y));
                 ok = true;
                 for (let b = 0; b < blockers.length; b++) {
-                    const o = blockers[b], dx = x - o.x, dy = y - o.y, rr = o.r + COIN_CLEAR;
+                    const o = blockers[b], dx = x - o.x, dy = y - o.y;
+                    if (o.hw !== undefined) {   // a barricade: not on it, not hugging it
+                        if (Math.abs(dx) < o.hw + COIN_CLEAR && Math.abs(dy) < o.hh + COIN_CLEAR) { ok = false; break; }
+                        continue;
+                    }
+                    const rr = o.r + COIN_CLEAR;
                     if (dx * dx + dy * dy < rr * rr) { ok = false; break; }
                 }
             }

@@ -22,6 +22,7 @@
         placeRange: 140,               // the server takes a placement no further than this from the player
         useRange: 70,                  // E (repair / upgrade) works within this of its surface
         repairShare: 0.5,              // fully repairing costs this share of the price of the tier
+        workMs: 1000,                  // a repair or an upgrade takes this long (the player stays within reach; the cost is paid when it ends)
         // by tier: hp, total price (what it is worth), the price of the upgrade INTO the tier
         tiers: [
             { id: 'wood',  name: 'Lemn',     hp: 300,  total: 5,  up: 0 },
@@ -90,6 +91,9 @@
         return best;
     }
 
+    // A barricade as a blocker for things that must not land on it (the coins): a rectangle {x, y, hw, hh}
+    function asBlocker(s) { return { x: s.x, y: s.y, hw: halfW(s), hh: halfH(s) }; }
+
     // The state a barricade is drawn in: 0 whole, 1 damaged (half its health or less)
     function state(s) { return s.hp <= s.maxHp * 0.5 ? 1 : 0; }
 
@@ -133,5 +137,5 @@
         return null;
     }
 
-    return { BARRICADE, BUY_COST, halfW, halfH, distToRect, nearestPoint, nearestInRange, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
+    return { BARRICADE, BUY_COST, halfW, halfH, distToRect, nearestPoint, nearestInRange, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
 });

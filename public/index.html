@@ -84,6 +84,7 @@
 <symbol id="maximize" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" /></symbol>
 <symbol id="wifi" viewBox="0 0 24 24"><path d="M12 20h.01" /><path d="M2 8.82a15 15 0 0 1 20 0" /><path d="M5 12.859a10 10 0 0 1 14 0" /><path d="M8.5 16.429a5 5 0 0 1 7 0" /></symbol>
 <symbol id="arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></symbol>
+<symbol id="wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /></symbol>
 <symbol id="chevrons-up" viewBox="0 0 24 24"><path d="m17 11-5-5-5 5" /><path d="m17 18-5-5-5 5" /></symbol>
 <symbol id="castle" viewBox="0 0 24 24"><path d="M10 5V3" /><path d="M14 5V3" /><path d="M15 21v-3a3 3 0 0 0-6 0v3" /><path d="M18 3v8" /><path d="M18 5H6" /><path d="M22 11H2" /><path d="M22 9v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9" /><path d="M6 3v8" /></symbol>
 <symbol id="share-2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" x2="15.42" y1="13.51" y2="17.49" /><line x1="15.41" x2="8.59" y1="6.51" y2="10.49" /></symbol>
@@ -649,7 +650,7 @@
             </div>
             <div id="pve-feed"></div>
         </div>
-        <button id="pve-use" type="button" style="display:none"><i>E</i><span id="pve-use-txt"></span></button>
+        <button id="pve-use" type="button" style="display:none"><i class="pu-key">E</i><svg class="ic pu-ic" aria-hidden="true"><use href="#wrench"/></svg><span id="pve-use-txt">REPARA</span><span class="pu-cost"><img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false"><b id="pve-use-cost">0</b></span></button>
         <div id="pve-place-bar" style="display:none">
             <button id="pve-place-ok" type="button">PUNE</button>
             <button id="pve-place-x" type="button" aria-label="Anuleaza"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>

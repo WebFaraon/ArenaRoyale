@@ -3498,8 +3498,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // (from the Baricade si Turete artifact): 4 materials, whole / damaged / broken, lying down or standing up, so nothing is ever rotated.
     const _structs     = [];   // on the field: { id, x, y, o, t, hp, maxHp, by }
     const _structDying = [];   // broken ones, drawn as pieces for a second: { s, t0 }
-    const _bar = { inv: 0, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null };
-    const _BAR_WHY = { none: 'Nu ai baricade', far: 'Prea departe', blocked: 'Loc ocupat', edge: 'Prea aproape de margine', player: 'Un jucator e in cale',
+    const _bar = { inv: 0, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
+    const _structFx = [];      // the effects: break, repair, upgrade { k, x, y, o, t0, parts }
+    // colours of the chips by material (wood, stone, metal, obsidian): light, dark, highlight
+    const _BAR_PAL = [['#D9A24E', '#8F5A1E', '#F4D48A'], ['#A39B8E', '#6B655B', '#D2CBBF'], ['#9AA7B4', '#5E6B78', '#D3DCE5'], ['#6A52B0', '#241C42', '#B79CF5']];
+    const _BAR_WHY = { none: 'Nu ai baricade', busy: 'Altcineva lucreaza la ea', far: 'Prea departe', blocked: 'Loc ocupat', edge: 'Prea aproape de margine', player: 'Un jucator e in cale',
                        limit: 'Maxim 20 de baricade', coins: 'Nu ai destule monede', max: 'Nivel maxim', gone: 'Baricada nu mai exista' };
     function _barImg(tier, st, o) {
         const key = ARStructs.BARRICADE.tiers[tier].id + st + (o ? 'v' : 'h');
@@ -3516,7 +3519,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _barEls() {
         const g = id => document.getElementById(id);
-        return _bar.els = { slot: g('pb-barricade'), n: g('pb-barricade-n'), cost: g('pb-barricade-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), pbar: g('pve-place-bar'), val: g('pve-barricade-val') };
+        return _bar.els = { slot: g('pb-barricade'), n: g('pb-barricade-n'), cost: g('pb-barricade-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar'), val: g('pve-barricade-val') };
     }
     function _barUi() {
         const e = _bar.els || _barEls();
@@ -3562,7 +3565,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             for (let i = 0; i < _structs.length; i++) { const d = ARStructs.distToRect(predX, predY, _structs[i]); if (d <= reach && d < bd) { bd = d; best = _structs[i]; } }
         }
         _bar.use = best;
-        const act = best ? ARStructs.useAction(best) : null;
+        const act = best && !_bar.work.has(best.id) ? ARStructs.useAction(best) : null;   // not while it is being worked on
         const cost = !act ? 0 : act === 'repair' ? ARStructs.repairCost(best) : ARStructs.upgradeCost(best);
         const can = _pveState.myCoins >= cost;
         const key = act ? act + cost + (can ? 'y' : 'n') : '';
@@ -3571,8 +3574,117 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const e = _bar.els || _barEls();
         if (!e.use) return;
         e.use.style.display = act ? '' : 'none';
+        if (!act) return;
+        e.use.classList.toggle('is-repair', act === 'repair');
+        e.use.classList.toggle('is-upgrade', act === 'upgrade');
         e.use.classList.toggle('is-bad', !can);
-        if (act) e.useTxt.textContent = (act === 'repair' ? 'REPARA ' : 'UPGRADE ') + cost;
+        e.useTxt.textContent = act === 'repair' ? 'REPARA' : 'UPGRADE';
+        e.useCost.textContent = cost;
+        e.useIc.setAttribute('href', act === 'repair' ? '#wrench' : '#chevrons-up');
+    }
+    // ---- effects: pieces, dust, rings, sparkles (all of them over a second or less) ----
+    // k: 'break' | 'repair' | 'upgrade'; the particles are worked out once here and moved by the age in _drawStructFx
+    function _fxSpawn(k, s, now) {
+        const parts = [], len = ARStructs.halfW(s) > ARStructs.halfH(s) ? ARStructs.halfW(s) : ARStructs.halfH(s);
+        const horiz = !s.o, r = Math.random;
+        const n = k === 'break' ? 18 : k === 'upgrade' ? 12 : 7;
+        for (let i = 0; i < n; i++) {
+            const along = (r() * 2 - 1) * len * 0.9;
+            parts.push({ ox: horiz ? along : (r() * 2 - 1) * 12, oy: horiz ? (r() * 2 - 1) * 12 : along,
+                         a: r() * Math.PI * 2, v: 0.5 + r(), rot: r() * Math.PI, rs: (r() - 0.5) * 9, sz: 3.5 + r() * 4, c: (r() * 3) | 0 });
+        }
+        _structFx.push({ k, x: s.x, y: s.y, o: s.o, t: s.t, t0: now, parts, len });
+        if (_structFx.length > 40) _structFx.shift();
+    }
+    function _star(ctx, x, y, r) {   // a four-point sparkle
+        ctx.beginPath();
+        ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.3, y - r * 0.3); ctx.lineTo(x + r, y); ctx.lineTo(x + r * 0.3, y + r * 0.3);
+        ctx.lineTo(x, y + r); ctx.lineTo(x - r * 0.3, y + r * 0.3); ctx.lineTo(x - r, y); ctx.lineTo(x - r * 0.3, y - r * 0.3);
+        ctx.closePath();
+    }
+    function _drawStructFx(ctx, now) {
+        for (let i = _structFx.length - 1; i >= 0; i--) {
+            const f = _structFx[i], dur = f.k === 'break' ? 1100 : f.k === 'upgrade' ? 1000 : 900, t = (now - f.t0) / dur;
+            if (t >= 1) { _structFx.splice(i, 1); continue; }
+            const e = 1 - (1 - t) * (1 - t);     // ease out
+            const hw = f.o ? 17 : 54, hh = f.o ? 54 : 17;
+            const pal = _BAR_PAL[f.t] || _BAR_PAL[0];
+            ctx.save();
+            if (f.k === 'break') {
+                // a ring of shock, puffs of dust, and the chips flying out
+                ctx.lineWidth = 4 * (1 - t); ctx.strokeStyle = 'rgba(255,255,255,' + (0.55 * (1 - t)).toFixed(3) + ')';
+                ctx.beginPath(); ctx.arc(f.x, f.y, 14 + f.len * 0.9 * e, 0, Math.PI * 2); ctx.stroke();
+                for (let k = 0; k < f.parts.length; k += 3) {
+                    const p = f.parts[k];
+                    ctx.fillStyle = 'rgba(205,190,160,' + (0.5 * (1 - t)).toFixed(3) + ')';
+                    ctx.beginPath(); ctx.arc(f.x + p.ox + Math.cos(p.a) * 26 * e * p.v, f.y + p.oy + Math.sin(p.a) * 26 * e * p.v, 9 + 16 * e * p.v, 0, Math.PI * 2); ctx.fill();
+                }
+                const fade = 1 - Math.max(0, (t - 0.55) / 0.45);
+                ctx.globalAlpha = fade; ctx.lineWidth = 1.6; ctx.strokeStyle = '#0B0F1A';
+                for (let k = 0; k < f.parts.length; k++) {
+                    const p = f.parts[k], d = (60 + 90 * p.v) * e;
+                    ctx.save();
+                    ctx.translate(f.x + p.ox + Math.cos(p.a) * d, f.y + p.oy + Math.sin(p.a) * d);
+                    ctx.rotate(p.rot + p.rs * t);
+                    ctx.fillStyle = pal[p.c];
+                    ctx.beginPath(); ctx.rect(-p.sz, -p.sz * 0.55, p.sz * 2, p.sz * 1.1); ctx.fill(); ctx.stroke();
+                    ctx.restore();
+                }
+            } else if (f.k === 'repair') {
+                // a green glow over the barricade and plus signs rising from it
+                ctx.fillStyle = 'rgba(70,212,106,' + (0.5 * (1 - t)).toFixed(3) + ')';
+                ctx.beginPath(); ctx.roundRect(f.x - hw - 2, f.y - hh - 2, hw * 2 + 4, hh * 2 + 4, 8); ctx.fill();
+                ctx.globalAlpha = 1 - t * t; ctx.lineCap = 'round';
+                for (let k = 0; k < f.parts.length; k++) {
+                    const p = f.parts[k], px = f.x + p.ox, py = f.y + p.oy - 10 - 44 * e * p.v, sz = 4 + p.sz * 0.5;
+                    ctx.lineWidth = 5.5; ctx.strokeStyle = '#0B0F1A';
+                    ctx.beginPath(); ctx.moveTo(px - sz, py); ctx.lineTo(px + sz, py); ctx.moveTo(px, py - sz); ctx.lineTo(px, py + sz); ctx.stroke();
+                    ctx.lineWidth = 2.6; ctx.strokeStyle = '#7CF08C';
+                    ctx.beginPath(); ctx.moveTo(px - sz, py); ctx.lineTo(px + sz, py); ctx.moveTo(px, py - sz); ctx.lineTo(px, py + sz); ctx.stroke();
+                }
+            } else {
+                // upgrade: a flash, a golden ring spreading out, sparkles bursting
+                if (t < 0.4) { ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - t / 0.4)).toFixed(3) + ')'; ctx.beginPath(); ctx.roundRect(f.x - hw - 2, f.y - hh - 2, hw * 2 + 4, hh * 2 + 4, 8); ctx.fill(); }
+                ctx.lineWidth = 5 * (1 - t) + 1; ctx.strokeStyle = 'rgba(255,199,46,' + (0.9 * (1 - t)).toFixed(3) + ')';
+                ctx.beginPath(); ctx.arc(f.x, f.y, 16 + (f.len + 16) * e, 0, Math.PI * 2); ctx.stroke();
+                ctx.globalAlpha = 1 - t * t; ctx.lineWidth = 1.6; ctx.strokeStyle = '#0B0F1A'; ctx.fillStyle = '#FFD84A';
+                for (let k = 0; k < f.parts.length; k++) {
+                    const p = f.parts[k], d = (30 + 60 * p.v) * e;
+                    _star(ctx, f.x + p.ox * 0.5 + Math.cos(p.a) * d, f.y + p.oy * 0.5 + Math.sin(p.a) * d - 12 * e, 4 + p.sz * 0.9 * (1 - t * 0.5));
+                    ctx.fill(); ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+    }
+    // The ring over a barricade somebody is repairing or upgrading: it fills over the time the work takes
+    function _drawWorkRings(ctx, now, visL, visT, visR, visB) {
+        _bar.work.forEach((w, id) => {
+            const s = _structs.find(q => q.id === id);
+            if (!s) return;
+            const hh = ARStructs.halfH(s), cx = s.x, cy = s.y - hh - 34;
+            if (cx < visL - 30 || cx > visR + 30 || cy < visT - 30 || cy > visB + 30) return;
+            const p = Math.max(0, Math.min(1, (now - w.t0) / w.dur)), rep = w.action === 'repair';
+            const col = rep ? '#46D46A' : '#FFC72E';
+            // sparks off the work
+            ctx.fillStyle = col;
+            for (let k = 0; k < 3; k++) {
+                const ph = ((now / 220) + k / 3) % 1, seed = Math.floor(now / 220 + k * 7);
+                const hx = (((seed * 9301 + 49297) % 233280) / 233280 - 0.5) * 2 * (s.o ? 12 : 48), hy = (((seed * 7919 + 1237) % 233280) / 233280 - 0.5) * 2 * (s.o ? 48 : 12);
+                ctx.globalAlpha = 1 - ph; ctx.beginPath(); ctx.arc(s.x + hx, s.y + hy - ph * 16, 2.6, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            // the ring: ink frame, dark track, the arc, and the picture of what it is
+            ctx.beginPath(); ctx.arc(cx, cy, 19, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fill();
+            ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI * 2); ctx.fillStyle = '#1B252C'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#0B0F1A'; ctx.stroke();
+            ctx.lineCap = 'round'; ctx.lineWidth = 5; ctx.strokeStyle = col;
+            if (p > 0.01) { ctx.beginPath(); ctx.arc(cx, cy, 13, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); ctx.stroke(); }
+            ctx.lineWidth = 2.4; ctx.strokeStyle = '#FFFFFF'; ctx.lineJoin = 'round';
+            ctx.beginPath();
+            if (rep) { ctx.moveTo(cx - 5, cy); ctx.lineTo(cx + 5, cy); ctx.moveTo(cx, cy - 5); ctx.lineTo(cx, cy + 5); }
+            else { ctx.moveTo(cx - 5, cy + 3); ctx.lineTo(cx, cy - 3); ctx.lineTo(cx + 5, cy + 3); }
+            ctx.stroke();
+        });
     }
     function _drawStructs(ctx, scale, zoom, visL, visT, visR, visB, now) {
         for (let i = 0; i < _structs.length; i++) {
@@ -3580,7 +3692,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const hw = ARStructs.halfW(s), hh = ARStructs.halfH(s);
             if (s.x + hw + 14 < visL || s.x - hw - 14 > visR || s.y + hh + 14 < visT || s.y - hh - 24 > visB) continue;
             const sp = _barSprite(s.t, ARStructs.state(s), s.o, scale);
-            if (sp) ctx.drawImage(sp.c, s.x - sp.w / 2, s.y - sp.h / 2, sp.w, sp.h);
+            const pop = s.pop ? Math.max(0, 1 - (now - s.pop) / 380) : 0;   // an upgraded one swells and settles
+            if (sp && pop > 0) {
+                const k = 1 + 0.2 * pop * pop;
+                ctx.save(); ctx.translate(s.x, s.y); ctx.scale(k, k); ctx.drawImage(sp.c, -sp.w / 2, -sp.h / 2, sp.w, sp.h); ctx.restore();
+            } else if (sp) ctx.drawImage(sp.c, s.x - sp.w / 2, s.y - sp.h / 2, sp.w, sp.h);
             if (s.hp < s.maxHp) _drawHpBar(ctx, s.x - 24, s.y - hh - 15, 48, 7, Math.max(0, s.hp / s.maxHp), 1.6);
         }
         // the pieces of a broken one, fading out over a second
@@ -3593,6 +3709,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.drawImage(sp.c, d.s.x - sp.w / 2, d.s.y - sp.h / 2, sp.w, sp.h);
             ctx.globalAlpha = 1;
         }
+        _drawStructFx(ctx, now);
+        _drawWorkRings(ctx, now, visL, visT, visR, visB);
         // the ghost
         if (_bar.place && predX !== null) {
             const g = _bar.g, ok = !_bar.why;
@@ -3687,7 +3805,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             window.__arZombies = () => _zombies.filter(z => z && z.hp > 0).map(z => [z.x, z.y]);
             window.__arMe = () => [predX, predY];
             window.__arStructs = () => _structs.map(s => ({ ...s }));   // PvE barricades as the client has them
-            window.__arBar = () => ({ inv: _bar.inv, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins });
+            window.__arBar = () => ({ inv: _bar.inv, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins, work: [..._bar.work.keys()], fx: _structFx.length });
             window.__arObs = () => _obstacles; // the obstacles as the client has them (map sprites tests)
             window.__arIS = () => _IS; // the other players as last rendered (interpolation)
             window.__arBullets = () => { const o = [], bl = _IS.bullets, age = _IS.bulletAge || 0; if (bl) for (const b of bl) { if (b.ownerId !== socket.id) o.push(b.id, b.x + b.dx * age, b.y + b.dy * age); } return o; }; // enemy bullets as drawn (id, x, y)
@@ -4512,7 +4630,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const k in _obsShake) delete _obsShake[k];
         gameControl.countdownEndTime = null;
         _pveHudReset();
-        _structs.length = 0; _structDying.length = 0; _bar.inv = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
+        _structs.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
         _footsteps.length = 0;
         for (const k in _footTimers) delete _footTimers[k];
         for (const k in _footSide)   delete _footSide[k];
@@ -4706,13 +4824,22 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
     socket.on('struct-upd', (u) => {
         const s = _structs.find(q => q.id === u.id);
-        if (s) { s.t = u.t; s.hp = u.hp; s.maxHp = u.mhp; }
+        if (s) {
+            const up = u.t > s.t, now = performance.now();
+            s.t = u.t; s.hp = u.hp; s.maxHp = u.mhp;
+            if (up) s.pop = now;
+            _fxSpawn(up ? 'upgrade' : 'repair', s, now);
+        }
         _bar.useKey = '-';   // what E does here has changed
     });
+    socket.on('struct-work', ({ id, action, dur }) => { _bar.work.set(id, { t0: performance.now(), dur, action }); _bar.useKey = '-'; });
+    socket.on('struct-work-end', ({ id }) => { _bar.work.delete(id); _bar.useKey = '-'; });
     socket.on('struct-del', ({ id, broke }) => {
         const i = _structs.findIndex(q => q.id === id);
         if (i === -1) return;
-        if (broke) _structDying.push({ s: _structs[i], t0: performance.now() });
+        const now = performance.now();
+        if (broke) { _structDying.push({ s: _structs[i], t0: now }); _fxSpawn('break', _structs[i], now); }
+        _bar.work.delete(id);
         _structs.splice(i, 1);
     });
     socket.on('struct-result', ({ ok, action, reason }) => {

@@ -9,7 +9,7 @@ const Passwords = require('./auth-hash');            // bcrypt (native when it l
 const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
-const { avoidBase, pickTarget } = require('./zombie-steer.js');
+const { avoidBase, avoidStructs, pickTarget } = require('./zombie-steer.js');
 const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
 const ARShared = require('./public/combat-shared');
@@ -1345,10 +1345,41 @@ function prepareAndSpawnWave(room, waveIndex) {
 // All of it goes by events (struct-add / struct-hp / struct-upd / struct-del, pve-inv), never in gs2: it changes a few times a minute.
 function structPublic(s) { return { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: Math.round(s.hp), mhp: s.maxHp, by: s.by }; }
 
+// A repair or an upgrade takes ARStructs.BARRICADE.workMs: the player presses E, a ring fills over the barricade, and when it is full the
+// coins are paid and it happens. One at a time per player and per barricade. It is cancelled (nothing is paid) if the player walks out of
+// reach, falls, the wave ends, or the barricade is broken.
+function cancelWork(code, room, p) {
+    const w = p.work;
+    if (!w) return;
+    p.work = null;
+    const s = room.structs.find(q => q.id === w.id);
+    if (s) s._busy = null;
+    io.to(code).emit('struct-work-end', { id: w.id, done: false });
+}
+function tickWork(code, room, p, now) {
+    const w = p.work;
+    const s = room.structs.find(q => q.id === w.id);
+    if (!s || !p.alive || room.pveWaveBreak || room.gameEnded || ARStructs.distToRect(p.x, p.y, s) > PLAYER_R + ARStructs.BARRICADE.useRange + 30) { cancelWork(code, room, p); return; }
+    if (now < w.end) return;
+    // the ring is full: is it still what E would do, and are there coins for it?
+    const action = ARStructs.useAction(s);
+    const cost = action === 'repair' ? ARStructs.repairCost(s) : action === 'upgrade' ? ARStructs.upgradeCost(s) : 0;
+    if (action !== w.action || p.coins < cost) { cancelWork(code, room, p); io.to(p.id).emit('struct-result', { ok: false, action: 'use', reason: action ? 'coins' : 'max' }); return; }
+    p.coins -= cost;
+    if (action === 'repair') s.hp = s.maxHp;
+    else { s.t++; s.maxHp = ARStructs.BARRICADE.tiers[s.t].hp; s.hp = s.maxHp; }
+    s._sentHp = Math.round(s.hp);
+    s._busy = null; p.work = null;
+    io.to(code).emit('struct-upd', structPublic(s));
+    io.to(code).emit('struct-work-end', { id: s.id, done: true, action });
+    io.to(p.id).emit('struct-result', { ok: true, action });
+}
+
 // A barricade is gone (a zombie broke it): the clients draw its pieces for a moment
 function destroyStruct(code, room, s) {
     const i = room.structs.indexOf(s);
     if (i === -1) return;
+    for (const q of room._playerArr) if (q.work && q.work.id === s.id) cancelWork(code, room, q);
     room.structs.splice(i, 1);
     io.to(code).emit('struct-del', { id: s.id, broke: true });
 }
@@ -1953,7 +1984,22 @@ function startRoomLoop(code, room) {
                         tgtDist = _stDist.d;
                     }
                     const hunts = def.hunts !== false;
-                    const goal = pickTarget(hunts, nearestDist, ZOMBIE_DETECT_R, tgtDist, ARStructs.BARRICADE.detectRange);
+                    let goal = pickTarget(hunts, nearestDist, ZOMBIE_DETECT_R, tgtDist, ARStructs.BARRICADE.detectRange);
+                    if (goal === 'player' && room.structs.length) {
+                        // After a player it goes round the barricades (avoidStructs below). If it still stands pressed against one without getting
+                        // anywhere (the player is walled in, say) it breaks that one instead of standing there for ever.
+                        zombie._chkT = (zombie._chkT || 0) + dt;
+                        if (zombie._chkT >= 0.5) {
+                            const moved = zombie._chkX === undefined ? 1e9 : Math.hypot(zombie.x - zombie._chkX, zombie.y - zombie._chkY);
+                            const pressed = ARStructs.nearestInRange(zombie.x, zombie.y, room.structs, def.r + 8, _stDist);
+                            zombie._stuck = pressed && moved < def.chaseSpd * 0.5 * 0.3 ? (zombie._stuck || 0) + 1 : 0;
+                            zombie._chkX = zombie.x; zombie._chkY = zombie.y; zombie._chkT = 0;
+                        }
+                        if (zombie._stuck >= 2) {
+                            const pressed = ARStructs.nearestInRange(zombie.x, zombie.y, room.structs, def.r + 8, _stDist);
+                            if (pressed) { goal = 'struct'; tgtStruct = pressed; tgtDist = _stDist.d; } else zombie._stuck = 0;
+                        }
+                    } else { zombie._stuck = 0; }
                     const chasingPlayer = goal === 'player';
                     if (goal !== 'struct') tgtStruct = null;
                     zombie.targetingBase = goal === 'base';
@@ -1969,6 +2015,8 @@ function startRoomLoop(code, room) {
 
                     // chasing a player: the base is an obstacle to get round (going for the base itself, it is the goal)
                     if (chasingPlayer && room.base) { avoidBase(zombie.x, zombie.y, ddx, ddy, room.base, def.r, _steerOut); ddx = _steerOut.x; ddy = _steerOut.y; }
+                    // ... and so are the barricades (it only breaks one that is in its way when nothing else leads to the target)
+                    if (chasingPlayer && room.structs.length) { avoidStructs(zombie.x, zombie.y, ddx, ddy, targetX, targetY, room.structs, def.r, _steerOut); ddx = _steerOut.x; ddy = _steerOut.y; }
 
                     for (const obs of room.obstacles) {
                         const _ox = zombie.x - obs.x, _oy = zombie.y - obs.y;
@@ -2108,6 +2156,7 @@ function startRoomLoop(code, room) {
             }
 
             if (room._structDirty && now - room._structHpAt >= 100) flushStructHp(code, room, now);
+            for (let wi = 0; wi < allPlayers.length; wi++) if (allPlayers[wi].work) tickWork(code, room, allPlayers[wi], now);
             if (PERF) PERF.mark(room, 'zombies');
 
             // Gloante: miscare + coliziune continua (swept). Pe segmentul parcurs in acest tick
@@ -2154,7 +2203,8 @@ function startRoomLoop(code, room) {
                             // (the coin step after the kits, below). One event for the whole drop.
                             const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
                             const earned = def.coinsMin + Math.floor(Math.random() * (def.coinsMax - def.coinsMin + 1));
-                            const spots = PveCoins.scatter(zombie.x, zombie.y, earned, _bulletBlockers(room), ARENA_W, ARENA_H, Math.random);
+                            // the coins keep off the trees, the rocks, the base and the barricades (they could not be picked up from there)
+                            const spots = PveCoins.scatter(zombie.x, zombie.y, earned, room.structs.length ? _bulletBlockers(room).concat(room.structs.map(ARStructs.asBlocker)) : _bulletBlockers(room), ARENA_W, ARENA_H, Math.random);
                             const dropped = [];
                             for (const [cx, cy] of spots) {
                                 const id = room.nextCoinId++;
@@ -2448,7 +2498,7 @@ function triggerRematch(code, room) {
         p.maxHp   = p.baseMaxHp   || p.maxHp;
         p.ammoMax = p.baseAmmoMax || p.ammoMax;
         p.pveUpgrades = { dmg: 0, spd: 0, hp: 0, ammo: 0 };
-        p.pveInv = { barricade: 0 };
+        p.pveInv = { barricade: 0 }; p.work = null;
         p.coins = 0;
         flushWeaponStats(p); // anything not saved yet from the last match
         p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0; p.rs = Missions.newRoundStats();
@@ -2604,7 +2654,7 @@ io.on('connection', (socket) => {
             p.shooting = false; p.shootCooldown = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
             p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
             p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0; p.lastInputAt = 0; p.stalled = false;
-            p.pveInv = { barricade: 0 };
+            p.pveInv = { barricade: 0 }; p.work = null;
         });
 
         const playersMeta = {};
@@ -2773,12 +2823,12 @@ io.on('connection', (socket) => {
         if (!action) return fail('max');
         const cost = action === 'repair' ? ARStructs.repairCost(s) : ARStructs.upgradeCost(s);
         if (p.coins < cost) return fail('coins');
-        p.coins -= cost;
-        if (action === 'repair') s.hp = s.maxHp;
-        else { s.t++; s.maxHp = ARStructs.BARRICADE.tiers[s.t].hp; s.hp = s.maxHp; }
-        s._sentHp = Math.round(s.hp);
-        io.to(code).emit('struct-upd', structPublic(s));
-        socket.emit('struct-result', { ok: true, action });
+        if (p.work) return;                                   // already at work on one
+        if (s._busy && s._busy !== p.id) return fail('busy'); // somebody else is at this one
+        // it starts: everybody sees the ring; the coins are paid when it is full (tickWork)
+        s._busy = p.id;
+        p.work = { id: s.id, action, end: now + ARStructs.BARRICADE.workMs };
+        io.to(code).emit('struct-work', { id: s.id, action, dur: ARStructs.BARRICADE.workMs, by: p.name });
     });
 
     socket.on('disconnect', () => {
@@ -2796,6 +2846,7 @@ io.on('connection', (socket) => {
         const { code, room } = result;
         room.rematchVotes.delete(socket.id);
         const _leavingP = room.players[socket.id];
+        if (_leavingP && _leavingP.work) cancelWork(code, room, _leavingP);
         if (_leavingP) flushWeaponStats(_leavingP); // left early: the weapon counts so far still count
         if (_leavingP) {
             const _pidx = room._playerArr.indexOf(_leavingP);

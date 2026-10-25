@@ -5210,13 +5210,19 @@ button:disabled { cursor: not-allowed; }
 .pb-n { position: absolute; right: 6px; top: 4px; font-style: normal; font-size: .72rem; font-weight: 800; color: #fff; }
 #pve-use, #pve-place-bar { position: absolute; left: 50%; bottom: calc(max(10px, var(--safe-b)) + 74px); transform: translateX(-50%); pointer-events: auto; }
 #pve-use {
-    display: flex; align-items: center; gap: 9px; padding: 5px 16px 8px 8px;
-    background: var(--c-sky); border: var(--o) solid var(--ink-line); border-radius: 999px;
-    box-shadow: inset 0 -4px 0 var(--l-sky), inset 0 2px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45);
+    --c: var(--c-green); --l: var(--l-green);
+    display: flex; align-items: center; gap: 8px; padding: 5px 10px 8px 7px;
+    background: var(--c); border: var(--o) solid var(--ink-line); border-radius: 999px;
+    box-shadow: inset 0 -4px 0 var(--l), inset 0 2px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45);
     color: #fff; font-weight: 800; font-size: .9rem; text-shadow: var(--stroke-sm); letter-spacing: .04em; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
-#pve-use i { font-style: normal; min-width: 1.5rem; padding: 1px 6px 3px; text-align: center; background: #fff; color: #18232A; border: 2px solid var(--ink-line); border-radius: 8px; text-shadow: none; }
-#pve-use.is-bad { background: #6D2B35; box-shadow: inset 0 -4px 0 #4D1B24, 0 4px 0 rgba(0, 0, 0, .45); }
+#pve-use.is-upgrade { --c: var(--c-orange); --l: var(--l-orange); }   /* repair is green, upgrade orange */
+#pve-use .pu-key { font-style: normal; min-width: 1.5rem; padding: 1px 6px 3px; text-align: center; background: #fff; color: #18232A; border: 2px solid var(--ink-line); border-radius: 8px; text-shadow: none; }
+#pve-use .pu-ic { width: 1.2rem; height: 1.2rem; filter: drop-shadow(0 2px 0 var(--ink-line)); }
+#pve-use .pu-cost { display: inline-flex; align-items: center; gap: 4px; margin-left: 2px; padding: 1px 8px 3px 5px; background: rgba(0, 0, 0, .28); border-radius: 999px; }
+#pve-use .pu-cost .pic { width: 1.15rem; height: 1.15rem; }
+#pve-use.is-bad { --c: #6D2B35; --l: #4D1B24; }
+#pve-use.is-bad .pu-cost { background: rgba(255, 75, 92, .35); }
 #pve-use:active { transform: translateX(-50%) translateY(3px); }
 #pve-place-bar { display: flex; gap: 10px; }
 #pve-place-bar button {

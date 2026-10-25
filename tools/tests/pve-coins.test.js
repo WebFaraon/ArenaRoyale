@@ -28,6 +28,20 @@ test('no coin lands inside a tree, a rock or the base', () => {
     }
 });
 
+test('no coin lands on a barricade (a rectangle blocker), nor right against it; the ones that find no room stay by the zombie', () => {
+    // a horizontal barricade 108 x 34 right beside the zombie: half of the ring round it is covered
+    const wall = [{ x: 1300, y: 1330, hw: 54, hh: 17 }];
+    for (let k = 0; k < 60; k++) {
+        for (const [x, y] of C.scatter(1300, 1290, 9, wall, 2600, 2600, rnd)) {
+            const onIt = Math.abs(x - 1300) < 54 + 10 && Math.abs(y - 1330) < 17 + 10;
+            assert.ok(!onIt || (x === 1300 && y === 1290), 'on the barricade at ' + x + ',' + y);
+        }
+    }
+    // a barricade and a tree together
+    const both = [{ x: 1300, y: 1330, hw: 54, hh: 17 }, { x: 1230, y: 1290, r: 30 }];
+    for (let k = 0; k < 40; k++) for (const [x, y] of C.scatter(1300, 1290, 9, both, 2600, 2600, rnd)) assert.ok(!(Math.abs(x - 1300) < 64 && Math.abs(y - 1330) < 27) || (x === 1300 && y === 1290));
+});
+
 test('a coin that finds no free spot stays by the zombie', () => {
     const wall = [{ x: 1300, y: 1300, r: 400 }];   // everything around is blocked
     const r = C.scatter(1300, 1300, 3, wall, 2600, 2600, rnd);
