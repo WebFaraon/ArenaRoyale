@@ -649,11 +649,16 @@
             </div>
             <div id="pve-feed"></div>
         </div>
+        <button id="pve-use" type="button" style="display:none"><i>E</i><span id="pve-use-txt"></span></button>
+        <div id="pve-place-bar" style="display:none">
+            <button id="pve-place-ok" type="button">PUNE</button>
+            <button id="pve-place-x" type="button" aria-label="Anuleaza"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+        </div>
         <div id="pve-build">
-            <div class="pb-slot is-soon" id="pb-barricade">
-                <i class="pb-key">1</i>
+            <div class="pb-slot is-empty" id="pb-barricade" role="button" aria-label="Baricada">
+                <i class="pb-key">1</i><i class="pb-n" id="pb-barricade-n">0</i>
                 <img class="pb-ic" src="/images/pve/icon_barricade_wood.svg" alt="" aria-hidden="true" draggable="false">
-                <b class="pb-name">Baricada</b><em class="pb-cost">-</em>
+                <b class="pb-name">Baricada</b><em class="pb-cost" id="pb-barricade-cost">x0</em>
             </div>
             <div class="pb-slot is-soon" id="pb-turret">
                 <i class="pb-key">2</i>
@@ -698,6 +703,12 @@
                 <span class="pve-upg-val">+12%</span>
                 <span class="pve-upg-cost">4</span>
                 <div class="pve-upg-segs"></div>
+            </button>
+            <button class="pve-upg-btn pve-upg-reserve pve-upg-barricade" data-type="barricade" onclick="buyUpgrade('barricade')">
+                <img class="pic pve-upg-icon" src="/images/pve/icon_barricade_wood.svg" alt="" aria-hidden="true" draggable="false">
+                <span class="pve-upg-name">BARICADA</span>
+                <span class="pve-upg-val" id="pve-barricade-val">in inventar: 0</span>
+                <span class="pve-upg-cost">5</span>
             </button>
             <button class="pve-upg-btn pve-upg-reserve" data-type="reserve" onclick="buyUpgrade('reserve')">
                 <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#package"/></svg>
@@ -864,6 +875,7 @@
 <script src="combat-shared.js"></script>
 <script src="netproto.js"></script>
 <script src="ammo.js"></script>
+<script src="structures.js"></script>
 <script src="interp.js"></script>
 <script src="frame-cap.js"></script>
 <script src="pve-coins.js"></script>

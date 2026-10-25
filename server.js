@@ -15,6 +15,7 @@ const Missions = require('./missions');
 const ARShared = require('./public/combat-shared');
 const ARNet = require('./public/netproto');           // the state packet, protocol 3 (shared with the client)
 const KIT_HEAL = ARNet.KIT_HEAL, KIT_AMMO = ARNet.KIT_AMMO;   // the two kinds of kit on the ground (netproto.js)
+const ARStructs = require('./public/structures');   // what the PvE players build: barricades (shared with the client)
 const ARAmmo = require('./public/ammo');             // the classic magazine: reload, reserve, ammo boxes (shared with the client)
 const { createGsWriter } = require('./server-gs');
 const notepack = require('notepack.io');             // the encoder socket.io-msgpack-parser uses
@@ -1339,6 +1340,27 @@ function prepareAndSpawnWave(room, waveIndex) {
     return firstBatch.map((type, i) => createPveZombie(type, i));
 }
 
+// ---------- PvE: what the players build (barricades; public/structures.js has the numbers) ----------
+// All of it goes by events (struct-add / struct-hp / struct-upd / struct-del, pve-inv), never in gs2: it changes a few times a minute.
+function structPublic(s) { return { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: Math.round(s.hp), mhp: s.maxHp, by: s.by }; }
+
+// A barricade is gone (a zombie broke it): the clients draw its pieces for a moment
+function destroyStruct(code, room, s) {
+    const i = room.structs.indexOf(s);
+    if (i === -1) return;
+    room.structs.splice(i, 1);
+    io.to(code).emit('struct-del', { id: s.id, broke: true });
+}
+
+// The health of the barricades that are being hit, at most ten times a second
+function flushStructHp(code, room, now) {
+    room._structDirty = false;
+    room._structHpAt = now;
+    const rows = [];
+    for (const s of room.structs) if (s._sentHp !== Math.round(s.hp)) { s._sentHp = Math.round(s.hp); rows.push([s.id, s._sentHp]); }
+    if (rows.length) io.to(code).emit('struct-hp', rows);
+}
+
 // Zombies of the wave that are still to come (the queued batches)
 function pveQueuedCount(room) {
     let n = 0;
@@ -1440,6 +1462,7 @@ function newRoom(hostId, mode = 'br') {
         base: mode === 'pve' ? { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R } : null,
         pveWave: 0, pveWaveActive: false, pveWaveBreak: false, pveBreakTimer: 0, pveSkipVotes: new Set(),
         pveSpawnQueue: [], pveSpawnTimer: 0,
+        structs: [], nextStructId: 0, _structDirty: false, _structHpAt: 0,   // PvE: what the players built (barricades), sent by events, not in gs2
         nextSlot: 0,   // players are named by a small number in the state packet (netproto.js)
         gameStarted:     false,
         gameEnded:       false,
@@ -1509,6 +1532,7 @@ function addPlayer(code, room, socket, data) {
         lastInputAt: 0, stalled: false, backlogged: false, nextKeepAt: 0,   // slow client detection (STALL_MS)
         baseMaxHp: maxHp, baseDamage: damage, baseSpeed: speed, baseAmmoMax: _ws.ammoMax,
         pveUpgrades: { dmg: 0, spd: 0, hp: 0, ammo: 0 },
+        pveInv: { barricade: 0 },   // PvE: what they bought and have not placed yet
     };
     room._playerArr.push(room.players[socket.id]);
 
@@ -1536,6 +1560,8 @@ function broadcastWaiting(code, room) {
 }
 
 const _steerOut = { x: 0, y: 0 };
+const _stPt = { x: 0, y: 0 };
+const _stDist = { d: Infinity };   // scratch point for the barricade checks (public/structures.js)
 // The things that stop a bullet in a room: its obstacles, and in PvE the base (players and zombies were already kept
 // out of it; bullets went through). One array per room, made again only if the obstacles or the base are replaced.
 function _bulletBlockers(room) {
@@ -1646,6 +1672,10 @@ function startRoomLoop(code, room) {
                     const _od = Math.sqrt(_odSq);
                     player.x = obs.x + _ox / _od * _om;
                     player.y = obs.y + _oy / _od * _om;
+                }
+                if (room.structs.length) {
+                    _stPt.x = player.x; _stPt.y = player.y;
+                    if (ARStructs.pushOutAll(_stPt, PLAYER_R, room.structs)) { player.x = _stPt.x; player.y = _stPt.y; }
                 }
                 if (room.base) {
                     const _bd = Math.hypot(player.x - room.base.x, player.y - room.base.y);
@@ -1915,10 +1945,18 @@ function startRoomLoop(code, room) {
                     }
 
                     const chasingPlayer = nearestPlayer && nearestDist < ZOMBIE_DETECT_R;
-                    zombie.targetingBase = !chasingPlayer;
-                    const targetX = chasingPlayer ? nearestPlayer.x : PVE_BASE_X;
-                    const targetY = chasingPlayer ? nearestPlayer.y : PVE_BASE_Y;
-                    const speed   = def.chaseSpd;
+                    // No player to chase: a barricade within its (smaller) range is dealt with before the base
+                    let tgtStruct = null, tgtDist = Infinity;
+                    if (!chasingPlayer && room.structs.length) {
+                        tgtStruct = ARStructs.nearestInRange(zombie.x, zombie.y, room.structs, ARStructs.BARRICADE.detectRange, _stDist);
+                        tgtDist = _stDist.d;
+                    }
+                    zombie.targetingBase = !chasingPlayer && !tgtStruct;
+                    let targetX, targetY;
+                    if (chasingPlayer) { targetX = nearestPlayer.x; targetY = nearestPlayer.y; }
+                    else if (tgtStruct) { ARStructs.nearestPoint(zombie.x, zombie.y, tgtStruct, _stPt); targetX = _stPt.x; targetY = _stPt.y; }
+                    else { targetX = PVE_BASE_X; targetY = PVE_BASE_Y; }
+                    const speed   = tgtStruct && tgtDist <= def.r + 6 ? 0 : def.chaseSpd;   // against the barricade it stands and hits
 
                     let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
                     const dLen = Math.hypot(ddx, ddy);
@@ -1957,6 +1995,11 @@ function startRoomLoop(code, room) {
                         if (_oSq2 >= minD*minD) continue;
                         const od2 = Math.sqrt(_oSq2);
                         if (od2 > 0) { zombie.x += _ox2 / od2 * (minD - od2); zombie.y += _oy2 / od2 * (minD - od2); }
+                    }
+
+                    if (room.structs.length) {
+                        _stPt.x = zombie.x; _stPt.y = zombie.y;
+                        if (ARStructs.pushOutAll(_stPt, def.r, room.structs)) { zombie.x = _stPt.x; zombie.y = _stPt.y; }
                     }
 
                     for (const p of alivePlayers) {
@@ -2002,6 +2045,14 @@ function startRoomLoop(code, room) {
                                 if (p.hp <= 0) eliminatePlayer(code, room, p, 'zombie');
                                 attacked = true; break;
                             }
+                        }
+                        if (!attacked && tgtStruct && ARStructs.distToRect(zombie.x, zombie.y, tgtStruct) <= def.r + 14) {
+                            // the barricade in its way: hit it as it would the base
+                            tgtStruct.hp -= def.baseDmg;
+                            room._structDirty = true;
+                            zombie.attackCooldown = def.attackCd;
+                            attacked = true;
+                            if (tgtStruct.hp <= 0) destroyStruct(code, room, tgtStruct);
                         }
                         if (!attacked && zombie.targetingBase && room.base && Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) < room.base.r + def.r + 8) {
                             room.base.hp = Math.max(0, room.base.hp - def.baseDmg);
@@ -2051,6 +2102,7 @@ function startRoomLoop(code, room) {
                 }
             }
 
+            if (room._structDirty && now - room._structHpAt >= 100) flushStructHp(code, room, now);
             if (PERF) PERF.mark(room, 'zombies');
 
             // Gloante: miscare + coliziune continua (swept). Pe segmentul parcurs in acest tick
@@ -2380,6 +2432,7 @@ function triggerRematch(code, room) {
     room.pveSkipVotes.clear();
     room.pveSpawnQueue = []; room.pveSpawnTimer = 0;
     room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0;
+    room.structs = []; room.nextStructId = 0; room._structDirty = false;
     setTimeout(() => { if (rooms.has(code)) room.countdownActive = false; }, 3700);
     assignSpawnPositions(room._playerArr, room.obstacles);
     room.zombies = generateZombies(room.obstacles, room._playerArr);
@@ -2390,6 +2443,7 @@ function triggerRematch(code, room) {
         p.maxHp   = p.baseMaxHp   || p.maxHp;
         p.ammoMax = p.baseAmmoMax || p.ammoMax;
         p.pveUpgrades = { dmg: 0, spd: 0, hp: 0, ammo: 0 };
+        p.pveInv = { barricade: 0 };
         p.coins = 0;
         flushWeaponStats(p); // anything not saved yet from the last match
         p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0; p.rs = Missions.newRoundStats();
@@ -2535,6 +2589,7 @@ io.on('connection', (socket) => {
             room.zombies = [];
             room.base = { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R };
             room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0;
+            room.structs = []; room.nextStructId = 0; room._structDirty = false;
         } else {
             assignSpawnPositions(room._playerArr, room.obstacles);
             room.zombies = generateZombies(room.obstacles, room._playerArr);
@@ -2544,6 +2599,7 @@ io.on('connection', (socket) => {
             p.shooting = false; p.shootCooldown = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
             p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
             p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0; p.lastInputAt = 0; p.stalled = false;
+            p.pveInv = { barricade: 0 };
         });
 
         const playersMeta = {};
@@ -2645,6 +2701,15 @@ io.on('connection', (socket) => {
             socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
             return;
         }
+        if (type === 'barricade') {
+            // a new barricade goes to the inventory; it is placed later with 1 (place-struct)
+            if (p.coins < ARStructs.BUY_COST) { socket.emit('upgrade-result', { ok: false }); return; }
+            p.coins -= ARStructs.BUY_COST;
+            p.pveInv.barricade++;
+            socket.emit('pve-inv', { barricade: p.pveInv.barricade });
+            socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
+            return;
+        }
         const def = PVE_UPGRADE_DEFS[type];
         if (!def) { socket.emit('upgrade-result', { ok: false }); return; }
         const count = p.pveUpgrades[type] || 0;
@@ -2655,6 +2720,60 @@ io.on('connection', (socket) => {
         p.pveUpgrades[type] = count + 1;
         def.apply(p, count + 1);
         socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
+    });
+
+    // ---------- PvE: place, repair and upgrade a barricade ----------
+    // The client says where (x, y, o); the server decides: it must have one in its inventory, be close enough, and the spot must be free.
+    socket.on('place-struct', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !data || typeof data !== 'object') return;
+        const { code, room } = r;
+        const p = room.players[socket.id];
+        if (!p || room.mode !== 'pve' || !room.gameStarted || room.gameEnded || room.countdownActive || !p.alive) return;
+        const x = +data.x, y = +data.y, o = data.o === 1 ? 1 : 0;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const now = Date.now();
+        if (now - (p._structAt || 0) < 150) return;   // not faster than the hand can
+        p._structAt = now;
+        const fail = (reason) => socket.emit('struct-result', { ok: false, action: 'place', reason });
+        if (!p.pveInv || p.pveInv.barricade <= 0) return fail('none');
+        const s = { id: room.nextStructId, x: Math.round(x), y: Math.round(y), o, t: 0, hp: ARStructs.BARRICADE.tiers[0].hp, maxHp: ARStructs.BARRICADE.tiers[0].hp, by: p.name, _sentHp: ARStructs.BARRICADE.tiers[0].hp };
+        if (ARStructs.distToRect(p.x, p.y, s) > ARStructs.BARRICADE.placeRange) return fail('far');
+        const alive = room._playerArr.filter(q => q.alive);
+        const why = ARStructs.checkPlace(s, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, players: alive, playerR: PLAYER_R, count: room.structs.length });
+        if (why) return fail(why);
+        room.nextStructId++;
+        room.structs.push(s);
+        p.pveInv.barricade--;
+        io.to(code).emit('struct-add', structPublic(s));
+        socket.emit('pve-inv', { barricade: p.pveInv.barricade });
+        socket.emit('struct-result', { ok: true, action: 'place' });
+    });
+
+    // E next to a barricade: repair it when it is hurt, else upgrade it to the next tier
+    socket.on('use-struct', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !data || typeof data !== 'object') return;
+        const { code, room } = r;
+        const p = room.players[socket.id];
+        if (!p || room.mode !== 'pve' || !room.gameStarted || room.gameEnded || room.countdownActive || !p.alive) return;
+        const now = Date.now();
+        if (now - (p._structAt || 0) < 150) return;
+        p._structAt = now;
+        const s = room.structs.find(q => q.id === data.id);
+        const fail = (reason) => socket.emit('struct-result', { ok: false, action: 'use', reason });
+        if (!s) return fail('gone');
+        if (ARStructs.distToRect(p.x, p.y, s) > PLAYER_R + ARStructs.BARRICADE.useRange) return fail('far');
+        const action = ARStructs.useAction(s);
+        if (!action) return fail('max');
+        const cost = action === 'repair' ? ARStructs.repairCost(s) : ARStructs.upgradeCost(s);
+        if (p.coins < cost) return fail('coins');
+        p.coins -= cost;
+        if (action === 'repair') s.hp = s.maxHp;
+        else { s.t++; s.maxHp = ARStructs.BARRICADE.tiers[s.t].hp; s.hp = s.maxHp; }
+        s._sentHp = Math.round(s.hp);
+        io.to(code).emit('struct-upd', structPublic(s));
+        socket.emit('struct-result', { ok: true, action });
     });
 
     socket.on('disconnect', () => {

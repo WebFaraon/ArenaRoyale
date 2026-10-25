@@ -3492,6 +3492,122 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _PVE_BASE_R    = 85;
     const _PVE_BASE      = { x: ARENA_W / 2, y: ARENA_H / 2, r: _PVE_BASE_R };   // a solid circle for bullets and players
     const _solidOut      = { x: 0, y: 0 };
+
+    // ---------- PvE: barricades (public/structures.js: the server decides, this predicts and draws) ----------
+    // They arrive by events (struct-add / -hp / -upd / -del, pve-inv), not in gs2. The art is public/images/pve/barricades/<material><state><h|v>.svg
+    // (from the Baricade si Turete artifact): 4 materials, whole / damaged / broken, lying down or standing up, so nothing is ever rotated.
+    const _structs     = [];   // on the field: { id, x, y, o, t, hp, maxHp, by }
+    const _structDying = [];   // broken ones, drawn as pieces for a second: { s, t0 }
+    const _bar = { inv: 0, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null };
+    const _BAR_WHY = { none: 'Nu ai baricade', far: 'Prea departe', blocked: 'Loc ocupat', edge: 'Prea aproape de margine', player: 'Un jucator e in cale',
+                       limit: 'Maxim 20 de baricade', coins: 'Nu ai destule monede', max: 'Nivel maxim', gone: 'Baricada nu mai exista' };
+    function _barImg(tier, st, o) {
+        const key = ARStructs.BARRICADE.tiers[tier].id + st + (o ? 'v' : 'h');
+        let im = _bar.imgs.get(key);
+        if (!im) { im = new Image(); im.src = arAsset('/images/pve/barricades/' + key + '.svg'); _bar.imgs.set(key, im); }
+        return im.complete && im.naturalWidth ? im : null;
+    }
+    // One cached bitmap per picture and scale (like the labels): the SVG is rastered at the pixel size it is drawn at
+    function _barSprite(tier, st, o, scale) {
+        const im = _barImg(tier, st, o);
+        if (!im) return null;
+        const w = o ? 68 : 136, h = o ? 136 : 68;
+        return _labelSprite('BAR|' + tier + st + o, scale, w, h, g => g.drawImage(im, 0, 0, w, h));
+    }
+    function _barEls() {
+        const g = id => document.getElementById(id);
+        return _bar.els = { slot: g('pb-barricade'), n: g('pb-barricade-n'), cost: g('pb-barricade-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), pbar: g('pve-place-bar'), val: g('pve-barricade-val') };
+    }
+    function _barUi() {
+        const e = _bar.els || _barEls();
+        if (e.slot) { e.slot.classList.toggle('is-empty', _bar.inv <= 0 && !_bar.place); e.slot.classList.toggle('is-on', _bar.place); }
+        if (e.n) e.n.textContent = _bar.inv;
+        if (e.cost) e.cost.textContent = 'x' + _bar.inv;
+        if (e.val) e.val.textContent = 'in inventar: ' + _bar.inv;
+        const pc = document.querySelector('.pve-upg-barricade .pve-upg-cost'); if (pc) pc.textContent = ARStructs.BUY_COST;
+        if (e.pbar) e.pbar.style.display = _bar.place && !isDesktop ? '' : 'none';
+    }
+    // 1 (or the slot): the placement mode, with the ghost in front of you. While it is on, the trigger does not fire.
+    function _barPlaceMode(on) {
+        if (on === undefined) on = !_bar.place;
+        if (on) {
+            if (_gameMode !== 'pve' || _selfDead || gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
+            if (_bar.inv <= 0) { showToast(_BAR_WHY.none); return; }
+            isShooting = false; aimStartTime = null;
+        }
+        _bar.place = !!on;
+        _barUi();
+    }
+    function _barPlace() {
+        if (!_bar.place || predX === null) return;
+        if (_bar.why) { showToast(_BAR_WHY[_bar.why] || 'Nu se poate aici'); return; }
+        socket.emit('place-struct', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), o: _bar.g.o });
+    }
+    function _barUse() { if (_bar.use && !_bar.place) socket.emit('use-struct', { id: _bar.use.id }); }
+    // Where the ghost stands and whether the barricade can go there (the same check the server makes)
+    function _barGhost(players, now) {
+        if (!_bar.place) return;
+        if (_selfDead || gameEnded || _pveState.waveBreak) { _barPlaceMode(false); return; }
+        if (predX === null) return;
+        ARStructs.placement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g);
+        const pl = _bar.pl; pl.length = 0;
+        for (const id in players) { const p = players[id]; if (p.alive && p.hp > 0) pl.push(id === socket.id ? { x: predX, y: predY } : p); }
+        _bar.why = ARStructs.checkPlace(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, players: pl, playerR: PLAYER_HIT_R, count: _structs.length });
+    }
+    // The barricade within reach of you, and what E would do to it (the prompt changes only when that does)
+    function _barUseTick() {
+        let best = null, bd = 1e9;
+        if (predX !== null && !_bar.place && !_selfDead && !_pveState.waveBreak) {
+            const reach = PLAYER_HIT_R + ARStructs.BARRICADE.useRange;
+            for (let i = 0; i < _structs.length; i++) { const d = ARStructs.distToRect(predX, predY, _structs[i]); if (d <= reach && d < bd) { bd = d; best = _structs[i]; } }
+        }
+        _bar.use = best;
+        const act = best ? ARStructs.useAction(best) : null;
+        const cost = !act ? 0 : act === 'repair' ? ARStructs.repairCost(best) : ARStructs.upgradeCost(best);
+        const can = _pveState.myCoins >= cost;
+        const key = act ? act + cost + (can ? 'y' : 'n') : '';
+        if (key === _bar.useKey) return;
+        _bar.useKey = key;
+        const e = _bar.els || _barEls();
+        if (!e.use) return;
+        e.use.style.display = act ? '' : 'none';
+        e.use.classList.toggle('is-bad', !can);
+        if (act) e.useTxt.textContent = (act === 'repair' ? 'REPARA ' : 'UPGRADE ') + cost;
+    }
+    function _drawStructs(ctx, scale, zoom, visL, visT, visR, visB, now) {
+        for (let i = 0; i < _structs.length; i++) {
+            const s = _structs[i];
+            const hw = ARStructs.halfW(s), hh = ARStructs.halfH(s);
+            if (s.x + hw + 14 < visL || s.x - hw - 14 > visR || s.y + hh + 14 < visT || s.y - hh - 24 > visB) continue;
+            const sp = _barSprite(s.t, ARStructs.state(s), s.o, scale);
+            if (sp) ctx.drawImage(sp.c, s.x - sp.w / 2, s.y - sp.h / 2, sp.w, sp.h);
+            if (s.hp < s.maxHp) _drawHpBar(ctx, s.x - 24, s.y - hh - 15, 48, 7, Math.max(0, s.hp / s.maxHp), 1.6);
+        }
+        // the pieces of a broken one, fading out over a second
+        for (let i = _structDying.length - 1; i >= 0; i--) {
+            const d = _structDying[i], age = now - d.t0;
+            if (age >= 1000) { _structDying.splice(i, 1); continue; }
+            const sp = _barSprite(d.s.t, 2, d.s.o, scale);
+            if (!sp) continue;
+            ctx.globalAlpha = 1 - age / 1000;
+            ctx.drawImage(sp.c, d.s.x - sp.w / 2, d.s.y - sp.h / 2, sp.w, sp.h);
+            ctx.globalAlpha = 1;
+        }
+        // the ghost
+        if (_bar.place && predX !== null) {
+            const g = _bar.g, ok = !_bar.why;
+            const sp = _barSprite(0, 0, g.o, scale);
+            ctx.globalAlpha = 0.6;
+            if (sp) ctx.drawImage(sp.c, g.x - sp.w / 2, g.y - sp.h / 2, sp.w, sp.h);
+            ctx.globalAlpha = 1;
+            const hw = ARStructs.halfW(g), hh = ARStructs.halfH(g);
+            ctx.save();
+            ctx.lineWidth = 3 / zoom; ctx.strokeStyle = ok ? '#46D46A' : '#FF4B5C'; ctx.setLineDash([8 / zoom, 6 / zoom]);
+            ctx.beginPath(); ctx.roundRect(g.x - hw - 2, g.y - hh - 2, hw * 2 + 4, hh * 2 + 4, 8); ctx.stroke();
+            ctx.restore();
+            if (!ok) { ctx.fillStyle = 'rgba(255,75,92,.28)'; ctx.beginPath(); ctx.roundRect(g.x - hw, g.y - hh, hw * 2, hh * 2, 6); ctx.fill(); }
+        }
+    }
     // Same slide-out the server applies to a player after moving (obstacles, then the PvE base)
     function _pushOutOfSolids(x, y) {
         for (let i = 0; i < _obstacles.length; i++) {
@@ -3507,6 +3623,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (dSq < m * m && dSq > 0) { const d = Math.sqrt(dSq); x = bx + ox / d * m; y = by + oy / d * m; }
         }
         _solidOut.x = x; _solidOut.y = y;
+        if (_structs.length) ARStructs.pushOutAll(_solidOut, PLAYER_HIT_R, _structs);   // PvE barricades, like the server
         return _solidOut;
     }
     // Earliest t in [0,1] where segment (x0,y0)->(x1,y1) touches circle (cx,cy,R); -1 if never.
@@ -3569,6 +3686,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             window.__arDiag = () => ({ ..._bDiag, interp: _interpShow, buf: stateBuffer.length, active: _clientBullets.length, linkedNow: _ownLinked.size, rtt: _pingRtt, pktPs: _dbgPktPs, fps: _dbgFps, st: { isShooting, mustRelease: _shootMustRelease, ammo: ammoState.ammo, reloading: ammoState.reloading, aim: aimStartTime, cd: gameControl.countdownActive, dead: _selfDead, predX, next: _clientNextShotAt, now: performance.now(), ended: gameEnded } });
             window.__arZombies = () => _zombies.filter(z => z && z.hp > 0).map(z => [z.x, z.y]);
             window.__arMe = () => [predX, predY];
+            window.__arStructs = () => _structs.map(s => ({ ...s }));   // PvE barricades as the client has them
+            window.__arBar = () => ({ inv: _bar.inv, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins });
             window.__arObs = () => _obstacles; // the obstacles as the client has them (map sprites tests)
             window.__arIS = () => _IS; // the other players as last rendered (interpolation)
             window.__arBullets = () => { const o = [], bl = _IS.bullets, age = _IS.bulletAge || 0; if (bl) for (const b of bl) { if (b.ownerId !== socket.id) o.push(b.id, b.x + b.dx * age, b.y + b.dy * age); } return o; }; // enemy bullets as drawn (id, x, y)
@@ -3763,7 +3882,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const now = performance.now();
             const len = Math.sqrt(data.vector.x ** 2 + data.vector.y ** 2);
             if (len > 0) { shootDir.x = data.vector.x / len; shootDir.y = -data.vector.y / len; }
-            if (!isShooting) {
+            if (!isShooting && !_bar.place) {   // with the barricade ghost out the stick only aims it
                 if (_shootMustRelease && _clientHasReleased && ammoState.ammo > 0) {
                     _shootMustRelease = false;
                     _clientHasReleased = false;
@@ -3824,6 +3943,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
         const k = e.key.toLowerCase();
         if (k === 'r' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { _tryReload(); return; }
+        if (_gameMode === 'pve' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (k === '1') { _barPlaceMode(); return; }
+            if (k === 'escape' && _bar.place) { _barPlaceMode(false); return; }
+            if (k === 'e') { _barUse(); return; }
+        }
         if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) {
             e.preventDefault();
             keysHeld.add(k);
@@ -3858,6 +3982,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     };
     const onPointerDown = (e) => {
         if (e.pointerType !== 'mouse' || e.button !== 0 || gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
+        if (_bar.place) { _barPlace(); return; }   // the ghost is out: the click places it, nothing is fired
         _aimActive = true;
         _clientHasReleased = ammoState.ammo > 0 ? false : _clientHasReleased;
         if (ammoState.ammo > 0) _shootMustRelease = false;
@@ -4387,6 +4512,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const k in _obsShake) delete _obsShake[k];
         gameControl.countdownEndTime = null;
         _pveHudReset();
+        _structs.length = 0; _structDying.length = 0; _bar.inv = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
         _footsteps.length = 0;
         for (const k in _footTimers) delete _footTimers[k];
         for (const k in _footSide)   delete _footSide[k];
@@ -4458,6 +4584,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
         });
         // MUNITIE: a pack of rounds (the gun's starting reserve) for a flat price, as often as the coins allow; the reserve has no ceiling
+        const bb = document.getElementById('pve-barricade-val'); if (bb) bb.textContent = 'in inventar: ' + _bar.inv;
         const rb = document.querySelector('.pve-upg-btn[data-type="reserve"]');
         if (rb) {
             rb.querySelector('.pve-upg-val').textContent = '+' + _myReservePack() + ' gloante';
@@ -4530,7 +4657,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (newMaxHp && playerMeta[socket.id]) playerMeta[socket.id].maxHp = newMaxHp;
         updatePveHud();
         updateUpgradeButtons();
-        const labels = { dmg: 'Damage +5%', spd: 'Viteza +4%', hp: 'HP Max +15', ammo: 'Incarcator +12%', reserve: 'Munitie +' + _myReservePack() };
+        const labels = { dmg: 'Damage +5%', spd: 'Viteza +4%', hp: 'HP Max +15', ammo: 'Incarcator +12%', reserve: 'Munitie +' + _myReservePack(), barricade: 'Baricada in inventar: ' + _bar.inv };
         showToast(labels[type] || 'Upgrade aplicat!');
     });
 
@@ -4562,6 +4689,37 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _ph.queued = queued || 0; _ph.slow = 0;
         if (_BB.on) ARBlackBox.event('pve-subwave', remaining);
         showToast(remaining > 0 ? 'Intariri!' : '');
+    });
+
+    // ---- barricades ----
+    socket.on('pve-inv', ({ barricade }) => {
+        _bar.inv = barricade | 0;
+        if (_bar.inv <= 0 && _bar.place) _bar.place = false;   // that was the last one
+        _barUi();
+    });
+    socket.on('struct-add', (s) => {
+        _structs.push({ id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by });
+        _pveFeed(`${s.by} a plasat o baricada`);
+    });
+    socket.on('struct-hp', (rows) => {
+        for (let i = 0; i < rows.length; i++) { const s = _structs.find(q => q.id === rows[i][0]); if (s) s.hp = rows[i][1]; }
+    });
+    socket.on('struct-upd', (u) => {
+        const s = _structs.find(q => q.id === u.id);
+        if (s) { s.t = u.t; s.hp = u.hp; s.maxHp = u.mhp; }
+        _bar.useKey = '-';   // what E does here has changed
+    });
+    socket.on('struct-del', ({ id, broke }) => {
+        const i = _structs.findIndex(q => q.id === id);
+        if (i === -1) return;
+        if (broke) _structDying.push({ s: _structs[i], t0: performance.now() });
+        _structs.splice(i, 1);
+    });
+    socket.on('struct-result', ({ ok, action, reason }) => {
+        if (!ok) { showToast(_BAR_WHY[reason] || 'Nu se poate'); return; }
+        if (action === 'repair') showToast('Baricada reparata');
+        else if (action === 'upgrade') showToast('Baricada imbunatatita');
+        // a placed one: the ghost stays out while there are more in the inventory (pve-inv says when there are none)
     });
 
     socket.on('pve-skip-status', ({ votes, total }) => {
@@ -4824,6 +4982,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; g.lineTo(S / 2 + Math.cos(a) * 17, S / 2 + Math.sin(a) * 17); }
         g.closePath(); g.fill(); g.stroke();
         g.fillStyle = br > 0.5 ? '#46D46A' : br > 0.25 ? '#FFC72E' : '#FF4B5C'; g.beginPath(); g.arc(S / 2, S / 2, 7, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#B98A52'; g.strokeStyle = '#0F171B'; g.lineWidth = 1.5;
+        for (let i = 0; i < _structs.length; i++) {
+            const b = _structs[i], bw = (b.o ? 5 : 12), bh = (b.o ? 12 : 5);
+            g.fillRect(b.x * k - bw / 2, b.y * k - bh / 2, bw, bh); g.strokeRect(b.x * k - bw / 2, b.y * k - bh / 2, bw, bh);
+        }
         // zombies (the tanks bigger), then the team on top
         g.lineWidth = 2; g.strokeStyle = '#0F171B';
         for (let i = 0; i < _zombies.length; i++) {
@@ -5223,6 +5386,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 obs.y + _om < visTop  || obs.y - _om > visBottom) continue;
             ARArena.drawProp(ctx, obs, obs.x + _obsShakeX(_oi, _obsNow), obs.y); // cached bitmap
         }
+
+        // --- BARICADE --- (PvE: under the players and the zombies)
+        if (_gameMode === 'pve') { _barGhost(rState.players, _obsNow); _drawStructs(ctx, _lblScale, ZOOM, visLeft, visTop, visRight, visBottom, _obsNow); }
 
         // --- ZONA --- (BR only)
         if (_gameMode !== 'pve') ARArena.drawZone(ctx, visLeft, visTop, visRight, visBottom, _zone, ZOOM, _ox, _oy, _lblScale);
@@ -5752,7 +5918,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _myMeta = playerMeta[socket.id];
             const _myMaxHp = (_myMeta && _myMeta.maxHp) || 500;
             _hudBottom(!gameEnded && !_selfDead && !isSpectating, latestHp[socket.id] ?? _myMaxHp, _myMaxHp);
-            if (_gameMode === 'pve') _pveHud(rState.players, performance.now());
+            if (_gameMode === 'pve') { _pveHud(rState.players, performance.now()); _barUseTick(); }
         }
 
         // --- TIMER ZONA (screen space, proportional) --- BR only
@@ -5932,6 +6098,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
 
     _hudInit();
+    // the build slot and the prompts (onclick: assigned again on every match, never stacked)
+    {
+        const e = _barEls();
+        if (e.slot) e.slot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(); };
+        if (e.use) e.use.onclick = _barUse;
+        const ok = document.getElementById('pve-place-ok'), no = document.getElementById('pve-place-x');
+        if (ok) ok.onclick = _barPlace;
+        if (no) no.onclick = () => _barPlaceMode(false);
+        _barUi();
+    }
     if (_hb.btn) _hb.btn.addEventListener('pointerdown', _onReloadBtn);
     draw();
 }

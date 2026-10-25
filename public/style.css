@@ -3669,7 +3669,7 @@ button:disabled { cursor: not-allowed; }
 }
 
 /* toasts sit above the weapon blocks at the bottom of the match */
-.ar-toast { bottom: calc(var(--safe-b) + clamp(96px, 14vh, 132px)); }
+.ar-toast { bottom: calc(var(--safe-b) + clamp(124px, 19vh, 164px)); }   /* over the PvE prompts (E, PUNE) too */
 
 /* phones in landscape: the upgrade sheet lays its four tiles in one row; the banner slims down */
 @media (max-height: 520px) {
@@ -5112,7 +5112,7 @@ button:disabled { cursor: not-allowed; }
 .pve-upg-btn.pve-upg-reserve { grid-column: 1 / -1; flex-direction: row; justify-content: center; gap: 12px; padding-top: clamp(6px, 1.2dvh, 10px); padding-bottom: clamp(8px, 1.4dvh, 12px); }
 
 /* ---------- Match HUD scale: --hk (game.js _hudScale) is 1 on a laptop and smaller on a phone, so the blocks keep their share of the screen ---------- */
-#hud-ping, #game-ui, #spectator-hud, #pve-team, #pve-wave, #pve-warn, #pve-right, #pve-build { zoom: var(--hk, 1); }
+#hud-ping, #game-ui, #spectator-hud, #pve-team, #pve-wave, #pve-warn, #pve-right, #pve-build, #pve-use, #pve-place-bar { zoom: var(--hk, 1); }
 #btn-reload { zoom: var(--hk-btn, 1); }   /* the reload button shrinks less: it is pressed */
 .hud-actions { zoom: var(--hk-top, 1); }   /* DBG and settings: scaled with the screen, never under 0.68 (about 30 px) */
 #set-row-leave .settings-btn { white-space: nowrap; }
@@ -5183,7 +5183,7 @@ button:disabled { cursor: not-allowed; }
 #pve-minimap { position: relative; width: 150px; height: 150px; padding: 0; overflow: hidden; border-radius: 14px; zoom: var(--hk-mm, 1); }
 #pve-minimap canvas { display: block; width: 100%; height: 100%; }
 #pve-right #pve-coins-badge { position: static; }
-#pve-feed { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; max-width: 190px; }
+#pve-feed { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; max-width: 280px; }
 .pf-item { padding: 4px 11px 6px; border: 2.5px solid var(--ink-line); border-radius: 10px; background: var(--c-slate); box-shadow: inset 0 -3px 0 var(--l-slate), 0 3px 0 rgba(0, 0, 0, .4); font-size: .78rem; font-weight: 800; text-shadow: var(--stroke-sm); color: #fff; animation: pfLife 6s forwards; }
 .pf-item.is-bad { background: #6D2B35; box-shadow: inset 0 -3px 0 #4D1B24, 0 3px 0 rgba(0, 0, 0, .4); }
 @keyframes pfLife { 0% { opacity: 0; transform: translateX(14px); } 5% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
@@ -5201,3 +5201,33 @@ button:disabled { cursor: not-allowed; }
 .pb-ic { width: 58px; height: 44px; margin-top: 3px; object-fit: contain; pointer-events: none; }
 .pb-name { font-size: .72rem; font-weight: 800; line-height: 1; }
 .pb-cost { font-style: normal; font-size: .8rem; font-weight: 800; line-height: 1; padding: 1px 8px 3px; border: 2px solid var(--ink-line); border-radius: 7px; background: var(--c-gold); color: #fff; }
+
+/* PvE barricades: the build slot, the E prompt, the placement buttons, the panel tile */
+#pve-build { pointer-events: none; }
+.pb-slot:not(.is-soon) { pointer-events: auto; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.pb-slot.is-empty { opacity: .55; }
+.pb-slot.is-on { border-color: var(--c-gold); box-shadow: inset 0 -4px 0 var(--l-slate), 0 0 0 3px rgba(255, 199, 46, .55), 0 4px 0 rgba(0, 0, 0, .45); transform: translateY(-4px); }
+.pb-n { position: absolute; right: 6px; top: 4px; font-style: normal; font-size: .72rem; font-weight: 800; color: #fff; }
+#pve-use, #pve-place-bar { position: absolute; left: 50%; bottom: calc(max(10px, var(--safe-b)) + 74px); transform: translateX(-50%); pointer-events: auto; }
+#pve-use {
+    display: flex; align-items: center; gap: 9px; padding: 5px 16px 8px 8px;
+    background: var(--c-sky); border: var(--o) solid var(--ink-line); border-radius: 999px;
+    box-shadow: inset 0 -4px 0 var(--l-sky), inset 0 2px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45);
+    color: #fff; font-weight: 800; font-size: .9rem; text-shadow: var(--stroke-sm); letter-spacing: .04em; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+#pve-use i { font-style: normal; min-width: 1.5rem; padding: 1px 6px 3px; text-align: center; background: #fff; color: #18232A; border: 2px solid var(--ink-line); border-radius: 8px; text-shadow: none; }
+#pve-use.is-bad { background: #6D2B35; box-shadow: inset 0 -4px 0 #4D1B24, 0 4px 0 rgba(0, 0, 0, .45); }
+#pve-use:active { transform: translateX(-50%) translateY(3px); }
+#pve-place-bar { display: flex; gap: 10px; }
+#pve-place-bar button {
+    min-width: 3.2rem; height: 2.7rem; padding: 0 16px 3px; display: grid; place-items: center;
+    background: var(--c-green); border: var(--o) solid var(--ink-line); border-radius: 14px;
+    box-shadow: inset 0 -4px 0 var(--l-green), inset 0 2px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45);
+    color: #fff; font-weight: 800; letter-spacing: .06em; text-shadow: var(--stroke-sm); touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+#pve-place-bar #pve-place-x { background: var(--c-red); box-shadow: inset 0 -4px 0 var(--l-red), inset 0 2px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45); }
+#pve-place-bar button:active { transform: translateY(3px); }
+#pve-place-bar .ic { width: 1.3rem; height: 1.3rem; filter: drop-shadow(0 2px 0 var(--ink-line)); }
+/* the two wide tiles of the wave-break panel sit side by side on a phone, one under the other otherwise */
+.pve-upg-btn.pve-upg-reserve { grid-column: span 2; }
+.pve-upg-barricade .pve-upg-icon { width: 2.1rem; height: 2.1rem; padding: 3px; object-fit: contain; }
