@@ -29,4 +29,13 @@ function avoidBase(zx, zy, ddx, ddy, base, r, out) {
     return out;
 }
 
-module.exports = { avoidBase, BEND };
+// What a PvE zombie goes for. Some types hunt players (`hunts`): a player within `playerRange` comes first. Then a barricade within
+// `structRange` (smaller, so it is only one that is in the way), then the base. A type that does not hunt never goes for a player.
+// Distances are to the nearest player / barricade (Infinity when there is none).
+function pickTarget(hunts, playerDist, playerRange, structDist, structRange) {
+    if (hunts && playerDist < playerRange) return 'player';
+    if (structDist < structRange) return 'struct';
+    return 'base';
+}
+
+module.exports = { avoidBase, pickTarget, BEND };

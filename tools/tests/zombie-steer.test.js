@@ -4,7 +4,7 @@
 // step, rigid push-out of the base), without the rest of the game.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { avoidBase } = require('../../zombie-steer.js');
+const { avoidBase, pickTarget } = require('../../zombie-steer.js');
 
 const BASE = { x: 1300, y: 1300, r: 85 };
 const TYPES = { normal: { r: 20, spd: 62 }, runner: { r: 16, spd: 130 }, tank: { r: 28, spd: 35 } };
@@ -65,4 +65,23 @@ test('at the wall a head-on pull becomes a slide along it', () => {
     avoidBase(BASE.x - (BASE.r + 20), BASE.y, 1, 0, BASE, 20, out);   // touching the wall, pulled straight in
     assert.ok(Math.abs(out.x) < 1e-9, 'no pull into the base is left');
     assert.ok(Math.abs(out.y) > 0.99, 'it all goes along the wall');
+});
+
+// What a zombie goes for: a player in range first (only the types that hunt), then a barricade in its smaller range, then the base
+test('a type that hunts goes for a player in range, then a barricade, then the base', () => {
+    assert.equal(pickTarget(true, 200, 320, 50, 130), 'player', 'player in range beats a barricade in range');
+    assert.equal(pickTarget(true, 400, 320, 50, 130), 'struct', 'no player in range: the barricade');
+    assert.equal(pickTarget(true, 400, 320, 200, 130), 'base', 'nothing in range: the base');
+    assert.equal(pickTarget(true, Infinity, 320, Infinity, 130), 'base', 'no player and no barricade at all');
+});
+
+test('a type that does not hunt never goes for a player, however close: a barricade, then the base', () => {
+    assert.equal(pickTarget(false, 10, 320, 50, 130), 'struct');
+    assert.equal(pickTarget(false, 10, 320, 200, 130), 'base');
+    assert.equal(pickTarget(false, 0, 320, Infinity, 130), 'base');
+});
+
+test('the barricade range is smaller than the player range, so a zombie does not turn back for one behind it', () => {
+    assert.equal(pickTarget(true, 400, 320, 131, 130), 'base');
+    assert.equal(pickTarget(true, 400, 320, 129, 130), 'struct');
 });

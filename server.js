@@ -9,7 +9,7 @@ const Passwords = require('./auth-hash');            // bcrypt (native when it l
 const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
-const { avoidBase } = require('./zombie-steer.js');
+const { avoidBase, pickTarget } = require('./zombie-steer.js');
 const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
 const ARShared = require('./public/combat-shared');
@@ -1045,9 +1045,10 @@ const PVE_WAVES = [
     [20,12, 6],
 ];
 const PVE_ZOMBIE_DEFS = {
-    normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 1, coinsMax: 3, baseDmg: 15, r: 20 },
-    runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 2, coinsMax: 3, baseDmg: 8,  r: 16 },
-    tank:   { hp: 400, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28 },
+    // hunts: goes for a player in range first (then a barricade, then the base); false = never goes for a player or hits one, only barricades and the base
+    normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 1, coinsMax: 3, baseDmg: 15, r: 20, hunts: true },
+    runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 2, coinsMax: 3, baseDmg: 8,  r: 16, hunts: true },
+    tank:   { hp: 400, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28, hunts: false },   // the siege type: walks to the base, breaks what is in the way
 };
 const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
@@ -1562,6 +1563,7 @@ function broadcastWaiting(code, room) {
 const _steerOut = { x: 0, y: 0 };
 const _stPt = { x: 0, y: 0 };
 const _stDist = { d: Infinity };   // scratch point for the barricade checks (public/structures.js)
+const _noPlayers = [];             // a type that does not hunt has no player to hit
 // The things that stop a bullet in a room: its obstacles, and in PvE the base (players and zombies were already kept
 // out of it; bullets went through). One array per room, made again only if the obstacles or the base are replaced.
 function _bulletBlockers(room) {
@@ -1944,14 +1946,17 @@ function startRoomLoop(code, room) {
                         if (d < nearestDist) { nearestDist = d; nearestPlayer = p; }
                     }
 
-                    const chasingPlayer = nearestPlayer && nearestDist < ZOMBIE_DETECT_R;
-                    // No player to chase: a barricade within its (smaller) range is dealt with before the base
+                    // Who it goes for: a player in range (only the types that hunt), else a barricade within its smaller range, else the base
                     let tgtStruct = null, tgtDist = Infinity;
-                    if (!chasingPlayer && room.structs.length) {
+                    if (room.structs.length) {
                         tgtStruct = ARStructs.nearestInRange(zombie.x, zombie.y, room.structs, ARStructs.BARRICADE.detectRange, _stDist);
                         tgtDist = _stDist.d;
                     }
-                    zombie.targetingBase = !chasingPlayer && !tgtStruct;
+                    const hunts = def.hunts !== false;
+                    const goal = pickTarget(hunts, nearestDist, ZOMBIE_DETECT_R, tgtDist, ARStructs.BARRICADE.detectRange);
+                    const chasingPlayer = goal === 'player';
+                    if (goal !== 'struct') tgtStruct = null;
+                    zombie.targetingBase = goal === 'base';
                     let targetX, targetY;
                     if (chasingPlayer) { targetX = nearestPlayer.x; targetY = nearestPlayer.y; }
                     else if (tgtStruct) { ARStructs.nearestPoint(zombie.x, zombie.y, tgtStruct, _stPt); targetX = _stPt.x; targetY = _stPt.y; }
@@ -2038,7 +2043,7 @@ function startRoomLoop(code, room) {
 
                     if (zombie.attackCooldown <= 0) {
                         let attacked = false;
-                        for (const p of alivePlayers) {
+                        for (const p of hunts ? alivePlayers : _noPlayers) {   // a type that does not hunt never hits a player
                             if (Math.hypot(p.x - zombie.x, p.y - zombie.y) < def.attackR) {
                                 p.hp -= def.dmg; p.lastDamageTime = now;
                                 zombie.attackCooldown = def.attackCd;
