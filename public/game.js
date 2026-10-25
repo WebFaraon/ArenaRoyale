@@ -4654,7 +4654,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const icon = g('hb-icon');
         const wd = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {};
         if (icon) icon.innerHTML = ARIcons.weaponHtml(wd.id || selectedWeapon || DEFAULT_WEAPON, true);
-        const L = _hb.last; L.vis = null; L.mag = L.res = L.max = L.lit = L.hp = L.hpPct = L.hpBand = -1; L.cls = '';
+        // L.cls = null (not ''): the element keeps the class the last match left on it (hb-low when it ended on a few rounds), and
+        // the first frame must write the real class over it. With '' it matched the new one and the number stayed red until the first reload.
+        const L = _hb.last; L.vis = null; L.mag = L.res = L.max = L.lit = L.hp = L.hpPct = L.hpBand = -1; L.cls = null;
         if (_hb.segs) _hb.segs.textContent = '';
         if (_hb.ping) { _hb.ping.style.display = ''; _hb.ping.className = ''; }
         if (_hb.pingMs) _hb.pingMs.textContent = '-- ms';
@@ -5096,8 +5098,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const dirX       = -Math.sin(myAngle);
             const dirY       =  Math.cos(myAngle);
             const _trajWd   = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON];
-            const TRAJ_START = ARShared.LEGACY_MUZZLE;
-            const TRAJ_END   = ARShared.LEGACY_MUZZLE + _trajWd.bulletSpeed * _trajWd.bulletLife;
+            // The pellets leave from the muzzle (the player's centre + dir * muzzleDist) and fly straight for speed * life, each at its own
+            // angle (the same numbers as the shot spawn below and the server's), so the guide is drawn from the muzzle too: the edge lines of the
+            // spread start there, and the arc at their ends is centred on the muzzle, not on the player.
+            const _trajFire = _myGunFire();
+            const TRAJ_LEN  = _trajWd.bulletSpeed * _trajFire.bulletLife;
+            const _tmx = camX + dirX * _trajFire.muzzleDist, _tmy = camY + dirY * _trajFire.muzzleDist;
             ctx.save();
             ctx.lineWidth = 2.5 / ZOOM;
             if (_lineDashZoom !== ZOOM) { _lineDashZoom = ZOOM; _lineDashArr = [6 / ZOOM, 24 / ZOOM]; }
@@ -5109,24 +5115,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const _pdxL = dirX * _cosL - dirY * _sinL, _pdyL = dirX * _sinL + dirY * _cosL;
                 const _cosR = Math.cos( _tSpread / 2), _sinR = Math.sin( _tSpread / 2);
                 const _pdxR = dirX * _cosR - dirY * _sinR, _pdyR = dirX * _sinR + dirY * _cosR;
-                // Linia stanga
+                // Left edge, right edge
                 ctx.beginPath();
-                ctx.moveTo(camX + _pdxL * TRAJ_START, camY + _pdyL * TRAJ_START);
-                ctx.lineTo(camX + _pdxL * TRAJ_END,   camY + _pdyL * TRAJ_END);
+                ctx.moveTo(_tmx, _tmy);
+                ctx.lineTo(_tmx + _pdxL * TRAJ_LEN, _tmy + _pdyL * TRAJ_LEN);
                 ctx.stroke();
-                // Linia dreapta
                 ctx.beginPath();
-                ctx.moveTo(camX + _pdxR * TRAJ_START, camY + _pdyR * TRAJ_START);
-                ctx.lineTo(camX + _pdxR * TRAJ_END,   camY + _pdyR * TRAJ_END);
+                ctx.moveTo(_tmx, _tmy);
+                ctx.lineTo(_tmx + _pdxR * TRAJ_LEN, _tmy + _pdyR * TRAJ_LEN);
                 ctx.stroke();
-                // Arc la capat
+                // The arc where the pellets run out, centred on the muzzle
                 ctx.beginPath();
-                ctx.arc(camX, camY, TRAJ_END, Math.atan2(_pdyL, _pdxL), Math.atan2(_pdyR, _pdxR), false);
+                ctx.arc(_tmx, _tmy, TRAJ_LEN, Math.atan2(_pdyL, _pdxL), Math.atan2(_pdyR, _pdxR), false);
                 ctx.stroke();
             } else {
                 ctx.beginPath();
-                ctx.moveTo(camX + dirX * TRAJ_START, camY + dirY * TRAJ_START);
-                ctx.lineTo(camX + dirX * TRAJ_END,   camY + dirY * TRAJ_END);
+                ctx.moveTo(_tmx, _tmy);
+                ctx.lineTo(_tmx + dirX * TRAJ_LEN, _tmy + dirY * TRAJ_LEN);
                 ctx.stroke();
             }
             ctx.setLineDash([]);
@@ -5502,68 +5507,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             _drawLabel(ctx, String(Math.ceil(hpNow)), 8, '#ffffff', INK, 3, 'middle', barX + barW / 2, barY + barH / 2, _lblScale);
             const _wd = _WEAPON_DATA[_playerWeapons.get(player.id) || DEFAULT_WEAPON] || _WEAPON_DATA[DEFAULT_WEAPON];
             _drawBadge(ctx, _wd, barX + barW + 4, barY, barH, _lblScale);
-        }
-        ctx.imageSmoothingQuality = 'low'; // back to the default for the rest of the frame
-        // The mythic skins' pollen: moved once, drawn over the players (only the particles of the pool; none = nothing to do)
-        if (_skinPool.n) { ARSkinFx.step(_skinPool, _skinDt); ctx.setTransform(_wm); _drawSkinPollen(ctx, _skinPool, _lblScale); }
-
-        // --- COROANE --- (trees from sprites: above the players and zombies; see-through over whoever is under)
-        {
-            let _crN = 0;
-            for (let i = 0; i < _plN; i++) { _crX[_crN] = _plQx[i]; _crY[_crN] = _plQy[i]; _crR[_crN] = PLAYER_HIT_R; _crN++; }
-            for (let i = 0; i < _zVisible; i++) { const z = _zVisibleList[i]; _crX[_crN] = z.x; _crY[_crN] = z.y; _crR[_crN] = (_ZB_DEFS[z.type || 0] || _ZB_DEFS[0]).r; _crN++; }
-            for (let _oi = 0; _oi < _obstacles.length; _oi++) {
-                const obs = _obstacles[_oi];
-                if (obs.type !== 'tree') continue;
-                const _om = obs.r * 1.6 + 12;
-                if (obs.x + _om < visLeft || obs.x - _om > visRight || obs.y + _om < visTop || obs.y - _om > visBottom) continue;
-                ARArena.drawCrown(ctx, obs, obs.x + _obsShakeX(_oi, _obsNow), obs.y, dtSec, _crX, _crY, _crR, _crN);
-            }
-        }
-
-        // --- NUME + HP --- (above the crowns, so a tag is never hidden)
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        if (_gameMode === 'pve') {   // the base's bar: the player's, made bigger, over the fort
-            const _bBarW = 150, _bBarH = 20, _bBarX = _PVE_BASE.x - _bBarW / 2, _bBarY = _PVE_BASE.y - _PVE_BASE_R - 52;
-            const _bRatio = Math.max(0, Math.min(1, _pveState.baseHp / (_pveState.baseMaxHp || 1000)));
-            _drawLabel(ctx, 'BAZĂ', 14, '#66E287', INK, 4, 'alphabetic', _PVE_BASE.x, _bBarY - 10, _lblScale);
-            _drawHpBar(ctx, _bBarX, _bBarY, _bBarW, _bBarH, _bRatio, 2.5);
-            _drawLabel(ctx, String(Math.ceil(_pveState.baseHp)), 13, '#ffffff', INK, 4, 'middle', _PVE_BASE.x, _bBarY + _bBarH / 2, _lblScale);
-        }
-        for (let _qi = 0; _qi < _plN; _qi++) {
-            const player = _plQ[_qi], px = _plQx[_qi], py = _plQy[_qi];
-            const isMe = player.id === socket.id;
-            const barH = isMe ? 22 : 13;
-            const barW = isMe ? 108 : 70;
-            // Bara HP (toti jucatorii) — folosim latestHp pentru update instant, fara delay de interpolatie
-            // every bar sits 6 units above the ring (the rounds and the health of yours are in the bottom HUD)
-            const hpRatio = Math.min(1, Math.max(0, (latestHp[player.id] ?? player.hp) / player.maxHp));
-            const barX    = px - barW / 2;
-            const barY    = py - _ringR - barH - 6;
-            if (isMe) {
-                // Your own health is in the bottom HUD only: nothing over your head but the name, so the view stays clear
-                _drawLabel(ctx, player.name, 14, '#66E287', INK, 4, 'alphabetic', px, py - _ringR - 8, _lblScale);
-                continue;
-            }
-            _drawLabel(ctx, player.name, 12, '#ffffff', INK, 4, 'alphabetic', px, barY - 10, _lblScale);
-            _drawHpBar(ctx, barX, barY, barW, barH, hpRatio, 2);
-
-            // Text HP pe bara (cached label per value)
-            _drawLabel(ctx, String(Math.ceil(latestHp[player.id] ?? player.hp)), isMe ? 13 : 8, '#ffffff', INK, isMe ? 4 : 3, 'middle',
-                       barX + barW / 2, barY + barH / 2, _lblScale);
-
-            // Weapon type badge — vizibil pentru toti jucatorii (eu + altii)
-            {
-                const _wid = isMe
-                    ? (selectedWeapon || DEFAULT_WEAPON)
-                    : (_playerWeapons.get(player.id) || DEFAULT_WEAPON);
-                const _wd  = _WEAPON_DATA[_wid] || _WEAPON_DATA[DEFAULT_WEAPON];
-                const _wsz = barH;
-                const _wx  = barX + barW + 4;
-                const _wy  = barY;
-                _drawBadge(ctx, _wd, _wx, _wy, _wsz, _lblScale);
-            }
         }
         ctx.imageSmoothingQuality = 'low'; // back to the default for the rest of the frame
 
