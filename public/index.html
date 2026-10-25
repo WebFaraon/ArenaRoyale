@@ -623,20 +623,43 @@
     <!-- Reload on a touch screen (a keyboard has R) -->
     <button id="btn-reload" class="btn-reload" style="display:none" aria-label="Reincarca"><svg class="ic" aria-hidden="true"><use href="#refresh-cw"/></svg></button>
 
-    <!-- PvE top HUD wrapper -->
+    <!-- PvE HUD (game.js _pveHud): the team, the wave, a warning, the minimap, the coins, a feed, the build bar -->
     <div id="pve-top-hud" style="display:none">
-        <div id="pve-hud">
-            <div id="pve-wave-badge">WAVE <span id="pve-wave-num">0</span><span class="pve-wave-tot">/10</span></div>
-            <div class="pve-hud-sep"></div>
-            <div id="pve-base-section">
-                <span class="pve-base-label">BAZA</span>
-                <div class="pve-base-bar-outer"><div class="pve-base-bar-inner" id="pve-base-bar-inner"></div></div>
-                <span id="pve-base-hp-text">1000</span>
-            </div>
+        <div id="pve-team" class="pve-blk">
+            <div class="pt-head"><span class="pt-title">ECHIPA</span><span class="pt-kills">Eliminari <b id="pve-team-kills">0</b></span></div>
+            <div id="pve-team-rows"></div>
         </div>
-        <div id="pve-coins-badge">
-            <img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false">
-            <span id="pve-coins-num">0</span>
+        <div id="pve-wave" class="pve-blk">
+            <div class="pw-row">
+                <div class="pw-cell"><span class="pw-lbl">VALUL</span><b class="pw-num"><span id="pve-wave-num">0</span><i>/<span id="pve-wave-of">10</span></i></b></div>
+                <div class="pw-cell pw-mid"><span class="pw-lbl">ZOMBI</span><b class="pw-left"><span id="pve-left">0</span><i>/ <span id="pve-total">0</span></i></b></div>
+                <div class="pw-cell pw-base"><span class="pw-lbl">BAZA <b id="pve-base-hp-text">1000</b></span><div class="pve-base-bar-outer"><div class="pve-base-bar-inner" id="pve-base-bar-inner"></div></div></div>
+            </div>
+            <div class="pw-bar"><span id="pve-wave-fill"></span></div>
+        </div>
+        <div id="pve-warn">
+            <svg class="ic" aria-hidden="true"><use href="#triangle-alert"/></svg>
+            <b id="pve-warn-type">TANK</b><span id="pve-warn-dir">se apropie</span>
+        </div>
+        <div id="pve-right">
+            <div id="pve-minimap" class="pve-blk"><canvas id="pve-mm" width="300" height="300"></canvas></div>
+            <div id="pve-coins-badge">
+                <img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false">
+                <span id="pve-coins-num">0</span>
+            </div>
+            <div id="pve-feed"></div>
+        </div>
+        <div id="pve-build">
+            <div class="pb-slot is-soon" id="pb-barricade">
+                <i class="pb-key">1</i>
+                <img class="pb-ic" src="/images/pve/icon_barricade_wood.svg" alt="" aria-hidden="true" draggable="false">
+                <b class="pb-name">Baricada</b><em class="pb-cost">-</em>
+            </div>
+            <div class="pb-slot is-soon" id="pb-turret">
+                <i class="pb-key">2</i>
+                <img class="pb-ic" src="/images/pve/icon_turret_mg.svg" alt="" aria-hidden="true" draggable="false">
+                <b class="pb-name">Tureta</b><em class="pb-cost">-</em>
+            </div>
         </div>
     </div>
 

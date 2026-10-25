@@ -3907,6 +3907,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         window.removeEventListener('resize', _hudScale);
         document.documentElement.style.removeProperty('--hk');
         document.documentElement.style.removeProperty('--hk-btn');
+        document.documentElement.style.removeProperty('--hk-top');
+        document.documentElement.style.removeProperty('--hk-mm');
         moveDir.x = 0; moveDir.y = 0;
         isShooting = false;
         aimStartTime = null;
@@ -4026,6 +4028,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 if (_zPrevHp < 0) { _zb.x = _zb.sx; _zb.y = _zb.sy; _zb.angle = _zb.sa; }
                 _zb.hp = zArr[_zi + 4];
                 _zb.type = zArr[_zi + 5] || 0;
+                if (_zb.type === 2 && _zPrevHp < 0 && _gameMode === 'pve') _pveWarnTank(_zb.sx, _zb.sy);   // a tank has come into the packet
                 _zb.seen = _zGen;
                 if (_zPrevHp > 0 && _zPrevHp - _zb.hp > 0.5) {
                     hitEffects.push({ x: _zb.sx, y: _zb.sy, life: 2.0 });
@@ -4201,6 +4204,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ? `${victimName} a fost eliminat de zona`
             : `${killerName} l-a eliminat pe ${victimName}`;
         killFeedEl.appendChild(entry);
+        if (_gameMode === 'pve') _pveFeed(`${victimName} a cazut`, true);
         setTimeout(() => { if (entry.parentNode) entry.parentNode.removeChild(entry); }, 4000);
         while (killFeedEl.children.length > 5) killFeedEl.removeChild(killFeedEl.firstChild);
     });
@@ -4382,6 +4386,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _coinDrops.clear(); _coinFx.length = 0;
         for (const k in _obsShake) delete _obsShake[k];
         gameControl.countdownEndTime = null;
+        _pveHudReset();
         _footsteps.length = 0;
         for (const k in _footTimers) delete _footTimers[k];
         for (const k in _footSide)   delete _footSide[k];
@@ -4529,7 +4534,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         showToast(labels[type] || 'Upgrade aplicat!');
     });
 
-    socket.on('pve-wave-start', ({ wave, total, batches }) => {
+    socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued }) => {
+        _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0;
+        const _of = document.getElementById('pve-wave-of'); if (_of && total) _of.textContent = total;
         if (_BB.on) ARBlackBox.event('wave-start', wave);   // the server puts everyone back by the base here: a jump, by design
         _waveStartAt = performance.now();
         _pveState.waveBreak = false;
@@ -4551,7 +4558,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         showToast(`WAVE ${wave} / ${total}`);
     });
 
-    socket.on('pve-subwave', ({ remaining }) => {
+    socket.on('pve-subwave', ({ remaining, queued }) => {
+        _ph.queued = queued || 0; _ph.slow = 0;
         if (_BB.on) ARBlackBox.event('pve-subwave', remaining);
         showToast(remaining > 0 ? 'Intariri!' : '');
     });
@@ -4643,6 +4651,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const st = document.documentElement.style;
         st.setProperty('--hk', k.toFixed(3));
         st.setProperty('--hk-btn', Math.max(0.8, k).toFixed(3));   // the reload button you press stays a finger wide: it shrinks less
+        st.setProperty('--hk-top', Math.max(0.68, k).toFixed(3));  // DBG and settings in the corner: in proportion, about 30 px at the smallest
+        st.setProperty('--hk-mm', (Math.max(0.68, k) / k).toFixed(3));   // the PvE minimap sits in an already scaled column: this brings it up to 0.68 (about 100 px)
     }
     function _hudInit() {
         _hudScale();
@@ -4708,6 +4718,130 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (hpPct !== L.hpPct) { e.hpfill.style.width = hpPct + '%'; L.hpPct = hpPct; }
         const band = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
         if (band !== L.hpBand) { e.hpbar.classList.toggle('hb-hp-mid', band === 1); e.hpbar.classList.toggle('hb-hp-low', band === 2); L.hpBand = band; }
+    }
+
+    // ---------- PvE HUD (DOM): the team, the wave, a warning, the minimap, a feed ----------
+    // Like the bottom HUD, the DOM is touched only when something it shows changes. The minimap is a small canvas redrawn ten times a second.
+    const _PVE_COLORS = ['#FF8A1F', '#1FD1A5', '#FF5A6A', '#5B9BFF', '#FFC72E', '#B070FF', '#7DE04A', '#FF7AC8'];
+    const _ph = { rows: new Map(), roster: '', kills: -1, left: -1, total: 0, queued: 0, fill: -1, of: 0, slow: 0, mm: null, mmx: null, warnAt: -1e9, warnTimer: 0,
+                  els: null, rowsEl: null };
+    const _pveColor = (id, i) => _PVE_COLORS[(((playerMeta[id] && playerMeta[id].slot) ?? i) | 0) % _PVE_COLORS.length];
+    function _pveHudReset() {
+        _ph.rows.clear(); _ph.roster = ''; _ph.kills = _ph.left = _ph.fill = _ph.of = _ph.shownTotal = -1; _ph.total = 0; _ph.queued = 0; _ph.slow = 0;
+        _ph.els = null; _ph.mm = null; _ph.warnAt = -1e9;
+        const w = document.getElementById('pve-warn'); if (w) w.classList.remove('is-on');
+        const f = document.getElementById('pve-feed'); if (f) f.textContent = '';
+        const r = document.getElementById('pve-team-rows'); if (r) r.textContent = '';
+    }
+    function _pveFeed(text, bad) {
+        const f = document.getElementById('pve-feed');
+        if (!f) return;
+        const it = document.createElement('div');
+        it.className = 'pf-item' + (bad ? ' is-bad' : '');
+        it.textContent = text;
+        f.appendChild(it);
+        setTimeout(() => { if (it.parentNode) it.parentNode.removeChild(it); }, 6000);
+        while (f.children.length > 3) f.removeChild(f.firstChild);
+    }
+    // A tank shows up at the edge of the map: say it, and from which side of you (once every 8 s, not for each one of a group)
+    function _pveWarnTank(zx, zy) {
+        const now = performance.now();
+        if (now - _ph.warnAt < 8000) return;
+        _ph.warnAt = now;
+        const ox = predX !== null ? predX : _PVE_BASE.x, oy = predY !== null ? predY : _PVE_BASE.y;
+        const dx = zx - ox, dy = zy - oy;
+        const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'din dreapta' : 'din stanga') : (dy > 0 ? 'de jos' : 'de sus');
+        const w = document.getElementById('pve-warn');
+        if (!w) return;
+        document.getElementById('pve-warn-type').textContent = 'TANK';
+        document.getElementById('pve-warn-dir').textContent = 'se apropie ' + dir;
+        w.classList.remove('is-on'); void w.offsetWidth; w.classList.add('is-on');
+        clearTimeout(_ph.warnTimer);
+        _ph.warnTimer = setTimeout(() => w.classList.remove('is-on'), 5000);
+    }
+    function _pveHudCache() {
+        const g = id => document.getElementById(id);
+        return _ph.els = { kills: g('pve-team-kills'), left: g('pve-left'), total: g('pve-total'), fill: g('pve-wave-fill'), of: g('pve-wave-of'), rows: g('pve-team-rows') };
+    }
+    // Called every frame from the draw (cheap: comparisons); players = the interpolated state's players
+    function _pveHud(players, now) {
+        const e = _ph.els || _pveHudCache();
+        if (!e.rows) return;
+        // the roster: one row per player, in slot order; rebuilt only when somebody joins or leaves
+        const ids = Object.keys(players).sort((a, b) => ((playerMeta[a] && playerMeta[a].slot) | 0) - ((playerMeta[b] && playerMeta[b].slot) | 0));
+        const key = ids.join('|');
+        if (key !== _ph.roster) {
+            _ph.roster = key; _ph.rows.clear(); e.rows.textContent = '';
+            ids.forEach((id, i) => {
+                const row = document.createElement('div'); row.className = 'pt-row' + (id === socket.id ? ' is-me' : '');
+                const dot = document.createElement('span'); dot.className = 'pt-dot'; dot.style.background = _pveColor(id, i);
+                const nm = document.createElement('span'); nm.className = 'pt-name'; nm.textContent = players[id].name || '';
+                const bar = document.createElement('span'); bar.className = 'pt-bar';
+                const fill = document.createElement('span'); fill.className = 'pt-fill'; bar.appendChild(fill);
+                const out = document.createElement('span'); out.className = 'pt-out'; out.textContent = 'ELIMINAT'; out.style.display = 'none';
+                row.append(dot, nm, bar, out); e.rows.appendChild(row);
+                _ph.rows.set(id, { row, bar, fill, out, pct: -1, band: -1, out_: null });
+            });
+        }
+        let kills = 0;
+        for (let i = 0; i < ids.length; i++) {
+            const p = players[ids[i]], r = _ph.rows.get(ids[i]);
+            kills += p.kills | 0;
+            if (!r) continue;
+            const hp = latestHp[p.id] ?? p.hp, ratio = Math.max(0, Math.min(1, hp / (p.maxHp || 1)));
+            const out = !p.alive || hp <= 0;
+            if (out !== r.out_) { r.out_ = out; r.row.classList.toggle('is-out', out); r.out.style.display = out ? '' : 'none'; }
+            const pct = Math.round(ratio * 100);
+            if (pct !== r.pct) { r.pct = pct; r.fill.style.width = pct + '%'; }
+            const band = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
+            if (band !== r.band) { r.band = band; r.bar.classList.toggle('is-mid', band === 1); r.bar.classList.toggle('is-low', band === 2); }
+        }
+        if (kills !== _ph.kills) { _ph.kills = kills; e.kills.textContent = kills; }
+        // the wave and the minimap at ten per second
+        if (now - _ph.slow < 100) return;
+        _ph.slow = now;
+        let alive = 0;
+        for (let i = 0; i < _zombies.length; i++) { const z = _zombies[i]; if (z && z.hp > 0) alive++; }
+        const left = alive + _ph.queued, total = Math.max(_ph.total, left);
+        if (left !== _ph.left) { _ph.left = left; e.left.textContent = left; }
+        if (total !== _ph.shownTotal) { _ph.shownTotal = total; e.total.textContent = total; }
+        const fp = total > 0 ? Math.round((total - left) / total * 100) : 0;
+        if (fp !== _ph.fill) { _ph.fill = fp; e.fill.style.width = fp + '%'; }
+        _pveMinimap(players);
+    }
+    function _pveMinimap(players) {
+        if (!_ph.mm) { _ph.mm = document.getElementById('pve-mm'); _ph.mmx = _ph.mm && _ph.mm.getContext('2d'); }
+        const c = _ph.mm, g = _ph.mmx;
+        if (!g) return;
+        const S = c.width, k = S / ARENA_W;
+        g.clearRect(0, 0, S, S);
+        g.fillStyle = '#2F7A3A'; g.fillRect(0, 0, S, S);
+        g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(0, 0, S, 3); g.fillRect(0, S - 3, S, 3);
+        g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.2)'; g.beginPath(); g.arc(S / 2, S / 2, 160 * k * 2.2, 0, Math.PI * 2); g.stroke();
+        // the base: a small stone hexagon, its core as green as its health
+        const br = Math.max(0, Math.min(1, _pveState.baseHp / (_pveState.baseMaxHp || 1000)));
+        g.fillStyle = '#8B97A1'; g.strokeStyle = '#0F171B'; g.lineWidth = 3; g.beginPath();
+        for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; g.lineTo(S / 2 + Math.cos(a) * 17, S / 2 + Math.sin(a) * 17); }
+        g.closePath(); g.fill(); g.stroke();
+        g.fillStyle = br > 0.5 ? '#46D46A' : br > 0.25 ? '#FFC72E' : '#FF4B5C'; g.beginPath(); g.arc(S / 2, S / 2, 7, 0, Math.PI * 2); g.fill();
+        // zombies (the tanks bigger), then the team on top
+        g.lineWidth = 2; g.strokeStyle = '#0F171B';
+        for (let i = 0; i < _zombies.length; i++) {
+            const z = _zombies[i];
+            if (!z || z.hp <= 0) continue;
+            const tank = z.type === 2;
+            g.fillStyle = tank ? '#FF8A1F' : '#FF4B5C';
+            g.beginPath(); g.arc(z.x * k, z.y * k, tank ? 6.5 : 4.2, 0, Math.PI * 2); g.fill(); g.stroke();
+        }
+        let n = 0;
+        for (const id in players) {
+            const p = players[id];
+            n++;
+            if (!p.alive || p.hp <= 0) continue;
+            g.fillStyle = _pveColor(id, n - 1);
+            g.beginPath(); g.arc(p.x * k, p.y * k, id === socket.id ? 7 : 6, 0, Math.PI * 2); g.fill();
+            g.lineWidth = id === socket.id ? 3.5 : 2.5; g.strokeStyle = id === socket.id ? '#FFFFFF' : '#0F171B'; g.stroke();
+        }
     }
 
     // ---------- INTERPOLARE STATE ----------
@@ -5618,6 +5752,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _myMeta = playerMeta[socket.id];
             const _myMaxHp = (_myMeta && _myMeta.maxHp) || 500;
             _hudBottom(!gameEnded && !_selfDead && !isSpectating, latestHp[socket.id] ?? _myMaxHp, _myMaxHp);
+            if (_gameMode === 'pve') _pveHud(rState.players, performance.now());
         }
 
         // --- TIMER ZONA (screen space, proportional) --- BR only

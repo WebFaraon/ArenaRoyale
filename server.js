@@ -1339,6 +1339,13 @@ function prepareAndSpawnWave(room, waveIndex) {
     return firstBatch.map((type, i) => createPveZombie(type, i));
 }
 
+// Zombies of the wave that are still to come (the queued batches)
+function pveQueuedCount(room) {
+    let n = 0;
+    for (const batch of room.pveSpawnQueue) n += batch.length;
+    return n;
+}
+
 function assignPveSpawnPositions(players) {
     players.forEach((p, i) => {
         const angle = (i / Math.max(players.length, 1)) * Math.PI * 2 + Math.PI / 4;
@@ -1368,7 +1375,9 @@ function startPveWave(code, room) {
         p.moveDir.x = 0; p.moveDir.y = 0;
     });
     room.zombies = prepareAndSpawnWave(room, room.pveWave - 1);
-    io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, batches: room.pveSpawnQueue.length + 1 });
+    // zombies = how many this wave brings in all, queued = the ones that have not come yet (the HUD shows "left / total": the ones on the map + queued)
+    io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, batches: room.pveSpawnQueue.length + 1,
+        zombies: room.zombies.length + pveQueuedCount(room), queued: pveQueuedCount(room) });
 }
 
 function pveVictory(code, room) {
@@ -2018,7 +2027,7 @@ function startRoomLoop(code, room) {
                         const startId   = room.zombies.length;
                         nextBatch.forEach((type, i) => room.zombies.push(createPveZombie(type, startId + i)));
                         room.pveSpawnTimer = PVE_BATCH_DELAY;
-                        io.to(code).emit('pve-subwave', { remaining: room.pveSpawnQueue.length });
+                        io.to(code).emit('pve-subwave', { remaining: room.pveSpawnQueue.length, queued: pveQueuedCount(room) });
                     }
                 }
 
