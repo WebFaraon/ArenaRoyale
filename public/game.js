@@ -2426,39 +2426,50 @@ function _drawHpBar(ctx, x, y, w, h, ratio, ol) {
 // The bars of the zombies that are hurt: the player's bar made small (an ink frame round a sunk track, the fill a
 // small toy block with its lip and bevel). A zombie at full health has none. All of them together cost a few fills:
 // the frames, the tracks, then the lip and the face of each colour, then the bevels.
-const _ZBAR_H = 6, _ZBAR_OL = 1.6;
+const _ZBAR_H = 6, _ZBAR_OL = 1.6, _ZBAR_H_BIG = 8;   // the heavy ones (tank, brute, summoner) get a wider, taller bar with the number on it: they have so much health that a hit moved the small bar by a fraction of a pixel
 let _zHpMul = 1;   // the health the wave's zombies have grown to (server: pve-wave-start hpMul); the minions do not grow (def.noScale)
 const _zMaxHp = (def) => def.noScale ? def.maxHp : def.maxHp * _zHpMul;
-const _zbX = [], _zbY = [], _zbW = [], _zbF = [], _zbBand = [];
+const _zbX = [], _zbY = [], _zbW = [], _zbF = [], _zbH = [], _zbBand = [];
 function _drawZombieBars(ctx, list, n, defs) {
-    const h = _ZBAR_H, ol = _ZBAR_OL, rad = h * 0.45;
+    const ol = _ZBAR_OL;
+    let big = 0;
     for (let i = 0; i < n; i++) {
         const z = list[i], def = defs[z.type || 0] || defs[0];
-        const ratio = Math.max(0, Math.min(1, z.hp / _zMaxHp(def))), w = Math.max(24, def.r * 1.6);
-        _zbW[i] = w; _zbX[i] = z.x - w / 2; _zbY[i] = z.y - def.r - 12 - h;
+        const ratio = Math.max(0, Math.min(1, z.hp / _zMaxHp(def))), hv = !!def.heavy, w = hv ? Math.max(48, def.r * 2.4) : Math.max(24, def.r * 1.6), h = hv ? _ZBAR_H_BIG : _ZBAR_H;
+        if (hv) big++;
+        _zbW[i] = w; _zbH[i] = h; _zbX[i] = z.x - w / 2; _zbY[i] = z.y - def.r - 12 - h;
         _zbF[i] = Math.max(1.5, w * ratio);
         _zbBand[i] = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
     }
     ctx.beginPath();
-    for (let i = 0; i < n; i++) ctx.roundRect(_zbX[i] - ol, _zbY[i] - ol, _zbW[i] + ol * 2, h + ol * 2, rad + ol);
+    for (let i = 0; i < n; i++) ctx.roundRect(_zbX[i] - ol, _zbY[i] - ol, _zbW[i] + ol * 2, _zbH[i] + ol * 2, _zbH[i] * 0.45 + ol);
     ctx.fillStyle = INK; ctx.fill();
     ctx.beginPath();
-    for (let i = 0; i < n; i++) ctx.roundRect(_zbX[i], _zbY[i], _zbW[i], h, rad);
+    for (let i = 0; i < n; i++) ctx.roundRect(_zbX[i], _zbY[i], _zbW[i], _zbH[i], _zbH[i] * 0.45);
     ctx.fillStyle = '#1B252C'; ctx.fill();
     const bands = [TOY.green, TOY.gold, TOY.red];
     for (let b = 0; b < 3; b++) {
         let any = false;
         ctx.beginPath();
-        for (let i = 0; i < n; i++) if (_zbBand[i] === b) { ctx.roundRect(_zbX[i], _zbY[i], _zbF[i], h, rad); any = true; }
+        for (let i = 0; i < n; i++) if (_zbBand[i] === b) { ctx.roundRect(_zbX[i], _zbY[i], _zbF[i], _zbH[i], _zbH[i] * 0.45); any = true; }
         if (!any) continue;
         ctx.fillStyle = bands[b][1]; ctx.fill();
         ctx.beginPath();
-        for (let i = 0; i < n; i++) if (_zbBand[i] === b) ctx.roundRect(_zbX[i], _zbY[i], _zbF[i], h * 0.7, [rad, rad, 1.5, 1.5]);
+        for (let i = 0; i < n; i++) if (_zbBand[i] === b) ctx.roundRect(_zbX[i], _zbY[i], _zbF[i], _zbH[i] * 0.7, [_zbH[i] * 0.45, _zbH[i] * 0.45, 1.5, 1.5]);
         ctx.fillStyle = bands[b][0]; ctx.fill();
     }
     ctx.beginPath();
-    for (let i = 0; i < n; i++) ctx.rect(_zbX[i] + h * 0.4, _zbY[i] + h * 0.12, Math.max(0, _zbF[i] - h * 0.8), Math.max(0.8, h * 0.14));
+    for (let i = 0; i < n; i++) ctx.rect(_zbX[i] + _zbH[i] * 0.4, _zbY[i] + _zbH[i] * 0.12, Math.max(0, _zbF[i] - _zbH[i] * 0.8), Math.max(0.8, _zbH[i] * 0.14));
     ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fill();
+    if (big) {   // the exact health of the heavy ones, on the bar (an ink shadow, then white: no strokeText, which is slow)
+        ctx.font = 'bold 8px Sen, Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        for (let i = 0; i < n; i++) {
+            if (_zbH[i] !== _ZBAR_H_BIG) continue;
+            const s = String(Math.ceil(list[i].hp)), cx = _zbX[i] + _zbW[i] / 2, cy = _zbY[i] + _zbH[i] / 2 + 0.5;
+            ctx.fillStyle = INK; ctx.fillText(s, cx + 0.8, cy + 0.8); ctx.fillStyle = '#FFFFFF'; ctx.fillText(s, cx, cy);
+        }
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    }
 }
 
 // Labels made before the web font arrived would keep the fallback font: redo them once it loads
@@ -3617,9 +3628,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     // the shock ring and the puddle, which spreads fast then sits and dries
                     const spread = Math.min(1, (age - f.dur) / 180);
                     ctx.globalAlpha = 0.5 * Math.min(1, a * 1.6); ctx.fillStyle = '#7DDB1E';
-                    ctx.beginPath(); ctx.ellipse(f.x1, f.y1 + 3, f.r * (0.55 + 0.45 * spread), f.r * (0.45 + 0.35 * spread), 0, 0, TAU); ctx.fill();
+                    ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r * (0.55 + 0.45 * spread), 0, TAU); ctx.fill();   // a circle, the view is from above: it ends as wide as the real splash (f.r)
                     ctx.fillStyle = '#9DFF2E'; ctx.globalAlpha = 0.45 * Math.min(1, a * 1.6);
-                    ctx.beginPath(); ctx.ellipse(f.x1, f.y1, f.r * (0.5 + 0.4 * spread), f.r * (0.4 + 0.32 * spread), 0, 0, TAU); ctx.fill();
+                    ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r * (0.5 + 0.4 * spread), 0, TAU); ctx.fill();
                     ctx.globalAlpha = 0.85 * Math.min(1, a * 1.6); ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.stroke();
                     if (age - f.dur < 320) { const w = (age - f.dur) / 320; ctx.globalAlpha = 1 - w; ctx.strokeStyle = '#C6FF3D'; ctx.lineWidth = 4 * (1 - w) + 1; ctx.beginPath(); ctx.arc(f.x1, f.y1, 10 + (f.r + 18) * w, 0, TAU); ctx.stroke(); }
                     // drops thrown up and out, falling back
@@ -3629,13 +3640,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                         for (let k = 0; k < f.bub.length; k++) {
                             const d = f.bub[k], r = d.v * t * 0.6, z = d.h * Math.sin(t / 0.75 * Math.PI);
                             ctx.globalAlpha = 1 - t / 0.75;
-                            ctx.beginPath(); ctx.arc(f.x1 + Math.cos(d.a) * r, f.y1 + Math.sin(d.a) * r * 0.7 - z, d.s * (1 - t * 0.5), 0, TAU); ctx.fill(); ctx.stroke();
+                            ctx.beginPath(); ctx.arc(f.x1 + Math.cos(d.a) * r, f.y1 + Math.sin(d.a) * r - z, d.s * (1 - t * 0.5), 0, TAU); ctx.fill(); ctx.stroke();
                         }
                     }
                     // bubbles popping on the puddle, smoke rising off it
                     ctx.globalAlpha = a; ctx.strokeStyle = 'rgba(230,255,170,.9)'; ctx.lineWidth = 1.2;
                     for (let k = 0; k < f.puff.length; k++) {
-                        const d = f.puff[k], ph = (u * 3 + d.ph) % 1, bx = f.x1 + Math.cos(d.a) * d.d, by = f.y1 + Math.sin(d.a) * d.d * 0.7;
+                        const d = f.puff[k], ph = (u * 3 + d.ph) % 1, bx = f.x1 + Math.cos(d.a) * d.d, by = f.y1 + Math.sin(d.a) * d.d;
                         ctx.beginPath(); ctx.arc(bx, by, 1.5 + 4 * ph, 0, TAU); ctx.stroke();
                         ctx.globalAlpha = a * 0.22 * (1 - ph); ctx.fillStyle = '#B9E36B'; ctx.beginPath(); ctx.arc(bx + Math.sin(ph * 6 + d.a) * 4, by - 10 - ph * 34, d.s * (0.5 + ph * 0.7), 0, TAU); ctx.fill();
                         ctx.globalAlpha = a;
@@ -3648,7 +3659,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const t = age / 1000, r = f.r;
                 // the scorch mark that stays and fades
                 const scorch = Math.max(0, 1 - Math.max(0, age - 300) / (T - 300));
-                ctx.globalAlpha = 0.3 * scorch; ctx.fillStyle = '#1A1A22'; ctx.beginPath(); ctx.ellipse(f.x0, f.y0 + 3, r * 0.75, r * 0.6, 0, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 0.3 * scorch; ctx.fillStyle = '#1A1A22'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * 0.75, 0, TAU); ctx.fill();
                 ctx.globalAlpha = 0.5 * scorch; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.setLineDash([6, 7]); ctx.stroke(); ctx.setLineDash([]);
                 if (age < 140) { const w = age / 140; ctx.globalAlpha = 1 - w; ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * (0.55 + 0.45 * w), 0, TAU); ctx.fill(); }   // the flash
                 if (age < 520) {   // the fireball: orange with a yellow heart that shrinks

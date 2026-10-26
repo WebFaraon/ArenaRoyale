@@ -1465,9 +1465,26 @@ function _coinBlockers(room) {
     for (const t of room.turrets) out.push({ x: t.x, y: t.y, r: ARStructs.TURRET.r });
     return out;
 }
-// Each turret turns to the nearest zombie in its range that it can see and fires as often as its level says; the hit is at once (a tracer is
-// all the clients get: turret-shots, one event per tick, [turret id, angle x100, zombie id] a shot)
+// What a turret fires does not land at once: the round flies at TURRET_BULLET_SPEED (what the clients draw: public/game.js _TUR_SPEED,
+// quick but not instant), so the zombie is hurt when what you see reaches it, not when it is fired. A hit waits in room._hits until
+// its time; a zombie dead by then takes nothing.
+const TURRET_BULLET_SPEED = 1800, TURRET_MUZZLE = 42;
 const _turretShots = [];
+function tickTurretHits(code, room, now) {
+    const h = room._hits;
+    let w = 0;
+    for (let i = 0; i < h.length; i++) {
+        const q = h[i];
+        if (q.at > now) { h[w++] = q; continue; }
+        const z = q.z;
+        if (!z.alive || z.hp <= 0) continue;
+        z.hp -= armoredHit(z, q.dmg);
+        if (z.hp <= 0) turretKill(code, room, z, q, now);
+    }
+    h.length = w;
+}
+// Each turret turns to the nearest zombie in its range that it can see and fires as often as its level says (turret-shots, one event per
+// tick, [turret id, angle x100, zombie id] a shot)
 function tickTurrets(code, room, dt, now) {
     _turretShots.length = 0;
     const blockers = _bulletBlockers(room);
@@ -1479,9 +1496,9 @@ function tickTurrets(code, room, dt, now) {
         if (!z) { t.cd = 0; continue; }                      // ready for the first that comes
         t.cd = Math.min(0, t.cd) + tier.cd;
         t.angle = Math.atan2(z.y - t.y, z.x - t.x);
-        z.hp -= armoredHit(z, tier.dmg);
+        const fly = Math.max(35, Math.min(170, (Math.hypot(z.x - t.x, z.y - t.y) - TURRET_MUZZLE) / TURRET_BULLET_SPEED * 1000));   // as long as the client draws it
+        room._hits.push({ at: now + fly, z, dmg: tier.dmg, ownerId: t.ownerId });
         _turretShots.push(t.id, Math.round(t.angle * 100), z.id);
-        if (z.hp <= 0) turretKill(code, room, z, t, now);
     }
     if (_turretShots.length) io.to(code).emit('turret-shots', _turretShots.slice());
 }
@@ -1689,8 +1706,8 @@ function startPveWave(code, room) {
         const angle = (i / Math.max(room._playerArr.length, 1)) * Math.PI * 2 + Math.PI / 4;
         p.x = Math.round(PVE_BASE_X + Math.cos(angle) * 240);
         p.y = Math.round(PVE_BASE_Y + Math.sin(angle) * 240);
-        // a revived player gets a full magazine and reserve; the ones who lived keep what they have (the reserve is bought between waves)
-        if (!p.alive) ARAmmo.refill(p, p.reserveStart); else ARAmmo.cancelReload(p);
+        // a revived player gets a full magazine and reserve; the ones who lived fill the magazine from the reserve they have (2/34 -> 6/30), nothing for free
+        if (!p.alive) ARAmmo.refill(p, p.reserveStart); else { ARAmmo.cancelReload(p); ARAmmo.finishReload(p); }
         p.reloadReq = false; p.lastShotTime = 0;
         p.hp = p.maxHp; p.alive = true;
         p.shooting = false; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = true;
@@ -1698,7 +1715,7 @@ function startPveWave(code, room) {
         p.moveDir.x = 0; p.moveDir.y = 0;
     });
     room.pveHpMul = pveHpMul(room.pveWave);
-    room._acid = [];
+    room._acid = []; room._hits.length = 0;
     room.zombies = prepareAndSpawnWave(room, room.pveWave - 1);
     // zombies = how many this wave brings in all, queued = the ones that have not come yet (the HUD shows "left / total": the ones on the map + queued)
     io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, hpMul: room.pveHpMul, batches: room.pveSpawnQueue.length + 1,
@@ -1765,7 +1782,7 @@ function newRoom(hostId, mode = 'br') {
         base: mode === 'pve' ? { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R } : null,
         pveWave: 0, pveWaveActive: false, pveWaveBreak: false, pveBreakTimer: 0, pveSkipVotes: new Set(),
         pveSpawnQueue: [], pveSpawnTimer: 0,
-        structs: [], turrets: [], nextStructId: 0, _structDirty: false, _structHpAt: 0,   // PvE: what the players built (barricades, turrets; ids from one counter), sent by events, not in gs2
+        structs: [], turrets: [], _hits: [], nextStructId: 0, _structDirty: false, _structHpAt: 0,   // PvE: what the players built (barricades, turrets; ids from one counter), sent by events, not in gs2
         nextSlot: 0,   // players are named by a small number in the state packet (netproto.js)
         gameStarted:     false,
         gameEnded:       false,
@@ -2006,7 +2023,7 @@ function startRoomLoop(code, room) {
                     }
                 }
 
-                if (player.hp < player.maxHp && (now - (player.lastDamageTime || 0)) > HP_REGEN_DELAY) {
+                if (room.mode !== 'pve' && player.hp < player.maxHp && (now - (player.lastDamageTime || 0)) > HP_REGEN_DELAY) {   // (in PvE only a new wave or a Health Station heals)
                     player.hp = Math.min(player.maxHp, player.hp + HP_REGEN_RATE * dt);
                 }
 
@@ -2525,6 +2542,7 @@ function startRoomLoop(code, room) {
             }
 
             if (room._structDirty && now - room._structHpAt >= 100) flushStructHp(code, room, now);
+            if (room._hits.length) tickTurretHits(code, room, now);
             if (room.turrets.length) tickTurrets(code, room, dt, now);
             if (room._turretDirty && now - (room._turretHpAt || 0) >= 100) { room._turretHpAt = now; flushTurretHp(code, room, now); }
             for (let wi = 0; wi < allPlayers.length; wi++) if (allPlayers[wi].work) tickWork(code, room, allPlayers[wi], now);
@@ -2870,7 +2888,7 @@ function triggerRematch(code, room) {
     room.pveSkipVotes.clear();
     room.pveSpawnQueue = []; room.pveSpawnTimer = 0;
     room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
-    room.structs = []; room.turrets = []; room.nextStructId = 0; room._structDirty = false;
+    room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;
     setTimeout(() => { if (rooms.has(code)) room.countdownActive = false; }, 3700);
     assignSpawnPositions(room._playerArr, room.obstacles);
     room.zombies = generateZombies(room.obstacles, room._playerArr);
@@ -3027,7 +3045,7 @@ io.on('connection', (socket) => {
             room.zombies = [];
             room.base = { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R };
             room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
-            room.structs = []; room.turrets = []; room.nextStructId = 0; room._structDirty = false;
+            room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;
         } else {
             assignSpawnPositions(room._playerArr, room.obstacles);
             room.zombies = generateZombies(room.obstacles, room._playerArr);
