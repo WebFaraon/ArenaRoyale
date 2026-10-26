@@ -46,5 +46,5 @@ test('the heavy ones do not outnumber the rest: tanks at most half of the walker
 test('the total health of a wave (without the growth of the waves) goes up a lot from the tenth wave to the last', () => {
     const health = (w) => w.reduce((a, n, k) => a + n * hp(types[k]), 0);
     assert.ok(health(waves[19]) > health(waves[9]) * 1.6, 'wave 20 is much more health than wave 10');
-    assert.ok(health(waves[19]) > 22000, 'wave 20 has over 22000 health before the growth (x2.12)');
+    assert.ok(health(waves[19]) > 17000, 'wave 20 has over 17000 health before the growth (x1.84)');
 });

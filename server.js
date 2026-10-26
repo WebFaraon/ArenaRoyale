@@ -1001,7 +1001,8 @@ const ZOMBIE_PATROL_T   = 3.5;
 // ---------- PvE ----------
 const PVE_BASE_X         = Math.round(ARENA_W / 2);
 const PVE_BASE_Y         = Math.round(ARENA_H / 2);
-const PVE_BASE_HP        = 1000;
+const PVE_BASE_HP        = 1500;
+const PVE_BASE_HEAL      = 0.25;   // between waves the base mends this share of its health (it never did, so the chip damage of every wave added up)
 const PVE_BASE_R         = 85;
 const PVE_BASE_ATTACK_R  = 95;
 const _COIN_PICK_SQ      = (PLAYER_R + PveCoins.PICK_EXTRA) ** 2;   // a PvE coin is taken within this distance of a player
@@ -1047,27 +1048,27 @@ const PVE_WAVES = [
     [14,  8,  3,  2,  2,  0,  0],
     [14,  8,  4,  3,  3,  1,  0],     // wave 8: the first brute
     [16,  8,  4,  3,  4,  1,  0],
-    [16, 10,  5,  5,  5,  2,  1],     // wave 10: the first summoner
-    [18, 10,  5,  6,  6,  3,  2],
-    [18, 12,  6,  6,  7,  3,  2],
-    [20, 12,  6,  7,  8,  4,  2],
-    [20, 14,  7,  8,  8,  4,  3],
-    [22, 14,  7,  8,  9,  5,  3],
-    [22, 16,  8,  9, 10,  5,  3],
-    [24, 16,  8, 10, 10,  6,  4],
-    [24, 18,  9, 10, 11,  6,  4],
-    [26, 18,  9, 11, 12,  7,  5],
-    [28, 20, 10, 12, 14,  8,  5],     // wave 20
+    [16,10, 4, 5, 5, 2, 1],     // wave 10: the first summoner
+    [18,10, 4, 5, 6, 2, 1],
+    [18,12, 5, 6, 6, 2, 1],
+    [20,12, 5, 6, 7, 3, 2],
+    [20,14, 6, 7, 7, 3, 2],
+    [22,14, 6, 7, 8, 3, 2],
+    [22,16, 7, 8, 8, 4, 2],
+    [24,16, 7, 8, 9, 4, 3],
+    [24,18, 8, 9, 9, 4, 3],
+    [26,18, 8, 9,10, 5, 3],
+    [28,20, 9,10,11, 6, 4],     // wave 20
 ];
-// The health of every zombie (but the minions) grows from wave 7: x1 up to wave 6, then +8% a wave (x1.32 at wave 10, x2.12 at wave 20)
-const pveHpMul = (wave) => wave <= 6 ? 1 : Math.round((1 + (wave - 6) * 0.08) * 100) / 100;
+// The health of every zombie (but the minions) grows from wave 7: x1 up to wave 6, then +6% a wave (x1.24 at wave 10, x1.84 at wave 20)
+const pveHpMul = (wave) => wave <= 6 ? 1 : Math.round((1 + (wave - 6) * 0.06) * 100) / 100;
 const PVE_ZOMBIE_DEFS = {
     // hunts: goes for a player in range first (then a barricade, then the base); false = never goes for a player or hits one, only barricades and the base
     // mass: how the zombies shove each other apart (the heavier one gives way less); heavy: a player cannot push it, it pushes the player (it is a wall to them)
     // large: keeps further from the trees on its way (zombie-nav.js); armor: taken off every hit (never below a fifth of it); noScale: does not grow with the wave
     normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 1, coinsMax: 3, baseDmg: 15, r: 20, hunts: true, mass: 1 },
     runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 2, coinsMax: 3, baseDmg: 8,  r: 16, hunts: true, mass: 0.8 },
-    tank:   { hp: 500, armor: 4, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
+    tank:   { hp: 500, armor: 3, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
     // the spitter: walks on to the base and stops as soon as something is within range (a turret first, then a player, a barricade, the base) and
     // spits acid at it, a splash that hurts what is built and the players; its range is longer than the first two turret levels (the third reaches it)
     spitter: { hp: 160, chaseSpd: 52, patrolSpd: 30, dmg: 0, attackR: 0, attackCd: 2.4, coinsMin: 3, coinsMax: 5, baseDmg: 0, r: 20, hunts: false, mass: 1,
@@ -1076,11 +1077,11 @@ const PVE_ZOMBIE_DEFS = {
     exploder: { hp: 110, chaseSpd: 120, patrolSpd: 60, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 3, coinsMax: 4, baseDmg: 0, r: 18, hunts: true, mass: 0.9,
                 explode: { r: 85, sdmg: 130, pdmg: 45, bdmg: 70, seek: 520 } },
     // the brute: slow, armoured, hits hard; goes for players and what is built
-    brute: { hp: 1100, armor: 11, chaseSpd: 44, patrolSpd: 25, dmg: 55, attackR: 72, attackCd: 1.3, coinsMin: 10, coinsMax: 14, baseDmg: 65, r: 34, hunts: true, mass: 10, heavy: true, large: true },
-    // the summoner: a big slow one that walks on to the base and brings 3 minions out every 10 s (at most 9 of its own alive)
+    brute: { hp: 900, armor: 5, chaseSpd: 44, patrolSpd: 25, dmg: 55, attackR: 72, attackCd: 1.3, coinsMin: 10, coinsMax: 14, baseDmg: 65, r: 34, hunts: true, mass: 10, heavy: true, large: true },
+    // the summoner: a big slow one that walks on to the base and brings 2 minions out every 14 s (at most 4 of its own alive; they stay when it dies)
     summoner: { hp: 500, chaseSpd: 34, patrolSpd: 20, dmg: 0, attackR: 0, attackCd: 1.5, coinsMin: 12, coinsMax: 16, baseDmg: 25, r: 30, hunts: false, mass: 8, heavy: true, large: true,
-                summon: { first: 4, every: 10, count: 3, max: 6 } },
-    minion: { hp: 300, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 16, attackR: 48, attackCd: 0.9, coinsMin: 1, coinsMax: 1, baseDmg: 10, r: 15, hunts: true, mass: 0.6 },
+                summon: { first: 6, every: 14, count: 2, max: 4 } },
+    minion: { hp: 200, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 1, coinsMax: 1, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
 };
 const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
@@ -2506,6 +2507,7 @@ function startRoomLoop(code, room) {
                             pveVictory(code, room); return;
                         }
                         room.pveWaveBreak  = true;
+                        if (room.base && room.base.hp > 0) room.base.hp = Math.min(room.base.maxHp, room.base.hp + Math.round(room.base.maxHp * PVE_BASE_HEAL));
                         room.pveBreakTimer = PVE_BREAK_DURATION;
                         room.pveSkipVotes.clear();
                         room._playerArr.forEach(p => { p.moveDir.x = 0; p.moveDir.y = 0; p.shooting = false; });
