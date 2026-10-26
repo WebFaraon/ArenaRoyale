@@ -4953,7 +4953,7 @@ button:disabled { cursor: not-allowed; }
     box-sizing: border-box;
 }
 .hb-hpbar #hb-hpfill {
-    position: absolute; left: 0; top: 0; bottom: 0; width: 100%; min-width: 22px;
+    position: absolute; left: 0; top: 0; bottom: 0; width: 100%; min-width: 3px;   /* it was 22px: a bar with almost nothing left showed far more than it had */
     border-radius: 11px;
     background: linear-gradient(to bottom, var(--f) 0 70%, var(--l) 70% 100%);
 }

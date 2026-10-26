@@ -2417,7 +2417,7 @@ function _drawHpBar(ctx, x, y, w, h, ratio, ol) {
     ctx.fillStyle = '#1B252C'; ctx.beginPath(); ctx.roundRect(x, y, w, h, h * 0.45); ctx.fill();
     if (ratio <= 0) return;
     const c = ratio > 0.5 ? TOY.green : ratio > 0.25 ? TOY.gold : TOY.red;
-    const fw = Math.max(h * 0.9, w * ratio);
+    const fw = Math.max(1.5, w * ratio);   // exactly what is left (the old minimum of a bar's height showed 12-22% on a bar with almost nothing)
     ctx.fillStyle = c[1]; ctx.beginPath(); ctx.roundRect(x, y, fw, h, h * 0.45); ctx.fill();
     ctx.fillStyle = c[0]; ctx.beginPath(); ctx.roundRect(x, y, fw, h * 0.7, [h * 0.45, h * 0.45, 2, 2]); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(x + h * 0.4, y + h * 0.12, Math.max(0, fw - h * 0.8), Math.max(1, h * 0.14));
@@ -2436,7 +2436,7 @@ function _drawZombieBars(ctx, list, n, defs) {
         const z = list[i], def = defs[z.type || 0] || defs[0];
         const ratio = Math.max(0, Math.min(1, z.hp / _zMaxHp(def))), w = Math.max(24, def.r * 1.6);
         _zbW[i] = w; _zbX[i] = z.x - w / 2; _zbY[i] = z.y - def.r - 12 - h;
-        _zbF[i] = Math.max(h * 0.9, w * ratio);
+        _zbF[i] = Math.max(1.5, w * ratio);
         _zbBand[i] = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
     }
     ctx.beginPath();
@@ -5507,7 +5507,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // The health: the number in the bar, the bar's colour by how much is left (green, gold under half, red under a quarter)
         const h = Math.max(0, Math.ceil(hp)), hm = Math.max(1, Math.round(hpMax));
         if (h !== L.hp) { e.hptxt.textContent = h; L.hp = h; }
-        const ratio = Math.min(1, h / hm), hpPct = Math.round(ratio * 100);
+        const ratio = Math.min(1, h / hm), hpPct = h > 0 ? Math.max(1, Math.round(ratio * 100)) : 0;
         if (hpPct !== L.hpPct) { e.hpfill.style.width = hpPct + '%'; L.hpPct = hpPct; }
         const band = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
         if (band !== L.hpBand) { e.hpbar.classList.toggle('hb-hp-mid', band === 1); e.hpbar.classList.toggle('hb-hp-low', band === 2); L.hpBand = band; }
@@ -5585,7 +5585,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const hp = latestHp[p.id] ?? p.hp, ratio = Math.max(0, Math.min(1, hp / (p.maxHp || 1)));
             const out = !p.alive || hp <= 0;
             if (out !== r.out_) { r.out_ = out; r.row.classList.toggle('is-out', out); r.out.style.display = out ? '' : 'none'; }
-            const pct = Math.round(ratio * 100);
+            const pct = hp > 0 ? Math.max(1, Math.round(ratio * 100)) : 0;   // alive: never 0
             if (pct !== r.pct) { r.pct = pct; r.fill.style.width = pct + '%'; }
             const band = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
             if (band !== r.band) { r.band = band; r.bar.classList.toggle('is-mid', band === 1); r.bar.classList.toggle('is-low', band === 2); }
