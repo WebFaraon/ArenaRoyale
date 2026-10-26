@@ -48,14 +48,14 @@
         placeDist: 80, placeRange: 140, useRange: 16, repairShare: 0.5, workMs: 1000,
         kinds: {
             mg: { name: 'Tureta', inv: 'turret', maxPerRoom: 6, perExtraPlayer: 3, tiers: [
-                { id: 'mg',     name: 'Mitraliera', hp: 300, total: 20, up: 0,  range: 320, cd: 0.20, dmg: 6 },
-                { id: 'twin',   name: 'Dubla',      hp: 500, total: 45, up: 25, range: 340, cd: 0.18, dmg: 10 },
-                { id: 'energy', name: 'Energie',    hp: 800, total: 90, up: 45, range: 380, cd: 0.35, dmg: 32 },
+                { id: 'mg',     name: 'Mitraliera', hp: 300, total: 20, up: 0,  range: 320, cd: 0.20, dmg: 10 },
+                { id: 'twin',   name: 'Dubla',      hp: 500, total: 45, up: 25, range: 340, cd: 0.18, dmg: 15 },
+                { id: 'energy', name: 'Energie',    hp: 800, total: 90, up: 45, range: 380, cd: 0.35, dmg: 45 },
             ] },
             tesla: { name: 'Tesla', inv: 'tesla', maxPerRoom: 2, perExtraPlayer: 1, chain: { jumps: 2, reach: 130 }, tiers: [
-                { id: 'coil',   name: 'Tesla I',   hp: 260, total: 35,  up: 0,  range: 250, cd: 0.85, dmg: 14 },
-                { id: 'arc',    name: 'Tesla II',  hp: 420, total: 80,  up: 45, range: 275, cd: 0.75, dmg: 22 },
-                { id: 'storm',  name: 'Tesla III', hp: 650, total: 150, up: 70, range: 300, cd: 0.65, dmg: 34 },
+                { id: 'coil',   name: 'Tesla I',   hp: 260, total: 35,  up: 0,  range: 250, cd: 0.85, dmg: 25 },
+                { id: 'arc',    name: 'Tesla II',  hp: 420, total: 80,  up: 45, range: 275, cd: 0.75, dmg: 37 },
+                { id: 'storm',  name: 'Tesla III', hp: 650, total: 150, up: 70, range: 300, cd: 0.65, dmg: 53 },
             ] },
             heal: { name: 'Health Station', inv: 'heal', maxPerRoom: 1, perExtraPlayer: 1, tiers: [
                 { id: 'aid',      name: 'Health I',   hp: 300, total: 25,  up: 0,  range: 130, rate: 6 },

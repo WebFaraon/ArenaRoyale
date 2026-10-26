@@ -1066,22 +1066,22 @@ const PVE_ZOMBIE_DEFS = {
     // hunts: goes for a player in range first (then a barricade, then the base); false = never goes for a player or hits one, only barricades and the base
     // mass: how the zombies shove each other apart (the heavier one gives way less); heavy: a player cannot push it, it pushes the player (it is a wall to them)
     // large: keeps further from the trees on its way (zombie-nav.js); armor: taken off every hit (never below a fifth of it); noScale: does not grow with the wave
-    normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 1, coinsMax: 3, baseDmg: 15, r: 20, hunts: true, mass: 1 },
-    runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 2, coinsMax: 3, baseDmg: 8,  r: 16, hunts: true, mass: 0.8 },
-    tank:   { hp: 500, armor: 3, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
+    normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 2, coinsMax: 4, baseDmg: 15, r: 20, hunts: true, mass: 1 },
+    runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 3, coinsMax: 5, baseDmg: 8,  r: 16, hunts: true, mass: 0.8 },
+    tank:   { hp: 500, armor: 3, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 7, coinsMax: 12, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
     // the spitter: walks on to the base and stops as soon as something is within range (a turret first, then a player, a barricade, the base) and
     // spits acid at it, a splash that hurts what is built and the players; its range is longer than the first two turret levels (the third reaches it)
-    spitter: { hp: 160, chaseSpd: 52, patrolSpd: 30, dmg: 0, attackR: 0, attackCd: 2.4, coinsMin: 3, coinsMax: 5, baseDmg: 0, r: 20, hunts: false, mass: 1,
-               ranged: { range: 270, cd: 2.4, speed: 560, splash: 44, sdmg: 24, pdmg: 24, bdmg: 18 } },
+    spitter: { hp: 160, chaseSpd: 52, patrolSpd: 30, dmg: 0, attackR: 0, attackCd: 2.4, coinsMin: 6, coinsMax: 9, baseDmg: 0, r: 20, hunts: false, mass: 1,
+               ranged: { range: 220, cd: 2.4, speed: 560, splash: 44, sdmg: 24, pdmg: 24, bdmg: 18 } },
     // the exploder: fast, goes for the nearest thing that is built or a player, and goes off on touch (a blast that hurts structures a lot); killed on the way it does not
-    exploder: { hp: 110, chaseSpd: 120, patrolSpd: 60, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 3, coinsMax: 4, baseDmg: 0, r: 18, hunts: true, mass: 0.9,
+    exploder: { hp: 110, chaseSpd: 120, patrolSpd: 60, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 6, coinsMax: 10, baseDmg: 0, r: 18, hunts: true, mass: 0.9,
                 explode: { r: 85, sdmg: 130, pdmg: 45, bdmg: 70, seek: 520 } },
     // the brute: slow, armoured, hits hard; goes for players and what is built
-    brute: { hp: 900, armor: 5, chaseSpd: 44, patrolSpd: 25, dmg: 55, attackR: 72, attackCd: 1.3, coinsMin: 10, coinsMax: 14, baseDmg: 65, r: 34, hunts: true, mass: 10, heavy: true, large: true },
+    brute: { hp: 900, armor: 5, chaseSpd: 44, patrolSpd: 25, dmg: 55, attackR: 72, attackCd: 1.3, coinsMin: 15, coinsMax: 25, baseDmg: 65, r: 34, hunts: true, mass: 10, heavy: true, large: true },
     // the summoner: a big slow one that walks on to the base and brings 2 minions out every 14 s (at most 4 of its own alive; they stay when it dies)
-    summoner: { hp: 500, chaseSpd: 34, patrolSpd: 20, dmg: 0, attackR: 0, attackCd: 1.5, coinsMin: 12, coinsMax: 16, baseDmg: 25, r: 30, hunts: false, mass: 8, heavy: true, large: true,
+    summoner: { hp: 500, chaseSpd: 34, patrolSpd: 20, dmg: 0, attackR: 0, attackCd: 1.5, coinsMin: 18, coinsMax: 28, baseDmg: 25, r: 30, hunts: false, mass: 8, heavy: true, large: true,
                 summon: { first: 6, every: 14, count: 2, max: 4 } },
-    minion: { hp: 200, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 1, coinsMax: 1, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
+    minion: { hp: 200, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 6, coinsMax: 10, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
 };
 const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
