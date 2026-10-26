@@ -10,6 +10,7 @@ const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
 const { avoidBase, avoidStructs, pickTarget, turretTarget } = require('./zombie-steer.js');
+const ZNav = require('./zombie-nav.js');              // where the PvE zombies walk: a distance field round the solid things, through walls at a price
 const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
 const ARShared = require('./public/combat-shared');
@@ -1061,7 +1062,7 @@ const PVE_ZOMBIE_DEFS = {
     // mass: how the zombies shove each other apart (the heavier one gives way less); heavy: a player cannot push it, it pushes the player (it is a wall to them)
     normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 1, coinsMax: 3, baseDmg: 15, r: 20, hunts: true, mass: 1 },
     runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 2, coinsMax: 3, baseDmg: 8,  r: 16, hunts: true, mass: 0.8 },
-    tank:   { hp: 400, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true },   // the siege type: walks to the base, breaks what is in the way
+    tank:   { hp: 400, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
 };
 const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
@@ -1416,6 +1417,7 @@ function destroyTurret(code, room, t) {
     const i = room.turrets.indexOf(t);
     if (i === -1) return;
     for (const q of room._playerArr) if (q.work && q.work.id === t.id) cancelWork(code, room, q);
+    t._gone = true;
     room.turrets.splice(i, 1);
     io.to(code).emit('turret-del', { id: t.id, broke: true });
 }
@@ -1478,6 +1480,7 @@ function destroyStruct(code, room, s) {
     const i = room.structs.indexOf(s);
     if (i === -1) return;
     for (const q of room._playerArr) if (q.work && q.work.id === s.id) cancelWork(code, room, q);
+    s._gone = true;
     room.structs.splice(i, 1);
     io.to(code).emit('struct-del', { id: s.id, broke: true });
 }
@@ -1489,6 +1492,48 @@ function flushStructHp(code, room, now) {
     const rows = [];
     for (const s of room.structs) if (s._sentHp !== Math.round(s.hp)) { s._sentHp = Math.round(s.hp); rows.push([s.id, s._sentHp]); }
     if (rows.length) io.to(code).emit('struct-hp', rows);
+}
+
+// ---------- PvE: the zombies' map (zombie-nav.js) ----------
+// One per room: the solid things (trees, rocks, the base) once, the walls the players built every 250 ms, and four distance fields: to the players
+// (small and large zombies; bounded, so it only covers the neighbourhood of the players) and to the base (the whole arena, made again only when
+// a wall changed). A large field is only made if a large zombie went looking for one lately.
+function navUpdate(room, alivePlayers, now) {
+    let st = room._nav;
+    if (!st || st.obs !== room.obstacles || st.base !== room.base) {
+        const nav = ZNav.create(ARENA_W, ARENA_H);
+        ZNav.setStatics(nav, room.obstacles, room.base);
+        st = room._nav = { nav, obs: room.obstacles, base: room.base, pS: ZNav.newField(nav), pL: ZNav.newField(nav), bS: ZNav.newField(nav), bL: ZNav.newField(nav), t: -1e9, sig: -1, wantL: true, bOk: false };
+    }
+    if (now - st.t < 250) return st;
+    st.t = now;
+    const rects = [], circles = [];
+    let sig = 0;
+    for (const b of room.structs) { rects.push({ x: b.x, y: b.y, hw: ARStructs.halfW(b), hh: ARStructs.halfH(b), hp: b.hp, ref: b }); sig = (sig * 31 + b.id * 7 + Math.round(b.hp / 200)) | 0; }
+    for (const t of room.turrets) { circles.push({ x: t.x, y: t.y, r: ARStructs.TURRET.r, hp: t.hp, ref: t }); sig = (sig * 31 + t.id * 5 + Math.round(t.hp / 200) + 1000) | 0; }
+    ZNav.setWalls(st.nav, rects, circles);
+    const base = room.base ? [{ ring: true, x: room.base.x, y: room.base.y, r0: room.base.r + 14, r1: room.base.r + 64 }] : [];
+    if (sig !== st.sig || !st.bOk) {
+        st.sig = sig; st.bOk = true;
+        ZNav.build(st.nav, false, base, 1e9, st.bS);
+        ZNav.build(st.nav, true, base, 1e9, st.bL);
+    }
+    const src = alivePlayers.map(p => ({ x: p.x, y: p.y }));
+    ZNav.build(st.nav, false, src, 36, st.pS);
+    if (st.wantL) { ZNav.build(st.nav, true, src, 36, st.pL); st.wantL = false; } else st.pL.fill(Infinity);
+    return st;
+}
+const _navOut = { x: 0, y: 0, owner: null, dist: 0 };
+// Is the straight line from (x0, y0) to (x1, y1) clear of the circles (trees, rocks), each taken `pad` bigger?
+function segClear(x0, y0, x1, y1, circles, pad) {
+    const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy;
+    for (let i = 0; i < circles.length; i++) {
+        const c = circles[i], rr = c.r + pad;
+        let t = l2 > 0 ? ((c.x - x0) * dx + (c.y - y0) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const ex = x0 + dx * t - c.x, ey = y0 + dy * t - c.y;
+        if (ex * ex + ey * ey < rr * rr) return false;
+    }
+    return true;
 }
 
 // Zombies of the wave that are still to come (the queued batches)
@@ -2095,10 +2140,13 @@ function startRoomLoop(code, room) {
 
             // Zombi AI — PvE
             if (room.mode === 'pve' && !room.countdownActive) {
-                for (const zombie of room.zombies) {
+                const nst = navUpdate(room, alivePlayers, now);
+                for (let zi = 0; zi < room.zombies.length; zi++) {   // (not for-of: a summoner adds to the list as it goes)
+                    const zombie = room.zombies[zi];
                     if (!zombie.alive) continue;
                     zombie.attackCooldown = Math.max(0, zombie.attackCooldown - dt);
                     const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
+                    const large = !!def.large;
 
                     let nearestPlayer = null, nearestDist = Infinity;
                     for (const p of alivePlayers) {
@@ -2106,10 +2154,13 @@ function startRoomLoop(code, room) {
                         if (d < nearestDist) { nearestDist = d; nearestPlayer = p; }
                     }
 
-                    // Who it goes for: a player in range (only the types that hunt), else a barricade within its smaller range, else the base
+                    // Who it goes for: a player in range (only the types that hunt), else a barricade or a turret within its range (the exploders
+                    // look further), else the base. On the way to a player or the base it follows the map (zombie-nav.js): round the trees and
+                    // the rocks, round a wall if that is short, and through the weakest wall if there is no other way: that wall it hits.
+                    const seek = ARStructs.BARRICADE.detectRange;
                     let tgtStruct = null, tgtDist = Infinity;
                     if (room.structs.length) {
-                        tgtStruct = ARStructs.nearestInRange(zombie.x, zombie.y, room.structs, ARStructs.BARRICADE.detectRange, _stDist);
+                        tgtStruct = ARStructs.nearestInRange(zombie.x, zombie.y, room.structs, seek, _stDist);
                         tgtDist = _stDist.d;
                     }
                     if (room.turrets.length) {   // a turret as near counts the same: it is hit before the base
@@ -2117,13 +2168,26 @@ function startRoomLoop(code, room) {
                         if (tt && _stDist.d < tgtDist) { tgtStruct = tt; tgtDist = _stDist.d; }
                     }
                     const hunts = def.hunts !== false;
-                    let goal = pickTarget(hunts, nearestDist, ZOMBIE_DETECT_R, tgtDist, ARStructs.BARRICADE.detectRange);
-                    if (goal === 'player' && room.structs.length) {
-                        // After a player it goes round the barricades (avoidStructs below). It is stuck when, for a full second, it has been standing
-                        // pressed against a barricade that is between it and the player (a pocket of barricades it cannot get out of, a player walled
-                        // in): then it breaks that one instead of standing there for ever. Never when it is at the player already (it hits them), when
-                        // the barricade is not in the way (just a crowd of zombies in front of it), or once the player has moved off from where they
-                        // were when it gave up (the way may be open now).
+                    let goal = pickTarget(hunts, nearestDist, ZOMBIE_DETECT_R, tgtDist, seek);
+                    const baseD = room.base ? Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) : 1e9;
+                    let navUsed = false, navX = 0, navY = 0;
+                    if (nst && (goal === 'player' || goal === 'base')) {
+                        const f = goal === 'player' ? (large ? nst.pL : nst.pS) : (large ? nst.bL : nst.bS);
+                        if (large && goal === 'player') nst.wantL = true;
+                        if (ZNav.steer(nst.nav, f, large, zombie.x, zombie.y, 3, _navOut)) {
+                            navUsed = true;
+                            const w = _navOut.owner;
+                            if (w && !w._gone) { tgtStruct = w; tgtDist = builtDist(zombie.x, zombie.y, w); goal = 'struct'; }   // the way is through this wall
+                            else {
+                                // the furthest step of the way that it can walk straight to (nothing solid in between: a waypoint past the corner of a tree would press it into the tree)
+                                navX = _navOut.px[0]; navY = _navOut.py[0];
+                                for (let k = _navOut.n - 1; k > 0; k--) { if (segClear(zombie.x, zombie.y, _navOut.px[k], _navOut.py[k], room.obstacles, def.r + 3)) { navX = _navOut.px[k]; navY = _navOut.py[k]; break; } }
+                            }
+                        }
+                    }
+                    if (goal === 'player' && !navUsed && room.structs.length) {
+                        // No map here (a zombie shut in, or no field yet): after a player it goes round the barricades (avoidStructs below). It is stuck when, for
+                        // a full second, it has been standing pressed against a barricade that is between it and the player: then it breaks that one instead.
                         zombie._chkT = (zombie._chkT || 0) + dt;
                         if (nearestDist <= def.attackR + 6) { zombie._stuck = 0; zombie._chkT = 0; }
                         else if (zombie._chkT >= 0.5) {
@@ -2143,43 +2207,48 @@ function startRoomLoop(code, room) {
                     if (goal !== 'struct') tgtStruct = null;
                     zombie.targetingBase = goal === 'base';
                     let targetX, targetY;
-                    if (chasingPlayer) { targetX = nearestPlayer.x; targetY = nearestPlayer.y; }
+                    if (chasingPlayer) { if (navUsed && nearestDist > 110) { targetX = navX; targetY = navY; } else { targetX = nearestPlayer.x; targetY = nearestPlayer.y; } }
                     else if (tgtStruct) { builtNearestPoint(zombie.x, zombie.y, tgtStruct, _stPt); targetX = _stPt.x; targetY = _stPt.y; }
+                    else if (navUsed && room.base && baseD > room.base.r + def.r + 75) { targetX = navX; targetY = navY; }
                     else { targetX = PVE_BASE_X; targetY = PVE_BASE_Y; }
-                    const speed   = tgtStruct && tgtDist <= def.r + 6 ? 0 : def.chaseSpd;   // against the barricade it stands and hits
+                    const speed = tgtStruct && tgtDist <= def.r + 6 ? 0 : def.chaseSpd;   // against the barricade it stands and hits
 
                     let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
                     const dLen = Math.hypot(ddx, ddy);
                     if (dLen > 0) { ddx /= dLen; ddy /= dLen; }
 
-                    // chasing a player: the base is an obstacle to get round (going for the base itself, it is the goal)
-                    if (chasingPlayer && room.base) { avoidBase(zombie.x, zombie.y, ddx, ddy, room.base, def.r, _steerOut); ddx = _steerOut.x; ddy = _steerOut.y; }
-                    // ... and so are the barricades (it only breaks one that is in its way when nothing else leads to the target)
-                    if (!chasingPlayer && zombie._ring) { zombie._ring.sense = 0; zombie._ring.sid = 0; zombie._ring.n = 0; }
-                    if (chasingPlayer && room.structs.length) { avoidStructs(zombie.x, zombie.y, ddx, ddy, targetX, targetY, room.structs, def.r, _steerOut, zombie._ring || (zombie._ring = { sense: 0, sid: 0, n: 0 })); ddx = _steerOut.x; ddy = _steerOut.y; }
-
-                    for (const obs of room.obstacles) {
-                        const _ox = zombie.x - obs.x, _oy = zombie.y - obs.y;
-                        const influence = obs.r + def.r + 55;
-                        const _oSq = _ox*_ox + _oy*_oy;
-                        if (_oSq >= influence*influence) continue;
-                        const od = Math.sqrt(_oSq);
-                        if (od > 0) {
-                            const str = (influence - od) / influence;
-                            ddx += _ox / od * str * 2.8;
-                            ddy += _oy / od * str * 2.8;
+                    if (!navUsed) {
+                        // chasing a player: the base is an obstacle to get round (going for the base itself, it is the goal)
+                        if (chasingPlayer && room.base) { avoidBase(zombie.x, zombie.y, ddx, ddy, room.base, def.r, _steerOut); ddx = _steerOut.x; ddy = _steerOut.y; }
+                        // ... and so are the barricades (it only breaks one that is in its way when nothing else leads to the target)
+                        if (!chasingPlayer && zombie._ring) { zombie._ring.sense = 0; zombie._ring.sid = 0; zombie._ring.n = 0; }
+                        if (chasingPlayer && room.structs.length) { avoidStructs(zombie.x, zombie.y, ddx, ddy, targetX, targetY, room.structs, def.r, _steerOut, zombie._ring || (zombie._ring = { sense: 0, sid: 0, n: 0 })); ddx = _steerOut.x; ddy = _steerOut.y; }
+                    }
+                    if (!navUsed || goal === 'struct') {   // the map keeps clear of the trees already; without it (or at a wall) a tree pushes a little
+                        for (const obs of room.obstacles) {
+                            const _ox = zombie.x - obs.x, _oy = zombie.y - obs.y;
+                            const influence = obs.r + def.r + 55;
+                            const _oSq = _ox*_ox + _oy*_oy;
+                            if (_oSq >= influence*influence) continue;
+                            const od = Math.sqrt(_oSq);
+                            if (od > 0) {
+                                const str = (influence - od) / influence;
+                                ddx += _ox / od * str * 2.8;
+                                ddy += _oy / od * str * 2.8;
+                            }
                         }
                     }
-                    // A turret is round: a zombie after a player goes round it like a rock. One that is going for the turret (or the base, or a
-                    // barricade) must not be pushed off it: that push cancelled the pull at ~30 from the surface, the sum flipped sign every tick
-                    // (the zombie spun on the spot and hit only now and then) and with a crowd it never got within reach.
-                    for (let ti = 0; chasingPlayer && ti < room.turrets.length; ti++) {
+                    // A turret is round: a zombie after a player (and with no map) goes round it like a rock. One that is going for the turret (or
+                    // the base, or a barricade) must not be pushed off it: that push cancelled the pull at ~30 from the surface, the sum flipped sign
+                    // every tick (the zombie spun on the spot and hit only now and then) and with a crowd it never got within reach.
+                    for (let ti = 0; !navUsed && chasingPlayer && ti < room.turrets.length; ti++) {
                         const tu = room.turrets[ti], _tx = zombie.x - tu.x, _ty = zombie.y - tu.y;
                         const influence = ARStructs.TURRET.r + def.r + 40, _tSq = _tx * _tx + _ty * _ty;
                         if (_tSq >= influence * influence || _tSq === 0) continue;
                         const td = Math.sqrt(_tSq), str = (influence - td) / influence;
                         ddx += _tx / td * str * 2.8; ddy += _ty / td * str * 2.8;
                     }
+                    if (zombie._jit > 0) { zombie._jit -= dt; ddx = Math.cos(zombie._jA); ddy = Math.sin(zombie._jA); }   // shaken loose (see below)
 
                     const moveLen = Math.hypot(ddx, ddy);
                     if (moveLen > 0) {
@@ -2243,6 +2312,17 @@ function startRoomLoop(code, room) {
                         }
                     }
 
+                    // Stuck: following the map but not getting anywhere for half a second (a crowd, a corner the map does not know): a shove sideways for half a second
+                    zombie._sT = (zombie._sT || 0) + dt;
+                    if (zombie._sT >= 0.5) {
+                        const mv = zombie._sX === undefined ? 1e9 : Math.hypot(zombie.x - zombie._sX, zombie.y - zombie._sY);
+                        zombie._sX = zombie.x; zombie._sY = zombie.y; zombie._sT = 0;
+                        const atGoal = goal === 'player' ? nearestDist <= def.attackR + 14 : goal === 'base' ? !room.base || baseD <= room.base.r + def.r + 28 : true;
+                        if (navUsed && speed > 0 && !atGoal && !(zombie._jit > 0) && mv < def.chaseSpd * 0.5 * 0.2) {
+                            zombie._jit = 0.5; zombie._jA = zombie.angle + (Math.random() < 0.5 ? 1 : -1) * Math.PI * 0.5;
+                        }
+                    }
+
                     if (zombie.attackCooldown <= 0) {
                         let attacked = false;
                         for (const p of hunts ? alivePlayers : _noPlayers) {   // a type that does not hunt never hits a player
@@ -2262,7 +2342,7 @@ function startRoomLoop(code, room) {
                             attacked = true;
                             if (tgtStruct.hp <= 0) { if (tgtStruct.k === 't') destroyTurret(code, room, tgtStruct); else destroyStruct(code, room, tgtStruct); }
                         }
-                        if (!attacked && zombie.targetingBase && room.base && Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) < room.base.r + def.r + 8) {
+                        if (!attacked && zombie.targetingBase && room.base && baseD < room.base.r + def.r + 8) {
                             room.base.hp = Math.max(0, room.base.hp - def.baseDmg);
                             zombie.attackCooldown = def.attackCd;
                             if (room.base.hp <= 0) { pveDefeat(code, room); return; }
