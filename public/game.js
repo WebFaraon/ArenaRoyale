@@ -4848,22 +4848,20 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         return d ? d.baseCost + count * d.costInc : 999;
     }
 
-    // The cards, in the order of the ALL tab. tab: build | support | weapon. locked: not in the game yet ("IN CURAND").
-    // lvl(n): what the n levels bought so far give; tag(): the small line in the corner of the picture.
+    // The cards, in the order of the ALL tab. tab: build | support | weapon (the colour of the block too). locked: not in the game yet ("IN CURAND").
+    // lvl(n): what the n levels bought so far give; tag(): the small pill in the corner of the picture. No texts about what a thing does: the picture says it.
+    const _COIN_IMG = '/images/pickups/moneda_pve.svg';
     const _PBK_CARDS = [
-        { id: 'barricade', tab: 'build', name: 'Baricada', img: '/images/pve/icon_barricade_wood.svg', cost: () => ARStructs.BUY_COST,
-          desc: 'Opreste zombii. O pui cu 1; cu E o repari sau o urci de nivel.', tag: () => 'In inventar: ' + _bar.inv },
-        { id: 'turret', tab: 'build', name: 'Tureta', img: '/images/pve/icon_turret_mg.svg', cost: () => ARStructs.TURRET_BUY_COST,
-          desc: 'Trage singura in zombii din raza ei. O pui cu 2; cu E o repari sau o urci de nivel.', tag: () => 'In inventar: ' + _bar.invT },
-        { id: 'dmg', tab: 'weapon', name: 'Damage', ic: 'crosshair', col: 'o', desc: 'Gloantele tale lovesc mai tare: +5% pe nivel.', lvl: n => '+' + n * 5 + '%' },
-        { id: 'ammo', tab: 'weapon', name: 'Incarcator', ic: 'bolt', col: 'y', desc: 'Un incarcator mai mare: +12% gloante pe nivel.', lvl: n => '+' + n * 12 + '%' },
-        { id: 'reserve', tab: 'weapon', name: 'Munitie', ic: 'package', col: 'y', cost: () => _PVE_RESERVE_COST,
-          desc: () => 'Un pachet de ' + _myReservePack() + ' gloante pentru arma ta, de cate ori vrei.', tag: () => 'Acum: ' + (ammoState.reserve | 0) + ' gloante' },
-        { id: 'hp', tab: 'support', name: 'HP Max', ic: 'heart-pulse', col: 'r', desc: 'Mai multa viata: +15 pe nivel.', lvl: n => '+' + n * 15 },
-        { id: 'spd', tab: 'support', name: 'Viteza', ic: 'gauge', col: 's', desc: 'Alergi mai repede: +4% pe nivel.', lvl: n => '+' + n * 4 + '%' },
-        { id: 'medkit', tab: 'support', name: 'Medkit', ic: 'heart', col: 'g', locked: true, desc: 'Reface o parte din viata. Il poti folosi si pe un coechipier.' },
-        { id: 'shield', tab: 'support', name: 'Scut', ic: 'shield', col: 's', locked: true, desc: 'Viata extra care dispare prima cand esti lovit.' },
-        { id: 'mine', tab: 'build', name: 'Mina', ic: 'bomb', col: 'o', locked: true, desc: 'Explodeaza la contact si loveste zona din jur.' },
+        { id: 'barricade', tab: 'build', name: 'Baricada', img: '/images/pve/icon_barricade_wood.svg', cost: () => ARStructs.BUY_COST, tag: () => 'x' + _bar.inv },
+        { id: 'turret', tab: 'build', name: 'Tureta', img: '/images/pve/icon_turret_mg.svg', cost: () => ARStructs.TURRET_BUY_COST, tag: () => 'x' + _bar.invT },
+        { id: 'dmg', tab: 'weapon', name: 'Damage', ic: 'crosshair', lvl: n => '+' + n * 5 + '%' },
+        { id: 'ammo', tab: 'weapon', name: 'Incarcator', ic: 'bolt', lvl: n => '+' + n * 12 + '%' },
+        { id: 'reserve', tab: 'weapon', name: 'Munitie', ic: 'package', cost: () => _PVE_RESERVE_COST, tag: () => '+' + _myReservePack() },
+        { id: 'hp', tab: 'support', name: 'HP Max', ic: 'heart-pulse', lvl: n => '+' + n * 15 },
+        { id: 'spd', tab: 'support', name: 'Viteza', ic: 'gauge', lvl: n => '+' + n * 4 + '%' },
+        { id: 'medkit', tab: 'support', name: 'Medkit', ic: 'heart', locked: true },
+        { id: 'shield', tab: 'support', name: 'Scut', ic: 'shield', locked: true },
+        { id: 'mine', tab: 'build', name: 'Mina', ic: 'bomb', locked: true },
     ];
     const _pbk = { tab: 'all', cards: null, iv: 0, res: null, ready: new Set(), votes: 0, total: 1, voted: false, nextWave: 2, shownTeam: '' };
     const _$ = id => document.getElementById(id);
@@ -4874,19 +4872,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _pbk.cards = new Map();
         for (const c of _PBK_CARDS) {
             const el = document.createElement('div');
-            el.className = 'pbk-c' + (c.locked ? ' is-locked' : '');
-            el.dataset.tab = c.tab;
+            el.className = 'pbk-c is-' + c.tab + (c.locked ? ' is-locked' : '') + (_PVE_UPG_CLIENT[c.id] ? '' : ' is-big');
             const pic = c.img ? `<img src="${c.img}" alt="" aria-hidden="true" draggable="false">` : ico(c.ic);
-            el.innerHTML = `<div class="pbk-c-ic${c.col ? ' is-' + c.col : ''}">${pic}<span class="pbk-c-tag"></span></div>` +
-                `<div class="pbk-c-name">${c.name}</div><div class="pbk-c-desc"></div>` +
+            el.innerHTML = `<div class="pbk-c-ic">${pic}<span class="pbk-c-tag"></span></div><div class="pbk-c-name">${c.name}</div>` +
                 (c.locked ? `<div class="pbk-lock">${ico('lock')}IN CURAND</div>`
                     : (_PVE_UPG_CLIENT[c.id] ? '<div class="pbk-lvl"><span class="pbk-lvl-n"></span><span class="pbk-lvl-v"></span></div><div class="pbk-segs"></div>' : '') +
-                      '<button class="pbk-buy" type="button"></button>');
-            el.querySelector('.pbk-c-desc').textContent = typeof c.desc === 'function' ? c.desc() : c.desc;
+                      `<button class="pbk-buy" type="button"><img class="pic" src="${_COIN_IMG}" alt="" aria-hidden="true" draggable="false"><b></b></button>`);
             const buy = el.querySelector('.pbk-buy');
             if (buy) buy.addEventListener('click', () => window.buyUpgrade(c.id));
             host.appendChild(el);
-            _pbk.cards.set(c.id, { c, el, buy, tag: el.querySelector('.pbk-c-tag'), desc: el.querySelector('.pbk-c-desc'), segs: el.querySelector('.pbk-segs'),
+            _pbk.cards.set(c.id, { c, el, buy, cost: buy && buy.querySelector('b'), tag: el.querySelector('.pbk-c-tag'), segs: el.querySelector('.pbk-segs'),
                 lvlN: el.querySelector('.pbk-lvl-n'), lvlV: el.querySelector('.pbk-lvl-v'), buyKey: '', segKey: -1, txt: '' });
         }
         _$('pbk-tabs').addEventListener('click', e => {
@@ -4908,7 +4903,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const c = k.c;
             const tag = c.tag ? c.tag() : '';
             if (k.txt !== tag) { k.txt = tag; k.tag.textContent = tag; }
-            if (typeof c.desc === 'function') { const d = c.desc(); if (k.descTxt !== d) { k.descTxt = d; k.desc.textContent = d; } }
             if (c.locked) continue;
             const stat = _PVE_UPG_CLIENT[c.id];
             let label, cost = 0, maxed = false;
@@ -4921,15 +4915,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     k.segKey = n;
                     k.segs.textContent = '';
                     for (let i = 0; i < stat.maxUses; i++) { const s = document.createElement('span'); s.className = 'pbk-seg' + (i < n ? ' on' : ''); k.segs.appendChild(s); }
-                    k.lvlN.textContent = 'NIVEL ' + n + ' / ' + stat.maxUses;
-                    k.lvlV.textContent = n ? c.lvl(n) + ' acum' : '';
+                    k.lvlN.textContent = 'NIV ' + n + '/' + stat.maxUses;
+                    k.lvlV.textContent = n ? c.lvl(n) : '';
                 }
             } else { cost = c.cost(); label = String(cost); }
             const poor = !maxed && coins < cost;
             const key = label + (maxed ? 'm' : poor ? 'p' : 'o');
             if (k.buyKey !== key) {
                 k.buyKey = key;
-                k.buy.textContent = label;
+                k.cost.textContent = label;
                 k.buy.disabled = maxed || poor;
                 k.buy.classList.toggle('is-max', maxed);
                 k.buy.classList.toggle('is-poor', poor);
@@ -4943,7 +4937,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const s = `${_bar.inv}|${_bar.invT}|${ammoState.reserve | 0}`;
         if (el.__k === s) return;
         el.__k = s;
-        el.innerHTML = `<span class="pbk-inv-h">INVENTAR</span><span class="pbk-pill">Baricada x${_bar.inv}</span><span class="pbk-pill">Tureta x${_bar.invT}</span><span class="pbk-pill">Munitie ${ammoState.reserve | 0}</span>`;
+        el.innerHTML = `<span class="pbk-inv-h">INVENTAR</span><span class="pbk-pill"><img src="/images/pve/icon_barricade_wood.svg" alt="" draggable="false">x${_bar.inv}</span>` +
+            `<span class="pbk-pill"><img src="/images/pve/icon_turret_mg.svg" alt="" draggable="false">x${_bar.invT}</span><span class="pbk-pill">${ico('package')}${ammoState.reserve | 0}</span>`;
     }
     const _pbkMine = () => { const r = _pbk.res; if (!r) return null; for (const row of r.rows) if (row[0] === socket.id) return row; return null; };
 
@@ -4977,11 +4972,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _setHudText('pbk-st-dmg', mine ? mine[2] : 0);
         _setHudText('pbk-st-coins', mine ? mine[3] : 0);
         const mv = _$('pbk-mvp');
-        if (r && r.mvp) { mv.style.display = ''; mv.textContent = 'MVP: ' + ((playerMeta[r.mvp] && playerMeta[r.mvp].name) || '') + (r.mvp === socket.id ? ' (tu)' : ''); }
+        if (r && r.mvp) { mv.style.display = ''; _$('pbk-mvp-txt').textContent = 'MVP  ' + ((playerMeta[r.mvp] && playerMeta[r.mvp].name) || '') + (r.mvp === socket.id ? ' (tu)' : ''); }
         else mv.style.display = 'none';
         _setHudText('pbk-earned', '+' + (mine ? mine[3] : 0) + ' in acest val');
     }
-    const _PBK_ZOMBIES = [['Normali', '#7DBB45', '#0A1013'], ['Rapizi', '#B4D84A', '#0A1013'], ['Tank', '#4F7A2A', '#8B97A1']];
+    const _PBK_ZOMBIES = [['Normali', '#7DBB45', '/images/zombies/zombi.svg'], ['Rapizi', '#B4D84A', '/images/zombies/zombi_rapid.svg'], ['Tank', '#8B97A1', '/images/zombies/zombi_tanc.svg']];
     function _pbkNext(next, nextWave) {
         _setHudText('pbk-next-n', nextWave);
         const host = _$('pbk-next-rows');
@@ -4990,17 +4985,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _setHudText('pbk-next-total', total);
         for (let i = 0; i < 3; i++) {
             if (!arr[i]) continue;
+            const [lbl, col, img] = _PBK_ZOMBIES[i];
             const row = document.createElement('div'); row.className = 'pbk-nrow';
-            row.innerHTML = '<span class="pbk-ndot"></span><span class="pbk-nlbl"></span><span class="pbk-nbar"><i></i></span><span class="pbk-ncnt"></span>';
-            const [lbl, col, ring] = _PBK_ZOMBIES[i];
-            const dot = row.firstChild; dot.style.background = col; dot.style.borderColor = ring;
-            row.children[1].textContent = lbl;
+            row.innerHTML = `<img src="${img}" alt="" aria-hidden="true" draggable="false"><span class="pbk-nlbl"></span><span class="pbk-nbar"><i></i></span><span class="pbk-ncnt"></span>`;
+            row.querySelector('.pbk-nlbl').textContent = lbl;
             const fill = row.querySelector('i'); fill.style.background = col; fill.style.width = Math.round(arr[i] / total * 100) + '%';
-            row.lastChild.textContent = arr[i];
+            row.querySelector('.pbk-ncnt').textContent = arr[i];
             host.appendChild(row);
         }
-        _$('pbk-next-hint').textContent = !next ? '' : arr[2] ? 'Tank-urile sparg baricadele si turetele si merg spre baza. Pregateste-te.'
-            : nextWave >= (_pveState.totalWaves || 20) ? 'Ultimul val.' : 'Zombii vin spre jucatori si spre baza.';
     }
     function _pbkClock() {
         const left = Math.max(0, Math.ceil(_pveState.breakTimerMax - (performance.now() - _pveState.breakAt) / 1000));
@@ -5085,7 +5077,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued }) => {
-        _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0; if (total) _pveState.totalWaves = total;
+        _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0;
         const _of = document.getElementById('pve-wave-of'); if (_of && total) _of.textContent = total;
         if (_BB.on) ARBlackBox.event('wave-start', wave);   // the server puts everyone back by the base here: a jump, by design
         _waveStartAt = performance.now();
