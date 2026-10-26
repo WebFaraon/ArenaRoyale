@@ -9,7 +9,7 @@ const Passwords = require('./auth-hash');            // bcrypt (native when it l
 const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
-const { avoidBase, avoidStructs, pickTarget, turretTarget } = require('./zombie-steer.js');
+const { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets } = require('./zombie-steer.js');
 const ZNav = require('./zombie-nav.js');              // where the PvE zombies walk: a distance field round the solid things, through walls at a price
 const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
@@ -1377,7 +1377,10 @@ function prepareAndSpawnWave(room, waveIndex) {
 function structPublic(s) { return { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: Math.round(s.hp), mhp: s.maxHp, by: s.by }; }
 // Turrets (k: 't') are round and ride in room.turrets with their own events (turret-add / -hp / -upd / -del, turret-shots); the barricade
 // code above and below does not know them. What E, the work and the zombies share with the barricades goes by these helpers.
-function turretPublic(t) { return { id: t.id, x: t.x, y: t.y, t: t.t, hp: Math.round(t.hp), mhp: t.maxHp, by: t.by, a: Math.round(t.angle * 100) }; }
+function turretPublic(t) { return { id: t.id, kd: t.kd || 'mg', x: t.x, y: t.y, t: t.t, hp: Math.round(t.hp), mhp: t.maxHp, by: t.by, a: Math.round(t.angle * 100) }; }
+// What a player holds, bought and not placed yet: sent to them whole whenever it changes
+const newInv = () => ({ barricade: 0, turret: 0, tesla: 0, heal: 0 });
+const invPublic = (p) => ({ barricade: p.pveInv.barricade, turret: p.pveInv.turret, tesla: p.pveInv.tesla, heal: p.pveInv.heal });
 function findBuilt(room, id) { return room.structs.find(q => q.id === id) || room.turrets.find(q => q.id === id) || null; }
 function builtDist(x, y, s) { return s.k === 't' ? ARStructs.turretDist(x, y, s) : ARStructs.distToRect(x, y, s); }
 function builtAction(s) { return s.k === 't' ? ARStructs.turretUseAction(s) : ARStructs.useAction(s); }
@@ -1392,7 +1395,7 @@ function builtNearestPoint(zx, zy, s, out) {
     out.x = s.x + dx / d * ARStructs.TURRET.r; out.y = s.y + dy / d * ARStructs.TURRET.r;
     return out;
 }
-function builtTiers(s) { return s.k === 't' ? ARStructs.TURRET.tiers : ARStructs.BARRICADE.tiers; }
+function builtTiers(s) { return s.k === 't' ? ARStructs.turretTiers(s) : ARStructs.BARRICADE.tiers; }
 function builtUseRange(s) { return s.k === 't' ? ARStructs.TURRET.useRange : ARStructs.BARRICADE.useRange; }
 
 // A repair or an upgrade takes ARStructs.BARRICADE.workMs: the player presses E, a ring fills over the barricade, and when it is full the
@@ -1465,11 +1468,11 @@ function _coinBlockers(room) {
     for (const t of room.turrets) out.push({ x: t.x, y: t.y, r: ARStructs.TURRET.r });
     return out;
 }
-// What a turret fires does not land at once: the round flies at TURRET_BULLET_SPEED (what the clients draw: public/game.js _TUR_SPEED,
-// quick but not instant), so the zombie is hurt when what you see reaches it, not when it is fired. A hit waits in room._hits until
-// its time; a zombie dead by then takes nothing.
-const TURRET_BULLET_SPEED = 1800, TURRET_MUZZLE = 42;
-const _turretShots = [];
+// What a turret fires does not land at once: the round of a machine gun flies at TURRET_BULLET_SPEED (what the clients draw: public/game.js
+// _TUR_SPEED, quick but not instant) and the bolt of a Tesla takes TESLA_JUMP_MS to jump from a zombie to the next, so the zombie is hurt
+// when what you see reaches it, not when it is fired. A hit waits in room._hits until its time; a zombie dead by then takes nothing.
+const TURRET_BULLET_SPEED = 1800, TURRET_MUZZLE = 42, TESLA_JUMP_MS = 70;
+const _turretShots = [], _zaps = [], _chain = [];
 function tickTurretHits(code, room, now) {
     const h = room._hits;
     let w = 0;
@@ -1483,24 +1486,44 @@ function tickTurretHits(code, room, now) {
     }
     h.length = w;
 }
+// The Health Station mends the living within its range (measured from its centre) a little every tick
+function healAround(room, t, tier, dt) {
+    const rSq = tier.range * tier.range, add = tier.rate * dt;
+    for (let i = 0; i < room._playerArr.length; i++) {
+        const p = room._playerArr[i];
+        if (!p.alive || p.hp >= p.maxHp) continue;
+        const dx = p.x - t.x, dy = p.y - t.y;
+        if (dx * dx + dy * dy <= rSq) p.hp = Math.min(p.maxHp, p.hp + add);
+    }
+}
 // Each turret turns to the nearest zombie in its range that it can see and fires as often as its level says (turret-shots, one event per
-// tick, [turret id, angle x100, zombie id] a shot)
+// tick, [turret id, angle x100, zombie id] a shot). A Tesla Tower sends a bolt that jumps on from that zombie (tesla-zaps: [tower id, zombie
+// ids in the order of the chain] a bolt); a Health Station fires at nothing.
 function tickTurrets(code, room, dt, now) {
-    _turretShots.length = 0;
+    _turretShots.length = 0; _zaps.length = 0;
     const blockers = _bulletBlockers(room);
     for (let i = 0; i < room.turrets.length; i++) {
-        const t = room.turrets[i], tier = ARStructs.TURRET.tiers[t.t];
+        const t = room.turrets[i], kind = ARStructs.turretKind(t), tier = kind.tiers[t.t];
+        if (t.kd === 'heal') { healAround(room, t, tier, dt); continue; }
         t.cd -= dt;
         if (t.cd > 0) continue;
         const z = turretTarget(t.x, t.y, tier.range, room.zombies, blockers);
         if (!z) { t.cd = 0; continue; }                      // ready for the first that comes
         t.cd = Math.min(0, t.cd) + tier.cd;
         t.angle = Math.atan2(z.y - t.y, z.x - t.x);
-        const fly = Math.max(35, Math.min(170, (Math.hypot(z.x - t.x, z.y - t.y) - TURRET_MUZZLE) / TURRET_BULLET_SPEED * 1000));   // as long as the client draws it
-        room._hits.push({ at: now + fly, z, dmg: tier.dmg, ownerId: t.ownerId });
-        _turretShots.push(t.id, Math.round(t.angle * 100), z.id);
+        if (t.kd === 'tesla') {
+            chainTargets(z, room.zombies, kind.chain.reach, kind.chain.jumps, _chain);
+            const row = [t.id];
+            for (let k = 0; k < _chain.length; k++) { row.push(_chain[k].id); room._hits.push({ at: now + k * TESLA_JUMP_MS, z: _chain[k], dmg: tier.dmg, ownerId: t.ownerId }); }
+            _zaps.push(row);
+        } else {
+            const fly = Math.max(35, Math.min(170, (Math.hypot(z.x - t.x, z.y - t.y) - TURRET_MUZZLE) / TURRET_BULLET_SPEED * 1000));   // as long as the client draws it
+            room._hits.push({ at: now + fly, z, dmg: tier.dmg, ownerId: t.ownerId });
+            _turretShots.push(t.id, Math.round(t.angle * 100), z.id);
+        }
     }
     if (_turretShots.length) io.to(code).emit('turret-shots', _turretShots.slice());
+    if (_zaps.length) io.to(code).emit('tesla-zaps', _zaps.slice());
 }
 function flushTurretHp(code, room, now) {
     room._turretDirty = false;
@@ -1852,7 +1875,7 @@ function addPlayer(code, room, socket, data) {
         lastInputAt: 0, stalled: false, backlogged: false, nextKeepAt: 0,   // slow client detection (STALL_MS)
         baseMaxHp: maxHp, baseDamage: damage, baseSpeed: speed, baseAmmoMax: _ws.ammoMax,
         pveUpgrades: { dmg: 0, spd: 0, hp: 0, ammo: 0 },
-        pveInv: { barricade: 0, turret: 0 },   // PvE: what they bought and have not placed yet
+        pveInv: newInv(),   // PvE: what they bought and have not placed yet
     };
     room._playerArr.push(room.players[socket.id]);
 
@@ -2899,7 +2922,7 @@ function triggerRematch(code, room) {
         p.maxHp   = p.baseMaxHp   || p.maxHp;
         p.ammoMax = p.baseAmmoMax || p.ammoMax;
         p.pveUpgrades = { dmg: 0, spd: 0, hp: 0, ammo: 0 };
-        p.pveInv = { barricade: 0, turret: 0 }; p.work = null;
+        p.pveInv = newInv(); p.work = null;
         p.coins = 0;
         flushWeaponStats(p); // anything not saved yet from the last match
         p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0; p.rs = Missions.newRoundStats();
@@ -3055,7 +3078,7 @@ io.on('connection', (socket) => {
             p.shooting = false; p.shootCooldown = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
             p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
             p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0; p.lastInputAt = 0; p.stalled = false;
-            p.pveInv = { barricade: 0, turret: 0 }; p.work = null;
+            p.pveInv = newInv(); p.work = null;
         });
 
         const playersMeta = {};
@@ -3144,6 +3167,7 @@ io.on('connection', (socket) => {
         if (votes >= total) startPveWave(code, room);
     });
 
+    const BUILD_BUY = new Map([['barricade', 'b'], ['turret', 'mg'], ['tesla', 'tesla'], ['heal', 'heal']]);   // what the shop sells that is built: the card -> the kind
     socket.on('buy-upgrade', ({ type } = {}) => {
         const r = fastGetRoom(socket);
         if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
@@ -3157,21 +3181,14 @@ io.on('connection', (socket) => {
             socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
             return;
         }
-        if (type === 'barricade') {
-            // a new barricade goes to the inventory; it is placed later with 1 (place-struct)
-            if (p.coins < ARStructs.BUY_COST) { socket.emit('upgrade-result', { ok: false }); return; }
-            p.coins -= ARStructs.BUY_COST;
-            p.pveInv.barricade++;
-            socket.emit('pve-inv', { barricade: p.pveInv.barricade, turret: p.pveInv.turret });
-            socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
-            return;
-        }
-        if (type === 'turret') {
-            // a new turret (level 1) goes to the inventory; it is placed later with 2 (place-turret)
-            if (p.coins < ARStructs.TURRET_BUY_COST) { socket.emit('upgrade-result', { ok: false }); return; }
-            p.coins -= ARStructs.TURRET_BUY_COST;
-            p.pveInv.turret++;
-            socket.emit('pve-inv', { barricade: p.pveInv.barricade, turret: p.pveInv.turret });
+        const buyKind = BUILD_BUY.get(type);
+        if (buyKind) {
+            // a new barricade / turret / Tesla Tower / Health Station (level 1) goes to the inventory; it is placed later with 1 / 2 / 3 / 4.
+            const cost = buyKind === 'b' ? ARStructs.BUY_COST : ARStructs.turretBuyCost(buyKind);
+            if (p.coins < cost) { socket.emit('upgrade-result', { ok: false }); return; }
+            p.coins -= cost;
+            p.pveInv[type]++;
+            socket.emit('pve-inv', invPublic(p));
             socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
             return;
         }
@@ -3211,7 +3228,7 @@ io.on('connection', (socket) => {
         room.structs.push(s);
         p.pveInv.barricade--;
         io.to(code).emit('struct-add', structPublic(s));
-        socket.emit('pve-inv', { barricade: p.pveInv.barricade, turret: p.pveInv.turret });
+        socket.emit('pve-inv', invPublic(p));
         socket.emit('struct-result', { ok: true, action: 'place' });
     });
 
@@ -3224,23 +3241,23 @@ io.on('connection', (socket) => {
         if (!p || room.mode !== 'pve' || !room.gameStarted || room.gameEnded || room.countdownActive || !p.alive) return;
         const x = +data.x, y = +data.y;
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const T = ARStructs.TURRET, kd = typeof data.kd === 'string' && Object.hasOwn(T.kinds, data.kd) ? data.kd : 'mg', kind = T.kinds[kd];
         const now = Date.now();
         if (now - (p._structAt || 0) < 150) return;   // not faster than the hand can
         p._structAt = now;
         const fail = (reason) => socket.emit('struct-result', { ok: false, action: 'place', reason });
-        if (!p.pveInv || p.pveInv.turret <= 0) return fail('none');
-        const T = ARStructs.TURRET;
-        const t = { id: room.nextStructId, k: 't', x: Math.round(x), y: Math.round(y), t: 0, hp: T.tiers[0].hp, maxHp: T.tiers[0].hp, by: p.name, ownerId: p.id,
-                    angle: Math.atan2(y - PVE_BASE_Y, x - PVE_BASE_X), cd: 0.4, _sentHp: T.tiers[0].hp };   // it looks away from the base until it has a target
+        if (!p.pveInv || p.pveInv[kind.inv] <= 0) return fail('none');
+        const t = { id: room.nextStructId, k: 't', kd, x: Math.round(x), y: Math.round(y), t: 0, hp: kind.tiers[0].hp, maxHp: kind.tiers[0].hp, by: p.name, ownerId: p.id,
+                    angle: Math.atan2(y - PVE_BASE_Y, x - PVE_BASE_X), cd: 0.4, _sentHp: kind.tiers[0].hp };   // it looks away from the base until it has a target
         if (Math.hypot(p.x - t.x, p.y - t.y) > T.placeRange) return fail('far');
         const alive = room._playerArr.filter(q => q.alive);
-        const why = ARStructs.checkPlaceTurret(t, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, turrets: room.turrets, players: alive, playerR: PLAYER_R, turretCount: room.turrets.length, roomPlayers: room._playerArr.length });
+        const why = ARStructs.checkPlaceTurret(t, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, turrets: room.turrets, players: alive, playerR: PLAYER_R, roomPlayers: room._playerArr.length });
         if (why) return fail(why);
         room.nextStructId++;
         room.turrets.push(t);
-        p.pveInv.turret--;
+        p.pveInv[kind.inv]--;
         io.to(code).emit('turret-add', turretPublic(t));
-        socket.emit('pve-inv', { barricade: p.pveInv.barricade, turret: p.pveInv.turret });
+        socket.emit('pve-inv', invPublic(p));
         socket.emit('struct-result', { ok: true, action: 'place' });
     });
 

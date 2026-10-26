@@ -173,4 +173,26 @@ function turretTarget(tx, ty, range, zombies, blockers) {
     return best;
 }
 
-module.exports = { avoidBase, avoidStructs, pickTarget, turretTarget, BEND, STRUCT_BEND };
+// The chain of a Tesla bolt: after `first` (the zombie the tower aimed at) it jumps up to `jumps` times, each time to the nearest live zombie
+// within `reach` of the one it is on that it has not hit yet; it stops where there is none. The zombies come out in out[] (cleared first;
+// out.length is how many bolts, at most jumps + 1); nothing else is allocated, it runs on every shot of every tower.
+function chainTargets(first, zombies, reach, jumps, out) {
+    out.length = 0;
+    out.push(first);
+    const rSq = reach * reach;
+    for (let j = 0; j < jumps; j++) {
+        const from = out[out.length - 1];
+        let best = null, bestSq = rSq;
+        for (let i = 0; i < zombies.length; i++) {
+            const z = zombies[i];
+            if (!z.alive || z.hp <= 0 || out.indexOf(z) !== -1) continue;
+            const dx = z.x - from.x, dy = z.y - from.y, dSq = dx * dx + dy * dy;
+            if (dSq < bestSq) { best = z; bestSq = dSq; }
+        }
+        if (!best) break;
+        out.push(best);
+    }
+    return out;
+}
+
+module.exports = { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets, BEND, STRUCT_BEND };

@@ -196,8 +196,10 @@ test('E at a turret: repair when hurt, upgrade while there is a level above, not
     assert.ok(S.turretRepairCost(tur(0, 0, 1, 499, 500)) >= 1, 'at least one coin');
 });
 
+const far = (n, kd) => Array.from({ length: n }, (_, i) => ({ ...tur(100 + i * 100, 100), kd }));   // n turrets far from (1000, 1000), of a kind (none: machine gun)
+
 test('where a turret may stand: not on rocks, the base, barricades, turrets or players; the edge; six at most', () => {
-    const base = { obstacles: [], base: null, structs: [], turrets: [], players: [], playerR: 30, w: 3000, h: 3000, turretCount: 0 };
+    const base = { obstacles: [], base: null, structs: [], turrets: [], players: [], playerR: 30, w: 3000, h: 3000 };
     const t = tur(1000, 1000);
     assert.equal(S.checkPlaceTurret(t, base), null);
     assert.equal(S.checkPlaceTurret(t, { ...base, obstacles: [{ x: 1040, y: 1000, r: 20 }] }), 'blocked');
@@ -207,8 +209,8 @@ test('where a turret may stand: not on rocks, the base, barricades, turrets or p
     assert.equal(S.checkPlaceTurret(t, { ...base, turrets: [tur(1070, 1000)] }), null, 'one next to the other is fine');
     assert.equal(S.checkPlaceTurret(t, { ...base, players: [{ x: 1040, y: 1000 }] }), 'player');
     assert.equal(S.checkPlaceTurret(tur(30, 1000), base), 'edge');
-    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 6 }), 'limit');
-    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 5 }), null);
+    assert.equal(S.checkPlaceTurret(t, { ...base, turrets: far(6) }), 'limit');
+    assert.equal(S.checkPlaceTurret(t, { ...base, turrets: far(5) }), null);
 });
 
 test('the turret limit grows with the players in the room: 6 for one, 3 more for each other', () => {
@@ -216,11 +218,40 @@ test('the turret limit grows with the players in the room: 6 for one, 3 more for
     assert.equal(S.turretLimit(0), 6, 'never under the first six');
     const base = { obstacles: [], base: null, structs: [], turrets: [], players: [], playerR: 30, w: 3000, h: 3000 };
     const t = tur(1000, 1000);
-    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 6, roomPlayers: 1 }), 'limit');
-    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 6, roomPlayers: 2 }), null);
-    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 9, roomPlayers: 2 }), 'limit');
-    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 14, roomPlayers: 4 }), null);
-    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 15, roomPlayers: 4 }), 'limit');
+    assert.equal(S.checkPlaceTurret(t, { ...base, turrets: far(6), roomPlayers: 1 }), 'limit');
+    assert.equal(S.checkPlaceTurret(t, { ...base, turrets: far(6), roomPlayers: 2 }), null);
+    assert.equal(S.checkPlaceTurret(t, { ...base, turrets: far(9), roomPlayers: 2 }), 'limit');
+    assert.equal(S.checkPlaceTurret(t, { ...base, turrets: far(14), roomPlayers: 4 }), null);
+    assert.equal(S.checkPlaceTurret(t, { ...base, turrets: far(15), roomPlayers: 4 }), 'limit');
+});
+
+test('every kind has its own limit: Tesla Towers 2 and 1 more a player, Health Stations 1 and 1 more; the machine guns do not count for them', () => {
+    assert.deepEqual([1, 2, 3, 4].map(n => S.turretLimit(n, 'tesla')), [2, 3, 4, 5]);
+    assert.deepEqual([1, 2, 3, 4].map(n => S.turretLimit(n, 'heal')), [1, 2, 3, 4]);
+    assert.equal(S.turretLimit(2, 'nothing'), 9, 'an unknown kind is a machine gun');
+    const base = { obstacles: [], base: null, structs: [], playerR: 30, players: [], w: 3000, h: 3000, roomPlayers: 1 };
+    const tesla = { ...tur(1000, 1000), kd: 'tesla' }, heal = { ...tur(1000, 1000), kd: 'heal' };
+    assert.equal(S.checkPlaceTurret(tesla, { ...base, turrets: far(6) }), null, 'six machine guns leave room for a Tesla');
+    assert.equal(S.checkPlaceTurret(tesla, { ...base, turrets: far(2, 'tesla') }), 'limit');
+    assert.equal(S.checkPlaceTurret(tesla, { ...base, turrets: far(1, 'tesla') }), null);
+    assert.equal(S.checkPlaceTurret(heal, { ...base, turrets: far(1, 'heal') }), 'limit');
+    assert.equal(S.checkPlaceTurret(heal, { ...base, turrets: far(1, 'heal'), roomPlayers: 2 }), null);
+    assert.equal(S.turretCountOf([{}, { kd: 'tesla' }, { kd: 'heal' }, { kd: 'tesla' }], 'mg'), 1, 'one without a kind is a machine gun');
+});
+
+test('the Tesla Tower and the Health Station have three levels each, and repair and upgrade go by their own price tables', () => {
+    for (const kd of ['tesla', 'heal']) {
+        const k = S.TURRET.kinds[kd];
+        assert.equal(k.tiers.length, 3);
+        for (let i = 1; i < 3; i++) { assert.ok(k.tiers[i].hp > k.tiers[i - 1].hp && k.tiers[i].total > k.tiers[i - 1].total, kd + ' level ' + (i + 1) + ' is more'); assert.equal(k.tiers[i].total - k.tiers[i - 1].total, k.tiers[i].up, 'the upgrade is the difference in the price'); }
+        assert.equal(S.turretBuyCost(kd), k.tiers[0].total);
+    }
+    const tesla = { kd: 'tesla', t: 0, hp: 130, maxHp: 260 }, heal = { kd: 'heal', t: 2, hp: 700, maxHp: 700 };
+    assert.equal(S.turretRepairCost(tesla), Math.ceil(0.5 * 35 * 0.5), 'half of the health: half of half the price');
+    assert.equal(S.turretUpgradeCost({ kd: 'tesla', t: 0, hp: 260, maxHp: 260 }), 45);
+    assert.equal(S.turretUseAction(heal), null, 'the last level, whole: nothing to do');
+    assert.equal(S.turretUseAction({ ...heal, t: 1, hp: 450, maxHp: 450 }), 'upgrade');
+    assert.equal(S.turretKind({}).tiers, S.TURRET.tiers, 'the machine gun is the default kind');
 });
 
 test('a barricade is not placed on a turret either', () => {

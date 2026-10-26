@@ -232,3 +232,31 @@ test('turretTarget does not allocate or change the list', () => {
     turretTarget(0, 0, 320, z, [{ x: 50, y: 50, r: 10 }]);
     assert.equal(JSON.stringify(z), copy);
 });
+
+// ---- chainTargets: where a Tesla bolt jumps ----
+const { chainTargets } = require('../../zombie-steer.js');
+const zc = (id, x, y, hp = 100) => ({ id, x, y, hp, alive: hp > 0 });
+
+test('chainTargets: the bolt jumps to the nearest zombie within reach of the one it is on, at most `jumps` times', () => {
+    const a = zc(1, 0, 0), b = zc(2, 100, 0), c = zc(3, 200, 10), d = zc(4, 300, 20), out = [];
+    assert.deepEqual(chainTargets(a, [a, b, c, d], 130, 2, out).map(z => z.id), [1, 2, 3], 'a, b, c and not d: three bolts at most');
+    assert.deepEqual(chainTargets(a, [a, b, c, d], 130, 3, out).map(z => z.id), [1, 2, 3, 4]);
+    assert.deepEqual(chainTargets(a, [a, b, c, d], 130, 0, out).map(z => z.id), [1], 'no jumps: only the first');
+});
+
+test('chainTargets: it stops where nobody is within reach, never goes back, and picks the nearest', () => {
+    const a = zc(1, 0, 0), far = zc(2, 400, 0), out = [];
+    assert.deepEqual(chainTargets(a, [a, far], 130, 2, out).map(z => z.id), [1], 'nobody in reach: it ends there');
+    const b = zc(2, 100, 0), c = zc(3, 60, 0), d = zc(4, 0, 90);
+    assert.deepEqual(chainTargets(a, [a, b, c, d], 130, 2, out).map(z => z.id), [1, 3, 2], 'the nearest first (c at 60), then b at 40 from c; d at 90 from c is farther than b');
+    const e = zc(5, 50, 0);
+    const o2 = chainTargets(a, [a, e], 130, 5, []);
+    assert.deepEqual(o2.map(z => z.id), [1, 5], 'each zombie once: the bolt does not come back to a');
+});
+
+test('chainTargets: dead zombies are skipped, and the array is reused (no allocation per shot)', () => {
+    const a = zc(1, 0, 0), dead = zc(2, 50, 0, 0), b = zc(3, 90, 0), out = [9, 9, 9];
+    const r = chainTargets(a, [a, dead, b], 130, 2, out);
+    assert.equal(r, out, 'the same array');
+    assert.deepEqual(r.map(z => z.id), [1, 3]);
+});

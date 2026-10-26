@@ -37,19 +37,40 @@
     // it has health, zombies break it, E repairs / upgrades it like a barricade (same second of standing still). The numbers are
     // provisional: range = from its centre; cd = seconds between shots; dmg per shot. dps (30 / 55 / 91) stays under what a player does
     // with a rifle times a few, six of them being the most a room may have.
+    // The round things the players build all ride in the same list (room.turrets) and share the solid disc, the health, the zombies that break
+    // them and E: a KIND says what one does. 'mg' fires at the nearest zombie; 'tesla' fires a bolt that jumps from zombie to zombie (chain:
+    // jumps more after the first, each within reach of the one before; every bolt hits for dmg); 'heal' (the Health Station) mends the players
+    // standing within range of its centre, rate health a second. maxPerRoom is for one player, every other adds perExtraPlayer (turretLimit).
+    // The numbers of the Tesla Tower and the Health Station are provisional.
     const TURRET = {
         r: 31,
-        maxPerRoom: 6,                 // for one player; every other player in the room adds perExtraPlayer (turretLimit)
-        perExtraPlayer: 3,
         detectRange: 130,              // like the barricades: a zombie with no player to chase goes for a turret this close (to its surface)
         placeDist: 80, placeRange: 140, useRange: 16, repairShare: 0.5, workMs: 1000,
-        tiers: [
-            { id: 'mg',     name: 'Mitraliera', hp: 300, total: 20, up: 0,  range: 320, cd: 0.20, dmg: 6 },
-            { id: 'twin',   name: 'Dubla',      hp: 500, total: 45, up: 25, range: 340, cd: 0.18, dmg: 10 },
-            { id: 'energy', name: 'Energie',    hp: 800, total: 90, up: 45, range: 380, cd: 0.35, dmg: 32 },
-        ],
+        kinds: {
+            mg: { name: 'Tureta', inv: 'turret', maxPerRoom: 6, perExtraPlayer: 3, tiers: [
+                { id: 'mg',     name: 'Mitraliera', hp: 300, total: 20, up: 0,  range: 320, cd: 0.20, dmg: 6 },
+                { id: 'twin',   name: 'Dubla',      hp: 500, total: 45, up: 25, range: 340, cd: 0.18, dmg: 10 },
+                { id: 'energy', name: 'Energie',    hp: 800, total: 90, up: 45, range: 380, cd: 0.35, dmg: 32 },
+            ] },
+            tesla: { name: 'Tesla', inv: 'tesla', maxPerRoom: 2, perExtraPlayer: 1, chain: { jumps: 2, reach: 130 }, tiers: [
+                { id: 'coil',   name: 'Tesla I',   hp: 260, total: 35,  up: 0,  range: 250, cd: 0.85, dmg: 14 },
+                { id: 'arc',    name: 'Tesla II',  hp: 420, total: 80,  up: 45, range: 275, cd: 0.75, dmg: 22 },
+                { id: 'storm',  name: 'Tesla III', hp: 650, total: 150, up: 70, range: 300, cd: 0.65, dmg: 34 },
+            ] },
+            heal: { name: 'Health Station', inv: 'heal', maxPerRoom: 1, perExtraPlayer: 1, tiers: [
+                { id: 'aid',      name: 'Health I',   hp: 300, total: 25,  up: 0,  range: 130, rate: 6 },
+                { id: 'clinic',   name: 'Health II',  hp: 450, total: 60,  up: 35, range: 160, rate: 10 },
+                { id: 'hospital', name: 'Health III', hp: 700, total: 120, up: 60, range: 190, rate: 16 },
+            ] },
+        },
     };
+    TURRET.tiers = TURRET.kinds.mg.tiers;     // (the machine gun turret, the first kind)
+    TURRET.maxPerRoom = TURRET.kinds.mg.maxPerRoom; TURRET.perExtraPlayer = TURRET.kinds.mg.perExtraPlayer;
     const TURRET_BUY_COST = TURRET.tiers[0].total;
+    const turretKind = (t) => TURRET.kinds[t.kd] || TURRET.kinds.mg;      // t.kd is missing on a machine gun turret
+    const turretTiers = (t) => turretKind(t).tiers;
+    // What a new one of a kind costs (level 1)
+    function turretBuyCost(kd) { return (TURRET.kinds[kd] || TURRET.kinds.mg).tiers[0].total; }
 
     // How far the circle (px, py) is from the surface of a turret (0 = touching or inside)
     function turretDist(px, py, t) { return Math.max(0, Math.hypot(px - t.x, py - t.y) - TURRET.r); }
@@ -79,12 +100,12 @@
     function turretRepairCost(t) {
         const missing = Math.max(0, t.maxHp - t.hp);
         if (missing <= 0) return 0;
-        return Math.max(1, Math.ceil(missing / t.maxHp * TURRET.tiers[t.t].total * TURRET.repairShare));
+        return Math.max(1, Math.ceil(missing / t.maxHp * turretTiers(t)[t.t].total * TURRET.repairShare));
     }
-    function turretUpgradeCost(t) { return t.t >= TURRET.tiers.length - 1 ? 0 : TURRET.tiers[t.t + 1].up; }
+    function turretUpgradeCost(t) { const ts = turretTiers(t); return t.t >= ts.length - 1 ? 0 : ts[t.t + 1].up; }
     function turretUseAction(t) {
         if (t.hp < t.maxHp) return 'repair';
-        return t.t < TURRET.tiers.length - 1 ? 'upgrade' : null;
+        return t.t < turretTiers(t).length - 1 ? 'upgrade' : null;
     }
     function turretPlacement(px, py, dx, dy, out) {
         const l = Math.hypot(dx, dy) || 1;
@@ -92,13 +113,21 @@
         out.y = py + dy / l * TURRET.placeDist;
         return out;
     }
-    // How many turrets a room may have: 6 for one player, 3 more for each other player (9, 12, 15 for 2, 3, 4)
-    function turretLimit(players) {
-        return TURRET.maxPerRoom + TURRET.perExtraPlayer * Math.max(0, (players | 0) - 1);
+    // How many of a kind a room may have: for the machine guns 6 for one player and 3 more for each other player (9, 12, 15 for 2, 3, 4);
+    // the Tesla Towers 2 and 1 more, the Health Stations 1 and 1 more
+    function turretLimit(players, kd) {
+        const k = TURRET.kinds[kd] || TURRET.kinds.mg;
+        return k.maxPerRoom + k.perExtraPlayer * Math.max(0, (players | 0) - 1);
+    }
+    // How many of a kind stand in a list of turrets
+    function turretCountOf(list, kd) {
+        let n = 0;
+        for (let i = 0; i < list.length; i++) if ((list[i].kd || 'mg') === kd) n++;
+        return n;
     }
     // Can a turret stand here? ctx as for checkPlace, plus turrets [] and players in the room (ctx.roomPlayers, default 1); returns null when it can, else the reason
     function checkPlaceTurret(t, ctx) {
-        if (ctx.turretCount >= turretLimit(ctx.roomPlayers || 1)) return 'limit';
+        if (turretCountOf(ctx.turrets, t.kd || 'mg') >= turretLimit(ctx.roomPlayers || 1, t.kd || 'mg')) return 'limit';
         const r = TURRET.r;
         if (t.x - r < 20 || t.x + r > ctx.w - 20 || t.y - r < 20 || t.y + r > ctx.h - 20) return 'edge';
         for (let i = 0; i < ctx.obstacles.length; i++) {
@@ -244,5 +273,5 @@
         return null;
     }
 
-    return { BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
+    return { BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretKind, turretTiers, turretBuyCost, turretCountOf, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
 });
