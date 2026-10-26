@@ -1034,37 +1034,54 @@ function _sweepCoins(code, room) {
 }
 const PVE_BREAK_DURATION = 15;
 const PVE_TOTAL_WAVES    = 20;
-// [normal, runner, tank] per wave
+// [normal, runner, tank, spitter, exploder, brute, summoner] per wave (PVE_TYPES, in this order)
+const PVE_TYPES = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'summoner'];
 const PVE_WAVES = [
-    [8,  0, 0],
-    [10, 2, 0],
-    [12, 4, 0],
-    [10, 4, 2],
-    [12, 6, 2],
-    [14, 6, 3],
-    [14, 8, 4],
-    [16, 8, 5],
-    [16,10, 5],
-    [20,12, 6],     // wave 10: 38 (the old finale)
-    [22,12, 6],
-    [22,14, 7],
-    [24,14, 8],
-    [24,16, 9],
-    [26,18, 9],
-    [28,18,10],
-    [28,20,11],
-    [30,22,12],
-    [32,22,13],
-    [34,24,15],     // wave 20: 73
+    [ 8,  0,  0,  0,  0,  0,  0],
+    [10,  2,  0,  0,  0,  0,  0],
+    [12,  4,  0,  0,  0,  0,  0],
+    [10,  4,  2,  0,  0,  0,  0],
+    [12,  6,  2,  2,  0,  0,  0],
+    [14,  6,  3,  2,  1,  0,  0],
+    [14,  8,  3,  2,  2,  0,  0],
+    [14,  8,  4,  3,  3,  1,  0],     // wave 8: the first brute
+    [16,  8,  4,  3,  4,  1,  0],
+    [16, 10,  5,  5,  5,  2,  1],     // wave 10: the first summoner
+    [18, 10,  5,  6,  6,  3,  2],
+    [18, 12,  6,  6,  7,  3,  2],
+    [20, 12,  6,  7,  8,  4,  2],
+    [20, 14,  7,  8,  8,  4,  3],
+    [22, 14,  7,  8,  9,  5,  3],
+    [22, 16,  8,  9, 10,  5,  3],
+    [24, 16,  8, 10, 10,  6,  4],
+    [24, 18,  9, 10, 11,  6,  4],
+    [26, 18,  9, 11, 12,  7,  5],
+    [28, 20, 10, 12, 14,  8,  5],     // wave 20
 ];
+// The health of every zombie (but the minions) grows from wave 7: x1 up to wave 6, then +8% a wave (x1.32 at wave 10, x2.12 at wave 20)
+const pveHpMul = (wave) => wave <= 6 ? 1 : Math.round((1 + (wave - 6) * 0.08) * 100) / 100;
 const PVE_ZOMBIE_DEFS = {
     // hunts: goes for a player in range first (then a barricade, then the base); false = never goes for a player or hits one, only barricades and the base
     // mass: how the zombies shove each other apart (the heavier one gives way less); heavy: a player cannot push it, it pushes the player (it is a wall to them)
+    // large: keeps further from the trees on its way (zombie-nav.js); armor: taken off every hit (never below a fifth of it); noScale: does not grow with the wave
     normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 1, coinsMax: 3, baseDmg: 15, r: 20, hunts: true, mass: 1 },
     runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 2, coinsMax: 3, baseDmg: 8,  r: 16, hunts: true, mass: 0.8 },
-    tank:   { hp: 400, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
+    tank:   { hp: 500, armor: 4, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
+    // the spitter: walks on to the base and stops as soon as something is within range (a turret first, then a player, a barricade, the base) and
+    // spits acid at it, a splash that hurts what is built and the players; its range is longer than the first two turret levels (the third reaches it)
+    spitter: { hp: 160, chaseSpd: 52, patrolSpd: 30, dmg: 0, attackR: 0, attackCd: 2.4, coinsMin: 3, coinsMax: 5, baseDmg: 0, r: 20, hunts: false, mass: 1,
+               ranged: { range: 345, cd: 2.4, speed: 560, splash: 44, sdmg: 24, pdmg: 24, bdmg: 18 } },
+    // the exploder: fast, goes for the nearest thing that is built or a player, and goes off on touch (a blast that hurts structures a lot); killed on the way it does not
+    exploder: { hp: 110, chaseSpd: 120, patrolSpd: 60, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 3, coinsMax: 4, baseDmg: 0, r: 18, hunts: true, mass: 0.9,
+                explode: { r: 85, sdmg: 130, pdmg: 45, bdmg: 70, seek: 520 } },
+    // the brute: slow, armoured, hits hard; goes for players and what is built
+    brute: { hp: 1100, armor: 11, chaseSpd: 44, patrolSpd: 25, dmg: 55, attackR: 72, attackCd: 1.3, coinsMin: 10, coinsMax: 14, baseDmg: 65, r: 34, hunts: true, mass: 10, heavy: true, large: true },
+    // the summoner: a big slow one that walks on to the base and brings 3 minions out every 10 s (at most 9 of its own alive)
+    summoner: { hp: 500, chaseSpd: 34, patrolSpd: 20, dmg: 0, attackR: 0, attackCd: 1.5, coinsMin: 12, coinsMax: 16, baseDmg: 25, r: 30, hunts: false, mass: 8, heavy: true, large: true,
+                summon: { first: 4, every: 10, count: 3, max: 6 } },
+    minion: { hp: 300, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 16, attackR: 48, attackCd: 0.9, coinsMin: 1, coinsMax: 1, baseDmg: 10, r: 15, hunts: true, mass: 0.6 },
 };
-const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2 };
+const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
 const PVE_UPGRADE_DEFS = {
     dmg:  { baseCost: 6,  costInc: 4, maxUses: 5, apply: (p, n) => { p.damage  = Math.round(p.baseDamage  * (1 + n * 0.05)); } },
@@ -1311,16 +1328,17 @@ function generateZombies(obstacles, playerPositions = []) {
 }
 
 // Creeaza un singur zombi la marginea mapei
-function createPveZombie(type, id) {
+function createPveZombie(type, id, hpMul, atX, atY) {
     const def = PVE_ZOMBIE_DEFS[type];
     const angle    = Math.random() * Math.PI * 2;
     const spawnDist = 1050 + Math.random() * 150; // 1050-1200px de centru, langa margine
-    const x = Math.max(def.r + 20, Math.min(ARENA_W - def.r - 20, PVE_BASE_X + Math.cos(angle) * spawnDist));
-    const y = Math.max(def.r + 20, Math.min(ARENA_H - def.r - 20, PVE_BASE_Y + Math.sin(angle) * spawnDist));
+    const x = atX !== undefined ? atX : Math.max(def.r + 20, Math.min(ARENA_W - def.r - 20, PVE_BASE_X + Math.cos(angle) * spawnDist));
+    const y = atY !== undefined ? atY : Math.max(def.r + 20, Math.min(ARENA_H - def.r - 20, PVE_BASE_Y + Math.sin(angle) * spawnDist));
+    const hp = Math.round(def.hp * (def.noScale ? 1 : (hpMul || 1)));
     return {
         id, x, y,
         angle: Math.atan2(PVE_BASE_Y - y, PVE_BASE_X - x),
-        hp: def.hp, maxHp: def.hp,
+        hp, maxHp: hp,
         alive: true, type,
         state: 'chase',
         patrolTargetX: PVE_BASE_X, patrolTargetY: PVE_BASE_Y,
@@ -1333,12 +1351,9 @@ const PVE_BATCH_SIZE   = 10; // zombi per mini-wave
 const PVE_BATCH_DELAY  = 8;  // secunde intre mini-wave-uri
 
 function prepareAndSpawnWave(room, waveIndex) {
-    const wc = PVE_WAVES[waveIndex] || [8, 0, 0];
-    const types = [
-        ...Array(wc[0]).fill('normal'),
-        ...Array(wc[1]).fill('runner'),
-        ...Array(wc[2]).fill('tank'),
-    ];
+    const wc = PVE_WAVES[waveIndex] || [8, 0, 0, 0, 0, 0, 0];
+    const types = [];
+    PVE_TYPES.forEach((t, k) => { for (let n = 0; n < (wc[k] || 0); n++) types.push(t); });
     // Shuffle
     for (let i = types.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -1352,7 +1367,7 @@ function prepareAndSpawnWave(room, waveIndex) {
     const firstBatch = batches[0] || [];
     room.pveSpawnQueue = batches.slice(1);
     room.pveSpawnTimer = PVE_BATCH_DELAY;
-    return firstBatch.map((type, i) => createPveZombie(type, i));
+    return firstBatch.map((type, i) => createPveZombie(type, i, room.pveHpMul));
 }
 
 // ---------- PvE: what the players build (barricades; public/structures.js has the numbers) ----------
@@ -1462,7 +1477,7 @@ function tickTurrets(code, room, dt, now) {
         if (!z) { t.cd = 0; continue; }                      // ready for the first that comes
         t.cd = Math.min(0, t.cd) + tier.cd;
         t.angle = Math.atan2(z.y - t.y, z.x - t.x);
-        z.hp -= tier.dmg;
+        z.hp -= armoredHit(z, tier.dmg);
         _turretShots.push(t.id, Math.round(t.angle * 100), z.id);
         if (z.hp <= 0) turretKill(code, room, z, t, now);
     }
@@ -1492,6 +1507,100 @@ function flushStructHp(code, room, now) {
     const rows = [];
     for (const s of room.structs) if (s._sentHp !== Math.round(s.hp)) { s._sentHp = Math.round(s.hp); rows.push([s.id, s._sentHp]); }
     if (rows.length) io.to(code).emit('struct-hp', rows);
+}
+
+// ---------- PvE: what the zombies do to what is built, to the players and to the base ----------
+// What a hit takes off a zombie with armour: the armour comes off the hit, but never more than four fifths of it (a weak turret still scratches it)
+function armoredHit(zombie, dmg) {
+    const a = (PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal).armor;
+    return a ? Math.max(dmg * 0.2, dmg - a) : dmg;
+}
+function hurtBuilt(code, room, s, dmg) {
+    if (s._gone) return;
+    s.hp -= dmg;
+    if (s.k === 't') room._turretDirty = true; else room._structDirty = true;
+    if (s.hp <= 0) { if (s.k === 't') destroyTurret(code, room, s); else destroyStruct(code, room, s); }
+}
+function hurtPlayer(code, room, p, dmg, now) {
+    if (!p.alive) return;
+    if (p.wv) p.wv.dmg += Math.min(dmg, Math.max(0, p.hp));
+    p.hp -= dmg; p.lastDamageTime = now;
+    if (p.hp <= 0) eliminatePlayer(code, room, p, 'zombie');
+}
+function hurtBase(code, room, dmg) {
+    if (!room.base || room.gameEnded) return;
+    room.base.hp = Math.max(0, room.base.hp - dmg);
+    if (room.base.hp <= 0) pveDefeat(code, room);
+}
+
+// A spitter has something in range: a turret first, then a player, a barricade, the base (the point to throw at, null if nothing is within range)
+const _spitT = { x: 0, y: 0 };
+function pickSpitTarget(room, zombie, range, alivePlayers) {
+    let bd = Infinity, found = false;
+    for (let i = 0; i < room.turrets.length; i++) { const t = room.turrets[i], d = ARStructs.turretDist(zombie.x, zombie.y, t); if (d <= range && d < bd) { bd = d; _spitT.x = t.x; _spitT.y = t.y; found = true; } }
+    if (found) return _spitT;
+    for (let i = 0; i < alivePlayers.length; i++) { const p = alivePlayers[i], d = Math.hypot(p.x - zombie.x, p.y - zombie.y); if (d <= range && d < bd) { bd = d; _spitT.x = p.x; _spitT.y = p.y; found = true; } }
+    if (found) return _spitT;
+    for (let i = 0; i < room.structs.length; i++) { const b = room.structs[i], d = ARStructs.distToRect(zombie.x, zombie.y, b); if (d <= range && d < bd) { bd = d; _spitT.x = b.x; _spitT.y = b.y; found = true; } }
+    if (found) return _spitT;
+    if (room.base && Math.hypot(room.base.x - zombie.x, room.base.y - zombie.y) - room.base.r <= range) { _spitT.x = room.base.x; _spitT.y = room.base.y; return _spitT; }
+    return null;
+}
+// The acid is thrown: it lands after a flight (the splash is worked out when it lands: whatever is by then within `splash` of the spot is hurt)
+function spitAt(code, room, zombie, rg, t, now) {
+    const dist = Math.hypot(t.x - zombie.x, t.y - zombie.y), dur = Math.max(260, dist / rg.speed * 1000);
+    zombie.angle = Math.atan2(t.y - zombie.y, t.x - zombie.x);
+    (room._acid || (room._acid = [])).push({ t1: now + dur, x: t.x, y: t.y, r: rg.splash, sdmg: rg.sdmg, pdmg: rg.pdmg, bdmg: rg.bdmg });
+    io.to(code).emit('acid', { a: [Math.round(zombie.x), Math.round(zombie.y), Math.round(t.x), Math.round(t.y), Math.round(dur)] });
+}
+function tickAcid(code, room, now, alivePlayers) {
+    const list = room._acid;
+    if (!list || !list.length) return;
+    for (let i = list.length - 1; i >= 0; i--) {
+        const h = list[i];
+        if (now < h.t1) continue;
+        list.splice(i, 1);
+        for (const b of room.structs.slice()) if (ARStructs.distToRect(h.x, h.y, b) <= h.r) hurtBuilt(code, room, b, h.sdmg);
+        for (const t of room.turrets.slice()) if (ARStructs.turretDist(h.x, h.y, t) <= h.r) hurtBuilt(code, room, t, h.sdmg);
+        for (const p of alivePlayers) if (p.alive && Math.hypot(p.x - h.x, p.y - h.y) <= h.r + PLAYER_R) hurtPlayer(code, room, p, h.pdmg, now);
+        if (room.base && Math.hypot(room.base.x - h.x, room.base.y - h.y) <= room.base.r + h.r) hurtBase(code, room, h.bdmg);
+        if (room.gameEnded) return;
+    }
+}
+// The exploder goes off: it is gone (no coins, no kill), the blast hurts every structure within its radius, the players and the base
+function explodeZombie(code, room, zombie, ex, now, alivePlayers) {
+    zombie.hp = 0; zombie.alive = false;
+    const x = zombie.x, y = zombie.y;
+    io.to(code).emit('boom', { x: Math.round(x), y: Math.round(y), r: ex.r });
+    for (const b of room.structs.slice()) if (ARStructs.distToRect(x, y, b) <= ex.r) hurtBuilt(code, room, b, ex.sdmg);
+    for (const t of room.turrets.slice()) if (ARStructs.turretDist(x, y, t) <= ex.r) hurtBuilt(code, room, t, ex.sdmg);
+    for (const p of alivePlayers) if (p.alive && Math.hypot(p.x - x, p.y - y) <= ex.r + PLAYER_R) hurtPlayer(code, room, p, ex.pdmg, now);
+    if (room.base && Math.hypot(room.base.x - x, room.base.y - y) <= room.base.r + ex.r * 0.5) hurtBase(code, room, ex.bdmg);
+}
+// The summoner brings its minions out in a ring round it (kept off the trees, the rocks and the base)
+function summonTick(code, room, zombie, def, dt) {
+    const sm = def.summon;
+    zombie._sumT = (zombie._sumT === undefined ? sm.first : zombie._sumT) - dt;
+    if (zombie._sumT > 0) return;
+    zombie._sumT = sm.every;
+    let mine = 0;
+    for (const z of room.zombies) if (z.alive && z.owner === zombie.id) mine++;
+    const n = Math.min(sm.count, sm.max - mine);
+    const mdef = PVE_ZOMBIE_DEFS.minion, a0 = Math.random() * Math.PI * 2;
+    for (let k = 0; k < n; k++) {
+        let x = zombie.x, y = zombie.y;
+        for (let tries = 0; tries < 8; tries++) {
+            const a = a0 + (k + tries * 0.37) * (Math.PI * 2 / sm.count), d = def.r + mdef.r + 14 + Math.random() * 22;
+            x = Math.max(mdef.r + 4, Math.min(ARENA_W - mdef.r - 4, zombie.x + Math.cos(a) * d)); y = Math.max(mdef.r + 4, Math.min(ARENA_H - mdef.r - 4, zombie.y + Math.sin(a) * d));
+            let ok = !room.base || Math.hypot(x - room.base.x, y - room.base.y) > room.base.r + mdef.r;
+            for (let o = 0; ok && o < room.obstacles.length; o++) { const ob = room.obstacles[o]; if (Math.hypot(x - ob.x, y - ob.y) < ob.r + mdef.r) ok = false; }
+            if (ok) break;
+        }
+        const m = createPveZombie('minion', room.zombies.length, 1, x, y);
+        m.owner = zombie.id; m.angle = zombie.angle;
+        room.zombies.push(m);
+    }
+    io.to(code).emit('summon', { x: Math.round(zombie.x), y: Math.round(zombie.y) });
 }
 
 // ---------- PvE: the zombies' map (zombie-nav.js) ----------
@@ -1586,9 +1695,11 @@ function startPveWave(code, room) {
         p.shootCooldown = 0; p.aimTimer = 0; p.burstRemaining = 0; p.burstTimer = 0;
         p.moveDir.x = 0; p.moveDir.y = 0;
     });
+    room.pveHpMul = pveHpMul(room.pveWave);
+    room._acid = [];
     room.zombies = prepareAndSpawnWave(room, room.pveWave - 1);
     // zombies = how many this wave brings in all, queued = the ones that have not come yet (the HUD shows "left / total": the ones on the map + queued)
-    io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, batches: room.pveSpawnQueue.length + 1,
+    io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, hpMul: room.pveHpMul, batches: room.pveSpawnQueue.length + 1,
         zombies: room.zombies.length + pveQueuedCount(room), queued: pveQueuedCount(room) });
 }
 
@@ -2147,6 +2258,7 @@ function startRoomLoop(code, room) {
                     zombie.attackCooldown = Math.max(0, zombie.attackCooldown - dt);
                     const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
                     const large = !!def.large;
+                    if (def.summon && alivePlayers.length) summonTick(code, room, zombie, def, dt);
 
                     let nearestPlayer = null, nearestDist = Infinity;
                     for (const p of alivePlayers) {
@@ -2157,18 +2269,19 @@ function startRoomLoop(code, room) {
                     // Who it goes for: a player in range (only the types that hunt), else a barricade or a turret within its range (the exploders
                     // look further), else the base. On the way to a player or the base it follows the map (zombie-nav.js): round the trees and
                     // the rocks, round a wall if that is short, and through the weakest wall if there is no other way: that wall it hits.
-                    const seek = ARStructs.BARRICADE.detectRange;
+                    const seek = def.explode ? def.explode.seek : ARStructs.BARRICADE.detectRange;
                     let tgtStruct = null, tgtDist = Infinity;
                     if (room.structs.length) {
                         tgtStruct = ARStructs.nearestInRange(zombie.x, zombie.y, room.structs, seek, _stDist);
                         tgtDist = _stDist.d;
                     }
                     if (room.turrets.length) {   // a turret as near counts the same: it is hit before the base
-                        const tt = ARStructs.nearestTurretInRange(zombie.x, zombie.y, room.turrets, ARStructs.TURRET.detectRange, _stDist);
+                        const tt = ARStructs.nearestTurretInRange(zombie.x, zombie.y, room.turrets, def.explode ? seek : ARStructs.TURRET.detectRange, _stDist);
                         if (tt && _stDist.d < tgtDist) { tgtStruct = tt; tgtDist = _stDist.d; }
                     }
                     const hunts = def.hunts !== false;
                     let goal = pickTarget(hunts, nearestDist, ZOMBIE_DETECT_R, tgtDist, seek);
+                    if (def.ranged) { goal = 'base'; tgtStruct = null; tgtDist = Infinity; }   // a spitter walks on to the base and throws at what it can reach
                     const baseD = room.base ? Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) : 1e9;
                     let navUsed = false, navX = 0, navY = 0;
                     if (nst && (goal === 'player' || goal === 'base')) {
@@ -2177,7 +2290,7 @@ function startRoomLoop(code, room) {
                         if (ZNav.steer(nst.nav, f, large, zombie.x, zombie.y, 3, _navOut)) {
                             navUsed = true;
                             const w = _navOut.owner;
-                            if (w && !w._gone) { tgtStruct = w; tgtDist = builtDist(zombie.x, zombie.y, w); goal = 'struct'; }   // the way is through this wall
+                            if (w && !w._gone && !def.ranged) { tgtStruct = w; tgtDist = builtDist(zombie.x, zombie.y, w); goal = 'struct'; }   // the way is through this wall
                             else {
                                 // the furthest step of the way that it can walk straight to (nothing solid in between: a waypoint past the corner of a tree would press it into the tree)
                                 navX = _navOut.px[0]; navY = _navOut.py[0];
@@ -2211,7 +2324,9 @@ function startRoomLoop(code, room) {
                     else if (tgtStruct) { builtNearestPoint(zombie.x, zombie.y, tgtStruct, _stPt); targetX = _stPt.x; targetY = _stPt.y; }
                     else if (navUsed && room.base && baseD > room.base.r + def.r + 75) { targetX = navX; targetY = navY; }
                     else { targetX = PVE_BASE_X; targetY = PVE_BASE_Y; }
-                    const speed = tgtStruct && tgtDist <= def.r + 6 ? 0 : def.chaseSpd;   // against the barricade it stands and hits
+                    let speed = tgtStruct && tgtDist <= def.r + 6 ? 0 : def.chaseSpd;   // against the barricade it stands and hits
+                    const spit = def.ranged ? pickSpitTarget(room, zombie, def.ranged.range, alivePlayers) : null;
+                    if (spit) speed = 0;   // something is in range: it stands and throws
 
                     let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
                     const dLen = Math.hypot(ddx, ddy);
@@ -2323,7 +2438,15 @@ function startRoomLoop(code, room) {
                         }
                     }
 
-                    if (zombie.attackCooldown <= 0) {
+                    if (def.explode) {
+                        // goes off on touch: a structure it is up against, a player, the base
+                        if ((tgtStruct && builtDist(zombie.x, zombie.y, tgtStruct) <= def.r + 16) || (nearestPlayer && nearestDist <= def.r + PLAYER_R + 8) || baseD <= (room.base ? room.base.r : 0) + def.r + 12) {
+                            explodeZombie(code, room, zombie, def.explode, now, alivePlayers);
+                            if (room.gameEnded) return;
+                        }
+                    } else if (def.ranged) {
+                        if (spit && zombie.attackCooldown <= 0) { spitAt(code, room, zombie, def.ranged, spit, now); zombie.attackCooldown = def.ranged.cd; }
+                    } else if (zombie.attackCooldown <= 0) {
                         let attacked = false;
                         for (const p of hunts ? alivePlayers : _noPlayers) {   // a type that does not hunt never hits a player
                             if (Math.hypot(p.x - zombie.x, p.y - zombie.y) < def.attackR) {
@@ -2349,6 +2472,8 @@ function startRoomLoop(code, room) {
                         }
                     }
                 }
+                tickAcid(code, room, now, alivePlayers);
+                if (room.gameEnded) return;
 
                 // Wave break countdown
                 if (room.pveWaveBreak) {
@@ -2364,7 +2489,7 @@ function startRoomLoop(code, room) {
                     if (room.pveSpawnTimer <= 0) {
                         const nextBatch = room.pveSpawnQueue.shift();
                         const startId   = room.zombies.length;
-                        nextBatch.forEach((type, i) => room.zombies.push(createPveZombie(type, startId + i)));
+                        nextBatch.forEach((type, i) => room.zombies.push(createPveZombie(type, startId + i, room.pveHpMul)));
                         room.pveSpawnTimer = PVE_BATCH_DELAY;
                         io.to(code).emit('pve-subwave', { remaining: room.pveSpawnQueue.length, queued: pveQueuedCount(room) });
                     }
@@ -2428,7 +2553,7 @@ function startRoomLoop(code, room) {
                 } else if (hit.kind === 2) {
                     const zombie = hit.target;
                     const _zPrevHp = zombie.hp;
-                    zombie.hp -= b.damage;
+                    zombie.hp -= armoredHit(zombie, b.damage);   // armour (the brute) takes some off; the other zombies have none
                     const _zOwner = room.players[b.ownerId];
                     if (_zOwner && _zOwner.rs) _zOwner.rs.dmg += Math.min(b.damage, _zPrevHp);
                     const _zws = _zOwner ? wsFor(_zOwner, b.weapon) : null;
@@ -2729,7 +2854,7 @@ function triggerRematch(code, room) {
     room.countdownActive = true;
     room.pveSkipVotes.clear();
     room.pveSpawnQueue = []; room.pveSpawnTimer = 0;
-    room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0;
+    room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
     room.structs = []; room.turrets = []; room.nextStructId = 0; room._structDirty = false;
     setTimeout(() => { if (rooms.has(code)) room.countdownActive = false; }, 3700);
     assignSpawnPositions(room._playerArr, room.obstacles);
@@ -2886,7 +3011,7 @@ io.on('connection', (socket) => {
             assignPveSpawnPositions(room._playerArr);
             room.zombies = [];
             room.base = { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R };
-            room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0;
+            room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
             room.structs = []; room.turrets = []; room.nextStructId = 0; room._structDirty = false;
         } else {
             assignSpawnPositions(room._playerArr, room.obstacles);

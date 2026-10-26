@@ -2427,12 +2427,14 @@ function _drawHpBar(ctx, x, y, w, h, ratio, ol) {
 // small toy block with its lip and bevel). A zombie at full health has none. All of them together cost a few fills:
 // the frames, the tracks, then the lip and the face of each colour, then the bevels.
 const _ZBAR_H = 6, _ZBAR_OL = 1.6;
+let _zHpMul = 1;   // the health the wave's zombies have grown to (server: pve-wave-start hpMul); the minions do not grow (def.noScale)
+const _zMaxHp = (def) => def.noScale ? def.maxHp : def.maxHp * _zHpMul;
 const _zbX = [], _zbY = [], _zbW = [], _zbF = [], _zbBand = [];
 function _drawZombieBars(ctx, list, n, defs) {
     const h = _ZBAR_H, ol = _ZBAR_OL, rad = h * 0.45;
     for (let i = 0; i < n; i++) {
         const z = list[i], def = defs[z.type || 0] || defs[0];
-        const ratio = Math.max(0, Math.min(1, z.hp / def.maxHp)), w = Math.max(24, def.r * 1.6);
+        const ratio = Math.max(0, Math.min(1, z.hp / _zMaxHp(def))), w = Math.max(24, def.r * 1.6);
         _zbW[i] = w; _zbX[i] = z.x - w / 2; _zbY[i] = z.y - def.r - 12 - h;
         _zbF[i] = Math.max(h * 0.9, w * ratio);
         _zbBand[i] = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
@@ -3558,6 +3560,48 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.beginPath(); ctx.moveTo(tx + (bx - tx) * k / 4, ty + (by - ty) * k / 4); ctx.lineTo(bx, by); ctx.stroke();
         }
     }
+    // ---- the new zombies' effects (events acid / boom / summon, not in gs2): acid thrown by a spitter, an exploder going off, a summoner calling ----
+    const TAU = Math.PI * 2;
+    const _zFx = [];   // { k: 'acid'|'boom'|'summon', x0, y0, x1, y1, r, dur, t0 }
+    function _zFxPush(f) { if (_zFx.length >= 80) _zFx.shift(); _zFx.push(f); }
+    function _drawZombieFx(ctx, now) {
+        for (let i = _zFx.length - 1; i >= 0; i--) {
+            const f = _zFx[i], age = now - f.t0;
+            if (f.k === 'acid') {
+                if (age >= f.dur + 520) { _zFx.splice(i, 1); continue; }
+                if (age < f.dur) {   // a green blob on a short arc, with its shadow on the ground
+                    const u = age / f.dur, x = f.x0 + (f.x1 - f.x0) * u, y = f.y0 + (f.y1 - f.y0) * u, lift = Math.sin(u * Math.PI) * Math.min(70, Math.hypot(f.x1 - f.x0, f.y1 - f.y0) * 0.22);
+                    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(x + 3, y + 5, 7, 4, 0, 0, TAU); ctx.fill();
+                    ctx.fillStyle = '#9DFF2E'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2.4;
+                    ctx.beginPath(); ctx.arc(x, y - lift, 7.5, 0, TAU); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc(x - 2.4, y - lift - 2.6, 2.2, 0, TAU); ctx.fill();
+                } else {   // it landed: the splash, a puddle that dries out
+                    const u = (age - f.dur) / 520, a = 1 - u;
+                    ctx.globalAlpha = 0.45 * a; ctx.fillStyle = '#9DFF2E'; ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r * (0.7 + 0.3 * Math.min(1, u * 4)), 0, TAU); ctx.fill();
+                    ctx.globalAlpha = 0.8 * a; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.stroke();
+                    ctx.globalAlpha = a; ctx.fillStyle = '#C6FF3D';
+                    for (let k = 0; k < 5; k++) { const ang = k * 1.256 + f.x1, rr = f.r * (0.35 + 0.65 * u); ctx.beginPath(); ctx.arc(f.x1 + Math.cos(ang) * rr, f.y1 + Math.sin(ang) * rr, 3.2 * a, 0, TAU); ctx.fill(); }
+                    ctx.globalAlpha = 1;
+                }
+            } else if (f.k === 'boom') {
+                if (age >= 650) { _zFx.splice(i, 1); continue; }
+                const u = age / 650, e = 1 - (1 - Math.min(1, u * 2.2)) * (1 - Math.min(1, u * 2.2));
+                ctx.globalAlpha = (1 - u) * 0.55; ctx.fillStyle = '#FF8A1F'; ctx.beginPath(); ctx.arc(f.x0, f.y0, f.r * e, 0, TAU); ctx.fill();
+                ctx.globalAlpha = (1 - u) * 0.9; ctx.strokeStyle = '#FFE27A'; ctx.lineWidth = 5 * (1 - u) + 1; ctx.stroke();
+                ctx.globalAlpha = (1 - u) * 0.75; ctx.fillStyle = '#FFF3C4'; ctx.beginPath(); ctx.arc(f.x0, f.y0, f.r * 0.45 * (1 - u), 0, TAU); ctx.fill();
+                ctx.globalAlpha = Math.max(0, 0.5 - u) * 0.9; ctx.fillStyle = '#3A3F4A'; ctx.beginPath(); ctx.arc(f.x0, f.y0 - 18 * u, f.r * 0.5 + 24 * u, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 1;
+            } else {   // summon: a purple ring and sparks round the summoner
+                if (age >= 700) { _zFx.splice(i, 1); continue; }
+                const u = age / 700;
+                ctx.globalAlpha = (1 - u) * 0.9; ctx.strokeStyle = '#B070FF'; ctx.lineWidth = 5 * (1 - u) + 1;
+                ctx.beginPath(); ctx.arc(f.x0, f.y0, 36 + 90 * u, 0, TAU); ctx.stroke();
+                ctx.fillStyle = '#E3C75A';
+                for (let k = 0; k < 8; k++) { const ang = k * 0.785 + u * 2, rr = 36 + 90 * u; ctx.beginPath(); ctx.arc(f.x0 + Math.cos(ang) * rr, f.y0 + Math.sin(ang) * rr, 3.4 * (1 - u), 0, TAU); ctx.fill(); }
+                ctx.globalAlpha = 1;
+            }
+        }
+    }
     function _drawTurretFx(ctx, now) {
         for (let i = _turretFx.length - 1; i >= 0; i--) {
             const f = _turretFx[i], age = now - f.t0;
@@ -4437,8 +4481,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 if (_zPrevHp < 0) { _zb.x = _zb.sx; _zb.y = _zb.sy; _zb.angle = _zb.sa; }
                 _zb.hp = zArr[_zi + 4];
                 _zb.type = zArr[_zi + 5] || 0;
-                if (_zb.type === 2 && _zb.hp > 0 && _gameMode === 'pve') _tanks.push(_zb.sx, _zb.sy, _ZB_DEFS[2].r);
-                if (_zb.type === 2 && _zPrevHp < 0 && _gameMode === 'pve') _pveWarnTank(_zb.sx, _zb.sy);   // a tank has come into the packet
+                const _zHeavy = _gameMode === 'pve' && _ZB_DEFS[_zb.type] && _ZB_DEFS[_zb.type].heavy;   // the ones a player cannot push (tank, brute, summoner)
+                if (_zHeavy && _zb.hp > 0) _tanks.push(_zb.sx, _zb.sy, _ZB_DEFS[_zb.type].r);
+                if (_zHeavy && _zPrevHp < 0) _pveWarnTank(_zb.sx, _zb.sy, _ZB_DEFS[_zb.type].warn);   // one has come into the packet
                 _zb.seen = _zGen;
                 if (_zPrevHp > 0 && _zPrevHp - _zb.hp > 0.5) {
                     hitEffects.push({ x: _zb.sx, y: _zb.sy, life: 2.0 });
@@ -4796,7 +4841,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const k in _obsShake) delete _obsShake[k];
         gameControl.countdownEndTime = null;
         _pveHudReset();
-        _structs.length = 0; _turrets.length = 0; _turretFx.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.invT = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
+        _zFx.length = 0; _zHpMul = 1; _structs.length = 0; _turrets.length = 0; _turretFx.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.invT = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
         _footsteps.length = 0;
         for (const k in _footTimers) delete _footTimers[k];
         for (const k in _footSide)   delete _footSide[k];
@@ -4976,14 +5021,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         else mv.style.display = 'none';
         _setHudText('pbk-earned', '+' + (mine ? mine[3] : 0) + ' in acest val');
     }
-    const _PBK_ZOMBIES = [['Normali', '#7DBB45', '/images/zombies/zombi.svg'], ['Rapizi', '#B4D84A', '/images/zombies/zombi_rapid.svg'], ['Tank', '#8B97A1', '/images/zombies/zombi_tanc.svg']];
+    const _PBK_ZOMBIES = [['Normali', '#7DBB45', '/images/zombies/zombi.svg'], ['Rapizi', '#B4D84A', '/images/zombies/zombi_rapid.svg'], ['Tank', '#8B97A1', '/images/zombies/zombi_tanc.svg'],
+        ['Scuipatori', '#9DFF2E', '/images/zombies/zombi_toxic.svg'], ['Explozivi', '#E2773A', '/images/zombies/zombi_exploder.svg'], ['Brute', '#A5AEBD', '/images/zombies/zombi_brute.svg'], ['Summoner', '#B591DC', '/images/zombies/zombi_summoner.svg']];
     function _pbkNext(next, nextWave) {
         _setHudText('pbk-next-n', nextWave);
         const host = _$('pbk-next-rows');
         host.textContent = '';
-        const arr = next || [0, 0, 0], total = arr[0] + arr[1] + arr[2];
+        const arr = next || [], total = arr.reduce((a, b) => a + b, 0);
         _setHudText('pbk-next-total', total);
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < _PBK_ZOMBIES.length; i++) {
             if (!arr[i]) continue;
             const [lbl, col, img] = _PBK_ZOMBIES[i];
             const row = document.createElement('div'); row.className = 'pbk-nrow';
@@ -5076,8 +5122,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (k) { k.el.classList.remove('is-pop'); void k.el.offsetWidth; k.el.classList.add('is-pop'); }
     });
 
-    socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued }) => {
-        _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0;
+    socket.on('acid', ({ a }) => { _zFxPush({ k: 'acid', x0: a[0], y0: a[1], x1: a[2], y1: a[3], dur: a[4], r: 44, t0: performance.now() }); });
+    socket.on('boom', ({ x, y, r }) => { _zFxPush({ k: 'boom', x0: x, y0: y, r, t0: performance.now() }); });
+    socket.on('summon', ({ x, y }) => { _zFxPush({ k: 'summon', x0: x, y0: y, t0: performance.now() }); });
+    socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued, hpMul }) => {
+        _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0; _zHpMul = hpMul || 1;
         const _of = document.getElementById('pve-wave-of'); if (_of && total) _of.textContent = total;
         if (_BB.on) ARBlackBox.event('wave-start', wave);   // the server puts everyone back by the base here: a jump, by design
         _waveStartAt = performance.now();
@@ -5369,7 +5418,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         while (f.children.length > 3) f.removeChild(f.firstChild);
     }
     // A tank shows up at the edge of the map: say it, and from which side of you (once every 8 s, not for each one of a group)
-    function _pveWarnTank(zx, zy) {
+    function _pveWarnTank(zx, zy, kind) {
         const now = performance.now();
         if (now - _ph.warnAt < 8000) return;
         _ph.warnAt = now;
@@ -5378,7 +5427,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'din dreapta' : 'din stanga') : (dy > 0 ? 'de jos' : 'de sus');
         const w = document.getElementById('pve-warn');
         if (!w) return;
-        document.getElementById('pve-warn-type').textContent = 'TANK';
+        document.getElementById('pve-warn-type').textContent = kind || 'TANK';
         document.getElementById('pve-warn-dir').textContent = 'se apropie ' + dir;
         w.classList.remove('is-on'); void w.offsetWidth; w.classList.add('is-on');
         clearTimeout(_ph.warnTimer);
@@ -5591,7 +5640,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _ZB_DEFS = [
         { r: 20, maxHp: 100, bodyColor: '#5E9253', innerColor: '#7DB26A', armColor: '#4A7A42', armStroke: '#25422A', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },
         { r: 16, maxHp: 50,  bodyColor: '#C27A33', innerColor: '#E39A4D', armColor: '#9D5F26', armStroke: '#4C2D10', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },
-        { r: 28, maxHp: 400, bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
+        { r: 28, maxHp: 500, heavy: true, warn: 'TANK', bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
+        { r: 20, maxHp: 160, bodyColor: '#8BC34A', innerColor: '#B9E36B', armColor: '#6D9A38', armStroke: '#2D4A12', ringColor: '#9DFF2E', ringFill: 'rgba(157,255,46,0.10)' },   // 3 spitter
+        { r: 18, maxHp: 110, bodyColor: '#E2773A', innerColor: '#F7A862', armColor: '#B85A22', armStroke: '#5A2A0E', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 4 exploder
+        { r: 34, maxHp: 1100, heavy: true, warn: 'BRUTA', bodyColor: '#7B8493', innerColor: '#A5AEBD', armColor: '#59616E', armStroke: '#262B34', ringColor: '#C0C6D0', ringFill: 'rgba(192,198,208,0.10)' },   // 5 brute
+        { r: 30, maxHp: 500, heavy: true, warn: 'SUMMONER', bodyColor: '#8A5FB8', innerColor: '#B591DC', armColor: '#6B449A', armStroke: '#2F1A4A', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.12)' },   // 6 summoner
+        { r: 15, maxHp: 300, noScale: true, bodyColor: '#9B7BD0', innerColor: '#C2A9EA', armColor: '#7A5CB8', armStroke: '#3A2A60', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.10)' },   // 7 minion
     ];
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)
@@ -6186,11 +6240,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             let _hurt = 0;
             for (let _zi = 0; _zi < _zVisible; _zi++) {
                 const _zb = _zVisibleList[_zi], _zDef = _ZB_DEFS[_zb.type || 0] || _ZB_DEFS[0];
-                if (_zb.hp > 0 && _zb.hp < _zDef.maxHp) _zHurt[_hurt++] = _zb;
+                if (_zb.hp > 0 && _zb.hp < _zMaxHp(_zDef) - 0.5) _zHurt[_hurt++] = _zb;
             }
             if (_hurt > 0) _drawZombieBars(ctx, _zHurt, _hurt, _ZB_DEFS);
         }
         if (_turretFx.length) _drawTurretFx(ctx, _zNow);
+        if (_zFx.length) _drawZombieFx(ctx, _zNow);
 
         // --- JUCATORI ---
         // The ring sits just outside the default hands and the labels stack on it

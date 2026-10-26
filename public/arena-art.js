@@ -584,6 +584,11 @@
         { id: 'zombi',       view: [-70, -52.5, 140, 140], disc: 38.5,  sh: [7, 12, 38.5, 35] },   // normal
         { id: 'zombi_rapid', view: [-60, -45, 120, 120],   disc: 29.95, sh: [7, 12, 33, 30] },     // runner
         { id: 'zombi_tanc',  view: [-90, -67.5, 180, 180], disc: 49.2,  sh: [7, 12, 49.5, 45] },   // tank
+        { id: 'zombi_toxic', view: [-72, -54, 144, 144],   disc: 38.5,  sh: [7, 12, 39.6, 36] },    // spitter (its dashed acid ring is part of the picture)
+        { id: 'zombi_exploder', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },  // exploder
+        { id: 'zombi_brute', view: [-90, -67.5, 180, 180], disc: 49.2,  sh: [7, 12, 49.5, 45] },    // brute (the spikes are inside the picture's frame)
+        { id: 'zombi_summoner', view: [-90, -67.5, 180, 180], disc: 49.2, sh: [7, 12, 49.5, 45] }, // summoner
+        { id: 'zombi_minion', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },    // minion
     ];
     const zombieImgs = ZOMBIE_ART.map(function (a) {
         const e = { img: new Image(), state: 0 };   // 0 loading, 1 ready, 2 failed
