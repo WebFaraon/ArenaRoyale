@@ -3301,7 +3301,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _healthKits   = new Map(); // id → {x, y, timeLeft}
     const _kitPickupFx  = [];        // { x, y, amount, startTime }
     const _coinFloats   = [];        // { x, y, amount, startTime } — coin earn popup
-    const _coinPull = (x, y) => ARPveCoins.pull(Math.hypot(predX - x, predY - y), PLAYER_HIT_R + ARPveCoins.PICK_EXTRA, ARPveCoins.MAGNET_R);
     const _coinDrops    = new Map(); // PvE coins on the ground: id -> { x, y, ox, oy, t0 } (ox/oy: where the zombie died)
     const _coinFx       = [];        // coins just taken: { x, y, t0 }, a short hop and fade
     const COIN_LAND_MS = ARPveCoins.LAND_MS, COIN_TTL_MS = ARPveCoins.TTL_MS, COIN_BLINK_MS = ARPveCoins.BLINK_MS;   // pve-coins.js: the server uses the same life
@@ -5216,6 +5215,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
     // PvE coins lie on the ground until somebody touches them (server: pve-coins.js; these two events are not part of gs2).
     // coin-drops: a zombie died at (ox, oy) and these landed around it. coin-taken: gone (gone: true = they timed out).
+    // the magnet moves coins on the server: the new places of the ones that moved ([id, x, y, ...]); a coin in its first hop is left alone
+    socket.on('coin-mv', (flat) => {
+        const _t = performance.now();
+        for (let i = 0; i + 2 < flat.length; i += 3) {
+            const d = _coinDrops.get(flat[i]);
+            if (!d) continue;
+            if (d.rx === undefined) { const q = Math.min(1, (_t - d.t0) / COIN_LAND_MS), e = 1 - (1 - q) * (1 - q); d.rx = d.ox + (d.x - d.ox) * e; d.ry = d.oy + (d.y - d.oy) * e; }
+            d.x = flat[i + 1]; d.y = flat[i + 2];
+        }
+    });
     socket.on('coin-drops', ({ ox, oy, c }) => {
         const _now = performance.now();
         for (let i = 0; i < c.length; i++) _coinDrops.set(c[i][0], { x: c[i][1], y: c[i][2], ox, oy, t0: _now });
@@ -5225,7 +5234,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let i = 0; i < ids.length; i++) {
             const d = _coinDrops.get(ids[i]);
             if (!d) continue;
-            if (!gone) _coinFx.push({ x: d.x, y: d.y, t0: _now });
+            if (!gone) _coinFx.push({ x: d.rx !== undefined ? d.rx : d.x, y: d.ry !== undefined ? d.ry : d.y, t0: _now });
             _coinDrops.delete(ids[i]);
         }
     });
@@ -6219,13 +6228,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // --- PvE COINS ON THE GROUND --- (shadows are one fill, then the coins)
         if (_gameMode === 'pve' && (_coinDrops.size > 0 || _coinFx.length > 0)) {
             const _cNow = performance.now();
-            const _cmOn = predX !== null && !_selfDead;   // the magnet: a coin near you is drawn drifting in (the server takes it a little further out than before)
             ctx.beginPath();
             for (const [, _cd] of _coinDrops) {
                 if (_cd.x + 24 < visLeft || _cd.x - 24 > visRight || _cd.y + 24 < visTop || _cd.y - 24 > visBottom) continue;
                 const _cq = Math.min(1, (_cNow - _cd.t0) / COIN_LAND_MS), _ce = 1 - (1 - _cq) * (1 - _cq);
                 let _sx = _cd.ox + (_cd.x - _cd.ox) * _ce, _sy = _cd.oy + (_cd.y - _cd.oy) * _ce;
-                if (_cq >= 1 && _cmOn) { const _f = _coinPull(_sx, _sy); _sx += (predX - _sx) * _f; _sy += (predY - _sy) * _f; }
+                if (_cd.rx !== undefined) {   // the magnet is moving it (server: coin-mv): drawn catching up with the place the server says, a few frames behind
+                    const _k = 1 - Math.exp(-dtSec * 28);
+                    _cd.rx += (_cd.x - _cd.rx) * _k; _cd.ry += (_cd.y - _cd.ry) * _k;
+                    _sx = _cd.rx; _sy = _cd.ry;
+                }
                 ARArena.addCoinShadow(ctx, _sx, _sy, 0.5 + 0.5 * _cq);
             }
             ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fill();
@@ -6237,7 +6249,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 if (_cAge > COIN_TTL_MS - COIN_BLINK_MS && ((_cAge / 140) | 0) % 2 === 1) continue;
                 const _cq = Math.min(1, _cAge / COIN_LAND_MS), _ce = 1 - (1 - _cq) * (1 - _cq);
                 let _cx = _cd.ox + (_cd.x - _cd.ox) * _ce, _cy = _cd.oy + (_cd.y - _cd.oy) * _ce - 30 * _cq * (1 - _cq) * 2;   // an arc: up and down
-                if (_cq >= 1 && _cmOn) { const _f = _coinPull(_cx, _cy); _cx += (predX - _cx) * _f; _cy += (predY - _cy) * _f; }
+                if (_cd.rx !== undefined) { _cx = _cd.rx; _cy = _cd.ry; }
                 ARArena.drawCoin(ctx, _cx, _cy, _cq < 1 ? 0.55 + 0.45 * _cq : 1);
             }
             for (let _cfi = _coinFx.length - 1; _cfi >= 0; _cfi--) {

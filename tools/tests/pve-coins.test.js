@@ -119,13 +119,39 @@ test('sweep with nobody alive pays nobody and reports the coins gone', () => {
     assert.equal(coins.length, 0);
 });
 
-test('the magnet: nothing beyond its reach, all the way in where the server takes the coin, eased and never going back in between', () => {
-    const pickR = 30 + C.PICK_EXTRA;
-    assert.equal(C.pull(C.MAGNET_R, pickR, C.MAGNET_R), 0);
-    assert.equal(C.pull(C.MAGNET_R + 50, pickR, C.MAGNET_R), 0);
-    assert.equal(C.pull(pickR, pickR, C.MAGNET_R), 1);
-    assert.equal(C.pull(5, pickR, C.MAGNET_R), 1);
-    let prev = 0;
-    for (let d = C.MAGNET_R; d >= pickR; d -= 2) { const f = C.pull(d, pickR, C.MAGNET_R); assert.ok(f >= prev && f >= 0 && f <= 1); prev = f; }
-    assert.ok(C.MAGNET_R > pickR, 'the drawing starts outside the pickup distance');
+test('the magnet: a landed coin near a player drifts to them and is taken, whether the player moves or stands still', () => {
+    const pickR = 30 + C.PICK_EXTRA, PICK2 = pickR * pickR, out = { taken: [], gone: [] };
+    for (const start of [C.MAGNET_R - 5, 90, pickR + 10]) {
+        const coins = [{ id: 1, x: 1000 + start, y: 1000, t: 0 }], p = { x: 1000, y: 1000 }, moved = [];
+        let taken = false, steps = 0;
+        for (; steps < 600 && !taken; steps++) {
+            moved.length = 0;
+            C.attract(coins, [p], 1 / 60, 10000, pickR, moved);
+            C.step(coins, [p], PICK2, 10000, C.TTL_MS, out);
+            taken = out.taken.length > 0;
+        }
+        assert.ok(taken, 'a coin ' + start + ' away reaches the pickup range with the player standing still');
+        assert.ok(steps < 120, 'and does so in under two seconds (' + steps + ' ticks)');
+    }
+});
+
+test('the magnet: nothing beyond its reach, nothing before the coin has landed, the nearest player pulls, and it never overshoots', () => {
+    const pickR = 30 + C.PICK_EXTRA, moved = [];
+    let coins = [{ id: 1, x: 1000 + C.MAGNET_R + 1, y: 1000, t: 0 }];
+    C.attract(coins, [{ x: 1000, y: 1000 }], 1 / 60, 10000, pickR, moved);
+    assert.equal(moved.length, 0, 'out of reach');
+    coins = [{ id: 1, x: 1080, y: 1000, t: 10000 }];
+    C.attract(coins, [{ x: 1000, y: 1000 }], 1 / 60, 10000 + C.LAND_MS - 1, pickR, moved);
+    assert.equal(moved.length, 0, 'still in its hop');
+    C.attract(coins, [{ x: 1000, y: 1000 }], 1 / 60, 10000 + C.LAND_MS + 1, pickR, moved);
+    assert.equal(moved.length, 1); assert.ok(coins[0].x < 1080 && coins[0].y === 1000);
+    coins = [{ id: 1, x: 1100, y: 1000, t: 0 }]; moved.length = 0;
+    C.attract(coins, [{ x: 1000, y: 1000 }, { x: 1100, y: 1050 }], 1 / 60, 10000, pickR, moved);
+    assert.ok(coins[0].y > 1000, 'the second player is nearer: the coin goes towards them');
+    coins = [{ id: 1, x: 1070, y: 1000, t: 0 }]; moved.length = 0;
+    C.attract(coins, [{ x: 1000, y: 1000 }], 10, 10000, pickR, moved);   // a huge dt must not carry it past the player
+    assert.ok(coins[0].x >= 1000 && coins[0].x <= 1070);
+    coins = [{ id: 1, x: 1000 + pickR * 0.4, y: 1000, t: 0 }]; moved.length = 0;
+    C.attract(coins, [{ x: 1000, y: 1000 }], 1 / 60, 10000, pickR, moved);
+    assert.equal(moved.length, 0, 'inside the pickup range it is left to step()');
 });

@@ -17,7 +17,8 @@
     const BLINK_MS = 8000;       // and blinks for the last of it (client)
     const LAND_MS = 380;         // the hop from the zombie to its place (client)
     const PICK_EXTRA = 26;       // a coin is taken when it is within player radius + this (a light magnet: it was 12)
-    const MAGNET_R = 110;        // from this far (from the player's centre) the client draws a coin drifting in to the player (visual only)
+    const MAGNET_R = 120;        // a landed coin this near a player (centre to coin) drifts in to them (attract)
+    const MAGNET_MIN = 150, MAGNET_MAX = 420;   // the speed of the pull, from the edge of the reach to the player
     const MAX_COINS = 160;       // on the ground in a room at once: the oldest go first
     const COIN_CLEAR = 10;       // a coin is kept this far from a tree, rock or the base
 
@@ -87,13 +88,27 @@
         coins.length = 0;
     }
 
-    // How far a coin is drawn along its way to the player, 0..1: 0 from magnetR out, 1 once it is within pickR (where the server takes
-    // it), eased in between so it speeds up as it gets close. Only the drawing uses it; the coin is where the server says until it is taken.
-    function pull(dist, pickR, magnetR) {
-        if (dist >= magnetR) return 0;
-        if (dist <= pickR) return 1;
-        const u = (magnetR - dist) / (magnetR - pickR);
-        return u * u * (3 - 2 * u);
+    // The magnet: a landed coin within MAGNET_R of the nearest living player drifts towards them, faster the nearer it gets (MAGNET_MIN..MAGNET_MAX
+    // units a second), until it is within the pickup distance and step() takes it. It is the SERVER that moves the coins (the real position is
+    // the one it takes at, whether the player stands still or not); the clients get the new positions in 'coin-mv'. moved: the coins that
+    // moved this call are pushed to it. Coins still in the hop from the zombie (landMs after the drop) stay put.
+    function attract(coins, players, dt, now, pickR, moved) {
+        for (let i = 0; i < coins.length; i++) {
+            const c = coins[i];
+            if (now - c.t < LAND_MS) continue;
+            let best = null, bd = MAGNET_R * MAGNET_R;
+            for (let k = 0; k < players.length; k++) {
+                const p = players[k], dx = p.x - c.x, dy = p.y - c.y, d2 = dx * dx + dy * dy;
+                if (d2 < bd) { bd = d2; best = p; }
+            }
+            if (!best) continue;
+            const d = Math.sqrt(bd);
+            if (d <= pickR * 0.5) continue;   // inside the pickup range: step() takes it this very tick
+            const speed = MAGNET_MIN + (MAGNET_MAX - MAGNET_MIN) * (1 - d / MAGNET_R);
+            const mv = Math.min(speed * dt, d);
+            c.x += (best.x - c.x) / d * mv; c.y += (best.y - c.y) / d * mv;
+            moved.push(c);
+        }
     }
 
     // Keeps at most `max` coins, dropping the oldest; returns the ids dropped
@@ -102,5 +117,5 @@
         return coins.splice(0, coins.length - max).map(function (c) { return c.id; });
     }
 
-    return { TTL_MS: TTL_MS, BLINK_MS: BLINK_MS, LAND_MS: LAND_MS, PICK_EXTRA: PICK_EXTRA, MAGNET_R: MAGNET_R, MAX_COINS: MAX_COINS, scatter: scatter, step: step, sweep: sweep, trim: trim, pull: pull };
+    return { TTL_MS: TTL_MS, BLINK_MS: BLINK_MS, LAND_MS: LAND_MS, PICK_EXTRA: PICK_EXTRA, MAGNET_R: MAGNET_R, MAGNET_MIN: MAGNET_MIN, MAGNET_MAX: MAGNET_MAX, MAX_COINS: MAX_COINS, scatter: scatter, step: step, sweep: sweep, trim: trim, attract: attract };
 });

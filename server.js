@@ -1006,6 +1006,7 @@ const PVE_BASE_R         = 85;
 const PVE_BASE_ATTACK_R  = 95;
 const _COIN_PICK_SQ      = (PLAYER_R + PveCoins.PICK_EXTRA) ** 2;   // a PvE coin is taken within this distance of a player
 const _coinOut           = { taken: [], gone: [] };                 // scratch for PveCoins.step
+const _coinMoved         = [];                                      // scratch for PveCoins.attract
 // Coins taken (flat [coinId, player, ...] from PveCoins.step or sweep): every client drops them, each player is paid his own and told once.
 function _payCoins(code, taken) {
     const ids = [];
@@ -2658,7 +2659,19 @@ function startRoomLoop(code, room) {
 
             // PvE coins on the ground: a living player that reaches one takes it, the ones nobody takes time out
             if (room.coinDrops.length) {
+                // the magnet: the coins near a player drift in (the server moves them: the position it takes them at is the real one); the clients
+                // get the new places of the moving ones 20 times a second ('coin-mv', flat [id, x, y, ...])
+                _coinMoved.length = 0;
+                PveCoins.attract(room.coinDrops, alivePlayers, dt, now, PLAYER_R + PveCoins.PICK_EXTRA, _coinMoved);
+                if (_coinMoved.length) { const mv = room._coinMv || (room._coinMv = new Set()); for (let ci = 0; ci < _coinMoved.length; ci++) mv.add(_coinMoved[ci]); }
                 PveCoins.step(room.coinDrops, alivePlayers, _COIN_PICK_SQ, now, PveCoins.TTL_MS, _coinOut);
+                if (room._coinMv && room._coinMv.size && now - (room._coinMvAt || 0) >= 50) {
+                    room._coinMvAt = now;
+                    const flat = [];
+                    for (const c of room._coinMv) if (room.coinDrops.indexOf(c) !== -1) flat.push(c.id, Math.round(c.x * 10) / 10, Math.round(c.y * 10) / 10);
+                    room._coinMv.clear();
+                    if (flat.length) io.to(code).emit('coin-mv', flat);
+                }
                 if (_coinOut.taken.length) _payCoins(code, _coinOut.taken);
                 if (_coinOut.gone.length) io.to(code).emit('coin-taken', { ids: _coinOut.gone.slice(), gone: true });
             }
