@@ -3299,6 +3299,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _healthKits   = new Map(); // id → {x, y, timeLeft}
     const _kitPickupFx  = [];        // { x, y, amount, startTime }
     const _coinFloats   = [];        // { x, y, amount, startTime } — coin earn popup
+    const _coinPull = (x, y) => ARPveCoins.pull(Math.hypot(predX - x, predY - y), PLAYER_HIT_R + ARPveCoins.PICK_EXTRA, ARPveCoins.MAGNET_R);
     const _coinDrops    = new Map(); // PvE coins on the ground: id -> { x, y, ox, oy, t0 } (ox/oy: where the zombie died)
     const _coinFx       = [];        // coins just taken: { x, y, t0 }, a short hop and fade
     const COIN_LAND_MS = ARPveCoins.LAND_MS, COIN_TTL_MS = ARPveCoins.TTL_MS, COIN_BLINK_MS = ARPveCoins.BLINK_MS;   // pve-coins.js: the server uses the same life
@@ -3545,6 +3546,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // The shots: a muzzle flash and a bullet that flies from the barrel to the zombie (the energy one is a bolt with a tail), a spark where it lands.
     // The hit itself was at once on the server; the bullet is only what you see, so it is quick (1800 units/s).
     const _TUR_SPEED = 1800;
+    const _TUR_TRAIL = ['255,226,122', '255,184,74', '127,233,255'], _TUR_TL = [58, 58, 74];   // the trail of a round: colour and length by level
+    // A fading trail behind the round, in four steps of rising strength (no gradient made every frame); a = overall strength
+    function _turTrail(ctx, f, bx, by, len, a, w) {
+        const tx = bx - f.dx * len, ty = by - f.dy * len;
+        ctx.lineWidth = w + 2.4; ctx.strokeStyle = 'rgba(11,15,26,' + (0.22 * a).toFixed(2) + ')';   // a faint ink edge, so it reads on the grass
+        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.lineWidth = w;
+        for (let k = 0; k < 4; k++) {
+            ctx.strokeStyle = 'rgba(' + _TUR_TRAIL[f.tier] + ',' + ((0.2 + 0.26 * k) * a).toFixed(2) + ')';
+            ctx.beginPath(); ctx.moveTo(tx + (bx - tx) * k / 4, ty + (by - ty) * k / 4); ctx.lineTo(bx, by); ctx.stroke();
+        }
+    }
     function _drawTurretFx(ctx, now) {
         for (let i = _turretFx.length - 1; i >= 0; i--) {
             const f = _turretFx[i], age = now - f.t0;
@@ -3554,20 +3567,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (age < f.dur) {
                 const u = age / f.dur, bx = f.x0 + (f.x1 - f.x0) * u, by = f.y0 + (f.y1 - f.y0) * u, L = en ? 26 : 15, tail = Math.min(L, u * f.len);
                 const tx = bx - f.dx * tail, ty = by - f.dy * tail;
-                if (en) {   // a ball of energy with a fading tail
-                    ctx.lineWidth = 6;   // the tail in three steps of rising strength (no gradient made every frame)
-                    for (let s3 = 0; s3 < 3; s3++) {
-                        ctx.strokeStyle = 'rgba(127,233,255,' + (0.25 + 0.3 * s3).toFixed(2) + ')';
-                        ctx.beginPath(); ctx.moveTo(tx + (bx - tx) * s3 / 3, ty + (by - ty) * s3 / 3); ctx.lineTo(bx, by); ctx.stroke();
-                    }
+                _turTrail(ctx, f, bx, by, Math.min(_TUR_TL[f.tier], u * f.len), 1, en ? 6 : 4);   // the long trail first, the round on top of it
+                if (en) {   // a ball of energy
                     ctx.fillStyle = col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
                     ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(bx, by, 2.6, 0, Math.PI * 2); ctx.fill();
                 } else {    // a short round with an ink edge, like the bullets of the guns
                     ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 5.4; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke();
                     ctx.strokeStyle = col; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke();
                 }
-            } else {      // it landed: a small spark that goes out in 90 ms
+            } else {      // it landed: a small spark that goes out in 90 ms, and the trail with it
                 const a = 1 - (age - f.dur) / 90;
+                _turTrail(ctx, f, f.x1, f.y1, Math.min(_TUR_TL[f.tier], f.len) * a, a, en ? 6 : 4);
                 ctx.globalAlpha = a; ctx.fillStyle = col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
                 _star(ctx, f.x1, f.y1, (en ? 11 : 7) * (0.6 + 0.4 * a)); ctx.fill(); ctx.stroke();
                 ctx.globalAlpha = 1;
@@ -3582,20 +3592,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _barEls() {
         const g = id => document.getElementById(id);
-        return _bar.els = { slot: g('pb-barricade'), n: g('pb-barricade-n'), cost: g('pb-barricade-cost'), tslot: g('pb-turret'), tn: g('pb-turret-n'), tcost: g('pb-turret-cost'), tval: g('pve-turret-val'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar'), val: g('pve-barricade-val') };
+        return _bar.els = { slot: g('pb-barricade'), cost: g('pb-barricade-cost'), tslot: g('pb-turret'), tcost: g('pb-turret-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar') };
     }
     function _barUi() {
         const e = _bar.els || _barEls();
         if (e.slot) { e.slot.classList.toggle('is-empty', _bar.inv <= 0 && !(_bar.place && _bar.kind === 'b')); e.slot.classList.toggle('is-on', _bar.place && _bar.kind === 'b'); }
-        if (e.n) e.n.textContent = _bar.inv;
         if (e.cost) e.cost.textContent = 'x' + _bar.inv;
-        if (e.val) e.val.textContent = 'in inventar: ' + _bar.inv;
         if (e.tslot) { e.tslot.classList.toggle('is-empty', _bar.invT <= 0 && !(_bar.place && _bar.kind === 't')); e.tslot.classList.toggle('is-on', _bar.place && _bar.kind === 't'); }
-        if (e.tn) e.tn.textContent = _bar.invT;
         if (e.tcost) e.tcost.textContent = 'x' + _bar.invT;
-        if (e.tval) e.tval.textContent = 'in inventar: ' + _bar.invT;
-        const pc = document.querySelector('.pve-upg-btn[data-type="barricade"] .pve-upg-cost'); if (pc) pc.textContent = ARStructs.BUY_COST;
-        const tc = document.querySelector('.pve-upg-btn[data-type="turret"] .pve-upg-cost'); if (tc) tc.textContent = ARStructs.TURRET_BUY_COST;
         if (e.pbar) e.pbar.style.display = _bar.place && !isDesktop ? '' : 'none';
     }
     // 1 (or the slot): the placement mode, with the ghost in front of you. While it is on, the trigger does not fire.
@@ -3773,17 +3777,20 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.stroke();
         });
     }
+    const _ring = { id: -1, a: 0, t: 0 };   // the one range ring on show (see _drawTurrets)
     function _drawTurrets(ctx, scale, zoom, visL, visT, visR, visB, now) {
         const R = ARStructs.TURRET.r;
-        // the reach of a turret shows only when you are near it (it fades in from 230 units away to full at 150)
-        if (predX !== null && !_bar.place) {
-            for (let i = 0; i < _turrets.length; i++) {
-                const t = _turrets[i], d = Math.hypot(predX - t.x, predY - t.y);
-                if (d >= 230) continue;
-                const a = Math.min(1, (230 - d) / 80), rg = ARStructs.TURRET.tiers[t.t].range;
+        // The reach of a turret shows only for the one E would work on (the highlighted one, so you are right by it), never two at once;
+        // it fades in and out over a fifth of a second
+        const hi = _bar.use && _bar.use.k === 't' ? _bar.use : null, rdt = Math.min(0.1, Math.max(0, (now - (_ring.t || now)) / 1000)); _ring.t = now;
+        if (hi && _ring.id !== hi.id) { _ring.id = hi.id; _ring.a = 0; }
+        _ring.a = hi ? Math.min(1, _ring.a + rdt / 0.2) : Math.max(0, _ring.a - rdt / 0.2);
+        if (_ring.a > 0 && !_bar.place) {
+            const t = _turrets.find(q => q.id === _ring.id);
+            if (t) {
                 ctx.save();
-                ctx.globalAlpha = a; ctx.lineWidth = 2 / zoom; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.setLineDash([10 / zoom, 8 / zoom]);
-                ctx.beginPath(); ctx.arc(t.x, t.y, rg, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = _ring.a; ctx.lineWidth = 2 / zoom; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.setLineDash([10 / zoom, 8 / zoom]);
+                ctx.beginPath(); ctx.arc(t.x, t.y, ARStructs.TURRET.tiers[t.t].range, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
                 ctx.restore();
             }
         }
@@ -6047,11 +6054,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // --- PvE COINS ON THE GROUND --- (shadows are one fill, then the coins)
         if (_gameMode === 'pve' && (_coinDrops.size > 0 || _coinFx.length > 0)) {
             const _cNow = performance.now();
+            const _cmOn = predX !== null && !_selfDead;   // the magnet: a coin near you is drawn drifting in (the server takes it a little further out than before)
             ctx.beginPath();
             for (const [, _cd] of _coinDrops) {
                 if (_cd.x + 24 < visLeft || _cd.x - 24 > visRight || _cd.y + 24 < visTop || _cd.y - 24 > visBottom) continue;
                 const _cq = Math.min(1, (_cNow - _cd.t0) / COIN_LAND_MS), _ce = 1 - (1 - _cq) * (1 - _cq);
-                ARArena.addCoinShadow(ctx, _cd.ox + (_cd.x - _cd.ox) * _ce, _cd.oy + (_cd.y - _cd.oy) * _ce, 0.5 + 0.5 * _cq);
+                let _sx = _cd.ox + (_cd.x - _cd.ox) * _ce, _sy = _cd.oy + (_cd.y - _cd.oy) * _ce;
+                if (_cq >= 1 && _cmOn) { const _f = _coinPull(_sx, _sy); _sx += (predX - _sx) * _f; _sy += (predY - _sy) * _f; }
+                ARArena.addCoinShadow(ctx, _sx, _sy, 0.5 + 0.5 * _cq);
             }
             ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fill();
             for (const [_cid, _cd] of _coinDrops) {
@@ -6061,7 +6071,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 // the last seconds: it blinks
                 if (_cAge > COIN_TTL_MS - COIN_BLINK_MS && ((_cAge / 140) | 0) % 2 === 1) continue;
                 const _cq = Math.min(1, _cAge / COIN_LAND_MS), _ce = 1 - (1 - _cq) * (1 - _cq);
-                const _cx = _cd.ox + (_cd.x - _cd.ox) * _ce, _cy = _cd.oy + (_cd.y - _cd.oy) * _ce - 30 * _cq * (1 - _cq) * 2;   // an arc: up and down
+                let _cx = _cd.ox + (_cd.x - _cd.ox) * _ce, _cy = _cd.oy + (_cd.y - _cd.oy) * _ce - 30 * _cq * (1 - _cq) * 2;   // an arc: up and down
+                if (_cq >= 1 && _cmOn) { const _f = _coinPull(_cx, _cy); _cx += (predX - _cx) * _f; _cy += (predY - _cy) * _f; }
                 ARArena.drawCoin(ctx, _cx, _cy, _cq < 1 ? 0.55 + 0.45 * _cq : 1);
             }
             for (let _cfi = _coinFx.length - 1; _cfi >= 0; _cfi--) {

@@ -2170,7 +2170,10 @@ function startRoomLoop(code, room) {
                             ddy += _oy / od * str * 2.8;
                         }
                     }
-                    for (let ti = 0; ti < room.turrets.length; ti++) {   // a turret is round: gone round like a rock
+                    // A turret is round: a zombie after a player goes round it like a rock. One that is going for the turret (or the base, or a
+                    // barricade) must not be pushed off it: that push cancelled the pull at ~30 from the surface, the sum flipped sign every tick
+                    // (the zombie spun on the spot and hit only now and then) and with a crowd it never got within reach.
+                    for (let ti = 0; chasingPlayer && ti < room.turrets.length; ti++) {
                         const tu = room.turrets[ti], _tx = zombie.x - tu.x, _ty = zombie.y - tu.y;
                         const influence = ARStructs.TURRET.r + def.r + 40, _tSq = _tx * _tx + _ty * _ty;
                         if (_tSq >= influence * influence || _tSq === 0) continue;

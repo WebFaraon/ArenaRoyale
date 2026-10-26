@@ -5104,7 +5104,6 @@ button:disabled { cursor: not-allowed; }
 .pb-slot:not(.is-soon) { pointer-events: auto; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .pb-slot.is-empty { opacity: .55; }
 .pb-slot.is-on { border-color: var(--c-gold); box-shadow: inset 0 -4px 0 var(--l-slate), 0 0 0 3px rgba(255, 199, 46, .55), 0 4px 0 rgba(0, 0, 0, .45); transform: translateY(-4px); }
-.pb-n { position: absolute; right: 9px; top: 6px; font-style: normal; font-size: .82rem; font-weight: 800; color: #fff; }
 #pve-use, #pve-place-bar { position: absolute; left: 50%; bottom: calc(max(10px, var(--safe-b)) + 74px); transform: translateX(-50%); pointer-events: auto; }
 #pve-use {
     --c: var(--c-green); --l: var(--l-green);
@@ -5322,3 +5321,6 @@ button:disabled { cursor: not-allowed; }
     .pbk-nlbl { width: 4.6em; }
 }
 @media (prefers-reduced-motion: reduce) { .pbk-c.is-pop { animation: none; } }
+
+/* no keyboard on a phone or tablet: the repair / upgrade block is tapped, so it does not show the E key (same test as isDesktop in game.js) */
+@media not all and (hover: hover) and (pointer: fine) { #pve-use .pu-key { display: none; } }

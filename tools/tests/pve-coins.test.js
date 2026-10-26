@@ -59,10 +59,10 @@ test('a living player touching a coin takes it, the others stay', () => {
 test('the pickup distance is the player radius plus a little: just inside takes, just outside does not', () => {
     const out = { taken: [], gone: [] };
     let coins = [{ id: 1, x: 100, y: 100, t: 0 }];
-    C.step(coins, [{ x: 100 + 31, y: 100 }], PICK_SQ, 0, C.TTL_MS, out);
+    C.step(coins, [{ x: 100 + 20 + C.PICK_EXTRA - 1, y: 100 }], PICK_SQ, 0, C.TTL_MS, out);
     assert.equal(out.taken.length, 2);
     coins = [{ id: 1, x: 100, y: 100, t: 0 }];
-    C.step(coins, [{ x: 100 + 33, y: 100 }], PICK_SQ, 0, C.TTL_MS, out);
+    C.step(coins, [{ x: 100 + 20 + C.PICK_EXTRA + 1, y: 100 }], PICK_SQ, 0, C.TTL_MS, out);
     assert.equal(out.taken.length, 0); assert.equal(coins.length, 1);
 });
 
@@ -117,4 +117,15 @@ test('sweep with nobody alive pays nobody and reports the coins gone', () => {
     assert.equal(out.taken.length, 0);
     assert.deepEqual(out.gone, [1, 2]);
     assert.equal(coins.length, 0);
+});
+
+test('the magnet: nothing beyond its reach, all the way in where the server takes the coin, eased and never going back in between', () => {
+    const pickR = 30 + C.PICK_EXTRA;
+    assert.equal(C.pull(C.MAGNET_R, pickR, C.MAGNET_R), 0);
+    assert.equal(C.pull(C.MAGNET_R + 50, pickR, C.MAGNET_R), 0);
+    assert.equal(C.pull(pickR, pickR, C.MAGNET_R), 1);
+    assert.equal(C.pull(5, pickR, C.MAGNET_R), 1);
+    let prev = 0;
+    for (let d = C.MAGNET_R; d >= pickR; d -= 2) { const f = C.pull(d, pickR, C.MAGNET_R); assert.ok(f >= prev && f >= 0 && f <= 1); prev = f; }
+    assert.ok(C.MAGNET_R > pickR, 'the drawing starts outside the pickup distance');
 });
