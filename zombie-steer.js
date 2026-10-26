@@ -195,4 +195,15 @@ function chainTargets(first, zombies, reach, jumps, out) {
     return out;
 }
 
-module.exports = { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets, BEND, STRUCT_BEND };
+// Is a zombie (centre zx, zy, body radius zr) in the jet of a Flamethrower at (ox, oy) pointing at ang: within `range` of the tower (the body counts) and
+// within `half` radians of the axis (a body near the axis counts for the angle it fills, so a big one is hit by the edge of the cone)
+function inCone(ox, oy, ang, range, half, zx, zy, zr) {
+    const dx = zx - ox, dy = zy - oy, d = Math.hypot(dx, dy);
+    if (d > range + zr) return false;
+    if (d <= zr) return true;
+    let da = Math.atan2(dy, dx) - ang;
+    while (da > Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+    return Math.abs(da) <= half + Math.asin(Math.min(1, zr / d));
+}
+module.exports = { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets, inCone, BEND, STRUCT_BEND };

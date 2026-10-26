@@ -3517,7 +3517,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _bombFx      = [];   // the bombs of the Bomb Towers: { x0, y0, x1, y1, t0, dur, r } (it flies for dur ms, then the blast of radius r)
     const _zapFx       = [];   // the bolts of the Tesla Towers: { t0, segs: [{ pts: flat [x, y, ...], t0 }], hits: [{ x, y, t0 }] }
     const _structDying = [];   // broken ones, drawn as pieces for a second: { s, t0 }
-    const _bar = { inv: 0, invT: 0, invE: 0, invH: 0, invO: 0, kind: 'b', act: null, can: true, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
+    const _bar = { inv: 0, invT: 0, invE: 0, invH: 0, invO: 0, invF: 0, kind: 'b', act: null, can: true, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
     const _structFx = [];      // the effects: break, repair, upgrade { k, x, y, o, t0, parts }
     // colours of the chips by material (wood, stone, metal, obsidian): light, dark, highlight
     const _BAR_PAL = [['#D9A24E', '#8F5A1E', '#F4D48A'], ['#A39B8E', '#6B655B', '#D2CBBF'], ['#9AA7B4', '#5E6B78', '#D3DCE5'], ['#6A52B0', '#241C42', '#B79CF5']];
@@ -3537,9 +3537,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // ---- turrets: the base stays, the head turns to what it fires at; the art is public/images/pve/turrets/{base,head}<level>.svg (100 x 100 units, the base disc has the radius 31) ----
     const _TUR_PAL = [['#A9C46A', '#4F5A2A', '#E4F0B0'], ['#6C9BD8', '#2F4A7A', '#CFE3FF'], ['#8FF3FF', '#24505E', '#FFFFFF']];
     // the colours of the effects (break, repair, upgrade) by kind and level; the kind is what the server calls it (ARStructs.TURRET.kinds): mg, tesla, heal
-    const _PAL_BY_KIND = { mg: _TUR_PAL, tesla: [['#8FF3FF', '#2F3A5F', '#FFFFFF'], ['#8FF3FF', '#2F3A5F', '#FFFFFF'], ['#D3B8FF', '#2F3A5F', '#FFFFFF']], bomb: [['#FFB54D', '#4A3F35', '#FFF3C4'], ['#FFB54D', '#4A3F35', '#FFF3C4'], ['#FF7A3D', '#4A3F35', '#FFF3C4']], heal: [['#7BF0A6', '#2E6B52', '#EAF7EF'], ['#7BF0A6', '#2E6B52', '#EAF7EF'], ['#7BF0A6', '#2E6B52', '#EAF7EF']] };
-    // what the build keys / slots are: 1 barricade, 2 machine gun turret, 3 Tesla Tower, 4 Health Station, 5 Bomb Tower (kd: the kind for the server, inv: the field of _bar that holds how many you have)
-    const _BAR_KINDS = { b: { inv: 'inv' }, t: { kd: 'mg', inv: 'invT' }, e: { kd: 'tesla', inv: 'invE' }, h: { kd: 'heal', inv: 'invH' }, o: { kd: 'bomb', inv: 'invO' } };
+    const _PAL_BY_KIND = { mg: _TUR_PAL, tesla: [['#8FF3FF', '#2F3A5F', '#FFFFFF'], ['#8FF3FF', '#2F3A5F', '#FFFFFF'], ['#D3B8FF', '#2F3A5F', '#FFFFFF']], bomb: [['#FFB54D', '#4A3F35', '#FFF3C4'], ['#FFB54D', '#4A3F35', '#FFF3C4'], ['#FF7A3D', '#4A3F35', '#FFF3C4']], heal: [['#7BF0A6', '#2E6B52', '#EAF7EF'], ['#7BF0A6', '#2E6B52', '#EAF7EF'], ['#7BF0A6', '#2E6B52', '#EAF7EF']], flame: [['#FF9F3D', '#5A2A22', '#FFF0C4'], ['#FF9F3D', '#5A2A22', '#FFF0C4'], ['#FFC72E', '#5A2A22', '#FFF0C4']] };
+    // what the build keys / slots are: 1 barricade, 2 machine gun turret, 3 Tesla Tower, 4 Health Station, 5 Bomb Tower, 6 Flamethrower (kd: the kind for the server, inv: the field of _bar that holds how many you have)
+    const _BAR_KINDS = { b: { inv: 'inv' }, t: { kd: 'mg', inv: 'invT' }, e: { kd: 'tesla', inv: 'invE' }, h: { kd: 'heal', inv: 'invH' }, o: { kd: 'bomb', inv: 'invO' }, f: { kd: 'flame', inv: 'invF' } };
     const _TUR_COL = ['#FFE27A', '#FFB84A', '#7FE9FF'];   // the tracer by level
     function _turImg(part, tier) {
         const key = 'T' + part + (tier + 1);
@@ -3559,7 +3559,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const b = _turSprite(t.kd === 'tesla' ? 'tesla' : t.kd === 'bomb' ? 'bomb' : 'station', t.t, scale);
             if (b) ctx.drawImage(b.c, -b.w / 2, -b.h / 2, b.w, b.h);
         } else {
-            const b = _turSprite('base', t.t, scale), h = _turSprite('head', t.t, scale);
+            const fl = t.kd === 'flame', b = _turSprite(fl ? 'flame_base' : 'base', t.t, scale), h = _turSprite(fl ? 'flame_head' : 'head', t.t, scale);   // (the Flamethrower has its own pair)
             if (b) ctx.drawImage(b.c, -b.w / 2, -b.h / 2, b.w, b.h);
             if (h) { ctx.rotate(ang - Math.PI / 2); ctx.drawImage(h.c, -h.w / 2, -h.h / 2, h.w, h.h); }   // the barrel is drawn pointing down: 0 deg is +y
         }
@@ -3760,6 +3760,67 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.globalAlpha = 1;
         }
     }
+    // The Flamethrower's jet. While the server keeps sending bursts (flame-shots, one every 250 ms, a burst stays _FLAME_LIFE ms) a jet of fire runs from the
+    // nozzle out to the range of the tower: puffs born white-yellow at the nozzle, turning orange, then red, and ending as dark smoke, wider as they go; sparks
+    // fly off it, the ground under the cone glows, and every zombie inside it wears small flames. All of it is worked out from the clock: the only state is
+    // when the last burst came (t.flameT) and when this run of bursts began (t.flameS); the random numbers are a hash of the puff.
+    const _FLAME_LIFE = 330, _FLAME_N = 22, _FLAME_SPARKS = 9;
+    const _FLAME_COL = ['#FFF6D0', '#FFE27A', '#FFC72E', '#FF9A22', '#FF6A1A', '#E8461A'];
+    function _fh(k) { const s = Math.sin(k * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
+    function _drawFlameFx(ctx, now, nz) {   // nz: how many of _zVisibleList are on screen
+        for (let i = 0; i < _turrets.length; i++) {
+            const t = _turrets[i];
+            if (t.kd !== 'flame' || now - t.flameT >= _FLAME_LIFE) continue;
+            const tier = ARStructs.turretTiers(t)[t.t], R = tier.range, half = tier.cone, ang = t.ang, ca = Math.cos(ang), sa = Math.sin(ang), tn = Math.tan(half);
+            const on = Math.min(1, (now - t.flameS) / 170 + 0.2), off = Math.min(1, (t.flameT + _FLAME_LIFE - now) / 140), I = on * off;   // grows in, dies out
+            const M = 33 + 3 * t.t, Lj = M + (R - M) * (0.4 + 0.6 * on), sz = 1 + 0.12 * t.t;
+            const tx = t.x, ty = t.y, mx = tx + ca * M, my = ty + sa * M;
+            // the glow on the ground: the cone, and a brighter one inside it
+            for (let g = 0; g < 2; g++) {
+                const h = half * (g ? 0.45 : 1);
+                ctx.globalAlpha = (g ? 0.2 : 0.16) * I; ctx.fillStyle = g ? '#FFC72E' : '#FF6A1A';
+                ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(tx + Math.cos(ang - h) * Lj * 1.04, ty + Math.sin(ang - h) * Lj * 1.04); ctx.lineTo(tx + Math.cos(ang + h) * Lj * 1.04, ty + Math.sin(ang + h) * Lj * 1.04); ctx.closePath(); ctx.fill();
+            }
+            // the zombies in the jet burn: little flames licking up off the body
+            for (let zi = 0; zi < nz; zi++) {
+                const z = _zVisibleList[zi], zr = (_ZB_DEFS[z.type || 0] || _ZB_DEFS[0]).r, dx = z.x - tx, dy = z.y - ty, d = Math.hypot(dx, dy);
+                if (d > R + zr) continue;
+                let da = Math.atan2(dy, dx) - ang; while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
+                if (d > zr && Math.abs(da) > half * 1.08 + Math.asin(Math.min(1, zr / d))) continue;
+                for (let j = 0; j < 4; j++) {
+                    const ph = (now / 300 + j / 4 + _fh(j + (z.id | 0) * 3) * 2) % 1, ox = (_fh(j * 5 + (z.id | 0)) * 2 - 1) * zr * 0.7, oy = (_fh(j * 7 + (z.id | 0) * 2) * 2 - 1) * zr * 0.5;
+                    ctx.globalAlpha = (1 - ph) * 0.95 * I; ctx.fillStyle = _FLAME_COL[2 + Math.min(3, (ph * 4) | 0)];
+                    ctx.beginPath(); ctx.arc(z.x + ox, z.y + oy - ph * zr * 0.9, zr * 0.3 * (1 - ph * 0.65) + 1.5, 0, TAU); ctx.fill();
+                }
+            }
+            // the puffs, the farthest first
+            const base = (now / 460) % 1, cyc = Math.floor(now / 460), tw = tn * 0.72;
+            ctx.strokeStyle = 'rgba(11,15,26,.45)'; ctx.lineWidth = 1.6;
+            for (let j = _FLAME_N - 1; j >= 0; j--) {
+                const ph = (j + base) / _FLAME_N, id = (((j - cyc) % _FLAME_N) + _FLAME_N) % _FLAME_N + t.id * 7;
+                const d = M + (Lj - M) * (ph * 0.7 + ph * ph * 0.3), lat = (_fh(id) * 2 - 1) * tw * d + Math.sin(now * 0.012 + id * 1.7) * 3 * ph;
+                const r = (4 + 12 * Math.pow(ph, 0.8)) * sz, px = tx + ca * d - sa * lat, py = ty + sa * d + ca * lat - 7 * ph;
+                const smoke = ph > 0.82;
+                ctx.globalAlpha = (smoke ? 0.4 * (1 - (ph - 0.82) / 0.18) : 0.92) * I;
+                ctx.fillStyle = smoke ? '#3A3A44' : _FLAME_COL[Math.min(5, (ph * 7.2) | 0)];
+                ctx.beginPath(); ctx.ellipse(px, py, r * 1.5, r, ang, 0, TAU); ctx.fill();   // a drop stretched along the jet, so it streams
+                if (!smoke && ph > 0.3) ctx.stroke();   // the cooler flames are edged in ink like the rest of the game
+            }
+            // sparks flying off the jet
+            ctx.lineCap = 'round';
+            for (let s = 0; s < _FLAME_SPARKS; s++) {
+                const dur = 300 + 140 * _fh(s + t.id), tt = now / dur + _fh(s * 3 + 1) * 4, u = tt % 1, sid = Math.floor(tt) * 13 + s + t.id * 5;
+                const d = M + (Lj - M) * u * 1.12, lat = (_fh(sid) * 2 - 1) * tn * d * 1.1, d2 = Math.max(M, d - 8);
+                ctx.globalAlpha = (1 - u) * I; ctx.strokeStyle = s % 2 ? '#FFC72E' : '#FF8A1F'; ctx.lineWidth = 2.2 * (1 - u * 0.5) + 0.5;
+                ctx.beginPath(); ctx.moveTo(tx + ca * d2 - sa * lat, ty + sa * d2 + ca * lat); ctx.lineTo(tx + ca * d - sa * lat, ty + sa * d + ca * lat); ctx.stroke();
+            }
+            ctx.lineCap = 'butt';
+            // the glow at the nozzle
+            ctx.globalAlpha = (0.55 + 0.2 * Math.sin(now * 0.04)) * I; ctx.fillStyle = '#FFE27A'; ctx.beginPath(); ctx.arc(mx, my, 8 + 3 * on, 0, TAU); ctx.fill();
+            ctx.globalAlpha = I; ctx.fillStyle = '#FFF6D0'; ctx.beginPath(); ctx.arc(mx, my, 4, 0, TAU); ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+    }
     // A Tesla bolt: from the tower to the first zombie, on to the next, and so on (the server: tesla-zaps [tower id, zombie ids in the chain]). Each leg is
     // a jagged line worked out once here (the jags stay still while it lasts) and shown 70 ms after the one before, which is when the server hurts
     // that zombie; a leg stays 130 ms, fading, with a spark where it lands.
@@ -3824,7 +3885,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _barEls() {
         const g = id => document.getElementById(id);
-        return _bar.els = { slot: g('pb-barricade'), cost: g('pb-barricade-cost'), tslot: g('pb-turret'), tcost: g('pb-turret-cost'), eslot: g('pb-tesla'), ecost: g('pb-tesla-cost'), oslot: g('pb-bomb'), ocost: g('pb-bomb-cost'), hslot: g('pb-heal'), hcost: g('pb-heal-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar') };
+        return _bar.els = { slot: g('pb-barricade'), cost: g('pb-barricade-cost'), tslot: g('pb-turret'), tcost: g('pb-turret-cost'), eslot: g('pb-tesla'), ecost: g('pb-tesla-cost'), oslot: g('pb-bomb'), ocost: g('pb-bomb-cost'), fslot: g('pb-flame'), fcost: g('pb-flame-cost'), hslot: g('pb-heal'), hcost: g('pb-heal-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar') };
     }
     function _barUi() {
         const e = _bar.els || _barEls();
@@ -3838,10 +3899,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (e.hcost) e.hcost.textContent = 'x' + _bar.invH;
         if (e.oslot) { e.oslot.classList.toggle('is-empty', _bar.invO <= 0 && !(_bar.place && _bar.kind === 'o')); e.oslot.classList.toggle('is-on', _bar.place && _bar.kind === 'o'); }
         if (e.ocost) e.ocost.textContent = 'x' + _bar.invO;
+        if (e.fslot) { e.fslot.classList.toggle('is-empty', _bar.invF <= 0 && !(_bar.place && _bar.kind === 'f')); e.fslot.classList.toggle('is-on', _bar.place && _bar.kind === 'f'); }
+        if (e.fcost) e.fcost.textContent = 'x' + _bar.invF;
         if (e.pbar) e.pbar.style.display = _bar.place && !isDesktop ? '' : 'none';
     }
     // 1 (or the slot): the placement mode, with the ghost in front of you. While it is on, the trigger does not fire.
-    // kind: 'b' barricade (key 1), 't' turret (2), 'e' Tesla Tower (3) or 'h' Health Station (4); the same key again, or Esc, puts the ghost away; another key swaps it
+    // kind: 'b' barricade (key 1), 't' turret (2), 'e' Tesla Tower (3), 'h' Health Station (4), 'o' Bomb Tower (5) or 'f' Flamethrower (6); the same key again, or Esc, puts the ghost away; another key swaps it
     function _barPlaceMode(on, kind) {
         if (kind) { if (on === undefined) on = !(_bar.place && _bar.kind === kind); } else if (on === undefined) on = !_bar.place;
         if (on) {
@@ -4224,7 +4287,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             window.__arMe = () => [predX, predY];
             window.__arStructs = () => _structs.map(s => ({ ...s }));   // PvE barricades as the client has them
             window.__arTurrets = () => _turrets.map(s => ({ ...s }));   // and the turrets
-            window.__arBar = () => ({ inv: _bar.inv, invT: _bar.invT, invE: _bar.invE, invH: _bar.invH, invO: _bar.invO, kind: _bar.kind, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins, work: [..._bar.work.keys()], fx: _structFx.length });
+            window.__arBar = () => ({ inv: _bar.inv, invT: _bar.invT, invE: _bar.invE, invH: _bar.invH, invO: _bar.invO, invF: _bar.invF, kind: _bar.kind, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins, work: [..._bar.work.keys()], fx: _structFx.length });
             window.__arObs = () => _obstacles; // the obstacles as the client has them (map sprites tests)
             window.__arIS = () => _IS; // the other players as last rendered (interpolation)
             window.__arBullets = () => { const o = [], bl = _IS.bullets, age = _IS.bulletAge || 0; if (bl) for (const b of bl) { if (b.ownerId !== socket.id) o.push(b.id, b.x + b.dx * age, b.y + b.dy * age); } return o; }; // enemy bullets as drawn (id, x, y)
@@ -4486,6 +4549,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (k === '3') { _barPlaceMode(undefined, 'e'); return; }
             if (k === '4') { _barPlaceMode(undefined, 'h'); return; }
             if (k === '5') { _barPlaceMode(undefined, 'o'); return; }
+            if (k === '6') { _barPlaceMode(undefined, 'f'); return; }
             if (k === 'escape' && _bar.place) { _barPlaceMode(false); return; }
             if (k === 'e') { _barUse(); return; }
         }
@@ -5055,7 +5119,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const k in _obsShake) delete _obsShake[k];
         gameControl.countdownEndTime = null;
         _pveHudReset();
-        _zFx.length = 0; _zHpMul = 1; _structs.length = 0; _turrets.length = 0; _turretFx.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.invT = 0; _bar.invE = 0; _bar.invH = 0; _bar.invO = 0; _zapFx.length = 0; _bombFx.length = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
+        _zFx.length = 0; _zHpMul = 1; _structs.length = 0; _turrets.length = 0; _turretFx.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.invT = 0; _bar.invE = 0; _bar.invH = 0; _bar.invO = 0; _bar.invF = 0; _zapFx.length = 0; _bombFx.length = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
         _footsteps.length = 0;
         for (const k in _footTimers) delete _footTimers[k];
         for (const k in _footSide)   delete _footSide[k];
@@ -5115,6 +5179,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { id: 'turret', tab: 'build', name: 'Tureta', img: '/images/pve/icon_turret_mg.svg', kd: 'mg', held: () => _bar.invT, cost: () => ARStructs.TURRET_BUY_COST, tag: () => 'x' + _bar.invT },
         { id: 'tesla', tab: 'build', name: 'Tesla', img: '/images/pve/icon_tesla.svg', kd: 'tesla', held: () => _bar.invE, cost: () => ARStructs.turretBuyCost('tesla'), tag: () => 'x' + _bar.invE },
         { id: 'bomb', tab: 'build', name: 'Bomb Tower', img: '/images/pve/icon_bomb.svg', kd: 'bomb', held: () => _bar.invO, cost: () => ARStructs.turretBuyCost('bomb'), tag: () => 'x' + _bar.invO },
+        { id: 'flame', tab: 'build', name: 'Flamethrower', img: '/images/pve/icon_flame.svg', kd: 'flame', held: () => _bar.invF, cost: () => ARStructs.turretBuyCost('flame'), tag: () => 'x' + _bar.invF },
         { id: 'heal', tab: 'build', name: 'Health Station', img: '/images/pve/icon_station.svg', kd: 'heal', held: () => _bar.invH, cost: () => ARStructs.turretBuyCost('heal'), tag: () => 'x' + _bar.invH },
         { id: 'dmg', tab: 'weapon', name: 'Damage', ic: 'crosshair', lvl: n => '+' + n * 5 + '%' },
         { id: 'ammo', tab: 'weapon', name: 'Incarcator', ic: 'bolt', lvl: n => '+' + n * 12 + '%' },
@@ -5200,11 +5265,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _pbkInv() {
         const el = _$('pbk-inv');
-        const s = `${_bar.inv}|${_bar.invT}|${_bar.invE}|${_bar.invO}|${_bar.invH}|${ammoState.reserve | 0}`;
+        const s = `${_bar.inv}|${_bar.invT}|${_bar.invE}|${_bar.invO}|${_bar.invF}|${_bar.invH}|${ammoState.reserve | 0}`;
         if (el.__k === s) return;
         el.__k = s;
         el.innerHTML = `<span class="pbk-inv-h">INVENTAR</span><span class="pbk-pill"><img src="/images/pve/icon_barricade_wood.svg" alt="" draggable="false">x${_bar.inv}</span>` +
-            `<span class="pbk-pill"><img src="/images/pve/icon_turret_mg.svg" alt="" draggable="false">x${_bar.invT}</span><span class="pbk-pill"><img src="/images/pve/icon_tesla.svg" alt="" draggable="false">x${_bar.invE}</span><span class="pbk-pill"><img src="/images/pve/icon_bomb.svg" alt="" draggable="false">x${_bar.invO}</span><span class="pbk-pill"><img src="/images/pve/icon_station.svg" alt="" draggable="false">x${_bar.invH}</span><span class="pbk-pill">${ico('package')}${ammoState.reserve | 0}</span>`;
+            `<span class="pbk-pill"><img src="/images/pve/icon_turret_mg.svg" alt="" draggable="false">x${_bar.invT}</span><span class="pbk-pill"><img src="/images/pve/icon_tesla.svg" alt="" draggable="false">x${_bar.invE}</span><span class="pbk-pill"><img src="/images/pve/icon_bomb.svg" alt="" draggable="false">x${_bar.invO}</span><span class="pbk-pill"><img src="/images/pve/icon_flame.svg" alt="" draggable="false">x${_bar.invF}</span><span class="pbk-pill"><img src="/images/pve/icon_station.svg" alt="" draggable="false">x${_bar.invH}</span><span class="pbk-pill">${ico('package')}${ammoState.reserve | 0}</span>`;
     }
     const _pbkMine = () => { const r = _pbk.res; if (!r) return null; for (const row of r.rows) if (row[0] === socket.id) return row; return null; };
 
@@ -5385,8 +5450,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     // ---- barricades ----
-    socket.on('pve-inv', ({ barricade, turret, tesla, bomb, heal }) => {
-        _bar.inv = barricade | 0; _bar.invT = turret | 0; _bar.invE = tesla | 0; _bar.invO = bomb | 0; _bar.invH = heal | 0;
+    socket.on('pve-inv', ({ barricade, turret, tesla, bomb, flame, heal }) => {
+        _bar.inv = barricade | 0; _bar.invT = turret | 0; _bar.invE = tesla | 0; _bar.invO = bomb | 0; _bar.invF = flame | 0; _bar.invH = heal | 0;
         if (_pveState.waveBreak && _pbk.cards) updateUpgradeButtons();
         if (_bar[_BAR_KINDS[_bar.kind].inv] <= 0 && _bar.place) _bar.place = false;   // that was the last one
         _barUi();
@@ -5394,8 +5459,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // ---- turrets (events turret-add / -hp / -upd / -del, turret-shots: [turret id, angle x100, zombie id] a shot) ----
     socket.on('turret-add', (s) => {
         const a = (s.a | 0) / 100;
-        _turrets.push({ id: s.id, k: 't', kd: s.kd || 'mg', x: s.x, y: s.y, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, ang: a, tang: a, flash: 0, pop: performance.now() });
-        _pveFeed(`${s.by} a plasat ${s.kd === 'tesla' ? 'o Tesla Tower' : s.kd === 'bomb' ? 'o Bomb Tower' : s.kd === 'heal' ? 'o Health Station' : 'o tureta'}`);
+        _turrets.push({ id: s.id, k: 't', kd: s.kd || 'mg', x: s.x, y: s.y, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, ang: a, tang: a, flash: 0, flameT: -1e9, flameS: 0, pop: performance.now() });
+        _pveFeed(`${s.by} a plasat ${s.kd === 'tesla' ? 'o Tesla Tower' : s.kd === 'bomb' ? 'o Bomb Tower' : s.kd === 'flame' ? 'un Flamethrower' : s.kd === 'heal' ? 'o Health Station' : 'o tureta'}`);
     });
     socket.on('turret-hp', (rows) => {
         for (let i = 0; i < rows.length; i++) { const t = _turrets.find(q => q.id === rows[i][0]); if (t) t.hp = rows[i][1]; }
@@ -5446,6 +5511,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             _zFxPush(bf);
         }
         if (_bombFx.length > 40) _bombFx.splice(0, _bombFx.length - 40);
+    });
+    socket.on('flame-shots', (rows) => {   // [tower id, angle x100] a burst of the jet (every 250 ms while something is in reach)
+        const now = performance.now();
+        for (let i = 0; i + 1 < rows.length; i += 2) {
+            const t = _turrets.find(q => q.id === rows[i]);
+            if (!t) continue;
+            if (now - t.flameT > 420) t.flameS = now;   // a new run of bursts: the jet grows from nothing
+            t.flameT = now; t.tang = rows[i + 1] / 100;
+        }
     });
     socket.on('tesla-zaps', (rows) => {
         const now = performance.now();
@@ -5767,7 +5841,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             g.fillRect(b.x * k - bw / 2, b.y * k - bh / 2, bw, bh); g.strokeRect(b.x * k - bw / 2, b.y * k - bh / 2, bw, bh);
         }
         g.fillStyle = '#8FC2FF'; g.strokeStyle = '#0F171B'; g.lineWidth = 1.5;
-        for (let i = 0; i < _turrets.length; i++) { const tk = _turrets[i].kd; g.fillStyle = tk === 'heal' ? '#46D46A' : tk === 'tesla' ? '#B79CF5' : tk === 'bomb' ? '#FF9F43' : '#8FC2FF'; g.beginPath(); g.arc(_turrets[i].x * k, _turrets[i].y * k, 5, 0, Math.PI * 2); g.fill(); g.stroke(); }
+        for (let i = 0; i < _turrets.length; i++) { const tk = _turrets[i].kd; g.fillStyle = tk === 'heal' ? '#46D46A' : tk === 'tesla' ? '#B79CF5' : tk === 'bomb' ? '#FF9F43' : tk === 'flame' ? '#FF5A2A' : '#8FC2FF'; g.beginPath(); g.arc(_turrets[i].x * k, _turrets[i].y * k, 5, 0, Math.PI * 2); g.fill(); g.stroke(); }
         // zombies (the tanks bigger), then the team on top
         g.lineWidth = 2; g.strokeStyle = '#0F171B';
         for (let i = 0; i < _zombies.length; i++) {
@@ -6513,6 +6587,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_turretFx.length) _drawTurretFx(ctx, _zNow);
         if (_zapFx.length) _drawZapFx(ctx, _zNow);
         if (_bombFx.length) _drawBombFx(ctx, _zNow);
+        _drawFlameFx(ctx, _zNow, _zVisible);
         if (_zFx.length) _drawZombieFx(ctx, _zNow);
 
         // --- JUCATORI ---
@@ -6916,6 +6991,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (e.eslot) e.eslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'e'); };
         if (e.hslot) e.hslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'h'); };
         if (e.oslot) e.oslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'o'); };
+        if (e.fslot) e.fslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'f'); };
         if (e.use) e.use.onclick = _barUse;
         const ok = document.getElementById('pve-place-ok'), no = document.getElementById('pve-place-x');
         if (ok) ok.onclick = _barPlace;

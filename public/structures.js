@@ -43,7 +43,9 @@
     // standing within range of its centre, rate health a second. maxPerRoom is for one player, every other adds perExtraPlayer (turretLimit).
     // 'bomb' (the Bomb Tower) lobs a bomb at the nearest zombie, over trees and rocks (it needs no clear line), that flies `speed` units a second and
     // hurts every zombie within `splash` of where it lands (dmg to each, armour counts); players and what is built are never hurt by it.
-    // The numbers of the Tesla Tower, the Bomb Tower and the Health Station are provisional.
+    // 'flame' (the Flamethrower) breathes a jet of fire at the nearest zombie in its short range and burns every zombie inside the cone of the jet
+    // (cone: the half angle, in radians) for dmg each, every cd seconds (the armour counts); it needs a clear line only to pick its target.
+    // The numbers of the Tesla Tower, the Bomb Tower, the Flamethrower and the Health Station are provisional.
     const TURRET = {
         r: 31,
         detectRange: 130,              // like the barricades: a zombie with no player to chase goes for a turret this close (to its surface)
@@ -63,6 +65,11 @@
                 { id: 'mortar',   name: 'Bomb I',   hp: 280, total: 45,  up: 0,  ms: 0,    range: 340, cd: 1.6, dmg: 30, splash: 70 },
                 { id: 'howitzer', name: 'Bomb II',  hp: 450, total: 100, up: 55, ms: 2000, range: 360, cd: 1.4, dmg: 48, splash: 80 },
                 { id: 'siege',    name: 'Bomb III', hp: 700, total: 180, up: 80, ms: 3000, range: 380, cd: 1.2, dmg: 70, splash: 90 },
+            ] },
+            flame: { name: 'Flamethrower', inv: 'flame', maxPerRoom: 2, perExtraPlayer: 1, tiers: [
+                { id: 'pilot',   name: 'Flame I',   hp: 320, total: 35,  up: 0,  ms: 0,    range: 125, cd: 0.25, dmg: 8,  cone: 0.42 },
+                { id: 'burner',  name: 'Flame II',  hp: 500, total: 80,  up: 45, ms: 2000, range: 140, cd: 0.25, dmg: 12, cone: 0.46 },
+                { id: 'inferno', name: 'Flame III', hp: 750, total: 150, up: 70, ms: 3000, range: 160, cd: 0.25, dmg: 18, cone: 0.50 },
             ] },
             heal: { name: 'Health Station', inv: 'heal', maxPerRoom: 1, perExtraPlayer: 1, tiers: [
                 { id: 'aid',      name: 'Health I',   hp: 300, total: 25,  up: 0,  ms: 0,    range: 130, rate: 6 },

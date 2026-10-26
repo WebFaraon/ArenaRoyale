@@ -260,3 +260,21 @@ test('chainTargets: dead zombies are skipped, and the array is reused (no alloca
     assert.equal(r, out, 'the same array');
     assert.deepEqual(r.map(z => z.id), [1, 3]);
 });
+
+// ---- inCone: who a Flamethrower's jet burns ----
+const { inCone } = require('../../zombie-steer.js');
+
+test('inCone: inside the range and the half angle of the jet, a body counts for the angle it fills', () => {
+    assert.equal(inCone(0, 0, 0, 125, 0.42, 80, 0, 16), true, 'on the axis');
+    assert.equal(inCone(0, 0, 0, 125, 0.42, 80, 30, 16), true, 'off the axis by 0.36 rad, inside the cone');
+    assert.equal(inCone(0, 0, 0, 125, 0.42, 80, 60, 16), false, 'well outside the cone');
+    assert.equal(inCone(0, 0, 0, 125, 0.42, 80, 44, 16), true, 'centre outside the cone (0.50 rad) but the body reaches into it');
+    assert.equal(inCone(0, 0, 0, 125, 0.42, -80, 0, 16), false, 'behind the tower');
+});
+
+test('inCone: range counts from the centre of the tower to the edge of the body; the angle wraps; a zombie on the tower is always burnt', () => {
+    assert.equal(inCone(0, 0, 0, 125, 0.42, 140, 0, 16), true, 'body edge at 124');
+    assert.equal(inCone(0, 0, 0, 125, 0.42, 150, 0, 16), false, 'body edge at 134');
+    assert.equal(inCone(0, 0, Math.PI - 0.1, 125, 0.42, -80, -8, 16), true, 'the axis points at -x: the angle wraps through pi');
+    assert.equal(inCone(0, 0, 2, 125, 0.1, 5, 5, 16), true, 'inside the body radius of the centre');
+});

@@ -9,7 +9,7 @@ const Passwords = require('./auth-hash');            // bcrypt (native when it l
 const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
-const { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets } = require('./zombie-steer.js');
+const { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets, inCone } = require('./zombie-steer.js');
 const ZNav = require('./zombie-nav.js');              // where the PvE zombies walk: a distance field round the solid things, through walls at a price
 const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
@@ -1378,8 +1378,8 @@ function structPublic(s) { return { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp
 // code above and below does not know them. What E, the work and the zombies share with the barricades goes by these helpers.
 function turretPublic(t) { return { id: t.id, kd: t.kd || 'mg', x: t.x, y: t.y, t: t.t, hp: Math.round(t.hp), mhp: t.maxHp, by: t.by, a: Math.round(t.angle * 100) }; }
 // What a player holds, bought and not placed yet: sent to them whole whenever it changes
-const newInv = () => ({ barricade: 0, turret: 0, tesla: 0, bomb: 0, heal: 0 });
-const invPublic = (p) => ({ barricade: p.pveInv.barricade, turret: p.pveInv.turret, tesla: p.pveInv.tesla, bomb: p.pveInv.bomb, heal: p.pveInv.heal });
+const newInv = () => ({ barricade: 0, turret: 0, tesla: 0, bomb: 0, flame: 0, heal: 0 });
+const invPublic = (p) => ({ barricade: p.pveInv.barricade, turret: p.pveInv.turret, tesla: p.pveInv.tesla, bomb: p.pveInv.bomb, flame: p.pveInv.flame, heal: p.pveInv.heal });
 function findBuilt(room, id) { return room.structs.find(q => q.id === id) || room.turrets.find(q => q.id === id) || null; }
 function builtDist(x, y, s) { return s.k === 't' ? ARStructs.turretDist(x, y, s) : ARStructs.distToRect(x, y, s); }
 function builtAction(s) { return s.k === 't' ? ARStructs.turretUseAction(s) : ARStructs.useAction(s); }
@@ -1471,7 +1471,7 @@ function _coinBlockers(room) {
 // _TUR_SPEED, quick but not instant) and the bolt of a Tesla takes TESLA_JUMP_MS to jump from a zombie to the next, so the zombie is hurt
 // when what you see reaches it, not when it is fired. A hit waits in room._hits until its time; a zombie dead by then takes nothing.
 const TURRET_BULLET_SPEED = 1800, TURRET_MUZZLE = 42, TESLA_JUMP_MS = 70;
-const _turretShots = [], _zaps = [], _bombs = [], _chain = [], _NO_BLOCKERS = [];   // (_bombs: [tower id, x, y, flight ms] a bomb; the bombs fly over everything)
+const _turretShots = [], _zaps = [], _bombs = [], _flames = [], _chain = [], _NO_BLOCKERS = [];   // (_bombs: [tower id, x, y, flight ms] a bomb; the bombs fly over everything; _flames: [tower id, angle x100] a burst of the jet)
 function tickTurretHits(code, room, now) {
     const h = room._hits;
     let w = 0;
@@ -1497,6 +1497,17 @@ function blastZombies(code, room, q, now) {
         if (z.hp <= 0) turretKill(code, room, z, q, now);
     }
 }
+// A Flamethrower burns, at once, every zombie in its jet (the cone round the axis at ang, reach = its range): the same dmg to each, the armour comes off
+function flameZombies(code, room, t, tier, now) {
+    for (let i = 0; i < room.zombies.length; i++) {
+        const z = room.zombies[i];
+        if (!z.alive || z.hp <= 0) continue;
+        const zr = (PVE_ZOMBIE_DEFS[z.type] || PVE_ZOMBIE_DEFS.normal).r;
+        if (!inCone(t.x, t.y, t.angle, tier.range, tier.cone, z.x, z.y, zr)) continue;
+        z.hp -= armoredHit(z, tier.dmg);
+        if (z.hp <= 0) turretKill(code, room, z, t, now);
+    }
+}
 // The Health Station mends the living within its range (measured from its centre) a little every tick
 function healAround(room, t, tier, dt) {
     const rSq = tier.range * tier.range, add = tier.rate * dt;
@@ -1511,7 +1522,7 @@ function healAround(room, t, tier, dt) {
 // tick, [turret id, angle x100, zombie id] a shot). A Tesla Tower sends a bolt that jumps on from that zombie (tesla-zaps: [tower id, zombie
 // ids in the order of the chain] a bolt); a Health Station fires at nothing.
 function tickTurrets(code, room, dt, now) {
-    _turretShots.length = 0; _zaps.length = 0; _bombs.length = 0;
+    _turretShots.length = 0; _zaps.length = 0; _bombs.length = 0; _flames.length = 0;
     const blockers = _bulletBlockers(room);
     for (let i = 0; i < room.turrets.length; i++) {
         const t = room.turrets[i], kind = ARStructs.turretKind(t), tier = kind.tiers[t.t];
@@ -1526,6 +1537,9 @@ function tickTurrets(code, room, dt, now) {
             const fly = Math.max(250, Math.hypot(z.x - t.x, z.y - t.y) / kind.speed * 1000);
             room._hits.push({ at: now + fly, x: z.x, y: z.y, r: tier.splash, dmg: tier.dmg, ownerId: t.ownerId });
             _bombs.push(t.id, Math.round(z.x), Math.round(z.y), Math.round(fly));
+        } else if (t.kd === 'flame') {
+            flameZombies(code, room, t, tier, now);
+            _flames.push(t.id, Math.round(t.angle * 100));
         } else if (t.kd === 'tesla') {
             chainTargets(z, room.zombies, kind.chain.reach, kind.chain.jumps, _chain);
             const row = [t.id];
@@ -1540,6 +1554,7 @@ function tickTurrets(code, room, dt, now) {
     if (_turretShots.length) io.to(code).emit('turret-shots', _turretShots.slice());
     if (_zaps.length) io.to(code).emit('tesla-zaps', _zaps.slice());
     if (_bombs.length) io.to(code).emit('bomb-shots', _bombs.slice());
+    if (_flames.length) io.to(code).emit('flame-shots', _flames.slice());
 }
 function flushTurretHp(code, room, now) {
     room._turretDirty = false;
@@ -3182,7 +3197,7 @@ io.on('connection', (socket) => {
         if (votes >= total) startPveWave(code, room);
     });
 
-    const BUILD_BUY = new Map([['barricade', 'b'], ['turret', 'mg'], ['tesla', 'tesla'], ['bomb', 'bomb'], ['heal', 'heal']]);   // what the shop sells that is built: the card -> the kind
+    const BUILD_BUY = new Map([['barricade', 'b'], ['turret', 'mg'], ['tesla', 'tesla'], ['bomb', 'bomb'], ['flame', 'flame'], ['heal', 'heal']]);   // what the shop sells that is built: the card -> the kind
     socket.on('buy-upgrade', ({ type } = {}) => {
         const r = fastGetRoom(socket);
         if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;

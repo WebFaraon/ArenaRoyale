@@ -299,3 +299,17 @@ test('the Bomb Tower: three levels, a limit of its own (2, +1 a player), splash 
     assert.deepEqual([0, 1].map(i => S.workTime({ k: 't', kd: 'bomb', t: i }, 'upgrade')), [2000, 3000]);
     assert.ok(k.speed > 0 && k.inv === 'bomb');
 });
+
+test('the Flamethrower: three levels, 35 coins, a short range that stays under the machine gun, a limit of its own (2, +1 a player) and 2 / 3 s upgrades', () => {
+    const k = S.TURRET.kinds.flame;
+    assert.equal(k.tiers.length, 3);
+    for (let i = 1; i < 3; i++) {
+        assert.ok(k.tiers[i].hp > k.tiers[i - 1].hp && k.tiers[i].dmg > k.tiers[i - 1].dmg && k.tiers[i].range > k.tiers[i - 1].range && k.tiers[i].cone >= k.tiers[i - 1].cone);
+        assert.equal(k.tiers[i].total - k.tiers[i - 1].total, k.tiers[i].up, 'the upgrade is the difference in the price');
+    }
+    assert.ok(k.tiers[2].range < S.TURRET.kinds.mg.tiers[0].range, 'short range');
+    assert.equal(S.turretBuyCost('flame'), 35);
+    assert.deepEqual([1, 2, 3, 4].map(n => S.turretLimit(n, 'flame')), [2, 3, 4, 5]);
+    assert.deepEqual([0, 1].map(i => S.workTime({ k: 't', kd: 'flame', t: i }, 'upgrade')), [2000, 3000]);
+    assert.equal(k.inv, 'flame');
+});
