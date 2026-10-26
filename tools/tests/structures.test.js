@@ -211,6 +211,18 @@ test('where a turret may stand: not on rocks, the base, barricades, turrets or p
     assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 5 }), null);
 });
 
+test('the turret limit grows with the players in the room: 6 for one, 3 more for each other', () => {
+    assert.deepEqual([1, 2, 3, 4].map(n => S.turretLimit(n)), [6, 9, 12, 15]);
+    assert.equal(S.turretLimit(0), 6, 'never under the first six');
+    const base = { obstacles: [], base: null, structs: [], turrets: [], players: [], playerR: 30, w: 3000, h: 3000 };
+    const t = tur(1000, 1000);
+    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 6, roomPlayers: 1 }), 'limit');
+    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 6, roomPlayers: 2 }), null);
+    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 9, roomPlayers: 2 }), 'limit');
+    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 14, roomPlayers: 4 }), null);
+    assert.equal(S.checkPlaceTurret(t, { ...base, turretCount: 15, roomPlayers: 4 }), 'limit');
+});
+
 test('a barricade is not placed on a turret either', () => {
     const w = { x: 1000, y: 1000, o: 0, t: 0, hp: 300, maxHp: 300 };
     const ctx = { obstacles: [], base: null, structs: [], players: [], playerR: 30, w: 3000, h: 3000, count: 0 };

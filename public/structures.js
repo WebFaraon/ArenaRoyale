@@ -39,7 +39,8 @@
     // with a rifle times a few, six of them being the most a room may have.
     const TURRET = {
         r: 31,
-        maxPerRoom: 6,
+        maxPerRoom: 6,                 // for one player; every other player in the room adds perExtraPlayer (turretLimit)
+        perExtraPlayer: 3,
         detectRange: 130,              // like the barricades: a zombie with no player to chase goes for a turret this close (to its surface)
         placeDist: 80, placeRange: 140, useRange: 16, repairShare: 0.5, workMs: 1000,
         tiers: [
@@ -91,9 +92,13 @@
         out.y = py + dy / l * TURRET.placeDist;
         return out;
     }
-    // Can a turret stand here? ctx as for checkPlace, plus turrets []; returns null when it can, else the reason
+    // How many turrets a room may have: 6 for one player, 3 more for each other player (9, 12, 15 for 2, 3, 4)
+    function turretLimit(players) {
+        return TURRET.maxPerRoom + TURRET.perExtraPlayer * Math.max(0, (players | 0) - 1);
+    }
+    // Can a turret stand here? ctx as for checkPlace, plus turrets [] and players in the room (ctx.roomPlayers, default 1); returns null when it can, else the reason
     function checkPlaceTurret(t, ctx) {
-        if (ctx.turretCount >= TURRET.maxPerRoom) return 'limit';
+        if (ctx.turretCount >= turretLimit(ctx.roomPlayers || 1)) return 'limit';
         const r = TURRET.r;
         if (t.x - r < 20 || t.x + r > ctx.w - 20 || t.y - r < 20 || t.y + r > ctx.h - 20) return 'edge';
         for (let i = 0; i < ctx.obstacles.length; i++) {
@@ -239,5 +244,5 @@
         return null;
     }
 
-    return { BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
+    return { BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
 });

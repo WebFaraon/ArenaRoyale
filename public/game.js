@@ -3794,7 +3794,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const id in players) { const p = players[id]; if (p.alive && p.hp > 0) pl.push(id === socket.id ? { x: predX, y: predY } : p); }
         if (_bar.kind === 't') {
             ARStructs.turretPlacement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g);
-            _bar.why = ARStructs.checkPlaceTurret(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, turretCount: _turrets.length });
+            _bar.why = ARStructs.checkPlaceTurret(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, turretCount: _turrets.length, roomPlayers: Math.max(1, Object.keys(players).length) });
             return;
         }
         ARStructs.placement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g);

@@ -3214,7 +3214,7 @@ io.on('connection', (socket) => {
                     angle: Math.atan2(y - PVE_BASE_Y, x - PVE_BASE_X), cd: 0.4, _sentHp: T.tiers[0].hp };   // it looks away from the base until it has a target
         if (Math.hypot(p.x - t.x, p.y - t.y) > T.placeRange) return fail('far');
         const alive = room._playerArr.filter(q => q.alive);
-        const why = ARStructs.checkPlaceTurret(t, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, turrets: room.turrets, players: alive, playerR: PLAYER_R, turretCount: room.turrets.length });
+        const why = ARStructs.checkPlaceTurret(t, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, turrets: room.turrets, players: alive, playerR: PLAYER_R, turretCount: room.turrets.length, roomPlayers: room._playerArr.length });
         if (why) return fail(why);
         room.nextStructId++;
         room.turrets.push(t);
