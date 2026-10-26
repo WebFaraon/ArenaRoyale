@@ -3561,35 +3561,129 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
     }
     // ---- the new zombies' effects (events acid / boom / summon, not in gs2): acid thrown by a spitter, an exploder going off, a summoner calling ----
+    // Each effect gets its random numbers once, when the event comes (parts); what is drawn each frame is worked out from the age only.
     const TAU = Math.PI * 2;
-    const _zFx = [];   // { k: 'acid'|'boom'|'summon', x0, y0, x1, y1, r, dur, t0 }
-    function _zFxPush(f) { if (_zFx.length >= 80) _zFx.shift(); _zFx.push(f); }
+    const _zFx = [];   // { k: 'acid'|'boom'|'summon', x0, y0, x1, y1, r, dur, t0, parts }
+    function _zFxPush(f) { if (_zFx.length >= 60) _zFx.shift(); _zFx.push(f); }
+    const _rnd = Math.random;
+    function _acidFx(a) {
+        const f = { k: 'acid', x0: a[0], y0: a[1], x1: a[2], y1: a[3], dur: a[4], r: 44, t0: performance.now(), drops: [], bub: [], puff: [] };
+        for (let i = 0; i < 7; i++) f.drops.push({ a: _rnd() * TAU, v: 40 + _rnd() * 70, s: 2 + _rnd() * 2.4 });        // the spray at the mouth
+        for (let i = 0; i < 12; i++) f.bub.push({ a: _rnd() * TAU, v: 55 + _rnd() * 110, s: 2.4 + _rnd() * 3.4, h: 18 + _rnd() * 34 });   // the splash
+        for (let i = 0; i < 6; i++) f.puff.push({ a: _rnd() * TAU, d: _rnd() * 30, ph: _rnd(), s: 8 + _rnd() * 8 });    // the sizzle: smoke rising off the puddle
+        return f;
+    }
+    function _boomFx(x, y, r) {
+        const f = { k: 'boom', x0: x, y0: y, r, t0: performance.now(), sp: [], sm: [], ch: [] };
+        for (let i = 0; i < 18; i++) f.sp.push({ a: _rnd() * TAU, v: 160 + _rnd() * 260, l: 6 + _rnd() * 10, c: _rnd() < 0.4 ? 0 : 1 });   // sparks
+        for (let i = 0; i < 9; i++) f.sm.push({ a: _rnd() * TAU, d: _rnd() * r * 0.5, v: 10 + _rnd() * 30, s: 14 + _rnd() * 16 });          // smoke
+        for (let i = 0; i < 7; i++) f.ch.push({ a: _rnd() * TAU, v: 90 + _rnd() * 150, s: 3 + _rnd() * 3, rot: _rnd() * TAU });             // chunks
+        return f;
+    }
     function _drawZombieFx(ctx, now) {
         for (let i = _zFx.length - 1; i >= 0; i--) {
             const f = _zFx[i], age = now - f.t0;
             if (f.k === 'acid') {
-                if (age >= f.dur + 520) { _zFx.splice(i, 1); continue; }
-                if (age < f.dur) {   // a green blob on a short arc, with its shadow on the ground
-                    const u = age / f.dur, x = f.x0 + (f.x1 - f.x0) * u, y = f.y0 + (f.y1 - f.y0) * u, lift = Math.sin(u * Math.PI) * Math.min(70, Math.hypot(f.x1 - f.x0, f.y1 - f.y0) * 0.22);
-                    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(x + 3, y + 5, 7, 4, 0, 0, TAU); ctx.fill();
-                    ctx.fillStyle = '#9DFF2E'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2.4;
-                    ctx.beginPath(); ctx.arc(x, y - lift, 7.5, 0, TAU); ctx.fill(); ctx.stroke();
-                    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc(x - 2.4, y - lift - 2.6, 2.2, 0, TAU); ctx.fill();
-                } else {   // it landed: the splash, a puddle that dries out
-                    const u = (age - f.dur) / 520, a = 1 - u;
-                    ctx.globalAlpha = 0.45 * a; ctx.fillStyle = '#9DFF2E'; ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r * (0.7 + 0.3 * Math.min(1, u * 4)), 0, TAU); ctx.fill();
-                    ctx.globalAlpha = 0.8 * a; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.stroke();
-                    ctx.globalAlpha = a; ctx.fillStyle = '#C6FF3D';
-                    for (let k = 0; k < 5; k++) { const ang = k * 1.256 + f.x1, rr = f.r * (0.35 + 0.65 * u); ctx.beginPath(); ctx.arc(f.x1 + Math.cos(ang) * rr, f.y1 + Math.sin(ang) * rr, 3.2 * a, 0, TAU); ctx.fill(); }
+                const T = f.dur + 1500;
+                if (age >= T) { _zFx.splice(i, 1); continue; }
+                const dx = f.x1 - f.x0, dy = f.y1 - f.y0, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+                const arc = Math.min(70, len * 0.22), at = (u) => [f.x0 + dx * u, f.y0 + dy * u - Math.sin(u * Math.PI) * arc];
+                if (age < 260) {   // the spit: a spray of drops from the mouth and a green flash
+                    const u = age / 260;
+                    ctx.globalAlpha = (1 - u) * 0.6; ctx.fillStyle = '#C6FF3D'; ctx.beginPath(); ctx.arc(f.x0, f.y0, 8 + 16 * u, 0, TAU); ctx.fill();
+                    ctx.globalAlpha = 1 - u; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4; ctx.fillStyle = '#9DFF2E';
+                    for (let k = 0; k < f.drops.length; k++) { const d = f.drops[k], r = d.v * u * 0.45; ctx.beginPath(); ctx.arc(f.x0 + Math.cos(d.a) * r, f.y0 + Math.sin(d.a) * r - 8 * u, d.s * (1 - u * 0.5), 0, TAU); ctx.fill(); ctx.stroke(); }
+                    ctx.globalAlpha = 1;
+                }
+                if (age < f.dur) {
+                    const u = age / f.dur, p = at(u), wob = 1 + 0.18 * Math.sin(age * 0.035);
+                    // the trail: blobs left behind, smaller and paler, with drips falling off them
+                    for (let k = 7; k >= 1; k--) {
+                        const uu = u - k * 0.05; if (uu <= 0) continue;
+                        const q = at(uu), t = 1 - k / 8, sw = Math.sin(uu * 40 + k) * 2.2;
+                        ctx.globalAlpha = 0.5 * t; ctx.fillStyle = k % 2 ? '#7DDB1E' : '#9DFF2E';
+                        ctx.beginPath(); ctx.arc(q[0] + nx * sw, q[1] + ny * sw + k * 0.9, 6 * t + 1, 0, TAU); ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(f.x0 + dx * u + 3, f.y0 + dy * u + 6, 8, 4, 0, 0, TAU); ctx.fill();
+                    // the blob: a glow, an ink edge, the body, a shine, bubbles on its skin
+                    ctx.fillStyle = 'rgba(157,255,46,.28)'; ctx.beginPath(); ctx.arc(p[0], p[1], 14 * wob, 0, TAU); ctx.fill();
+                    ctx.fillStyle = '#9DFF2E'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2.6;
+                    ctx.beginPath(); ctx.ellipse(p[0], p[1], 8.5 * wob, 8.5 / wob, age * 0.01, 0, TAU); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#C6FF3D'; ctx.beginPath(); ctx.arc(p[0] + 2.5, p[1] + 2, 3.2, 0, TAU); ctx.fill();
+                    ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.arc(p[0] - 3, p[1] - 3.2, 2.3, 0, TAU); ctx.fill();
+                    for (let k = 0; k < 3; k++) { const ang = age * 0.012 + k * 2.1; ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(p[0] + Math.cos(ang) * 5, p[1] + Math.sin(ang) * 5, 1.2, 0, TAU); ctx.fill(); }
+                } else {   // it landed
+                    const u = (age - f.dur) / 1500, a = 1 - u;
+                    // the shock ring and the puddle, which spreads fast then sits and dries
+                    const spread = Math.min(1, (age - f.dur) / 180);
+                    ctx.globalAlpha = 0.5 * Math.min(1, a * 1.6); ctx.fillStyle = '#7DDB1E';
+                    ctx.beginPath(); ctx.ellipse(f.x1, f.y1 + 3, f.r * (0.55 + 0.45 * spread), f.r * (0.45 + 0.35 * spread), 0, 0, TAU); ctx.fill();
+                    ctx.fillStyle = '#9DFF2E'; ctx.globalAlpha = 0.45 * Math.min(1, a * 1.6);
+                    ctx.beginPath(); ctx.ellipse(f.x1, f.y1, f.r * (0.5 + 0.4 * spread), f.r * (0.4 + 0.32 * spread), 0, 0, TAU); ctx.fill();
+                    ctx.globalAlpha = 0.85 * Math.min(1, a * 1.6); ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.stroke();
+                    if (age - f.dur < 320) { const w = (age - f.dur) / 320; ctx.globalAlpha = 1 - w; ctx.strokeStyle = '#C6FF3D'; ctx.lineWidth = 4 * (1 - w) + 1; ctx.beginPath(); ctx.arc(f.x1, f.y1, 10 + (f.r + 18) * w, 0, TAU); ctx.stroke(); }
+                    // drops thrown up and out, falling back
+                    const t = (age - f.dur) / 1000;
+                    if (t < 0.75) {
+                        ctx.fillStyle = '#9DFF2E'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.3;
+                        for (let k = 0; k < f.bub.length; k++) {
+                            const d = f.bub[k], r = d.v * t * 0.6, z = d.h * Math.sin(t / 0.75 * Math.PI);
+                            ctx.globalAlpha = 1 - t / 0.75;
+                            ctx.beginPath(); ctx.arc(f.x1 + Math.cos(d.a) * r, f.y1 + Math.sin(d.a) * r * 0.7 - z, d.s * (1 - t * 0.5), 0, TAU); ctx.fill(); ctx.stroke();
+                        }
+                    }
+                    // bubbles popping on the puddle, smoke rising off it
+                    ctx.globalAlpha = a; ctx.strokeStyle = 'rgba(230,255,170,.9)'; ctx.lineWidth = 1.2;
+                    for (let k = 0; k < f.puff.length; k++) {
+                        const d = f.puff[k], ph = (u * 3 + d.ph) % 1, bx = f.x1 + Math.cos(d.a) * d.d, by = f.y1 + Math.sin(d.a) * d.d * 0.7;
+                        ctx.beginPath(); ctx.arc(bx, by, 1.5 + 4 * ph, 0, TAU); ctx.stroke();
+                        ctx.globalAlpha = a * 0.22 * (1 - ph); ctx.fillStyle = '#B9E36B'; ctx.beginPath(); ctx.arc(bx + Math.sin(ph * 6 + d.a) * 4, by - 10 - ph * 34, d.s * (0.5 + ph * 0.7), 0, TAU); ctx.fill();
+                        ctx.globalAlpha = a;
+                    }
                     ctx.globalAlpha = 1;
                 }
             } else if (f.k === 'boom') {
-                if (age >= 650) { _zFx.splice(i, 1); continue; }
-                const u = age / 650, e = 1 - (1 - Math.min(1, u * 2.2)) * (1 - Math.min(1, u * 2.2));
-                ctx.globalAlpha = (1 - u) * 0.55; ctx.fillStyle = '#FF8A1F'; ctx.beginPath(); ctx.arc(f.x0, f.y0, f.r * e, 0, TAU); ctx.fill();
-                ctx.globalAlpha = (1 - u) * 0.9; ctx.strokeStyle = '#FFE27A'; ctx.lineWidth = 5 * (1 - u) + 1; ctx.stroke();
-                ctx.globalAlpha = (1 - u) * 0.75; ctx.fillStyle = '#FFF3C4'; ctx.beginPath(); ctx.arc(f.x0, f.y0, f.r * 0.45 * (1 - u), 0, TAU); ctx.fill();
-                ctx.globalAlpha = Math.max(0, 0.5 - u) * 0.9; ctx.fillStyle = '#3A3F4A'; ctx.beginPath(); ctx.arc(f.x0, f.y0 - 18 * u, f.r * 0.5 + 24 * u, 0, TAU); ctx.fill();
+                const T = 2600;
+                if (age >= T) { _zFx.splice(i, 1); continue; }
+                const t = age / 1000, r = f.r;
+                // the scorch mark that stays and fades
+                const scorch = Math.max(0, 1 - Math.max(0, age - 300) / (T - 300));
+                ctx.globalAlpha = 0.3 * scorch; ctx.fillStyle = '#1A1A22'; ctx.beginPath(); ctx.ellipse(f.x0, f.y0 + 3, r * 0.75, r * 0.6, 0, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 0.5 * scorch; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.setLineDash([6, 7]); ctx.stroke(); ctx.setLineDash([]);
+                if (age < 140) { const w = age / 140; ctx.globalAlpha = 1 - w; ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * (0.55 + 0.45 * w), 0, TAU); ctx.fill(); }   // the flash
+                if (age < 520) {   // the fireball: orange with a yellow heart that shrinks
+                    const w = age / 520, e = 1 - (1 - Math.min(1, w * 1.7)) * (1 - Math.min(1, w * 1.7));
+                    ctx.globalAlpha = (1 - w) * 0.85; ctx.fillStyle = '#FF6A1A'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * 0.95 * e, 0, TAU); ctx.fill();
+                    ctx.fillStyle = '#FFB02E'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * 0.7 * e, 0, TAU); ctx.fill();
+                    ctx.globalAlpha = (1 - w); ctx.fillStyle = '#FFF3C4'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * 0.4 * (1 - w * 0.6), 0, TAU); ctx.fill();
+                    ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 3; ctx.globalAlpha = (1 - w) * 0.8; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * 0.95 * e, 0, TAU); ctx.stroke();
+                }
+                if (age < 460) { const w = age / 460; ctx.globalAlpha = (1 - w) * 0.9; ctx.strokeStyle = '#FFE27A'; ctx.lineWidth = 7 * (1 - w) + 1; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * (0.4 + 1.1 * w), 0, TAU); ctx.stroke(); }   // the shock ring
+                // sparks with a short tail, decelerating
+                if (age < 700) {
+                    ctx.lineCap = 'round';
+                    for (let k = 0; k < f.sp.length; k++) {
+                        const d = f.sp[k], u = age / 700, e = 1 - (1 - u) * (1 - u), rr = d.v * 0.7 * e, rt = d.v * 0.7 * (1 - (1 - Math.max(0, u - 0.08)) * (1 - Math.max(0, u - 0.08)));
+                        const cx = Math.cos(d.a), cy = Math.sin(d.a);
+                        ctx.globalAlpha = 1 - u; ctx.strokeStyle = d.c ? '#FFC72E' : '#FF6A1A'; ctx.lineWidth = 2.6 * (1 - u * 0.6) + 0.6;
+                        ctx.beginPath(); ctx.moveTo(f.x0 + cx * rt, f.y0 + cy * rt); ctx.lineTo(f.x0 + cx * rr, f.y0 + cy * rr); ctx.stroke();
+                    }
+                    // chunks of the thing, tumbling out
+                    ctx.fillStyle = '#5A4636'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
+                    for (let k = 0; k < f.ch.length; k++) {
+                        const d = f.ch[k], u = age / 700, rr = d.v * 0.55 * (1 - (1 - u) * (1 - u)), z = 26 * Math.sin(u * Math.PI);
+                        ctx.globalAlpha = 1 - u * u;
+                        ctx.save(); ctx.translate(f.x0 + Math.cos(d.a) * rr, f.y0 + Math.sin(d.a) * rr - z); ctx.rotate(d.rot + u * 9);
+                        ctx.beginPath(); ctx.rect(-d.s, -d.s * 0.6, d.s * 2, d.s * 1.2); ctx.fill(); ctx.stroke(); ctx.restore();
+                    }
+                }
+                // smoke: dark puffs that swell and rise, then thin out
+                for (let k = 0; k < f.sm.length; k++) {
+                    const d = f.sm[k], u = Math.min(1, Math.max(0, (age - 120) / 1400)); if (u <= 0) continue;
+                    ctx.globalAlpha = 0.45 * (1 - u) * Math.min(1, u * 5); ctx.fillStyle = k % 3 === 0 ? '#4B4F5A' : '#2F323B';
+                    ctx.beginPath(); ctx.arc(f.x0 + Math.cos(d.a) * (d.d + d.v * t), f.y0 + Math.sin(d.a) * (d.d + d.v * t) - 24 * u - 14 * t, d.s * (0.5 + 1.1 * u), 0, TAU); ctx.fill();
+                }
                 ctx.globalAlpha = 1;
             } else {   // summon: a purple ring and sparks round the summoner
                 if (age >= 700) { _zFx.splice(i, 1); continue; }
@@ -3601,6 +3695,31 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 ctx.globalAlpha = 1;
             }
         }
+        ctx.lineCap = 'butt';
+    }
+    // The exploder wears its fuse: a spark that flickers and spits sparks, and a red glow that beats faster the nearer it is to what it will blow up
+    // (you, a turret or a barricade). Drawn on the zombie itself, by its position and heading; nothing is stored. The fuse is where the picture has it.
+    const _FUSE_PX = -26.4, _FUSE_PY = -19.9;   // in the picture's units, y towards where it looks
+    function _drawExploderFuse(ctx, z, def, now) {
+        const k = def.r / 38.5, a = (z.angle || 0) - Math.PI / 2, cs = Math.cos(a), sn = Math.sin(a);
+        const fx = z.x + (_FUSE_PX * cs - _FUSE_PY * sn) * k, fy = z.y + (_FUSE_PX * sn + _FUSE_PY * cs) * k;
+        // the nearest thing to blow up
+        let nd = 1e9;
+        if (predX !== null && !_selfDead) nd = Math.hypot(predX - z.x, predY - z.y);
+        for (let i = 0; i < _turrets.length; i++) { const d = Math.hypot(_turrets[i].x - z.x, _turrets[i].y - z.y) - 31; if (d < nd) nd = d; }
+        for (let i = 0; i < _structs.length; i++) { const d = Math.hypot(_structs[i].x - z.x, _structs[i].y - z.y) - 40; if (d < nd) nd = d; }
+        const near = Math.max(0, Math.min(1, (260 - nd) / 220)), beat = 0.5 + 0.5 * Math.sin(now * (0.006 + 0.03 * near) + z.id);
+        if (near > 0) { ctx.globalAlpha = (0.12 + 0.3 * near) * beat; ctx.fillStyle = '#FF3B3B'; ctx.beginPath(); ctx.arc(z.x, z.y, def.r * (1.5 + 0.5 * beat), 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+        const fl = 0.6 + 0.4 * Math.sin(now * 0.05 + z.id * 1.7);
+        ctx.fillStyle = 'rgba(255,200,60,' + (0.35 * fl).toFixed(2) + ')'; ctx.beginPath(); ctx.arc(fx, fy, 6 + 3 * fl, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#FFF3C4'; ctx.beginPath(); ctx.arc(fx, fy, 2 + fl, 0, TAU); ctx.fill();
+        // a few sparks flying off, each a little way through its life (phases offset by the zombie)
+        for (let s = 0; s < 4; s++) {
+            const ph = ((now / 420) + s * 0.25 + z.id * 0.37) % 1, ang = (z.id * 2.3 + s * 1.9 + Math.floor((now / 420) + s * 0.25 + z.id * 0.37) * 1.3) % TAU, rr = 4 + 14 * ph;
+            ctx.globalAlpha = 1 - ph; ctx.fillStyle = s % 2 ? '#FFC72E' : '#FF8A1F';
+            ctx.beginPath(); ctx.arc(fx + Math.cos(ang) * rr, fy + Math.sin(ang) * rr - 5 * ph, 1.6 * (1 - ph) + 0.4, 0, TAU); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
     }
     function _drawTurretFx(ctx, now) {
         for (let i = _turretFx.length - 1; i >= 0; i--) {
@@ -5122,8 +5241,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (k) { k.el.classList.remove('is-pop'); void k.el.offsetWidth; k.el.classList.add('is-pop'); }
     });
 
-    socket.on('acid', ({ a }) => { _zFxPush({ k: 'acid', x0: a[0], y0: a[1], x1: a[2], y1: a[3], dur: a[4], r: 44, t0: performance.now() }); });
-    socket.on('boom', ({ x, y, r }) => { _zFxPush({ k: 'boom', x0: x, y0: y, r, t0: performance.now() }); });
+    socket.on('acid', ({ a }) => { _zFxPush(_acidFx(a)); });
+    socket.on('boom', ({ x, y, r }) => { _zFxPush(_boomFx(x, y, r)); });
     socket.on('summon', ({ x, y }) => { _zFxPush({ k: 'summon', x0: x, y0: y, t0: performance.now() }); });
     socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued, hpMul }) => {
         _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0; _zHpMul = hpMul || 1;
@@ -6233,6 +6352,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 continue;
             }
             ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow);
+            if (_zType === 4 && _gameMode === 'pve') { ctx.setTransform(_wm); _drawExploderFuse(ctx, _zb, _zDef, _zNow); }
         }
         // HP bars: only on the zombies that are hurt (see _drawZombieBars)
         ctx.setTransform(_wm);

@@ -1070,7 +1070,7 @@ const PVE_ZOMBIE_DEFS = {
     // the spitter: walks on to the base and stops as soon as something is within range (a turret first, then a player, a barricade, the base) and
     // spits acid at it, a splash that hurts what is built and the players; its range is longer than the first two turret levels (the third reaches it)
     spitter: { hp: 160, chaseSpd: 52, patrolSpd: 30, dmg: 0, attackR: 0, attackCd: 2.4, coinsMin: 3, coinsMax: 5, baseDmg: 0, r: 20, hunts: false, mass: 1,
-               ranged: { range: 345, cd: 2.4, speed: 560, splash: 44, sdmg: 24, pdmg: 24, bdmg: 18 } },
+               ranged: { range: 270, cd: 2.4, speed: 560, splash: 44, sdmg: 24, pdmg: 24, bdmg: 18 } },
     // the exploder: fast, goes for the nearest thing that is built or a player, and goes off on touch (a blast that hurts structures a lot); killed on the way it does not
     exploder: { hp: 110, chaseSpd: 120, patrolSpd: 60, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 3, coinsMax: 4, baseDmg: 0, r: 18, hunts: true, mass: 0.9,
                 explode: { r: 85, sdmg: 130, pdmg: 45, bdmg: 70, seek: 520 } },
