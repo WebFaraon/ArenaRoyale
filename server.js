@@ -1002,7 +1002,6 @@ const ZOMBIE_PATROL_T   = 3.5;
 const PVE_BASE_X         = Math.round(ARENA_W / 2);
 const PVE_BASE_Y         = Math.round(ARENA_H / 2);
 const PVE_BASE_HP        = 1500;
-const PVE_BASE_HEAL      = 0.25;   // between waves the base mends this share of its health (it never did, so the chip damage of every wave added up)
 const PVE_BASE_R         = 85;
 const PVE_BASE_ATTACK_R  = 95;
 const _COIN_PICK_SQ      = (PLAYER_R + PveCoins.PICK_EXTRA) ** 2;   // a PvE coin is taken within this distance of a player
@@ -1068,7 +1067,7 @@ const PVE_ZOMBIE_DEFS = {
     // large: keeps further from the trees on its way (zombie-nav.js); armor: taken off every hit (never below a fifth of it); noScale: does not grow with the wave
     normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 2, coinsMax: 4, baseDmg: 15, r: 20, hunts: true, mass: 1 },
     runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 3, coinsMax: 5, baseDmg: 8,  r: 16, hunts: true, mass: 0.8 },
-    tank:   { hp: 500, armor: 3, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 7, coinsMax: 12, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
+    tank:   { hp: 500, armor: 3, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 7, coinsMax: 10, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
     // the spitter: walks on to the base and stops as soon as something is within range (a turret first, then a player, a barricade, the base) and
     // spits acid at it, a splash that hurts what is built and the players; its range is longer than the first two turret levels (the third reaches it)
     spitter: { hp: 160, chaseSpd: 52, patrolSpd: 30, dmg: 0, attackR: 0, attackCd: 2.4, coinsMin: 6, coinsMax: 9, baseDmg: 0, r: 20, hunts: false, mass: 1,
@@ -1077,11 +1076,11 @@ const PVE_ZOMBIE_DEFS = {
     exploder: { hp: 110, chaseSpd: 120, patrolSpd: 60, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 6, coinsMax: 10, baseDmg: 0, r: 18, hunts: true, mass: 0.9,
                 explode: { r: 85, sdmg: 130, pdmg: 45, bdmg: 70, seek: 520 } },
     // the brute: slow, armoured, hits hard; goes for players and what is built
-    brute: { hp: 900, armor: 5, chaseSpd: 44, patrolSpd: 25, dmg: 55, attackR: 72, attackCd: 1.3, coinsMin: 15, coinsMax: 25, baseDmg: 65, r: 34, hunts: true, mass: 10, heavy: true, large: true },
+    brute: { hp: 900, armor: 5, chaseSpd: 44, patrolSpd: 25, dmg: 55, attackR: 72, attackCd: 1.3, coinsMin: 12, coinsMax: 20, baseDmg: 65, r: 34, hunts: true, mass: 10, heavy: true, large: true },
     // the summoner: a big slow one that walks on to the base and brings 2 minions out every 14 s (at most 4 of its own alive; they stay when it dies)
-    summoner: { hp: 500, chaseSpd: 34, patrolSpd: 20, dmg: 0, attackR: 0, attackCd: 1.5, coinsMin: 18, coinsMax: 28, baseDmg: 25, r: 30, hunts: false, mass: 8, heavy: true, large: true,
+    summoner: { hp: 500, chaseSpd: 34, patrolSpd: 20, dmg: 0, attackR: 0, attackCd: 1.5, coinsMin: 15, coinsMax: 23, baseDmg: 25, r: 30, hunts: false, mass: 8, heavy: true, large: true,
                 summon: { first: 6, every: 14, count: 2, max: 4 } },
-    minion: { hp: 200, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 6, coinsMax: 10, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
+    minion: { hp: 200, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 2, coinsMax: 4, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
 };
 const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
@@ -1379,8 +1378,8 @@ function structPublic(s) { return { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp
 // code above and below does not know them. What E, the work and the zombies share with the barricades goes by these helpers.
 function turretPublic(t) { return { id: t.id, kd: t.kd || 'mg', x: t.x, y: t.y, t: t.t, hp: Math.round(t.hp), mhp: t.maxHp, by: t.by, a: Math.round(t.angle * 100) }; }
 // What a player holds, bought and not placed yet: sent to them whole whenever it changes
-const newInv = () => ({ barricade: 0, turret: 0, tesla: 0, heal: 0 });
-const invPublic = (p) => ({ barricade: p.pveInv.barricade, turret: p.pveInv.turret, tesla: p.pveInv.tesla, heal: p.pveInv.heal });
+const newInv = () => ({ barricade: 0, turret: 0, tesla: 0, bomb: 0, heal: 0 });
+const invPublic = (p) => ({ barricade: p.pveInv.barricade, turret: p.pveInv.turret, tesla: p.pveInv.tesla, bomb: p.pveInv.bomb, heal: p.pveInv.heal });
 function findBuilt(room, id) { return room.structs.find(q => q.id === id) || room.turrets.find(q => q.id === id) || null; }
 function builtDist(x, y, s) { return s.k === 't' ? ARStructs.turretDist(x, y, s) : ARStructs.distToRect(x, y, s); }
 function builtAction(s) { return s.k === 't' ? ARStructs.turretUseAction(s) : ARStructs.useAction(s); }
@@ -1472,19 +1471,31 @@ function _coinBlockers(room) {
 // _TUR_SPEED, quick but not instant) and the bolt of a Tesla takes TESLA_JUMP_MS to jump from a zombie to the next, so the zombie is hurt
 // when what you see reaches it, not when it is fired. A hit waits in room._hits until its time; a zombie dead by then takes nothing.
 const TURRET_BULLET_SPEED = 1800, TURRET_MUZZLE = 42, TESLA_JUMP_MS = 70;
-const _turretShots = [], _zaps = [], _chain = [];
+const _turretShots = [], _zaps = [], _bombs = [], _chain = [], _NO_BLOCKERS = [];   // (_bombs: [tower id, x, y, flight ms] a bomb; the bombs fly over everything)
 function tickTurretHits(code, room, now) {
     const h = room._hits;
     let w = 0;
     for (let i = 0; i < h.length; i++) {
         const q = h[i];
         if (q.at > now) { h[w++] = q; continue; }
+        if (q.r) { blastZombies(code, room, q, now); continue; }   // a bomb lands
         const z = q.z;
         if (!z.alive || z.hp <= 0) continue;
         z.hp -= armoredHit(z, q.dmg);
         if (z.hp <= 0) turretKill(code, room, z, q, now);
     }
     h.length = w;
+}
+// A bomb of a Bomb Tower lands at (q.x, q.y): every zombie whose body is within q.r of it takes q.dmg (the armour comes off), the same to all of them
+function blastZombies(code, room, q, now) {
+    for (let i = 0; i < room.zombies.length; i++) {
+        const z = room.zombies[i];
+        if (!z.alive || z.hp <= 0) continue;
+        const zr = (PVE_ZOMBIE_DEFS[z.type] || PVE_ZOMBIE_DEFS.normal).r, reach = q.r + zr, dx = z.x - q.x, dy = z.y - q.y;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        z.hp -= armoredHit(z, q.dmg);
+        if (z.hp <= 0) turretKill(code, room, z, q, now);
+    }
 }
 // The Health Station mends the living within its range (measured from its centre) a little every tick
 function healAround(room, t, tier, dt) {
@@ -1500,18 +1511,22 @@ function healAround(room, t, tier, dt) {
 // tick, [turret id, angle x100, zombie id] a shot). A Tesla Tower sends a bolt that jumps on from that zombie (tesla-zaps: [tower id, zombie
 // ids in the order of the chain] a bolt); a Health Station fires at nothing.
 function tickTurrets(code, room, dt, now) {
-    _turretShots.length = 0; _zaps.length = 0;
+    _turretShots.length = 0; _zaps.length = 0; _bombs.length = 0;
     const blockers = _bulletBlockers(room);
     for (let i = 0; i < room.turrets.length; i++) {
         const t = room.turrets[i], kind = ARStructs.turretKind(t), tier = kind.tiers[t.t];
         if (t.kd === 'heal') { healAround(room, t, tier, dt); continue; }
         t.cd -= dt;
         if (t.cd > 0) continue;
-        const z = turretTarget(t.x, t.y, tier.range, room.zombies, blockers);
+        const z = turretTarget(t.x, t.y, tier.range, room.zombies, t.kd === 'bomb' ? _NO_BLOCKERS : blockers);   // a bomb goes over trees and rocks
         if (!z) { t.cd = 0; continue; }                      // ready for the first that comes
         t.cd = Math.min(0, t.cd) + tier.cd;
         t.angle = Math.atan2(z.y - t.y, z.x - t.x);
-        if (t.kd === 'tesla') {
+        if (t.kd === 'bomb') {
+            const fly = Math.max(250, Math.hypot(z.x - t.x, z.y - t.y) / kind.speed * 1000);
+            room._hits.push({ at: now + fly, x: z.x, y: z.y, r: tier.splash, dmg: tier.dmg, ownerId: t.ownerId });
+            _bombs.push(t.id, Math.round(z.x), Math.round(z.y), Math.round(fly));
+        } else if (t.kd === 'tesla') {
             chainTargets(z, room.zombies, kind.chain.reach, kind.chain.jumps, _chain);
             const row = [t.id];
             for (let k = 0; k < _chain.length; k++) { row.push(_chain[k].id); room._hits.push({ at: now + k * TESLA_JUMP_MS, z: _chain[k], dmg: tier.dmg, ownerId: t.ownerId }); }
@@ -1524,6 +1539,7 @@ function tickTurrets(code, room, dt, now) {
     }
     if (_turretShots.length) io.to(code).emit('turret-shots', _turretShots.slice());
     if (_zaps.length) io.to(code).emit('tesla-zaps', _zaps.slice());
+    if (_bombs.length) io.to(code).emit('bomb-shots', _bombs.slice());
 }
 function flushTurretHp(code, room, now) {
     room._turretDirty = false;
@@ -2547,7 +2563,6 @@ function startRoomLoop(code, room) {
                             pveVictory(code, room); return;
                         }
                         room.pveWaveBreak  = true;
-                        if (room.base && room.base.hp > 0) room.base.hp = Math.min(room.base.maxHp, room.base.hp + Math.round(room.base.maxHp * PVE_BASE_HEAL));
                         room.pveBreakTimer = PVE_BREAK_DURATION;
                         room.pveSkipVotes.clear();
                         room._playerArr.forEach(p => { p.moveDir.x = 0; p.moveDir.y = 0; p.shooting = false; });
@@ -3167,7 +3182,7 @@ io.on('connection', (socket) => {
         if (votes >= total) startPveWave(code, room);
     });
 
-    const BUILD_BUY = new Map([['barricade', 'b'], ['turret', 'mg'], ['tesla', 'tesla'], ['heal', 'heal']]);   // what the shop sells that is built: the card -> the kind
+    const BUILD_BUY = new Map([['barricade', 'b'], ['turret', 'mg'], ['tesla', 'tesla'], ['bomb', 'bomb'], ['heal', 'heal']]);   // what the shop sells that is built: the card -> the kind
     socket.on('buy-upgrade', ({ type } = {}) => {
         const r = fastGetRoom(socket);
         if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
@@ -3288,8 +3303,9 @@ io.on('connection', (socket) => {
         if (s._busy && s._busy !== p.id) return fail('busy'); // somebody else is at this one
         // it starts: everybody sees the ring; the coins are paid when it is full (tickWork)
         s._busy = p.id;
-        p.work = { id: s.id, action, end: now + ARStructs.BARRICADE.workMs, x: p.x, y: p.y };
-        io.to(code).emit('struct-work', { id: s.id, action, dur: ARStructs.BARRICADE.workMs, by: p.name });
+        const workMs = ARStructs.workTime(s, action);   // a repair 1 s, an upgrade by the tier it goes into
+        p.work = { id: s.id, action, end: now + workMs, x: p.x, y: p.y };
+        io.to(code).emit('struct-work', { id: s.id, action, dur: workMs, by: p.name });
     });
 
     socket.on('disconnect', () => {

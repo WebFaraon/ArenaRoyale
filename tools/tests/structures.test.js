@@ -8,13 +8,13 @@ const bar = (o) => Object.assign({ id: 1, x: 500, y: 500, o: 0, t: 0, hp: 300, m
 
 test('the approved table: health 300 / 600 / 1000 / 1600, price 5 / 13 / 25 / 43, upgrades +8 / +12 / +18, at most 20', () => {
     assert.deepEqual(S.BARRICADE.tiers.map(t => t.hp), [300, 600, 1000, 1600]);
-    assert.deepEqual(S.BARRICADE.tiers.map(t => t.total), [5, 13, 25, 43]);
-    assert.deepEqual(S.BARRICADE.tiers.map(t => t.up), [0, 8, 12, 18]);
+    assert.deepEqual(S.BARRICADE.tiers.map(t => t.total), [10, 30, 70, 150]);
+    assert.deepEqual(S.BARRICADE.tiers.map(t => t.up), [0, 20, 40, 80]);
     // each upgrade costs what the tier is worth more than the one under it, so nobody gains by buying wood and upgrading
     for (let i = 1; i < 4; i++) assert.equal(S.BARRICADE.tiers[i].total - S.BARRICADE.tiers[i - 1].total, S.BARRICADE.tiers[i].up);
     assert.equal(S.BARRICADE.maxPerRoom, 20);
-    assert.equal(S.BUY_COST, 5);
-    assert.equal(S.BARRICADE.workMs, 1000, 'a repair or an upgrade takes a second');
+    assert.equal(S.BUY_COST, 10);
+    assert.equal(S.BARRICADE.workMs, 1000, 'a repair takes a second');
 });
 
 test('the shape: 108 x 34 lying down, 34 x 108 standing up', () => {
@@ -84,12 +84,12 @@ test('the state: whole above half the health, damaged at half or less', () => {
 
 test('repair costs half the price of the tier, in proportion to what is missing, at least 1; upgrade costs the next tier\'s step', () => {
     assert.equal(S.repairCost(bar({ hp: 300 })), 0);
-    assert.equal(S.repairCost(bar({ hp: 0 })), 3);                                 // 5 x 0.5 = 2.5 -> 3
+    assert.equal(S.repairCost(bar({ hp: 0 })), 5);                                 // 10 x 0.5
     assert.equal(S.repairCost(bar({ hp: 299 })), 1);
-    assert.equal(S.repairCost(bar({ t: 3, hp: 0, maxHp: 1600 })), 22);             // 43 x 0.5 = 21.5 -> 22
-    assert.equal(S.repairCost(bar({ t: 1, hp: 300, maxHp: 600 })), 4);             // half of 13 x 0.5 = 3.25 -> 4
-    assert.equal(S.upgradeCost(bar({ t: 0 })), 8);
-    assert.equal(S.upgradeCost(bar({ t: 2 })), 18);
+    assert.equal(S.repairCost(bar({ t: 3, hp: 0, maxHp: 1600 })), 75);             // 150 x 0.5
+    assert.equal(S.repairCost(bar({ t: 1, hp: 300, maxHp: 600 })), 8);             // half of 30 x 0.5 = 7.5 -> 8
+    assert.equal(S.upgradeCost(bar({ t: 0 })), 20);
+    assert.equal(S.upgradeCost(bar({ t: 2 })), 80);
     assert.equal(S.upgradeCost(bar({ t: 3 })), 0);
 });
 
@@ -276,4 +276,26 @@ test('the ghost of a turret goes in front of the player', () => {
     const o = { x: 0, y: 0 };
     S.turretPlacement(100, 100, 0, 1, o);
     assert.deepEqual([o.x, o.y], [100, 100 + TU.placeDist]);
+});
+
+test('an upgrade takes longer the higher it goes: barricades 1 / 2 / 3 s, machine guns and Tesla Towers 2 / 3 s; a repair is always a second', () => {
+    assert.deepEqual([0, 1, 2].map(i => S.workTime(bar({ t: i }), 'upgrade')), [1000, 2000, 3000]);
+    assert.deepEqual([0, 1].map(i => S.workTime({ k: 't', kd: 'tesla', t: i }, 'upgrade')), [2000, 3000]);
+    assert.deepEqual([0, 1].map(i => S.workTime({ k: 't', t: i }, 'upgrade')), [2000, 3000], 'a machine gun turret has no kd');
+    assert.deepEqual([0, 1].map(i => S.workTime({ k: 't', kd: 'heal', t: i }, 'upgrade')), [1000, 1000], 'the Health Station keeps a second');
+    assert.equal(S.workTime(bar({ t: 3 }), 'repair'), 1000);
+    assert.equal(S.workTime({ k: 't', kd: 'tesla', t: 2 }, 'repair'), 1000);
+});
+
+test('the Bomb Tower: three levels, a limit of its own (2, +1 a player), splash that grows with the level, and 2 / 3 s upgrades', () => {
+    const k = S.TURRET.kinds.bomb;
+    assert.equal(k.tiers.length, 3);
+    for (let i = 1; i < 3; i++) {
+        assert.ok(k.tiers[i].hp > k.tiers[i - 1].hp && k.tiers[i].dmg > k.tiers[i - 1].dmg && k.tiers[i].splash > k.tiers[i - 1].splash && k.tiers[i].range >= k.tiers[i - 1].range);
+        assert.equal(k.tiers[i].total - k.tiers[i - 1].total, k.tiers[i].up, 'the upgrade is the difference in the price');
+    }
+    assert.deepEqual([1, 2, 3, 4].map(n => S.turretLimit(n, 'bomb')), [2, 3, 4, 5]);
+    assert.equal(S.turretBuyCost('bomb'), 45);
+    assert.deepEqual([0, 1].map(i => S.workTime({ k: 't', kd: 'bomb', t: i }, 'upgrade')), [2000, 3000]);
+    assert.ok(k.speed > 0 && k.inv === 'bomb');
 });

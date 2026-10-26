@@ -22,13 +22,13 @@
         placeRange: 140,               // the server takes a placement no further than this from the player
         useRange: 16,                  // E (repair / upgrade) works when the edge of the player is this close to its surface: up against it
         repairShare: 0.5,              // fully repairing costs this share of the price of the tier
-        workMs: 1000,                  // a repair or an upgrade takes this long (the player stands still up against it; the cost is paid when it ends)
-        // by tier: hp, total price (what it is worth), the price of the upgrade INTO the tier
+        workMs: 1000,                  // a repair takes this long, an upgrade what its tier says (ms): the player stands still up against it; the cost is paid when it ends
+        // by tier: hp, total price (what it is worth), the price of the upgrade INTO the tier, and how long that upgrade takes (ms; a repair is workMs)
         tiers: [
-            { id: 'wood',  name: 'Lemn',     hp: 300,  total: 5,  up: 0 },
-            { id: 'stone', name: 'Piatra',   hp: 600,  total: 13, up: 8 },
-            { id: 'steel', name: 'Metal',    hp: 1000, total: 25, up: 12 },
-            { id: 'obs',   name: 'Obsidian', hp: 1600, total: 43, up: 18 },
+            { id: 'wood',  name: 'Lemn',     hp: 300,  total: 10,  up: 0,  ms: 0 },
+            { id: 'stone', name: 'Piatra',   hp: 600,  total: 30,  up: 20, ms: 1000 },
+            { id: 'steel', name: 'Metal',    hp: 1000, total: 70,  up: 40, ms: 2000 },
+            { id: 'obs',   name: 'Obsidian', hp: 1600, total: 150, up: 80, ms: 3000 },
         ],
     };
     const BUY_COST = BARRICADE.tiers[0].total;   // a new barricade (wood), bought from the wave-break panel
@@ -41,26 +41,33 @@
     // them and E: a KIND says what one does. 'mg' fires at the nearest zombie; 'tesla' fires a bolt that jumps from zombie to zombie (chain:
     // jumps more after the first, each within reach of the one before; every bolt hits for dmg); 'heal' (the Health Station) mends the players
     // standing within range of its centre, rate health a second. maxPerRoom is for one player, every other adds perExtraPlayer (turretLimit).
-    // The numbers of the Tesla Tower and the Health Station are provisional.
+    // 'bomb' (the Bomb Tower) lobs a bomb at the nearest zombie, over trees and rocks (it needs no clear line), that flies `speed` units a second and
+    // hurts every zombie within `splash` of where it lands (dmg to each, armour counts); players and what is built are never hurt by it.
+    // The numbers of the Tesla Tower, the Bomb Tower and the Health Station are provisional.
     const TURRET = {
         r: 31,
         detectRange: 130,              // like the barricades: a zombie with no player to chase goes for a turret this close (to its surface)
         placeDist: 80, placeRange: 140, useRange: 16, repairShare: 0.5, workMs: 1000,
         kinds: {
             mg: { name: 'Tureta', inv: 'turret', maxPerRoom: 6, perExtraPlayer: 3, tiers: [
-                { id: 'mg',     name: 'Mitraliera', hp: 300, total: 20, up: 0,  range: 320, cd: 0.20, dmg: 10 },
-                { id: 'twin',   name: 'Dubla',      hp: 500, total: 45, up: 25, range: 340, cd: 0.18, dmg: 15 },
-                { id: 'energy', name: 'Energie',    hp: 800, total: 90, up: 45, range: 380, cd: 0.35, dmg: 45 },
+                { id: 'mg',     name: 'Mitraliera', hp: 300, total: 20, up: 0,  ms: 0,    range: 320, cd: 0.20, dmg: 10 },
+                { id: 'twin',   name: 'Dubla',      hp: 500, total: 45, up: 25, ms: 2000, range: 340, cd: 0.18, dmg: 15 },
+                { id: 'energy', name: 'Energie',    hp: 800, total: 90, up: 45, ms: 3000, range: 380, cd: 0.35, dmg: 45 },
             ] },
             tesla: { name: 'Tesla', inv: 'tesla', maxPerRoom: 2, perExtraPlayer: 1, chain: { jumps: 2, reach: 130 }, tiers: [
-                { id: 'coil',   name: 'Tesla I',   hp: 260, total: 35,  up: 0,  range: 250, cd: 0.85, dmg: 25 },
-                { id: 'arc',    name: 'Tesla II',  hp: 420, total: 80,  up: 45, range: 275, cd: 0.75, dmg: 37 },
-                { id: 'storm',  name: 'Tesla III', hp: 650, total: 150, up: 70, range: 300, cd: 0.65, dmg: 53 },
+                { id: 'coil',   name: 'Tesla I',   hp: 260, total: 35,  up: 0,  ms: 0,    range: 250, cd: 0.85, dmg: 25 },
+                { id: 'arc',    name: 'Tesla II',  hp: 420, total: 80,  up: 45, ms: 2000, range: 275, cd: 0.75, dmg: 37 },
+                { id: 'storm',  name: 'Tesla III', hp: 650, total: 150, up: 70, ms: 3000, range: 300, cd: 0.65, dmg: 53 },
+            ] },
+            bomb: { name: 'Bomb Tower', inv: 'bomb', maxPerRoom: 2, perExtraPlayer: 1, speed: 420, tiers: [
+                { id: 'mortar',   name: 'Bomb I',   hp: 280, total: 45,  up: 0,  ms: 0,    range: 340, cd: 1.6, dmg: 30, splash: 70 },
+                { id: 'howitzer', name: 'Bomb II',  hp: 450, total: 100, up: 55, ms: 2000, range: 360, cd: 1.4, dmg: 48, splash: 80 },
+                { id: 'siege',    name: 'Bomb III', hp: 700, total: 180, up: 80, ms: 3000, range: 380, cd: 1.2, dmg: 70, splash: 90 },
             ] },
             heal: { name: 'Health Station', inv: 'heal', maxPerRoom: 1, perExtraPlayer: 1, tiers: [
-                { id: 'aid',      name: 'Health I',   hp: 300, total: 25,  up: 0,  range: 130, rate: 6 },
-                { id: 'clinic',   name: 'Health II',  hp: 450, total: 60,  up: 35, range: 160, rate: 10 },
-                { id: 'hospital', name: 'Health III', hp: 700, total: 120, up: 60, range: 190, rate: 16 },
+                { id: 'aid',      name: 'Health I',   hp: 300, total: 25,  up: 0,  ms: 0,    range: 130, rate: 6 },
+                { id: 'clinic',   name: 'Health II',  hp: 450, total: 60,  up: 35, ms: 1000, range: 160, rate: 10 },
+                { id: 'hospital', name: 'Health III', hp: 700, total: 120, up: 60, ms: 1000, range: 190, rate: 16 },
             ] },
         },
     };
@@ -245,6 +252,13 @@
     function upgradeCost(s) {
         return s.t >= BARRICADE.tiers.length - 1 ? 0 : BARRICADE.tiers[s.t + 1].up;
     }
+    // How long the work of E takes at a barricade or a turret: a repair is workMs, an upgrade what the tier it goes INTO says (barricades 1 / 2 / 3 s,
+    // machine guns and Tesla Towers 2 / 3 s)
+    function workTime(s, action) {
+        if (action !== 'upgrade') return BARRICADE.workMs;
+        const next = (s.k === 't' ? turretTiers(s) : BARRICADE.tiers)[s.t + 1];
+        return next && next.ms ? next.ms : BARRICADE.workMs;
+    }
     // What E does at a barricade: 'repair' when it is hurt, else 'upgrade' while there is a tier above, else null
     function useAction(s) {
         if (s.hp < s.maxHp) return 'repair';
@@ -278,5 +292,5 @@
         return null;
     }
 
-    return { BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretKind, turretTiers, turretBuyCost, turretCountOf, buyBlocked, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
+    return { BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretKind, turretTiers, turretBuyCost, workTime, turretCountOf, buyBlocked, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
 });
