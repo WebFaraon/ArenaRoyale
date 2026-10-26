@@ -5089,10 +5089,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // lvl(n): what the n levels bought so far give; tag(): the small pill in the corner of the picture. No texts about what a thing does: the picture says it.
     const _COIN_IMG = '/images/pickups/moneda_pve.svg';
     const _PBK_CARDS = [
-        { id: 'barricade', tab: 'build', name: 'Baricada', img: '/images/pve/icon_barricade_wood.svg', kd: 'b', cost: () => ARStructs.BUY_COST, tag: () => 'x' + _bar.inv },
-        { id: 'turret', tab: 'build', name: 'Tureta', img: '/images/pve/icon_turret_mg.svg', kd: 'mg', cost: () => ARStructs.TURRET_BUY_COST, tag: () => 'x' + _bar.invT },
-        { id: 'tesla', tab: 'build', name: 'Tesla', img: '/images/pve/icon_tesla.svg', kd: 'tesla', cost: () => ARStructs.turretBuyCost('tesla'), tag: () => 'x' + _bar.invE },
-        { id: 'heal', tab: 'build', name: 'Health Station', img: '/images/pve/icon_station.svg', kd: 'heal', cost: () => ARStructs.turretBuyCost('heal'), tag: () => 'x' + _bar.invH },
+        { id: 'barricade', tab: 'build', name: 'Baricada', img: '/images/pve/icon_barricade_wood.svg', kd: 'b', held: () => _bar.inv, cost: () => ARStructs.BUY_COST, tag: () => 'x' + _bar.inv },
+        { id: 'turret', tab: 'build', name: 'Tureta', img: '/images/pve/icon_turret_mg.svg', kd: 'mg', held: () => _bar.invT, cost: () => ARStructs.TURRET_BUY_COST, tag: () => 'x' + _bar.invT },
+        { id: 'tesla', tab: 'build', name: 'Tesla', img: '/images/pve/icon_tesla.svg', kd: 'tesla', held: () => _bar.invE, cost: () => ARStructs.turretBuyCost('tesla'), tag: () => 'x' + _bar.invE },
+        { id: 'heal', tab: 'build', name: 'Health Station', img: '/images/pve/icon_station.svg', kd: 'heal', held: () => _bar.invH, cost: () => ARStructs.turretBuyCost('heal'), tag: () => 'x' + _bar.invH },
         { id: 'dmg', tab: 'weapon', name: 'Damage', ic: 'crosshair', lvl: n => '+' + n * 5 + '%' },
         { id: 'ammo', tab: 'weapon', name: 'Incarcator', ic: 'bolt', lvl: n => '+' + n * 12 + '%' },
         { id: 'reserve', tab: 'weapon', name: 'Munitie', ic: 'package', cost: () => _PVE_RESERVE_COST, tag: () => '+' + _myReservePack() },
@@ -5154,7 +5154,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     k.lvlN.textContent = 'NIV ' + n + '/' + stat.maxUses;
                     k.lvlV.textContent = n ? c.lvl(n) : '';
                 }
-            } else { cost = c.cost(); label = String(cost); }
+            } else {
+                cost = c.cost();
+                // a building at its limit in the room (what stands plus what you hold): MAX, nothing to buy (the server says no as well). If some are
+                // destroyed in a wave it opens again.
+                maxed = !!c.kd && ARStructs.buyBlocked(c.kd, c.kd === 'b' ? _structs.length : ARStructs.turretCountOf(_turrets, c.kd), c.held(), Math.max(1, (_ph.ids || []).length));
+                label = maxed ? 'MAX' : String(cost);
+                if (maxed) cost = 0;
+            }
             const poor = !maxed && coins < cost;
             const key = label + (maxed ? 'm' : poor ? 'p' : 'o');
             if (k.buyKey !== key) {

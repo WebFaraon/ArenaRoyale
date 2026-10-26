@@ -125,6 +125,11 @@
         for (let i = 0; i < list.length; i++) if ((list[i].kd || 'mg') === kd) n++;
         return n;
     }
+    // Is a kind at its limit for the one who would buy it (the shop shows MAX and the server refuses): the ones on the field plus the ones
+    // this player holds in the inventory but has not put down yet. A barricade (kd 'b') has one limit for the room.
+    function buyBlocked(kd, placed, held, players) {
+        return placed + held >= (kd === 'b' ? BARRICADE.maxPerRoom : turretLimit(players, kd));
+    }
     // Can a turret stand here? ctx as for checkPlace, plus turrets [] and players in the room (ctx.roomPlayers, default 1); returns null when it can, else the reason
     function checkPlaceTurret(t, ctx) {
         if (turretCountOf(ctx.turrets, t.kd || 'mg') >= turretLimit(ctx.roomPlayers || 1, t.kd || 'mg')) return 'limit';
@@ -273,5 +278,5 @@
         return null;
     }
 
-    return { BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretKind, turretTiers, turretBuyCost, turretCountOf, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
+    return { BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretKind, turretTiers, turretBuyCost, turretCountOf, buyBlocked, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
 });

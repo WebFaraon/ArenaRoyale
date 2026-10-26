@@ -3184,7 +3184,11 @@ io.on('connection', (socket) => {
         const buyKind = BUILD_BUY.get(type);
         if (buyKind) {
             // a new barricade / turret / Tesla Tower / Health Station (level 1) goes to the inventory; it is placed later with 1 / 2 / 3 / 4.
+            // Not when the room is at the limit of the kind already (what stands plus what this player holds): that would be coins for nothing.
+            const room = r.room;
             const cost = buyKind === 'b' ? ARStructs.BUY_COST : ARStructs.turretBuyCost(buyKind);
+            const placed = buyKind === 'b' ? room.structs.length : ARStructs.turretCountOf(room.turrets, buyKind);
+            if (ARStructs.buyBlocked(buyKind, placed, p.pveInv[type], room._playerArr.length)) { socket.emit('upgrade-result', { ok: false, reason: 'full' }); return; }
             if (p.coins < cost) { socket.emit('upgrade-result', { ok: false }); return; }
             p.coins -= cost;
             p.pveInv[type]++;

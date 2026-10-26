@@ -239,6 +239,16 @@ test('every kind has its own limit: Tesla Towers 2 and 1 more a player, Health S
     assert.equal(S.turretCountOf([{}, { kd: 'tesla' }, { kd: 'heal' }, { kd: 'tesla' }], 'mg'), 1, 'one without a kind is a machine gun');
 });
 
+test('the shop stops selling a kind at its limit: what stands plus what you hold, for a barricade 20 in the room', () => {
+    assert.equal(S.buyBlocked('mg', 5, 0, 1), false);
+    assert.equal(S.buyBlocked('mg', 5, 1, 1), true, 'five down and one in the inventory is six');
+    assert.equal(S.buyBlocked('mg', 6, 0, 2), false, 'a second player: nine');
+    assert.equal(S.buyBlocked('tesla', 1, 1, 1), true);
+    assert.equal(S.buyBlocked('heal', 0, 0, 1), false);
+    assert.equal(S.buyBlocked('b', 19, 0, 1), false);
+    assert.equal(S.buyBlocked('b', 18, 2, 4), true);
+});
+
 test('the Tesla Tower and the Health Station have three levels each, and repair and upgrade go by their own price tables', () => {
     for (const kd of ['tesla', 'heal']) {
         const k = S.TURRET.kinds[kd];
