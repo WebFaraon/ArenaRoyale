@@ -3604,6 +3604,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     function _drawZombieFx(ctx, now) {
         for (let i = _zFx.length - 1; i >= 0; i--) {
             const f = _zFx[i], age = now - f.t0;
+            if (age < 0) continue;   // not yet (a bomb's blast is queued for when it lands)
             if (f.k === 'acid') {
                 const T = f.dur + 1500;
                 if (age >= T) { _zFx.splice(i, 1); continue; }
@@ -3743,28 +3744,19 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ctx.globalAlpha = 1;
     }
     // A bomb: it is thrown up from the tower and comes down on the spot (a faint ring on the ground shows where, the size of the blast), a shadow on the
-    // ground goes before it; when it lands there is a quick blast of the real radius (the server hurts what is inside then). All of it is drawn from the age.
-    const _BOMB_BLAST = 420;
+    // ground goes before it; when it lands the exploder's blast (`_boomFx`, queued in `bomb-shots` for the landing time) goes off with the real radius (the server hurts what is inside then). All of it is drawn from the age.
     function _drawBombFx(ctx, now) {
         for (let i = _bombFx.length - 1; i >= 0; i--) {
             const f = _bombFx[i], age = now - f.t0;
-            if (age >= f.dur + _BOMB_BLAST) { _bombFx.splice(i, 1); continue; }
-            if (age < f.dur) {
-                const u = age / f.dur, x = f.x0 + (f.x1 - f.x0) * u, y = f.y0 + (f.y1 - f.y0) * u, lift = Math.sin(u * Math.PI) * (26 + Math.hypot(f.x1 - f.x0, f.y1 - f.y0) * 0.14);
-                ctx.globalAlpha = 0.18 + 0.14 * u; ctx.strokeStyle = '#FF8A1F'; ctx.lineWidth = 2; ctx.setLineDash([7, 6]);
-                ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);   // where it will come down
-                ctx.globalAlpha = 0.28; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();   // its shadow
-                ctx.globalAlpha = 1; ctx.fillStyle = '#2B2F3A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2.2;
-                ctx.beginPath(); ctx.arc(x, y - lift, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-                ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(x - 2.2, y - lift - 2.4, 1.9, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = (Math.floor(now / 60) & 1) ? '#FFD34D' : '#FF7A1F'; ctx.beginPath(); ctx.arc(x + 3.6, y - lift - 6.6, 2.3, 0, Math.PI * 2); ctx.fill();   // the fuse sparks
-            } else {
-                const w = (age - f.dur) / _BOMB_BLAST, e = 1 - (1 - Math.min(1, w * 2.2)) * (1 - Math.min(1, w * 2.2));
-                ctx.globalAlpha = (1 - w) * 0.9; ctx.fillStyle = '#FF6A1A'; ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r * e, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = '#FFB02E'; ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r * 0.7 * e, 0, Math.PI * 2); ctx.fill();
-                ctx.globalAlpha = 1 - w; ctx.fillStyle = '#FFF3C4'; ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r * 0.38 * (1 - w * 0.5), 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 3; ctx.globalAlpha = (1 - w) * 0.8; ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r * e, 0, Math.PI * 2); ctx.stroke();
-            }
+            if (age >= f.dur) { _bombFx.splice(i, 1); continue; }
+            const u = age / f.dur, x = f.x0 + (f.x1 - f.x0) * u, y = f.y0 + (f.y1 - f.y0) * u, lift = Math.sin(u * Math.PI) * (26 + Math.hypot(f.x1 - f.x0, f.y1 - f.y0) * 0.14);
+            ctx.globalAlpha = 0.18 + 0.14 * u; ctx.strokeStyle = '#FF8A1F'; ctx.lineWidth = 2; ctx.setLineDash([7, 6]);
+            ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);   // where it will come down
+            ctx.globalAlpha = 0.28; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();   // its shadow
+            ctx.globalAlpha = 1; ctx.fillStyle = '#2B2F3A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2.2;
+            ctx.beginPath(); ctx.arc(x, y - lift, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(x - 2.2, y - lift - 2.4, 1.9, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = (Math.floor(now / 60) & 1) ? '#FFD34D' : '#FF7A1F'; ctx.beginPath(); ctx.arc(x + 3.6, y - lift - 6.6, 2.3, 0, Math.PI * 2); ctx.fill();   // the fuse sparks
             ctx.globalAlpha = 1;
         }
     }
@@ -5448,7 +5440,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const t = _turrets.find(q => q.id === rows[i]);
             if (!t) continue;
             t.flash = now;
-            _bombFx.push({ x0: t.x, y0: t.y, x1: rows[i + 1], y1: rows[i + 2], t0: now, dur: rows[i + 3], r: ARStructs.turretTiers(t)[t.t].splash });
+            const r = ARStructs.turretTiers(t)[t.t].splash;
+            _bombFx.push({ x0: t.x, y0: t.y, x1: rows[i + 1], y1: rows[i + 2], t0: now, dur: rows[i + 3], r });
+            const bf = _boomFx(rows[i + 1], rows[i + 2], r); bf.t0 = now + rows[i + 3];   // the blast is the exploder's, queued for the landing
+            _zFxPush(bf);
         }
         if (_bombFx.length > 40) _bombFx.splice(0, _bombFx.length - 40);
     });
