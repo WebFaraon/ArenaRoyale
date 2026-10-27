@@ -4307,7 +4307,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     try {
         if (localStorage.getItem('ar_diag') === '1') {
             _bDiag.lagSum = 0; _bDiag.lagMax = 0; _bDiag.lagList = []; _bDiag.spawnLog = []; _bDiag.srvLog = []; _bDiag.csp = []; _bDiag.track = []; _bDiag.phantomLog = []; _bDiag.ammoLog = []; _bDiag.ghostLog = []; _bDiag.frames = []; _bDiag.spawnPos = [];
-            window.__arDiag = () => ({ ..._bDiag, interp: _interpShow, buf: stateBuffer.length, active: _clientBullets.length, linkedNow: _ownLinked.size, rtt: _pingRtt, pktPs: _dbgPktPs, fps: _dbgFps, st: { isShooting, mustRelease: _shootMustRelease, ammo: ammoState.ammo, reloading: ammoState.reloading, aim: aimStartTime, cd: gameControl.countdownActive, dead: _selfDead, predX, next: _clientNextShotAt, now: performance.now(), ended: gameEnded } });
+            window.__arDiag = () => ({ ..._bDiag, interp: _clock.delay, extrapFrames: _dbgExtrapFrames, frozenFrames: _dbgFrozenFrames, buf: stateBuffer.length, active: _clientBullets.length, linkedNow: _ownLinked.size, rtt: _pingRtt, pktPs: _dbgPktPs, fps: _dbgFps, st: { isShooting, mustRelease: _shootMustRelease, ammo: ammoState.ammo, reloading: ammoState.reloading, aim: aimStartTime, cd: gameControl.countdownActive, dead: _selfDead, predX, next: _clientNextShotAt, now: performance.now(), ended: gameEnded } });
             window.__arZombies = () => _zombies.filter(z => z && z.hp > 0).map(z => [z.x, z.y]);
             window.__arMe = () => [predX, predY];
             window.__arStructs = () => _structs.map(s => ({ ...s }));   // PvE barricades as the client has them
@@ -4366,54 +4366,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // Input send rate matches server tick (60Hz = 17ms).
     // All input (move + rotate + shoot) goes through one unified packet from rAF.
     const EMIT_MS         = ARShared.TICK_S * 1000; // one server tick (16.7 ms)
-    // ── Interpolation clock ──────────────────────────────────────────────────
-    // Snapshots sit on the server's simulation timeline (tick number x tick length, entry.st), so neither
-    // network jitter nor a server tick that runs a little late bunches them up. The render delay covers
-    // how late packets arrive: the 95th percentile over the last ~3 s plus one tick and a small margin,
-    // between 26 and 70 ms (~28 on a clean line). A delivery pause shows up as one late packet followed
-    // by the queued ones arriving soon after; only the first counts (the rest are late only because they
-    // waited behind it), so a pause now and then does not move the delay at all. The delay moves at
-    // most 1.5 ms per packet in either direction (about 9 % slow-motion or fast-forward), so whatever it
-    // climbs on a bad line it gives back just as fast. During a pause the other players are
-    // extrapolated for a short while (getInterpolatedState) instead of freezing.
-    const INTERP_MIN_MS = 26, INTERP_MAX_MS = 70, CLOCK_WIN = 180;
-    const CLOCK_STEP_MS = 1.5;  // per packet, both ways
-    const EXTRAP_MS     = 100;  // how far past the newest snapshot other players keep moving in a pause
+    // ── Interpolation clock (the logic and its comment: ARInterp.createClock in interp.js) ───────────
+    // The render delay is held between 26 and 80 ms (~28 on a clean line; `?imax=70` sets another ceiling). The others are extrapolated
+    // for EXTRAP_MS when a packet is late, then they stand until the data comes (a stall longer than that: see the clock).
+    const _imaxQ = +new URLSearchParams(location.search).get('imax');
+    const _clock = ARInterp.createClock({ tickMs: EMIT_MS, minMs: 26, maxMs: _imaxQ >= 26 && _imaxQ <= 400 ? _imaxQ : 80, win: 180, stepMs: 1.5,
+                                          pauseLateMs: 30, pauseWinMs: 300, stallWinMs: 12000, stallHold: 0.3, stallN: 8 });
+    const EXTRAP_MS     = 200;  // how far past the newest snapshot other players keep moving in a pause
     const CORRECT_MS    = 60;   // time constant for blending out the guess once real data is back
-    const PAUSE_LATE_MS = 30;   // a packet this late starts a delivery pause...
-    const PAUSE_WIN_MS  = 300;  // ...and the less late ones within this time are its queue draining
-    const _offWin   = new Float64Array(CLOCK_WIN);  // arrival time - server time, per packet
-    const _lateSort = new Float64Array(CLOCK_WIN);
-    let _offN = 0, _offI = 0, _pauseEnd = -1, _pauseLate = 0;
-    let _clockLag   = null; // render server-time = performance.now() - _clockLag (a large negative number: clocks differ)
-    let _interpShow = 34;   // current delay, for the debug overlay
-    function _noteSnapshotClock(now, st) {
-        // A delivery pause: the first late packet counts, the ones draining the queue behind it do not
-        let count = true;
-        if (_offN > 0) {
-            let m = Infinity;
-            for (let i = 0; i < _offN; i++) if (_offWin[i] < m) m = _offWin[i];
-            const lateNow = now - st - m;
-            if (now < _pauseEnd && lateNow < _pauseLate) count = false;
-            else if (lateNow > PAUSE_LATE_MS) { _pauseEnd = now + PAUSE_WIN_MS; _pauseLate = lateNow; }
-        }
-        if (count) {
-            _offWin[_offI] = now - st;
-            _offI = (_offI + 1) % CLOCK_WIN;
-            if (_offN < CLOCK_WIN) _offN++;
-        }
-        let offMin = Infinity;
-        for (let i = 0; i < _offN; i++) if (_offWin[i] < offMin) offMin = _offWin[i];
-        for (let i = 0; i < _offN; i++) _lateSort[i] = _offWin[i] - offMin;
-        const late = _lateSort.subarray(0, _offN).sort();
-        const p95 = late[Math.min(_offN - 1, Math.floor(_offN * 0.95))];
-        const delay = Math.max(INTERP_MIN_MS, Math.min(INTERP_MAX_MS, p95 + EMIT_MS + 6));
-        const target = offMin + delay;
-        if (_clockLag === null || Math.abs(target - _clockLag) > 250) _clockLag = target;  // first packet / tab resumed
-        else _clockLag += Math.max(-CLOCK_STEP_MS, Math.min(CLOCK_STEP_MS, target - _clockLag));
-        _interpShow = _clockLag - offMin;
-    }
-    function _resetSnapshotClock() { _offN = 0; _offI = 0; _pauseEnd = -1; _clockLag = null; }
+    let _dbgExtrapFrames = 0, _dbgFrozenFrames = 0;   // (frames drawn past the newest snapshot, and past the extrapolation too: for __arDiag)
 
     let _inputSeq        = 0;
     let _lastInputSend   = 0;
@@ -4860,7 +4821,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         });
 
 
-        _noteSnapshotClock(now, entry.st);
+        _clock.note(now, entry.st);
         stateBuffer.push(entry);
         while (stateBuffer.length > 20) stateBuffer.shift();
         lastGameStateTime = now;
@@ -4950,7 +4911,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             latestHp[pid]  = p.hp;
         }
 
-        if (_BB.netActive) _BB.handler(performance.now(), tickNo, _handlerStart, stateBuffer.length, _pendingInputs.length, _interpShow);
+        if (_BB.netActive) _BB.handler(performance.now(), tickNo, _handlerStart, stateBuffer.length, _pendingInputs.length, _clock.delay);
 
     });
 
@@ -5095,7 +5056,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         shootDir.x = 0; shootDir.y = 0;
         myAngle = 0; moveAngle = 0; lastTime = 0;
         stateBuffer.length = 0;
-        _resetSnapshotClock();
+        _clock.reset();
         _inputSeq = 0; _lastInputSend = 0;
         _pendingInputs.length = 0;
         _clientBullets.length = 0;
@@ -5894,9 +5855,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     function getInterpolatedState() {
         if (stateBuffer.length === 0) return null;
 
-        // On the server's timeline (entry.st), see _noteSnapshotClock
-        if (_clockLag === null) return null;
-        const renderTime = performance.now() - _clockLag;
+        // On the server's timeline (entry.st), see _clock
+        if (_clock.lag === null) return null;
+        const renderTime = performance.now() - _clock.lag;
 
         // The two snapshots that bracket renderTime (interp.js)
         const loc = ARInterp.locate(stateBuffer, renderTime, EXTRAP_MS, _loc);
@@ -5904,7 +5865,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const t = loc.t;
         const extrapolating = t > 1;
         const nowMs = performance.now();
-        if (_BB.netActive) _BB.interp(nowMs, Math.round(sNew.st / EMIT_MS), nowMs - sNew.t, _interpShow, extrapolating ? 1 : 0, stateBuffer.length);
+        if (extrapolating) { _dbgExtrapFrames++; if (renderTime - sNew.st > EXTRAP_MS) _dbgFrozenFrames++; }   // (frozen: past the extrapolation too)
+        if (_BB.netActive) _BB.interp(nowMs, Math.round(sNew.st / EMIT_MS), nowMs - sNew.t, _clock.delay, extrapolating ? 1 : 0, stateBuffer.length);
 
         _ISActiveIds.clear();
         for (const id in sOld.players) {
@@ -6958,7 +6920,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 { text: `PING: ${_pingRtt < 0 ? '--' : _pingRtt + 'ms'}   pkt/s: ${_dbgPktPs}   rx gs/s: ${_dbgGs}`, color: _pingColor },
                 { text: `CSP: pending:${_dbgPending}   err:${_predErr}px   lag:~${_lagMs}ms`, color: _errColor  },
                 { text: `ENT: pl ${aliveCount}/${playerCount}   bul ${bulletCount}`, color: '#ffffff' },
-                { text: `INTERP: buf ${stateBuffer.length}   age ${stateAgeMs}   delay ${_interpShow.toFixed(0)}ms   cbul ${_clientBullets.length}`, color: '#cccccc' },
+                { text: `INTERP: buf ${stateBuffer.length}   age ${stateAgeMs}   delay ${_clock.delay.toFixed(0)}ms   cbul ${_clientBullets.length}`, color: '#cccccc' },
                 { text: `MEM: ${memStr}`,                                                     color: '#aa88ff' },
                 { text: `POS: (${predX !== null ? (predX|0) : '--'}, ${predY !== null ? (predY|0) : '--'})`, color: '#888888' },
             ];

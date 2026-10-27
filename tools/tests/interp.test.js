@@ -143,3 +143,58 @@ test('bulletBase: a bullet only in the newer snapshot is not drawn yet; past the
     I.locate(buf, 500, 100, l); I.bulletBase(buf, l, 500, 100, o); assert.equal(o.base, 2); assert.equal(o.age, 0.1);
     I.locate(buf, -10, 100, l); I.bulletBase(buf, l, -10, 100, o); assert.equal(o.age, 0);
 });
+
+// ---- the render clock (createClock): how much of the time the others stand still on a line that keeps stalling ----
+const CLOCK = { tickMs: TICK, minMs: 26, maxMs: 80, win: 180, stepMs: 1.5, pauseLateMs: 30, pauseWinMs: 300, stallWinMs: 12000, stallHold: 0.3, stallN: 8 };
+const OLD_CLOCK = { ...CLOCK, maxMs: 70, stallHold: 0 };   // before the stalls were remembered
+// Packets arrive 12 ms + jitter after they are sent; a stall holds everything and lets it out at once (what TCP does waiting for a lost packet).
+// Returns the share of the frames drawn past the newest snapshot (extrapolating) and past the extrapolation too (the others standing), and the mean delay.
+function simulateClock(clockCfg, extrapMs, sc, seed) {
+    const r = rng(seed), DUR = 120000, base = 12, stalls = [];
+    for (let t = 5000 + r() * sc.every; t < DUR; t += sc.every * (0.6 + r() * 0.8)) stalls.push([t, sc.min + r() * (sc.max - sc.min)]);
+    const arr = [];
+    for (let k = 0; k * TICK < DUR; k++) {
+        let a = k * TICK + base + r() * sc.jit;
+        for (const [t0, d] of stalls) if (a >= t0 && a < t0 + d) a = t0 + d + r() * 0.5;
+        arr.push([a, k * TICK]);
+    }
+    arr.sort((x, y) => x[0] - y[0]);
+    const clock = I.createClock(clockCfg);
+    let pi = 0, newest = -1, frames = 0, extrap = 0, frozen = 0, delaySum = 0;
+    for (let now = 0; now < DUR; now += TICK) {
+        while (pi < arr.length && arr[pi][0] <= now) { clock.note(arr[pi][0], arr[pi][1]); newest = Math.max(newest, arr[pi][1]); pi++; }
+        if (clock.lag === null) continue;
+        const off = now - clock.lag - newest;
+        frames++; if (off > 0) extrap++; if (off > extrapMs) frozen++;
+        delaySum += clock.delay;
+    }
+    return { extrapPct: 100 * extrap / frames, frozenPct: 100 * frozen / frames, delay: delaySum / frames };
+}
+const mean = (cfg, ex, sc, key) => [1, 2, 3, 4, 5].reduce((s, i) => s + simulateClock(cfg, ex, sc, 1000 + i * 77)[key], 0) / 5;
+
+test('clock: on a clean line the delay is ~26-32 ms and nobody stands still', () => {
+    const sc = { every: 1e9, min: 0, max: 0, jit: 3 };
+    assert.ok(mean(CLOCK, 200, sc, 'delay') < 32 && mean(CLOCK, 200, sc, 'delay') >= 26);
+    assert.equal(mean(CLOCK, 200, sc, 'frozenPct'), 0);
+});
+
+test('clock: a line that stalls 150-300 ms every ~3 s leaves the others standing a few % of the time before, almost never now, for a delay that grows to ~70 ms', () => {
+    const sc = { every: 3000, min: 150, max: 300, jit: 8 };
+    const before = mean(OLD_CLOCK, 100, sc, 'frozenPct'), now = mean(CLOCK, 200, sc, 'frozenPct');
+    assert.ok(before > 2, 'before: ' + before.toFixed(1) + ' %');
+    assert.ok(now < 0.8, 'now: ' + now.toFixed(1) + ' %');
+    const d = mean(CLOCK, 200, sc, 'delay');
+    assert.ok(d > 45 && d <= 80, 'delay ' + d.toFixed(0) + ' ms');
+});
+
+test('clock: one stall now and then (every minute) does not move the delay much', () => {
+    const sc = { every: 60000, min: 300, max: 300, jit: 4 };
+    assert.ok(mean(CLOCK, 200, sc, 'delay') < 40);
+});
+
+test('clock: reset forgets the lag, the first packet sets it again', () => {
+    const c = I.createClock(CLOCK);
+    assert.equal(c.lag, null);
+    c.note(1000, 0); assert.notEqual(c.lag, null);
+    c.reset(); assert.equal(c.lag, null);
+});
