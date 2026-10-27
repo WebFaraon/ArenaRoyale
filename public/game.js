@@ -3517,7 +3517,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _bombFx      = [];   // the bombs of the Bomb Towers: { x0, y0, x1, y1, t0, dur, r } (it flies for dur ms, then the blast of radius r)
     const _zapFx       = [];   // the bolts of the Tesla Towers: { t0, segs: [{ pts: flat [x, y, ...], t0 }], hits: [{ x, y, t0 }] }
     const _structDying = [];   // broken ones, drawn as pieces for a second: { s, t0 }
-    const _bar = { inv: 0, invT: 0, invE: 0, invH: 0, invO: 0, invF: 0, kind: 'b', act: null, can: true, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
+    const _bar = { inv: 0, invT: 0, invE: 0, invH: 0, invO: 0, invF: 0, invS: 0, kind: 'b', act: null, can: true, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
     const _structFx = [];      // the effects: break, repair, upgrade { k, x, y, o, t0, parts }
     // colours of the chips by material (wood, stone, metal, obsidian): light, dark, highlight
     const _BAR_PAL = [['#D9A24E', '#8F5A1E', '#F4D48A'], ['#A39B8E', '#6B655B', '#D2CBBF'], ['#9AA7B4', '#5E6B78', '#D3DCE5'], ['#6A52B0', '#241C42', '#B79CF5']];
@@ -3537,9 +3537,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // ---- turrets: the base stays, the head turns to what it fires at; the art is public/images/pve/turrets/{base,head}<level>.svg (100 x 100 units, the base disc has the radius 31) ----
     const _TUR_PAL = [['#A9C46A', '#4F5A2A', '#E4F0B0'], ['#6C9BD8', '#2F4A7A', '#CFE3FF'], ['#8FF3FF', '#24505E', '#FFFFFF']];
     // the colours of the effects (break, repair, upgrade) by kind and level; the kind is what the server calls it (ARStructs.TURRET.kinds): mg, tesla, heal
-    const _PAL_BY_KIND = { mg: _TUR_PAL, tesla: [['#8FF3FF', '#2F3A5F', '#FFFFFF'], ['#8FF3FF', '#2F3A5F', '#FFFFFF'], ['#D3B8FF', '#2F3A5F', '#FFFFFF']], bomb: [['#FFB54D', '#4A3F35', '#FFF3C4'], ['#FFB54D', '#4A3F35', '#FFF3C4'], ['#FF7A3D', '#4A3F35', '#FFF3C4']], heal: [['#7BF0A6', '#2E6B52', '#EAF7EF'], ['#7BF0A6', '#2E6B52', '#EAF7EF'], ['#7BF0A6', '#2E6B52', '#EAF7EF']], flame: [['#FF9F3D', '#5A2A22', '#FFF0C4'], ['#FF9F3D', '#5A2A22', '#FFF0C4'], ['#FFC72E', '#5A2A22', '#FFF0C4']] };
-    // what the build keys / slots are: 1 barricade, 2 machine gun turret, 3 Tesla Tower, 4 Health Station, 5 Bomb Tower, 6 Flamethrower (kd: the kind for the server, inv: the field of _bar that holds how many you have)
-    const _BAR_KINDS = { b: { inv: 'inv' }, t: { kd: 'mg', inv: 'invT' }, e: { kd: 'tesla', inv: 'invE' }, h: { kd: 'heal', inv: 'invH' }, o: { kd: 'bomb', inv: 'invO' }, f: { kd: 'flame', inv: 'invF' } };
+    const _PAL_BY_KIND = { mg: _TUR_PAL, tesla: [['#8FF3FF', '#2F3A5F', '#FFFFFF'], ['#8FF3FF', '#2F3A5F', '#FFFFFF'], ['#D3B8FF', '#2F3A5F', '#FFFFFF']], bomb: [['#FFB54D', '#4A3F35', '#FFF3C4'], ['#FFB54D', '#4A3F35', '#FFF3C4'], ['#FF7A3D', '#4A3F35', '#FFF3C4']], heal: [['#7BF0A6', '#2E6B52', '#EAF7EF'], ['#7BF0A6', '#2E6B52', '#EAF7EF'], ['#7BF0A6', '#2E6B52', '#EAF7EF']], flame: [['#FF9F3D', '#5A2A22', '#FFF0C4'], ['#FF9F3D', '#5A2A22', '#FFF0C4'], ['#FFC72E', '#5A2A22', '#FFF0C4']], support: [['#C79A3B', '#7A5A1E', '#FFE9A8'], ['#C79A3B', '#7A5A1E', '#FFE9A8'], ['#E0B040', '#7A5A1E', '#FFF3C4']] };
+    // what the build keys / slots are: 1 barricade, 2 machine gun turret, 3 Tesla Tower, 4 Health Station, 5 Bomb Tower, 6 Flamethrower, 7 Support Tower (kd: the kind for the server, inv: the field of _bar that holds how many you have)
+    const _BAR_KINDS = { b: { inv: 'inv' }, t: { kd: 'mg', inv: 'invT' }, e: { kd: 'tesla', inv: 'invE' }, h: { kd: 'heal', inv: 'invH' }, o: { kd: 'bomb', inv: 'invO' }, f: { kd: 'flame', inv: 'invF' }, d: { kd: 'support', inv: 'invS' } };
     const _TUR_COL = ['#FFE27A', '#FFB84A', '#7FE9FF'];   // the tracer by level
     function _turImg(part, tier) {
         const key = 'T' + part + (tier + 1);
@@ -3555,8 +3555,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     function _drawTurret(ctx, t, scale, alpha, ang, k) {
         ctx.globalAlpha = alpha;
         ctx.save(); ctx.translate(t.x, t.y); if (k !== 1) ctx.scale(k, k);
-        if (t.kd === 'tesla' || t.kd === 'heal' || t.kd === 'bomb') {   // one picture, nothing turns: the Tesla Tower, the Bomb Tower (its mortar points up) and the Health Station
-            const b = _turSprite(t.kd === 'tesla' ? 'tesla' : t.kd === 'bomb' ? 'bomb' : 'station', t.t, scale);
+        if (t.kd === 'tesla' || t.kd === 'heal' || t.kd === 'bomb' || t.kd === 'support') {   // one picture, nothing turns: the Tesla Tower, the Bomb Tower (its mortar points up), the Health Station and the Support Tower (its pad: the drone is another picture, _drawDrones)
+            const b = _turSprite(t.kd === 'tesla' ? 'tesla' : t.kd === 'bomb' ? 'bomb' : t.kd === 'support' ? 'support_base' : 'station', t.t, scale);
             if (b) ctx.drawImage(b.c, -b.w / 2, -b.h / 2, b.w, b.h);
         } else {
             const fl = t.kd === 'flame', b = _turSprite(fl ? 'flame_base' : 'base', t.t, scale), h = _turSprite(fl ? 'flame_head' : 'head', t.t, scale);   // (the Flamethrower has its own pair)
@@ -3915,12 +3915,30 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // A Tesla bolt: from the tower to the first zombie, on to the next, and so on (the server: tesla-zaps [tower id, zombie ids in the chain]). Each leg is
     // a jagged line worked out once here (the jags stay still while it lasts) and shown 70 ms after the one before, which is when the server hurts
     // that zombie; a leg stays 130 ms, fading, with a spark where it lands.
-    const _ZAP_STEP = 70, _ZAP_LIFE = 130;
-    function _zapLeg(x0, y0, x1, y1) {
-        const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1, n = Math.max(2, Math.ceil(len / 20)), nx = -dy / len, ny = dx / len, pts = [x0, y0];
-        for (let i = 1; i < n; i++) { const o = (Math.random() * 2 - 1) * Math.min(9, len * 0.16); pts.push(x0 + dx * i / n + nx * o, y0 + dy * i / n + ny * o); }
+    const _ZAP_STEP = 70, _ZAP_LIFE = 230;
+    // One jagged path from (x0, y0) to (x1, y1): points in a flat array. The jags are worked out once (here) and stay still while the leg lasts, except that a
+    // second path is made too and the bolt flickers between the two.
+    function _zapPath(x0, y0, x1, y1) {
+        const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1, n = Math.max(3, Math.ceil(len / 16)), nx = -dy / len, ny = dx / len, pts = [x0, y0];
+        for (let i = 1; i < n; i++) { const o = (Math.random() * 2 - 1) * Math.min(11, len * 0.18) * Math.sin(Math.PI * i / n + 0.35); pts.push(x0 + dx * i / n + nx * o, y0 + dy * i / n + ny * o); }
         pts.push(x1, y1);
         return pts;
+    }
+    // A leg of the bolt: two flickering paths, a couple of forks that leave the main one, and sparks that fly off it
+    function _zapLeg(x0, y0, x1, y1) {
+        const a = _zapPath(x0, y0, x1, y1), b = _zapPath(x0, y0, x1, y1), len = Math.hypot(x1 - x0, y1 - y0) || 1, ux = (x1 - x0) / len, uy = (y1 - y0) / len, forks = [], sp = [];
+        const nf = len > 70 ? 3 : 2;
+        for (let f = 0; f < nf; f++) {   // a fork: from a point of the path, off to the side, in two or three short bends
+            const k = 1 + ((Math.random() * (a.length / 2 - 2)) | 0), px = a[k * 2], py = a[k * 2 + 1], side = Math.random() < 0.5 ? -1 : 1, ang = Math.atan2(uy, ux) + side * (0.5 + Math.random() * 0.7);
+            const pts = [px, py]; let cx = px, cy = py, aa = ang;
+            for (let i = 0; i < 3; i++) { aa += (Math.random() - 0.5) * 0.9; const l = 9 + Math.random() * 12; cx += Math.cos(aa) * l; cy += Math.sin(aa) * l; pts.push(cx, cy); }
+            forks.push(pts);
+        }
+        for (let i = 0; i < 14; i++) {   // sparks: they start on the bolt and fly out, slowing as they go
+            const k = (Math.random() * (a.length / 2)) | 0, ang = Math.random() * TAU, v = 40 + Math.random() * 90;
+            sp.push({ x: a[k * 2], y: a[k * 2 + 1], vx: Math.cos(ang) * v, vy: Math.sin(ang) * v, life: 150 + Math.random() * 150 });
+        }
+        return { a, b, forks, sp, x1, y1 };
     }
     function _zapPoly(ctx, pts) { ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.stroke(); }
     function _drawZapFx(ctx, now) {
@@ -3931,13 +3949,44 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             for (let k = 0; k < f.segs.length; k++) {
                 const s = f.segs[k], age = now - s.t0;
                 if (age < 0 || age >= _ZAP_LIFE) continue;
-                const a = 1 - age / _ZAP_LIFE;
-                ctx.globalAlpha = a; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 6.4; _zapPoly(ctx, s.pts);
-                ctx.strokeStyle = f.col; ctx.lineWidth = 3.4; _zapPoly(ctx, s.pts);
-                ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.4; _zapPoly(ctx, s.pts);
-                const ex = s.pts[s.pts.length - 2], ey = s.pts[s.pts.length - 1];   // the spark where it lands
-                ctx.fillStyle = f.col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
-                _star(ctx, ex, ey, 6 + 8 * a); ctx.fill(); ctx.stroke();
+                const u = age / _ZAP_LIFE, a = 1 - u * u, flick = 0.8 + 0.2 * Math.sin(age * 0.11 + k), pts = ((age / 45) | 0) % 2 ? s.leg.b : s.leg.a;
+                // the glow: three wide strokes, each fainter and wider, round the bolt (no shadow blur: that is slow)
+                ctx.strokeStyle = f.col;
+                ctx.globalAlpha = a * 0.12 * flick; ctx.lineWidth = 38; _zapPoly(ctx, pts);
+                ctx.globalAlpha = a * 0.2 * flick; ctx.lineWidth = 22; _zapPoly(ctx, pts);
+                ctx.globalAlpha = a * 0.34 * flick; ctx.lineWidth = 12; _zapPoly(ctx, pts);
+                // the bolt: a thin ink edge, the colour, a white core
+                ctx.globalAlpha = a * 0.9; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 7.4; _zapPoly(ctx, pts);
+                ctx.globalAlpha = a; ctx.strokeStyle = f.col; ctx.lineWidth = 4.8; _zapPoly(ctx, pts);
+                ctx.globalAlpha = a * flick; ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2.2; _zapPoly(ctx, pts);
+                for (let q = 0; q < s.leg.forks.length; q++) {   // the forks: thinner, they go out first
+                    const fa = a * Math.max(0, 1 - u * 1.8);
+                    if (fa <= 0.02) break;
+                    ctx.globalAlpha = fa; ctx.strokeStyle = f.col; ctx.lineWidth = 3.4; _zapPoly(ctx, s.leg.forks[q]);
+                    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.3; _zapPoly(ctx, s.leg.forks[q]);
+                }
+                // where it lands: a glow, a bright star and a ring that spreads
+                const ex = s.leg.x1, ey = s.leg.y1;
+                ctx.globalAlpha = a * 0.28; ctx.fillStyle = f.col; ctx.beginPath(); ctx.arc(ex, ey, 22 + 16 * u, 0, TAU); ctx.fill();
+                ctx.globalAlpha = a; ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
+                _star(ctx, ex, ey, 9 + 13 * (1 - u)); ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = a * 0.8; ctx.strokeStyle = f.col; ctx.lineWidth = 2.2 * (1 - u) + 0.6; ctx.beginPath(); ctx.arc(ex, ey, 8 + 28 * u, 0, TAU); ctx.stroke();
+                // sparks flying off the bolt
+                ctx.fillStyle = '#FFFFFF';
+                for (let q = 0; q < s.leg.sp.length; q++) {
+                    const p = s.leg.sp[q]; if (age >= p.life) continue;
+                    const e = 1 - Math.exp(-age * 0.011), pu = age / p.life;
+                    ctx.globalAlpha = (1 - pu) * 0.95; ctx.beginPath(); ctx.arc(p.x + p.vx * e * 0.09, p.y + p.vy * e * 0.09 + pu * 5, 2.6 * (1 - pu * 0.6) + 0.5, 0, TAU); ctx.fill();
+                }
+                if (k === 0) {   // at the tower: a flash and a few small arcs round it
+                    const R = ARStructs.TURRET.r;
+                    if (age < 140) {
+                        const fu = age / 140;
+                        ctx.globalAlpha = (1 - fu) * 0.45; ctx.fillStyle = f.col; ctx.beginPath(); ctx.arc(s.leg.a[0], s.leg.a[1], R * (0.6 + 0.7 * fu), 0, TAU); ctx.fill();
+                        ctx.globalAlpha = (1 - fu) * 0.9; ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.6;
+                        for (let q = 0; q < 3; q++) { const a0 = s.leg.sp[q].vx * 0.07 + q * 2.1 + age * 0.02; ctx.beginPath(); ctx.arc(s.leg.a[0], s.leg.a[1], R + 3, a0, a0 + 0.7); ctx.stroke(); }
+                    }
+                }
             }
             ctx.globalAlpha = 1;
         }
@@ -3976,7 +4025,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _barEls() {
         const g = id => document.getElementById(id);
-        return _bar.els = { slot: g('pb-barricade'), cost: g('pb-barricade-cost'), tslot: g('pb-turret'), tcost: g('pb-turret-cost'), eslot: g('pb-tesla'), ecost: g('pb-tesla-cost'), oslot: g('pb-bomb'), ocost: g('pb-bomb-cost'), fslot: g('pb-flame'), fcost: g('pb-flame-cost'), hslot: g('pb-heal'), hcost: g('pb-heal-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar') };
+        return _bar.els = { slot: g('pb-barricade'), cost: g('pb-barricade-cost'), tslot: g('pb-turret'), tcost: g('pb-turret-cost'), eslot: g('pb-tesla'), ecost: g('pb-tesla-cost'), oslot: g('pb-bomb'), ocost: g('pb-bomb-cost'), fslot: g('pb-flame'), fcost: g('pb-flame-cost'), hslot: g('pb-heal'), hcost: g('pb-heal-cost'), sslot: g('pb-support'), scost: g('pb-support-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar') };
     }
     function _barUi() {
         const e = _bar.els || _barEls();
@@ -3988,6 +4037,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (e.ecost) e.ecost.textContent = 'x' + _bar.invE;
         if (e.hslot) { e.hslot.classList.toggle('is-empty', _bar.invH <= 0 && !(_bar.place && _bar.kind === 'h')); e.hslot.classList.toggle('is-on', _bar.place && _bar.kind === 'h'); }
         if (e.hcost) e.hcost.textContent = 'x' + _bar.invH;
+        if (e.sslot) { e.sslot.classList.toggle('is-empty', _bar.invS <= 0 && !(_bar.place && _bar.kind === 'd')); e.sslot.classList.toggle('is-on', _bar.place && _bar.kind === 'd'); }
+        if (e.scost) e.scost.textContent = 'x' + _bar.invS;
         if (e.oslot) { e.oslot.classList.toggle('is-empty', _bar.invO <= 0 && !(_bar.place && _bar.kind === 'o')); e.oslot.classList.toggle('is-on', _bar.place && _bar.kind === 'o'); }
         if (e.ocost) e.ocost.textContent = 'x' + _bar.invO;
         if (e.fslot) { e.fslot.classList.toggle('is-empty', _bar.invF <= 0 && !(_bar.place && _bar.kind === 'f')); e.fslot.classList.toggle('is-on', _bar.place && _bar.kind === 'f'); }
@@ -4016,7 +4067,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _barUse() { if (_bar.use && !_bar.place) socket.emit('use-struct', { id: _bar.use.id }); }
     // Where the ghost stands and whether the barricade can go there (the same check the server makes)
-    function _barGhost(players, now) {
+    function _barGhost(players, now, zoom) {
         if (!_bar.place) return;
         if (_selfDead || gameEnded || _pveState.waveBreak) { _barPlaceMode(false); return; }
         if (predX === null) return;
@@ -4024,11 +4075,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const id in players) { const p = players[id]; if (p.alive && p.hp > 0) pl.push(id === socket.id ? { x: predX, y: predY } : p); }
         if (_bar.kind !== 'b') {
             _bar.g.kd = _BAR_KINDS[_bar.kind].kd;
-            ARStructs.turretPlacement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g);
+            ARStructs.turretPlacement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g, mouseActive ? _mouseOff / zoom : undefined);
             _bar.why = ARStructs.checkPlaceTurret(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, roomPlayers: Math.max(1, Object.keys(players).length) });
             return;
         }
-        ARStructs.placement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g);
+        ARStructs.placement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g, mouseActive ? _mouseOff / zoom : undefined);
         _bar.why = ARStructs.checkPlace(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, count: _structs.length });
     }
     // The barricade within reach of you, and what E would do to it (the prompt changes only when that does)
@@ -4213,6 +4264,73 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.stroke();
         });
     }
+    // ---- the Support Tower's drone: its own picture (support_drone<level>.svg), flown between the pad and what it mends; the server says where to (drone-go / drone-home) and the
+    // flight takes the time it announces; the flight, the height and the effects are worked out here from the age of the event ----
+    const _dPose = { x: 0, y: 0, z: 0 }, _dSpotP = { x: 0, y: 0 };
+    const _dEase = (u) => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+    function _dronePose(t, now, out) {
+        const d = t.dr;
+        if (!d || d.ph === 0) { out.x = t.x; out.y = t.y; out.z = 0; return out; }
+        const D = ARStructs.TURRET.kinds.support.drone, e = now - d.t0;
+        if (d.ph === 1) {
+            const TO = d.dock ? D.takeoff : 0;
+            if (e >= d.ms) { d.ph = 2; out.x = d.tx; out.y = d.ty; out.z = 1; return out; }
+            if (e < TO) { out.x = d.fx; out.y = d.fy; out.z = _dEase(e / TO); return out; }
+            const k = _dEase((e - TO) / Math.max(1, d.ms - TO));
+            out.x = d.fx + (d.tx - d.fx) * k; out.y = d.fy + (d.ty - d.fy) * k; out.z = 1; return out;
+        }
+        if (d.ph === 2) { out.x = d.tx; out.y = d.ty; out.z = 1; return out; }
+        if (d.ph === 4) {   // just placed: it rises off the pad, hovers a moment and sets down again (unless the server sends it off to mend something)
+            out.x = t.x; out.y = t.y;
+            if (e >= d.ms) { d.ph = 0; out.z = 0; return out; }
+            out.z = e < D.takeoff ? _dEase(e / D.takeoff) : e < D.takeoff + 350 ? 1 : 1 - _dEase((e - D.takeoff - 350) / D.landing);
+            return out;
+        }
+        const mv = Math.max(1, d.ms - D.landing);   // 3: on its way home, then down onto the pad
+        if (e >= d.ms) { d.ph = 0; out.x = t.x; out.y = t.y; out.z = 0; return out; }
+        if (e < mv) { const k = _dEase(e / mv); out.x = d.fx + (t.x - d.fx) * k; out.y = d.fy + (t.y - d.fy) * k; out.z = 1; return out; }
+        out.x = t.x; out.y = t.y; out.z = 1 - _dEase((e - mv) / D.landing); return out;
+    }
+    function _drawDrones(ctx, scale, now, visL, visT, visR, visB) {
+        for (let i = 0; i < _turrets.length; i++) {
+            const t = _turrets[i];
+            if (t.kd !== 'support') continue;
+            const pose = _dronePose(t, now, _dPose), x = pose.x, y = pose.y, z = pose.z;
+            if (x < visL - 80 || x > visR + 80 || y < visT - 80 || y > visB + 80) continue;
+            const sp = _turSprite('support_drone', t.t, scale); if (!sp) continue;
+            const d = t.dr, bob = z > 0.95 ? Math.sin(now * 0.0065 + t.id) * 1.8 : 0, dy = y - z * 16 + bob, k = 1 + 0.22 * z;
+            // mending: a beam from the drone down to the thing, welding sparks on it, and the plus signs the repair effect has
+            const tgt = d && d.ph === 2 ? (d.tk === 't' ? _turrets.find(q => q.id === d.tid) : _structs.find(q => q.id === d.tid)) : null;
+            if (z > 0.02) {   // its shadow on the ground: smaller and fainter the higher it is
+                ctx.globalAlpha = 0.3 * (0.4 + 0.6 * z); ctx.fillStyle = '#0B0F1A'; ctx.beginPath(); ctx.ellipse(x + 5 * z, y + 12 * z + 4, 11 * (1 + 0.1 * z), 5.4, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+            }
+            if (tgt && tgt.hp < tgt.maxHp) {
+                const bx = x, by = dy + 5, cx = tgt.x, cy = tgt.y, pulse = 0.65 + 0.35 * Math.sin(now * 0.012);
+                ctx.lineCap = 'round'; ctx.setLineDash([6, 5]); ctx.lineDashOffset = -now * 0.03;
+                ctx.globalAlpha = 0.9; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 5.2; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(cx, cy); ctx.stroke();
+                ctx.globalAlpha = 0.55 + 0.45 * pulse; ctx.strokeStyle = '#7CF08C'; ctx.lineWidth = 2.8; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(cx, cy); ctx.stroke();
+                ctx.setLineDash([]); ctx.lineDashOffset = 0;
+                ctx.globalAlpha = 0.16 + 0.14 * pulse; ctx.fillStyle = '#46D46A'; ctx.beginPath(); ctx.arc(cx, cy, 20 + 6 * pulse, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 1; ctx.fillStyle = '#E8FFE8';
+                for (let q = 0; q < 3; q++) { const a = now * 0.011 + q * 2.1 + t.id; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * 12, cy + Math.sin(a * 1.3) * 9, 1.9, 0, TAU); ctx.fill(); }
+                if (now - (d.fxT || 0) > 520) { d.fxT = now; _fxSpawn('repair', tgt, now); }
+            }
+            ctx.save(); ctx.translate(x, dy); if (k !== 1) ctx.scale(k, k);
+            ctx.drawImage(sp.c, -sp.w / 2, -sp.h / 2, sp.w, sp.h);
+            if (z > 0.02) {   // the rotors spin: blades over the four rotor discs
+                const arm = [7.8, 8.5, 8.8][t.t] || 7.8, rr = [5.2, 5.8, 6.2][t.t] || 5.2;
+                ctx.lineCap = 'round';
+                for (let q = 0; q < 4; q++) {
+                    const rx = (q & 1 ? -1 : 1) * arm, ry = (q & 2 ? -1 : 1) * arm, a = now * 0.07 + q * 0.9;
+                    ctx.globalAlpha = 0.34 * z; ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(rx, ry, rr, 0, TAU); ctx.fill();
+                    ctx.globalAlpha = 0.8 * z; ctx.strokeStyle = '#1D2531'; ctx.lineWidth = 1.5; ctx.beginPath();
+                    ctx.moveTo(rx + Math.cos(a) * rr, ry + Math.sin(a) * rr); ctx.lineTo(rx - Math.cos(a) * rr, ry - Math.sin(a) * rr); ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
+            ctx.restore();
+        }
+    }
     const _ring = { id: -1, a: 0, t: 0 };   // the one range ring on show (see _drawTurrets)
     function _drawTurrets(ctx, scale, zoom, visL, visT, visR, visB, now) {
         const R = ARStructs.TURRET.r;
@@ -4260,7 +4378,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const a = 1 - (now - t.flash) / 160;
                 ctx.globalAlpha = 0.55 * a; ctx.fillStyle = t.kd === 'bomb' ? '#FFB54D' : t.t === 2 ? '#E9DBFF' : '#7FF6FF'; ctx.beginPath(); ctx.arc(t.x, t.y, 16 + 8 * a, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
             }
-            if (t.hp < t.maxHp) _drawHpBar(ctx, t.x - 24, t.y - R - 17, 48, 7, Math.max(0, t.hp / t.maxHp), 1.6);
         }
     }
     function _drawStructs(ctx, scale, zoom, visL, visT, visR, visB, now) {
@@ -4274,7 +4391,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const k = 1 + 0.2 * pop * pop;
                 ctx.save(); ctx.translate(s.x, s.y); ctx.scale(k, k); ctx.drawImage(sp.c, -sp.w / 2, -sp.h / 2, sp.w, sp.h); ctx.restore();
             } else if (sp) ctx.drawImage(sp.c, s.x - sp.w / 2, s.y - sp.h / 2, sp.w, sp.h);
-            if (s.hp < s.maxHp) _drawHpBar(ctx, s.x - 24, s.y - hh - 15, 48, 7, Math.max(0, s.hp / s.maxHp), 1.6);
         }
         _drawTurrets(ctx, scale, zoom, visL, visT, visR, visB, now);   // over the barricades (a turret stands behind a wall and looks over it)
         // the pieces of a broken one, fading out over a second
@@ -4287,6 +4403,21 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.globalAlpha = 1 - age / 1000;
             ctx.drawImage(sp.c, d.s.x - sp.w / 2, d.s.y - sp.h / 2, sp.w, sp.h);
             ctx.globalAlpha = 1;
+        }
+        _drawDrones(ctx, scale, now, visL, visT, visR, visB);   // over the turrets (it flies)
+        // The health bars of everything that is built, last of all the walls and the turrets: a bar is never under a turret or a barricade next to it
+        for (let i = 0; i < _structs.length; i++) {
+            const s = _structs[i];
+            if (s.hp >= s.maxHp) continue;
+            const hh = ARStructs.halfH(s);
+            if (s.x + 60 < visL || s.x - 60 > visR || s.y + hh + 14 < visT || s.y - hh - 24 > visB) continue;
+            _drawHpBar(ctx, s.x - 24, s.y - hh - 15, 48, 7, Math.max(0, s.hp / s.maxHp), 1.6);
+        }
+        for (let i = 0; i < _turrets.length; i++) {
+            const t = _turrets[i], R = ARStructs.TURRET.r;
+            if (t.hp >= t.maxHp) continue;
+            if (t.x + R + 24 < visL || t.x - R - 24 > visR || t.y + R + 24 < visT || t.y - R - 24 > visB) continue;
+            _drawHpBar(ctx, t.x - 24, t.y - R - 17, 48, 7, Math.max(0, t.hp / t.maxHp), 1.6);
         }
         _drawStructFx(ctx, now);
         _drawWorkRings(ctx, now, visL, visT, visR, visB);
@@ -4315,6 +4446,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.beginPath(); ctx.arc(g.x, g.y, ARStructs.turretKind(g).tiers[0].range, 0, Math.PI * 2); ctx.fill(); ctx.stroke();   // how far it will reach
             ctx.restore();
             _drawTurret(ctx, { x: g.x, y: g.y, t: 0, kd: g.kd }, scale, 0.65, Math.atan2(g.y - _PVE_BASE.y, g.x - _PVE_BASE.x), 1);
+            if (g.kd === 'support') { const ds = _turSprite('support_drone', 0, scale); if (ds) { ctx.globalAlpha = 0.65; ctx.drawImage(ds.c, g.x - ds.w / 2, g.y - ds.h / 2, ds.w, ds.h); ctx.globalAlpha = 1; } }   // the drone waits on the pad
             ctx.save();
             ctx.lineWidth = 3 / zoom; ctx.strokeStyle = ok ? '#46D46A' : '#FF4B5C'; ctx.setLineDash([8 / zoom, 6 / zoom]);
             ctx.beginPath(); ctx.arc(g.x, g.y, R + 3, 0, Math.PI * 2); ctx.stroke();
@@ -4426,7 +4558,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             window.__arMe = () => [predX, predY];
             window.__arStructs = () => _structs.map(s => ({ ...s }));   // PvE barricades as the client has them
             window.__arTurrets = () => _turrets.map(s => ({ ...s }));   // and the turrets
-            window.__arBar = () => ({ inv: _bar.inv, invT: _bar.invT, invE: _bar.invE, invH: _bar.invH, invO: _bar.invO, invF: _bar.invF, kind: _bar.kind, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins, work: [..._bar.work.keys()], fx: _structFx.length });
+            window.__arBar = () => ({ inv: _bar.inv, invT: _bar.invT, invE: _bar.invE, invH: _bar.invH, invO: _bar.invO, invF: _bar.invF, invS: _bar.invS, kind: _bar.kind, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins, work: [..._bar.work.keys()], fx: _structFx.length });
             window.__arObs = () => _obstacles; // the obstacles as the client has them (map sprites tests)
             window.__arIS = () => _IS; // the other players as last rendered (interpolation)
             window.__arBullets = () => { const o = [], bl = _IS.bullets, age = _IS.bulletAge || 0; if (bl) for (const b of bl) { if (b.ownerId !== socket.id) o.push(b.id, b.x + b.dx * age, b.y + b.dy * age); } return o; }; // enemy bullets as drawn (id, x, y)
@@ -4474,6 +4606,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _pingInterval = setInterval(() => { if (!gameEnded) socket.emit('c-ping', performance.now()); }, 2000);
 
     let mouseActive = false;
+    let _mouseOff = 0;   // css px from the centre of the screen (the player) to the mouse
     let _lineDashZoom = -1;
     let _lineDashArr  = [0, 0];
 
@@ -4650,6 +4783,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (k === '4') { _barPlaceMode(undefined, 'h'); return; }
             if (k === '5') { _barPlaceMode(undefined, 'o'); return; }
             if (k === '6') { _barPlaceMode(undefined, 'f'); return; }
+            if (k === '7') { _barPlaceMode(undefined, 'd'); return; }
             if (k === 'escape' && _bar.place) { _barPlaceMode(false); return; }
             if (k === 'e') { _barUse(); return; }
         }
@@ -4671,6 +4805,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const H  = canvas.height / _rsDpr();
         const dx = (e.clientX - rect.left) - W / 2;
         const dy = (e.clientY - rect.top)  - H / 2;
+        _mouseOff = Math.hypot(dx, dy);   // how far the mouse is from the player on the screen (css px): the placement ghost follows it
         myAngle = Math.atan2(-dx, dy);
         // Angle is sent via unified input at 30Hz from rAF — no separate rotate emit needed.
         // Sending 'rotate' here too doubled mouse packet rate and caused server-side angle
@@ -5219,7 +5354,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const k in _obsShake) delete _obsShake[k];
         gameControl.countdownEndTime = null;
         _pveHudReset();
-        _zFx.length = 0; _zHpMul = 1; _structs.length = 0; _turrets.length = 0; _turretFx.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.invT = 0; _bar.invE = 0; _bar.invH = 0; _bar.invO = 0; _bar.invF = 0; _zapFx.length = 0; _bombFx.length = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
+        _zFx.length = 0; _zHpMul = 1; _structs.length = 0; _turrets.length = 0; _turretFx.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.invT = 0; _bar.invE = 0; _bar.invH = 0; _bar.invO = 0; _bar.invF = 0; _bar.invS = 0; _zapFx.length = 0; _bombFx.length = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
         _footsteps.length = 0;
         for (const k in _footTimers) delete _footTimers[k];
         for (const k in _footSide)   delete _footSide[k];
@@ -5281,6 +5416,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { id: 'bomb', tab: 'build', name: 'Bomb Tower', img: '/images/pve/icon_bomb.svg', kd: 'bomb', held: () => _bar.invO, cost: () => ARStructs.turretBuyCost('bomb'), tag: () => 'x' + _bar.invO },
         { id: 'flame', tab: 'build', name: 'Flamethrower', img: '/images/pve/icon_flame.svg', kd: 'flame', held: () => _bar.invF, cost: () => ARStructs.turretBuyCost('flame'), tag: () => 'x' + _bar.invF },
         { id: 'heal', tab: 'build', name: 'Health Station', img: '/images/pve/icon_station.svg', kd: 'heal', held: () => _bar.invH, cost: () => ARStructs.turretBuyCost('heal'), tag: () => 'x' + _bar.invH },
+        { id: 'support', tab: 'build', name: 'Support Tower', img: '/images/pve/icon_support.svg', kd: 'support', held: () => _bar.invS, cost: () => ARStructs.turretBuyCost('support'), tag: () => 'x' + _bar.invS },
         { id: 'dmg', tab: 'weapon', name: 'Damage', img: '/images/pve/upg_damage.svg', lvl: n => '+' + n * 5 + '%' },
         { id: 'ammo', tab: 'weapon', name: 'Incarcator', img: '/images/pve/upg_magazine.svg', lvl: n => '+' + n * 12 + '%' },
         { id: 'reserve', tab: 'weapon', name: 'Munitie', img: '/images/pickups/ammo_box.svg', cost: () => _PVE_RESERVE_COST, tag: () => '+' + _myReservePack() },
@@ -5323,6 +5459,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (compact && (_pbk.tab === 'all' || _pbk.tab === 'support')) _pbk.tab = _pbk.tab === 'support' ? 'weapon' : 'build';
         for (const b of _$('pbk-tabs').children) { b.classList.toggle('is-on', b.dataset.tab === _pbk.tab); if (b.dataset.tab === 'weapon') b.textContent = compact ? 'UPGRADE-URI' : 'ARME'; }
         for (const { c, el } of _pbk.cards.values()) el.style.display = (_pbk.tab === 'all' || c.tab === _pbk.tab || (compact && _pbk.tab === 'weapon' && c.tab === 'support')) ? '' : 'none';
+        let shown = 0; for (const { el } of _pbk.cards.values()) if (el.style.display !== 'none') shown++;
+        _$('pbk-cards').dataset.dense = shown > 6 ? '1' : '';   // more than six cards (the builds, with the Support Tower): four columns on a phone, so two rows still hold them
     }
 
     // Cheap and idempotent: only what changed is written (called at every purchase, coin and inventory change while the panel is up)
@@ -5372,11 +5510,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _pbkInv() {
         const el = _$('pbk-inv');
-        const s = `${_bar.inv}|${_bar.invT}|${_bar.invE}|${_bar.invO}|${_bar.invF}|${_bar.invH}|${ammoState.reserve | 0}`;
+        const s = `${_bar.inv}|${_bar.invT}|${_bar.invE}|${_bar.invO}|${_bar.invF}|${_bar.invH}|${_bar.invS}|${ammoState.reserve | 0}`;
         if (el.__k === s) return;
         el.__k = s;
         el.innerHTML = `<span class="pbk-inv-h">INVENTAR</span><span class="pbk-pill"><img src="/images/pve/icon_barricade_wood.svg" alt="" draggable="false">x${_bar.inv}</span>` +
-            `<span class="pbk-pill"><img src="/images/pve/icon_turret_mg.svg" alt="" draggable="false">x${_bar.invT}</span><span class="pbk-pill"><img src="/images/pve/icon_tesla.svg" alt="" draggable="false">x${_bar.invE}</span><span class="pbk-pill"><img src="/images/pve/icon_bomb.svg" alt="" draggable="false">x${_bar.invO}</span><span class="pbk-pill"><img src="/images/pve/icon_flame.svg" alt="" draggable="false">x${_bar.invF}</span><span class="pbk-pill"><img src="/images/pve/icon_station.svg" alt="" draggable="false">x${_bar.invH}</span><span class="pbk-pill"><img src="/images/pickups/ammo_box.svg" alt="" draggable="false">${ammoState.reserve | 0}</span>`;
+            `<span class="pbk-pill"><img src="/images/pve/icon_turret_mg.svg" alt="" draggable="false">x${_bar.invT}</span><span class="pbk-pill"><img src="/images/pve/icon_tesla.svg" alt="" draggable="false">x${_bar.invE}</span><span class="pbk-pill"><img src="/images/pve/icon_bomb.svg" alt="" draggable="false">x${_bar.invO}</span><span class="pbk-pill"><img src="/images/pve/icon_flame.svg" alt="" draggable="false">x${_bar.invF}</span><span class="pbk-pill"><img src="/images/pve/icon_station.svg" alt="" draggable="false">x${_bar.invH}</span><span class="pbk-pill"><img src="/images/pve/icon_support.svg" alt="" draggable="false">x${_bar.invS}</span><span class="pbk-pill"><img src="/images/pickups/ammo_box.svg" alt="" draggable="false">${ammoState.reserve | 0}</span>`;
     }
     const _pbkMine = () => { const r = _pbk.res; if (!r) return null; for (const row of r.rows) if (row[0] === socket.id) return row; return null; };
 
@@ -5569,8 +5707,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     // ---- barricades ----
-    socket.on('pve-inv', ({ barricade, turret, tesla, bomb, flame, heal }) => {
-        _bar.inv = barricade | 0; _bar.invT = turret | 0; _bar.invE = tesla | 0; _bar.invO = bomb | 0; _bar.invF = flame | 0; _bar.invH = heal | 0;
+    socket.on('pve-inv', ({ barricade, turret, tesla, bomb, flame, heal, support }) => {
+        _bar.inv = barricade | 0; _bar.invT = turret | 0; _bar.invE = tesla | 0; _bar.invO = bomb | 0; _bar.invF = flame | 0; _bar.invH = heal | 0; _bar.invS = support | 0;
         if (_pveState.waveBreak && _pbk.cards) updateUpgradeButtons();
         if (_bar[_BAR_KINDS[_bar.kind].inv] <= 0 && _bar.place) _bar.place = false;   // that was the last one
         _barUi();
@@ -5579,8 +5717,21 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     socket.on('turret-add', (s) => {
         const a = (s.a | 0) / 100;
         const _now = performance.now(), _t = { id: s.id, k: 't', kd: s.kd || 'mg', x: s.x, y: s.y, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, ang: a, tang: a, flash: 0, flameT: -1e9, flameS: 0, pop: _now };
+        if (_t.kd === 'support') _t.dr = { ph: 4, t0: _now, ms: ARStructs.TURRET.kinds.support.drone.takeoff + 350 + ARStructs.TURRET.kinds.support.drone.landing, fx: _t.x, fy: _t.y, tx: _t.x, ty: _t.y, tk: 's', tid: -1, dock: true, fxT: 0 };
         _turrets.push(_t); _fxSpawn('place', _t, _now);
-        _pveFeed(`${s.by} a plasat ${s.kd === 'tesla' ? 'o Tesla Tower' : s.kd === 'bomb' ? 'o Bomb Tower' : s.kd === 'flame' ? 'un Flamethrower' : s.kd === 'heal' ? 'o Health Station' : 'o tureta'}`);
+        _pveFeed(`${s.by} a plasat ${s.kd === 'tesla' ? 'o Tesla Tower' : s.kd === 'bomb' ? 'o Bomb Tower' : s.kd === 'flame' ? 'un Flamethrower' : s.kd === 'heal' ? 'o Health Station' : s.kd === 'support' ? 'un Support Tower' : 'o tureta'}`);
+    });
+    // The Support Tower's drone: off to mend something (tk 't' a turret / 's' a barricade, tid its id, ms how long the flight takes) and back home
+    socket.on('drone-go', ({ id, tk, tid, ms }) => {
+        const t = _turrets.find(q => q.id === id); if (!t) return;
+        const now = performance.now(), pose = _dronePose(t, now, _dPose), tg = tk === 't' ? _turrets.find(q => q.id === tid) : _structs.find(q => q.id === tid);
+        const sp = tg ? ARStructs.droneSpot(tg, _dSpotP) : pose;
+        t.dr = { ph: 1, t0: now, ms, fx: pose.x, fy: pose.y, tx: sp.x, ty: sp.y, tk, tid, dock: pose.z < 0.1, fxT: 0 };
+    });
+    socket.on('drone-home', ({ id, ms }) => {
+        const t = _turrets.find(q => q.id === id); if (!t) return;
+        const now = performance.now(), pose = _dronePose(t, now, _dPose);
+        t.dr = { ph: 3, t0: now, ms, fx: pose.x, fy: pose.y, tx: t.x, ty: t.y, tk: 's', tid: -1, dock: false, fxT: 0 };
     });
     socket.on('turret-hp', (rows) => {
         for (let i = 0; i < rows.length; i++) { const t = _turrets.find(q => q.id === rows[i][0]); if (t) t.hp = rows[i][1]; }
@@ -5652,7 +5803,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             for (let k = 1; k < row.length; k++) {
                 const z = _zombies[row[k]];
                 if (!z || z.hp < 0) break;
-                segs.push({ pts: _zapLeg(px, py, z.x, z.y), t0: now + (k - 1) * _ZAP_STEP });
+                segs.push({ leg: _zapLeg(px, py, z.x, z.y), t0: now + (k - 1) * _ZAP_STEP });
                 px = z.x; py = z.y;
             }
             if (segs.length) _zapFx.push({ col, segs });
@@ -5964,7 +6115,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             g.fillRect(b.x * k - bw / 2, b.y * k - bh / 2, bw, bh); g.strokeRect(b.x * k - bw / 2, b.y * k - bh / 2, bw, bh);
         }
         g.fillStyle = '#8FC2FF'; g.strokeStyle = '#0F171B'; g.lineWidth = 1.5;
-        for (let i = 0; i < _turrets.length; i++) { const tk = _turrets[i].kd; g.fillStyle = tk === 'heal' ? '#46D46A' : tk === 'tesla' ? '#B79CF5' : tk === 'bomb' ? '#FF9F43' : tk === 'flame' ? '#FF5A2A' : '#8FC2FF'; g.beginPath(); g.arc(_turrets[i].x * k, _turrets[i].y * k, 5, 0, Math.PI * 2); g.fill(); g.stroke(); }
+        for (let i = 0; i < _turrets.length; i++) { const tk = _turrets[i].kd; g.fillStyle = tk === 'heal' ? '#46D46A' : tk === 'tesla' ? '#B79CF5' : tk === 'bomb' ? '#FF9F43' : tk === 'flame' ? '#FF5A2A' : tk === 'support' ? '#E0B040' : '#8FC2FF'; g.beginPath(); g.arc(_turrets[i].x * k, _turrets[i].y * k, 5, 0, Math.PI * 2); g.fill(); g.stroke(); }
         // zombies (the tanks bigger), then the team on top
         g.lineWidth = 2; g.strokeStyle = '#0F171B';
         for (let i = 0; i < _zombies.length; i++) {
@@ -6388,7 +6539,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
 
         // --- BARICADE --- (PvE: under the players and the zombies)
-        if (_gameMode === 'pve') { _barGhost(rState.players, _obsNow); _drawStructs(ctx, _lblScale, ZOOM, visLeft, visTop, visRight, visBottom, _obsNow); }
+        if (_gameMode === 'pve') { _barGhost(rState.players, _obsNow, ZOOM); _drawStructs(ctx, _lblScale, ZOOM, visLeft, visTop, visRight, visBottom, _obsNow); }
 
         // --- ZONA --- (BR only)
         if (_gameMode !== 'pve') ARArena.drawZone(ctx, visLeft, visTop, visRight, visBottom, _zone, ZOOM, _ox, _oy, _lblScale);
@@ -7118,6 +7269,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (e.tslot) e.tslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 't'); };
         if (e.eslot) e.eslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'e'); };
         if (e.hslot) e.hslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'h'); };
+        if (e.sslot) e.sslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'd'); };
         if (e.oslot) e.oslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'o'); };
         if (e.fslot) e.fslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'f'); };
         if (e.use) e.use.onclick = _barUse;

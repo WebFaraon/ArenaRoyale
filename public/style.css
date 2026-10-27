@@ -5148,6 +5148,11 @@ button:disabled { cursor: not-allowed; }
 @media not ((hover: hover) and (pointer: fine)) {
     #pve-use, #pve-place-bar { left: 36%; }
 }
+/* seven build slots take the right 620 px: in PvE the gun + health block moves left, beside the ping chip, and the E / PUNE prompts sit above it */
+body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none; }
+@media (hover: hover) and (pointer: fine) {
+    #pve-use, #pve-place-bar { left: 92px; transform: none; }
+}
 
 /* ==========================================================================
    PvE BETWEEN-WAVES PANEL: results + team | shop | next wave.
@@ -5365,6 +5370,8 @@ button:disabled { cursor: not-allowed; }
     .pbk-tab { height: 2.5em; padding: 0 1.4em .1em; font-size: 1em; border-radius: .7em; }
     .pbk-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); align-content: stretch; gap: .7em;
                  overflow: hidden; padding: .3em .3em .5em; margin: -.3em -.3em 0; -webkit-mask-image: none; mask-image: none; }
+    .pbk-cards[data-dense="1"] { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .55em; }
+    .pbk-cards[data-dense="1"] .pbk-c-name { font-size: 1em; }
     .pbk-c { padding: .45em .5em .6em; gap: .3em; border-radius: 1em; min-height: 0; }
     .pbk-c-ic, .pbk-c.is-big .pbk-c-ic { flex: 1; height: auto; min-height: 0; border-radius: .7em; }
     .pbk-c-ic { overflow: hidden; }

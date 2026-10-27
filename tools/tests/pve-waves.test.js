@@ -69,14 +69,16 @@ test('the shielded: 520 health, a wider shield, a harder hit on what it bashes, 
     assert.match(defs, /shielded:[^}]*hunts: false/);
 });
 
-test('the screamer: 450 health, fast, hits hard, goes for players, screams once near the base and stuns every turret in range for 2 s', () => {
+test('the screamer: 450 health, fast, hits hard, goes for the nearest player from the start, screams once when it is near them and stuns every turret within 300 of it for 2 s', () => {
     assert.equal(hp('screamer'), 450);
     assert.match(defs, /screamer:[^}]*chaseSpd: 100/);
     assert.match(defs, /screamer:[^}]*dmg: 45/);
     assert.match(defs, /screamer:[^}]*hunts: true/);
-    assert.match(defs, /scream: \{ at: 240, range: 300, windup: 0\.9, fire: 0\.45, stun: 2 \}/);
+    assert.match(defs, /scream: \{ near: 230, range: 300, windup: 0\.9, fire: 0\.45, stun: 2 \}/);
     assert.ok(waves[19][idx('screamer')] >= 5);
     assert.match(src, /if \(t\.stunUntil > now\) continue;/, 'a stunned turret skips its turn (fire, flame, heal)');
+    assert.match(src, /nearestPlayer && nearestDist <= sc\.near/, 'the scream is set off by a player being near, not the base');
+    assert.match(src, /def\.scream \? 1e9 : ZOMBIE_DETECT_R/, 'it goes for a player from anywhere');
 });
 
 test('the heavy ones do not outnumber the rest: tanks at most half of the walkers, brutes and summoners fewer than the tanks', () => {

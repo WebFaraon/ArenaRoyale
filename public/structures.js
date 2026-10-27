@@ -45,7 +45,10 @@
     // hurts every zombie within `splash` of where it lands (dmg to each, armour counts); players and what is built are never hurt by it.
     // 'flame' (the Flamethrower) breathes a jet of fire at the nearest zombie in its short range and burns every zombie inside the cone of the jet
     // (cone: the half angle, in radians) for dmg each, every cd seconds (the armour counts); it needs a clear line only to pick its target.
-    // The numbers of the Tesla Tower, the Bomb Tower, the Flamethrower and the Health Station are provisional.
+    // 'support' (the Support Tower) has a drone: it takes off, flies to the most hurt barricade or turret within `range` of the tower's centre and mends it slowly,
+    // rate health a second (never the tower itself), then to the next one; with nothing hurt it goes home and waits on the pad. drone.speed: units a second;
+    // takeoff and landing take drone.takeoff / drone.landing ms. Upgrades widen the range, strengthen the tower and speed up the mending.
+    // The numbers of the Tesla Tower, the Bomb Tower, the Flamethrower, the Health Station and the Support Tower are provisional.
     const TURRET = {
         r: 31,
         detectRange: 130,              // like the barricades: a zombie with no player to chase goes for a turret this close (to its surface)
@@ -71,6 +74,11 @@
                 { id: 'burner',  name: 'Flame II',  hp: 800, total: 80,  up: 45, ms: 2000, range: 215, cd: 0.25, dmg: 20, cone: 0.50 },
                 { id: 'inferno', name: 'Flame III', hp: 1250, total: 150, up: 70, ms: 3000, range: 245, cd: 0.25, dmg: 32, cone: 0.55 },
             ] },
+            support: { name: 'Support Tower', inv: 'support', maxPerRoom: 2, perExtraPlayer: 1, drone: { speed: 150, takeoff: 550, landing: 450 }, tiers: [
+                { id: 'drone',  name: 'Support I',   hp: 320, total: 40,  up: 0,  ms: 0,    range: 210, rate: 10 },
+                { id: 'swarm',  name: 'Support II',  hp: 520, total: 90,  up: 50, ms: 2000, range: 260, rate: 18 },
+                { id: 'hive',   name: 'Support III', hp: 800, total: 160, up: 70, ms: 3000, range: 310, rate: 30 },
+            ] },
             heal: { name: 'Health Station', inv: 'heal', maxPerRoom: 1, perExtraPlayer: 1, tiers: [
                 { id: 'aid',      name: 'Health I',   hp: 300, total: 25,  up: 0,  ms: 0,    range: 130, rate: 6 },
                 { id: 'clinic',   name: 'Health II',  hp: 450, total: 60,  up: 35, ms: 1000, range: 160, rate: 10 },
@@ -86,6 +94,13 @@
     // What a new one of a kind costs (level 1)
     function turretBuyCost(kd) { return (TURRET.kinds[kd] || TURRET.kinds.mg).tiers[0].total; }
 
+    // Where the drone hovers while it mends something: above it, clear of it (so the drone and the thing it mends are both seen). The server works out the
+    // flight time from here, the client flies the drone here.
+    function droneSpot(s, out) {
+        if (s.k === 't') { out.x = s.x + 8; out.y = s.y - TURRET.r - 18; }
+        else { out.x = s.x; out.y = s.y - halfH(s) - 20; }
+        return out;
+    }
     // How far the circle (px, py) is from the surface of a turret (0 = touching or inside)
     function turretDist(px, py, t) { return Math.max(0, Math.hypot(px - t.x, py - t.y) - TURRET.r); }
     // Pushes a circle (centre in out.x / out.y, radius r) out of a turret; true when it moved.
@@ -121,10 +136,11 @@
         if (t.hp < t.maxHp) return 'repair';
         return t.t < turretTiers(t).length - 1 ? 'upgrade' : null;
     }
-    function turretPlacement(px, py, dx, dy, out) {
-        const l = Math.hypot(dx, dy) || 1;
-        out.x = px + dx / l * TURRET.placeDist;
-        out.y = py + dy / l * TURRET.placeDist;
+    // dist (optional): how far out the ghost stands; the mouse sets it (from right by the player up to placeDist, never beyond); without it, placeDist (a touch screen)
+    function turretPlacement(px, py, dx, dy, out, dist) {
+        const l = Math.hypot(dx, dy) || 1, d = dist === undefined ? TURRET.placeDist : Math.max(0, Math.min(dist, TURRET.placeDist));
+        out.x = px + dx / l * d;
+        out.y = py + dy / l * d;
         return out;
     }
     // How many of a kind a room may have: for the machine guns 6 for one player and 3 more for each other player (9, 12, 15 for 2, 3, 4);
@@ -273,11 +289,11 @@
     }
 
     // Where the ghost goes for a player at (px, py) looking along (dx, dy): in front of them, lying across the way they look
-    function placement(px, py, dx, dy, out) {
-        const l = Math.hypot(dx, dy) || 1;
+    function placement(px, py, dx, dy, out, dist) {
+        const l = Math.hypot(dx, dy) || 1, d = dist === undefined ? BARRICADE.placeDist : Math.max(0, Math.min(dist, BARRICADE.placeDist));
         dx /= l; dy /= l;
-        out.x = px + dx * BARRICADE.placeDist;
-        out.y = py + dy * BARRICADE.placeDist;
+        out.x = px + dx * d;
+        out.y = py + dy * d;
         out.o = Math.abs(dx) > Math.abs(dy) ? 1 : 0;   // looking sideways: the wall stands up; looking up or down: it lies down
         return out;
     }
@@ -299,5 +315,5 @@
         return null;
     }
 
-    return { BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretKind, turretTiers, turretBuyCost, workTime, turretCountOf, buyBlocked, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
+    return { droneSpot, BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretKind, turretTiers, turretBuyCost, workTime, turretCountOf, buyBlocked, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
 });

@@ -100,6 +100,24 @@ test('E repairs a hurt barricade, upgrades a whole one, and does nothing at the 
     assert.equal(S.useAction(bar({ t: 3, hp: 5, maxHp: 1600 })), 'repair');
 });
 
+test('the ghost follows the mouse: from right by the player out to the limit and never beyond (a touch screen: always the limit)', () => {
+    const o = { x: 0, y: 0, o: 0 };
+    S.placement(1000, 1000, 1, 0, o, 30);
+    assert.equal(o.x, 1030, 'the mouse is close: the barricade is close');
+    S.placement(1000, 1000, 1, 0, o, 70);
+    assert.equal(o.x, 1070);
+    S.placement(1000, 1000, 1, 0, o, 5000);
+    assert.equal(o.x, 1000 + S.BARRICADE.placeDist, 'the mouse is far: not past the limit');
+    S.placement(1000, 1000, 1, 0, o, -5);
+    assert.equal(o.x, 1000, 'never behind the player');
+    S.turretPlacement(1000, 1000, 0, 1, o, 40);
+    assert.deepEqual([o.x, o.y], [1000, 1040]);
+    S.turretPlacement(1000, 1000, 0, 1, o, 9999);
+    assert.equal(o.y, 1000 + S.TURRET.placeDist);
+    S.turretPlacement(1000, 1000, 0, 1, o);
+    assert.equal(o.y, 1000 + S.TURRET.placeDist, 'no distance given: the limit');
+});
+
 test('the ghost: 120 in front of the player, lying across the way they look', () => {
     const o = { x: 0, y: 0, o: 0 };
     S.placement(1000, 1000, 1, 0, o);          // looking right: stands up (o = 1), 120 to the right

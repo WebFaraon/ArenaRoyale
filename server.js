@@ -1090,10 +1090,11 @@ const PVE_ZOMBIE_DEFS = {
     // the back it is hurt as any. The Tesla bolt, the bombs and the flames go over the shield. See shieldBlocks in zombie-steer.js.
     shielded: { hp: 520, chaseSpd: 48, patrolSpd: 28, dmg: 0, attackR: 62, attackCd: 1.2, coinsMin: 10, coinsMax: 16, baseDmg: 65, r: 24, hunts: false, mass: 3,
                 shield: { half: 1.25 } },
-    // the screamer: fast and hard-hitting, goes for players like the runner; when it gets near the base it stops for a moment and screams: every turret of any kind
-    // within `range` is stunned for `stun` seconds (it does not fire, flame or heal), then it goes on at the base. Once only.
+    // the screamer: fast and hard-hitting. It goes for the nearest player from the moment it spawns (no detection range): when it gets within `near` of one it stops
+    // for a moment and screams, and every turret of any kind within `range` of IT is stunned for `stun` seconds (it does not fire, flame or heal); then it
+    // goes on after the player. Once only. So a player can draw it away from the turrets and nothing is stunned, or stay by them and risk it.
     screamer: { hp: 450, chaseSpd: 100, patrolSpd: 50, dmg: 45, attackR: 56, attackCd: 0.9, coinsMin: 8, coinsMax: 12, baseDmg: 50, r: 21, hunts: true, mass: 1.2,
-                scream: { at: 240, range: 300, windup: 0.9, fire: 0.45, stun: 2 } },
+                scream: { near: 230, range: 300, windup: 0.9, fire: 0.45, stun: 2 } },
     // the dark versions of the normal and the runner for the late waves: much more health and a harder hit, and nothing else new about them
     ghoul: { hp: 340, chaseSpd: 66, patrolSpd: 34, dmg: 34, attackR: 58, attackCd: 1.0, coinsMin: 5, coinsMax: 8, baseDmg: 26, r: 23, hunts: true, mass: 2 },
     stalker: { hp: 160, chaseSpd: 138, patrolSpd: 70, dmg: 20, attackR: 52, attackCd: 0.7, coinsMin: 6, coinsMax: 9, baseDmg: 15, r: 17, hunts: true, mass: 1 },
@@ -1396,8 +1397,8 @@ function structPublic(s) { return { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp
 // code above and below does not know them. What E, the work and the zombies share with the barricades goes by these helpers.
 function turretPublic(t) { return { id: t.id, kd: t.kd || 'mg', x: t.x, y: t.y, t: t.t, hp: Math.round(t.hp), mhp: t.maxHp, by: t.by, a: Math.round(t.angle * 100) }; }
 // What a player holds, bought and not placed yet: sent to them whole whenever it changes
-const newInv = () => ({ barricade: 0, turret: 0, tesla: 0, bomb: 0, flame: 0, heal: 0 });
-const invPublic = (p) => ({ barricade: p.pveInv.barricade, turret: p.pveInv.turret, tesla: p.pveInv.tesla, bomb: p.pveInv.bomb, flame: p.pveInv.flame, heal: p.pveInv.heal });
+const newInv = () => ({ barricade: 0, turret: 0, tesla: 0, bomb: 0, flame: 0, heal: 0, support: 0 });
+const invPublic = (p) => ({ barricade: p.pveInv.barricade, turret: p.pveInv.turret, tesla: p.pveInv.tesla, bomb: p.pveInv.bomb, flame: p.pveInv.flame, heal: p.pveInv.heal, support: p.pveInv.support });
 function findBuilt(room, id) { return room.structs.find(q => q.id === id) || room.turrets.find(q => q.id === id) || null; }
 function builtDist(x, y, s) { return s.k === 't' ? ARStructs.turretDist(x, y, s) : ARStructs.distToRect(x, y, s); }
 function builtAction(s) { return s.k === 't' ? ARStructs.turretUseAction(s) : ARStructs.useAction(s); }
@@ -1548,12 +1549,55 @@ function healAround(room, t, tier, dt) {
 // Each turret turns to the nearest zombie in its range that it can see and fires as often as its level says (turret-shots, one event per
 // tick, [turret id, angle x100, zombie id] a shot). A Tesla Tower sends a bolt that jumps on from that zombie (tesla-zaps: [tower id, zombie
 // ids in the order of the chain] a bolt); a Health Station fires at nothing.
+// The Support Tower's drone. Phases: 0 on its pad, 1 flying out to something hurt, 2 mending it, 3 flying home. The flights take the time the client animates
+// (takeoff, the distance at drone.speed, landing), announced in the events drone-go / drone-home; the mending is done here, a little every tick, and the
+// health goes out in the usual batches. It picks the most hurt (the lowest share of its health) of what stands within the tier's range of the tower.
+const _dSpot = { x: 0, y: 0 };
+function droneFind(room, t, tier) {
+    let best = null, bestShare = 1;
+    const r2 = tier.range * tier.range;
+    for (let i = 0; i < room.structs.length; i++) { const q = room.structs[i]; if (q.hp >= q.maxHp) continue; const dx = q.x - t.x, dy = q.y - t.y; if (dx * dx + dy * dy > r2) continue; const sh = q.hp / q.maxHp; if (sh < bestShare) { bestShare = sh; best = q; } }
+    for (let i = 0; i < room.turrets.length; i++) { const q = room.turrets[i]; if (q === t || q.hp >= q.maxHp) continue; const dx = q.x - t.x, dy = q.y - t.y; if (dx * dx + dy * dy > r2) continue; const sh = q.hp / q.maxHp; if (sh < bestShare) { bestShare = sh; best = q; } }
+    return best;
+}
+function droneGo(code, room, t, d, target, now) {
+    const D = ARStructs.TURRET.kinds.support.drone;
+    ARStructs.droneSpot(target, _dSpot);
+    const ms = (d.ph === 0 ? D.takeoff : 0) + Math.round(Math.hypot(_dSpot.x - d.x, _dSpot.y - d.y) / D.speed * 1000);
+    d.ph = 1; d.tk = target.k === 't' ? 't' : 's'; d.tid = target.id; d.x = _dSpot.x; d.y = _dSpot.y; d.at = now + ms;
+    io.to(code).emit('drone-go', { id: t.id, tk: d.tk, tid: target.id, ms });
+}
+function droneHome(code, room, t, d, now) {
+    const D = ARStructs.TURRET.kinds.support.drone;
+    const ms = Math.round(Math.hypot(t.x - d.x, t.y - d.y) / D.speed * 1000) + D.landing;
+    d.ph = 3; d.tid = -1; d.x = t.x; d.y = t.y; d.at = now + ms;
+    io.to(code).emit('drone-home', { id: t.id, ms });
+}
+function droneTick(code, room, t, tier, dt, now) {
+    const d = t.drone || (t.drone = { ph: 0, x: t.x, y: t.y, tk: 's', tid: -1, at: 0 });
+    if (d.ph === 1 && now >= d.at) d.ph = 2;                                   // it has got there
+    else if (d.ph === 3) { if (now >= d.at) d.ph = 0; else return; }            // home: on the pad (it does not turn back in mid-flight)
+    if (d.ph === 0) { const next = droneFind(room, t, tier); if (next) droneGo(code, room, t, d, next, now); return; }
+    if (d.ph === 1) return;
+    // mending
+    const target = d.tk === 't' ? room.turrets.find(q => q.id === d.tid) : room.structs.find(q => q.id === d.tid);
+    if (target && target.hp < target.maxHp) {
+        target.hp = Math.min(target.maxHp, target.hp + tier.rate * dt);
+        if (d.tk === 't') room._turretDirty = true; else room._structDirty = true;
+    }
+    if (!target || target.hp >= target.maxHp) {                                  // done (or gone): the next one, or home
+        const next = droneFind(room, t, tier);
+        if (next) droneGo(code, room, t, d, next, now); else droneHome(code, room, t, d, now);
+    }
+}
+
 function tickTurrets(code, room, dt, now) {
     _turretShots.length = 0; _zaps.length = 0; _bombs.length = 0; _flames.length = 0; _burnIds.length = 0;
     const blockers = _bulletBlockers(room);
     for (let i = 0; i < room.turrets.length; i++) {
         const t = room.turrets[i], kind = ARStructs.turretKind(t), tier = kind.tiers[t.t];
-        if (t.stunUntil > now) continue;                     // stunned by a screamer: it does not fire, flame or heal
+        if (t.stunUntil > now) continue;                     // stunned by a screamer: it does not fire, flame, heal or mend
+        if (t.kd === 'support') { droneTick(code, room, t, tier, dt, now); continue; }
         if (t.kd === 'heal') { healAround(room, t, tier, dt); continue; }
         t.cd -= dt;
         if (t.cd > 0) continue;
@@ -2425,7 +2469,7 @@ function startRoomLoop(code, room) {
                         if (tt && _stDist.d < tgtDist) { tgtStruct = tt; tgtDist = _stDist.d; }
                     }
                     const hunts = def.hunts !== false;
-                    let goal = pickTarget(hunts, nearestDist, ZOMBIE_DETECT_R, tgtDist, seek);
+                    let goal = pickTarget(hunts, nearestDist, def.scream ? 1e9 : ZOMBIE_DETECT_R, tgtDist, seek);   // a screamer smells a player from anywhere
                     if (def.ranged) { goal = 'base'; tgtStruct = null; tgtDist = Infinity; }   // a spitter walks on to the base and throws at what it can reach
                     const baseD = room.base ? Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) : 1e9;
                     let navUsed = false, navX = 0, navY = 0;
@@ -2470,9 +2514,9 @@ function startRoomLoop(code, room) {
                     else if (navUsed && room.base && baseD > room.base.r + def.r + 75) { targetX = navX; targetY = navY; }
                     else { targetX = PVE_BASE_X; targetY = PVE_BASE_Y; }
                     let speed = tgtStruct && tgtDist <= def.r + 6 ? 0 : def.chaseSpd;   // against the barricade it stands and hits
-                    if (def.scream) {   // a screamer that has got near the base stops, screams (once) and then goes on
+                    if (def.scream) {   // a screamer that has got near a player stops, screams (once) and then goes on after them
                         const sc = def.scream;
-                        if (zombie._scream === undefined && room.base && baseD <= room.base.r + def.r + sc.at) { zombie._scream = sc.windup; zombie._sfired = false; }
+                        if (zombie._scream === undefined && nearestPlayer && nearestDist <= sc.near) { zombie._scream = sc.windup; zombie._sfired = false; }
                         if (zombie._scream > 0) {
                             zombie._scream -= dt; speed = 0;
                             if (!zombie._sfired && zombie._scream <= sc.windup - sc.fire) { zombie._sfired = true; screamZombie(code, room, zombie, sc, now); }
@@ -3280,7 +3324,7 @@ io.on('connection', (socket) => {
         if (votes >= total) startPveWave(code, room);
     });
 
-    const BUILD_BUY = new Map([['barricade', 'b'], ['turret', 'mg'], ['tesla', 'tesla'], ['bomb', 'bomb'], ['flame', 'flame'], ['heal', 'heal']]);   // what the shop sells that is built: the card -> the kind
+    const BUILD_BUY = new Map([['barricade', 'b'], ['turret', 'mg'], ['tesla', 'tesla'], ['bomb', 'bomb'], ['flame', 'flame'], ['heal', 'heal'], ['support', 'support']]);   // what the shop sells that is built: the card -> the kind
     socket.on('buy-upgrade', ({ type } = {}) => {
         const r = fastGetRoom(socket);
         if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
