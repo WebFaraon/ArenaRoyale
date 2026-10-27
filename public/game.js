@@ -6081,7 +6081,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { r: 34, maxHp: 900, heavy: true, warn: 'BRUTA', bodyColor: '#7B8493', innerColor: '#A5AEBD', armColor: '#59616E', armStroke: '#262B34', ringColor: '#C0C6D0', ringFill: 'rgba(192,198,208,0.10)' },   // 5 brute
         { r: 30, maxHp: 500, heavy: true, warn: 'SUMMONER', bodyColor: '#8A5FB8', innerColor: '#B591DC', armColor: '#6B449A', armStroke: '#2F1A4A', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.12)' },   // 6 summoner
         { r: 15, maxHp: 200, noScale: true, bodyColor: '#9B7BD0', innerColor: '#C2A9EA', armColor: '#7A5CB8', armStroke: '#3A2A60', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.10)' },   // 7 minion
-        { r: 24, maxHp: 400, bigBar: true, bodyColor: '#7C9A78', innerColor: '#A7C4A2', armColor: '#5E7A5A', armStroke: '#25422A', ringColor: '#FF9F1C', ringFill: 'rgba(255,159,28,0.10)' },   // 8 shielded
+        { r: 24, maxHp: 520, bigBar: true, bodyColor: '#7C9A78', innerColor: '#A7C4A2', armColor: '#5E7A5A', armStroke: '#25422A', ringColor: '#FF9F1C', ringFill: 'rgba(255,159,28,0.10)' },   // 8 shielded
     ];
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)

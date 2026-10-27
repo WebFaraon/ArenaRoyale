@@ -42,8 +42,10 @@ test('the new kinds come in one at a time: tanks from wave 4, spitters 5, explod
 test('the shielded come in at wave 7 (one, then more), take the place of walkers, and do not outnumber the tanks and normals together', () => {
     const k = types.indexOf('shielded');
     assert.equal(waves.findIndex(w => w[k] > 0) + 1, 7);
-    for (const w of waves) assert.ok(w[k] <= w[0] / 2 && w[k] <= 4);
-    assert.equal(hp('shielded'), 400);
+    for (const w of waves) assert.ok(w[k] <= w[0] / 2 && w[k] <= 13);
+    assert.equal(waves[19][k], 13, 'the last wave has 13 of them');
+    assert.equal(hp('shielded'), 520);
+    assert.match(defs, /shielded:[^}]*shield: \{ half: 1\.25 \}/);
     assert.match(defs, /shielded:[^}]*coinsMin: 10, coinsMax: 16/);
     assert.match(defs, /shielded:[^}]*hunts: false/);
 });
@@ -55,5 +57,12 @@ test('the heavy ones do not outnumber the rest: tanks at most half of the walker
 test('the total health of a wave (without the growth of the waves) goes up a lot from the tenth wave to the last', () => {
     const health = (w) => w.reduce((a, n, k) => a + n * hp(types[k]), 0);
     assert.ok(health(waves[19]) > health(waves[9]) * 1.6, 'wave 20 is much more health than wave 10');
-    assert.ok(health(waves[19]) > 17000, 'wave 20 has over 17000 health before the growth (x1.84)');
+    assert.ok(health(waves[19]) > 25000, 'wave 20 has over 25000 health before the growth (x1.84)');
+});
+
+test('more players, more zombies: +40% for each player after the first (up to 4), and a big wave is split into at most 10 batches', () => {
+    const mul = new Function('return ' + /const pveCountMul = (\([^\n]*\) => [^\n]*);/.exec(src)[1])();
+    assert.deepEqual([1, 2, 3, 4, 6].map(n => Math.round(mul(n) * 10) / 10), [1, 1.4, 1.8, 2.2, 2.2]);
+    assert.match(src, /bsize = Math\.max\(PVE_BATCH_SIZE, Math\.ceil\(types\.length \/ 10\)\)/);
+    assert.match(src, /next: pveWaveRow\(room\.pveWave, room\._playerArr\.length\)/);
 });

@@ -44,10 +44,28 @@ test('the wave tells the HUD how many zombies it brings: all of them and the one
         const w = c.ev['pve-wave-start'] && c.ev['pve-wave-start'][0];
         assert.ok(w, 'wave 1 started');
         assert.equal(w.wave, 1);
-        assert.equal(w.zombies, 8, 'wave 1 = 8 zombies');
-        assert.equal(w.queued, 8, 'none out yet: the first batch waits for the grace seconds');
+        assert.equal(w.zombies, 9, 'wave 1 = 9 zombies');
+        assert.equal(w.queued, 9, 'none out yet: the first batch waits for the grace seconds');
         assert.equal(w.grace, 8, 'the HUD is told how long the wait is');
         c.s.close();
+    });
+});
+
+test('two players in the room: wave 1 brings 40% more zombies (9 -> 13)', async () => {
+    await withServer(async (base) => {
+        const login = async (nick) => { const lj = await (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nickname: nick, password: 'x' }) })).json(); const s = Client(base, { parser: msgpackParser, transports: ['websocket'], forceNew: true, reconnection: false }); await new Promise(r => s.on('connect', r)); s.emit('authenticate', { nickname: nick, token: lj.token }); return s; };
+        const opts = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, weapon: 'smg', mode: 'pve', xp: 0, proto: ARNet.PROTO };
+        const a = await login('st_two_a'), b = await login('st_two_b');
+        let wave = null; a.on('pve-wave-start', (d) => { wave = wave || d; });
+        a.emit('create-room', opts);
+        const { code } = await new Promise(r => a.once('room-created', r));
+        b.emit('join-room', { ...opts, code });
+        await new Promise(r => b.once('room-joined', r));
+        a.emit('start-game');
+        for (let i = 0; i < 80 && !wave; i++) await sleep(100);
+        assert.ok(wave, 'wave 1 started');
+        assert.equal(wave.zombies, 13, '9 x 1.4 = 12.6, rounded');
+        a.close(); b.close();
     });
 });
 
@@ -59,7 +77,7 @@ test('the first batch comes out when the grace is over, and the HUD hears about 
         assert.equal(c.ev['pve-subwave'], undefined, 'nothing 6 s in');
         await sleep(3500);
         assert.ok(c.ev['pve-subwave'], 'the batch came out after the 8 s');
-        assert.equal(c.ev['pve-subwave'][0].queued, 0, 'wave 1 is one batch of 8: nothing left in the queue');
+        assert.equal(c.ev['pve-subwave'][0].queued, 0, 'wave 1 is one batch of 9: nothing left in the queue');
         c.s.close();
     });
 });

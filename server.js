@@ -1038,28 +1038,32 @@ const PVE_TOTAL_WAVES    = 20;
 // [normal, runner, tank, spitter, exploder, brute, summoner, shielded] per wave (PVE_TYPES, in this order)
 const PVE_TYPES = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'summoner', 'shielded'];
 const PVE_WAVES = [
-    [ 8, 0, 0, 0, 0, 0, 0, 0],
-    [10, 2, 0, 0, 0, 0, 0, 0],
-    [12, 4, 0, 0, 0, 0, 0, 0],
-    [10, 4, 2, 0, 0, 0, 0, 0],
-    [12, 6, 2, 2, 0, 0, 0, 0],
-    [14, 6, 3, 2, 1, 0, 0, 0],
-    [13, 8, 3, 2, 2, 0, 0, 1],
-    [13, 8, 4, 3, 3, 1, 0, 1],     // wave 8: the first brute
-    [15, 8, 4, 3, 4, 1, 0, 1],
-    [14,10, 4, 5, 5, 2, 1, 2],     // wave 10: the first summoner
-    [16,10, 4, 5, 6, 2, 1, 2],
-    [16,12, 5, 6, 6, 2, 1, 2],
-    [18,12, 5, 6, 7, 3, 2, 2],
-    [17,14, 6, 7, 7, 3, 2, 3],
-    [19,14, 6, 7, 8, 3, 2, 3],
-    [19,16, 7, 8, 8, 4, 2, 3],
-    [21,16, 7, 8, 9, 4, 3, 3],
-    [20,18, 8, 9, 9, 4, 3, 4],
-    [22,18, 8, 9,10, 5, 3, 4],
-    [24,20, 9,10,11, 6, 4, 4],     // wave 20
+    [ 9, 0, 0, 0, 0, 0, 0, 0],
+    [11, 3, 0, 0, 0, 0, 0, 0],
+    [14, 5, 0, 0, 0, 0, 0, 0],
+    [13, 5, 2, 0, 0, 0, 0, 0],
+    [15, 7, 3, 2, 0, 0, 0, 0],
+    [17, 7, 4, 3, 2, 0, 0, 0],
+    [17, 9, 4, 3, 3, 0, 0, 2],     // wave 7: the first shielded
+    [18,10, 5, 4, 4, 1, 0, 2],     // wave 8: the first brute
+    [20,10, 5, 4, 5, 1, 0, 3],
+    [18,12, 6, 6, 6, 2, 1, 5],     // wave 10: the first summoner
+    [20,12, 6, 6, 7, 3, 1, 6],
+    [22,14, 6, 7, 8, 3, 2, 6],
+    [23,15, 7, 8, 8, 4, 2, 6],
+    [24,16, 8, 8, 9, 4, 2, 8],
+    [25,17, 8, 9,10, 4, 3, 8],
+    [27,18, 9,10,10, 5, 3, 8],
+    [28,19, 9,10,11, 5, 4,10],
+    [29,21,10,11,12, 6, 4,10],
+    [31,21,10,12,12, 6, 5,11],
+    [33,23,11,13,13, 7, 5,13],     // wave 20
 ];
 // The health of every zombie (but the minions) grows from wave 7: x1 up to wave 6, then +6% a wave (x1.24 at wave 10, x1.84 at wave 20)
+// More players, more zombies: the counts of a wave grow by 40% for each player after the first (1 / 1.4 / 1.8 / 2.2 for 1 to 4 and more), so the extra
+// turrets and guns of a bigger team do not make the same wave easy; the batches grow along (see prepareAndSpawnWave) so a wave takes about as long.
+const pveCountMul = (players) => 1 + 0.4 * (Math.max(1, Math.min(players | 0, 4)) - 1);
+const pveWaveRow = (waveIndex, players) => { const wc = PVE_WAVES[waveIndex]; if (!wc) return null; const m = pveCountMul(players); return m === 1 ? wc : wc.map(c => Math.round(c * m)); };
 const pveHpMul = (wave) => wave <= 6 ? 1 : Math.round((1 + (wave - 6) * 0.06) * 100) / 100;
 const PVE_ZOMBIE_DEFS = {
     // hunts: goes for a player in range first (then a barricade, then the base); false = never goes for a player or hits one, only barricades and the base
@@ -1083,8 +1087,8 @@ const PVE_ZOMBIE_DEFS = {
     // the shielded: walks on to the base like the tank (never goes for a player or hits one, only barricades, turrets and the base) behind a riot shield:
     // what comes at its front (within `half` radians of where it faces) is stopped, a player's bullet or a machine gun turret's round; from the side or
     // the back it is hurt as any. The Tesla bolt, the bombs and the flames go over the shield. See shieldBlocks in zombie-steer.js.
-    shielded: { hp: 400, chaseSpd: 48, patrolSpd: 28, dmg: 0, attackR: 62, attackCd: 1.3, coinsMin: 10, coinsMax: 16, baseDmg: 30, r: 24, hunts: false, mass: 3,
-                shield: { half: 1.05 } },
+    shielded: { hp: 520, chaseSpd: 48, patrolSpd: 28, dmg: 0, attackR: 62, attackCd: 1.3, coinsMin: 10, coinsMax: 16, baseDmg: 30, r: 24, hunts: false, mass: 3,
+                shield: { half: 1.25 } },
     minion: { hp: 200, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 2, coinsMax: 4, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
 };
 const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8 };
@@ -1358,7 +1362,7 @@ const PVE_BATCH_DELAY  = 8;  // secunde intre mini-wave-uri
 const PVE_START_GRACE  = 8;  // secunde de la inceputul valului pana apare primul lot: timp sa reparam / upgradam constructiile (la valuri mari nu ajungea)
 
 function prepareAndSpawnWave(room, waveIndex) {
-    const wc = PVE_WAVES[waveIndex] || [8, 0, 0, 0, 0, 0, 0, 0];
+    const wc = pveWaveRow(waveIndex, room._playerArr.length) || [8, 0, 0, 0, 0, 0, 0, 0];
     const types = [];
     PVE_TYPES.forEach((t, k) => { for (let n = 0; n < (wc[k] || 0); n++) types.push(t); });
     // Shuffle
@@ -1366,10 +1370,10 @@ function prepareAndSpawnWave(room, waveIndex) {
         const j = Math.floor(Math.random() * (i + 1));
         [types[i], types[j]] = [types[j], types[i]];
     }
-    // Split in batch-uri de maxim PVE_BATCH_SIZE
-    const batches = [];
-    for (let i = 0; i < types.length; i += PVE_BATCH_SIZE) {
-        batches.push(types.slice(i, i + PVE_BATCH_SIZE));
+    // Split in batch-uri de maxim PVE_BATCH_SIZE (more when the wave is over 100 zombies: never more than 10 batches, so a big wave takes about as long)
+    const batches = [], bsize = Math.max(PVE_BATCH_SIZE, Math.ceil(types.length / 10));
+    for (let i = 0; i < types.length; i += bsize) {
+        batches.push(types.slice(i, i + bsize));
     }
     const firstBatch = batches[0] || [];
     room.pveSpawnQueue = batches.slice(1);
@@ -2605,7 +2609,7 @@ function startRoomLoop(code, room) {
                         room.pveSkipVotes.clear();
                         room._playerArr.forEach(p => { p.moveDir.x = 0; p.moveDir.y = 0; p.shooting = false; });
                         // next = what the next wave brings [normal, runner, tank] for the preview (nothing after the last wave)
-                        io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION, next: PVE_WAVES[room.pveWave] || null });
+                        io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION, next: pveWaveRow(room.pveWave, room._playerArr.length) });
                         // the panel covers the pitch after 1 s (game.js): the coins still lying around are handed out just before,
                         // then the numbers of the wave go out (coins included)
                         setTimeout(() => {
