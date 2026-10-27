@@ -75,9 +75,9 @@
                 { id: 'inferno', name: 'Flame III', hp: 1250, total: 150, up: 70, ms: 3000, range: 245, cd: 0.25, dmg: 32, cone: 0.55 },
             ] },
             support: { name: 'Support Tower', inv: 'support', maxPerRoom: 2, perExtraPlayer: 1, drone: { speed: 150, takeoff: 550, landing: 450 }, tiers: [
-                { id: 'drone',  name: 'Support I',   hp: 320, total: 40,  up: 0,  ms: 0,    range: 210, rate: 10 },
-                { id: 'swarm',  name: 'Support II',  hp: 520, total: 90,  up: 50, ms: 2000, range: 260, rate: 18 },
-                { id: 'hive',   name: 'Support III', hp: 800, total: 160, up: 70, ms: 3000, range: 310, rate: 30 },
+                { id: 'drone',  name: 'Support I',   hp: 320, total: 40,  up: 0,  ms: 0,    range: 250, rate: 15 },
+                { id: 'swarm',  name: 'Support II',  hp: 520, total: 90,  up: 50, ms: 2000, range: 300, rate: 23 },
+                { id: 'hive',   name: 'Support III', hp: 800, total: 160, up: 70, ms: 3000, range: 360, rate: 35 },
             ] },
             heal: { name: 'Health Station', inv: 'heal', maxPerRoom: 1, perExtraPlayer: 1, tiers: [
                 { id: 'aid',      name: 'Health I',   hp: 300, total: 25,  up: 0,  ms: 0,    range: 130, rate: 6 },

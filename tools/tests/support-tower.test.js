@@ -22,7 +22,7 @@ const room = (structs, turrets) => ({ structs, turrets: turrets || [], _structDi
 test('the kind: three levels, the range, the health and the mending speed all go up with each', () => {
     assert.equal(T.length, 3);
     for (let i = 1; i < 3; i++) { assert.ok(T[i].range > T[i - 1].range && T[i].hp > T[i - 1].hp && T[i].rate > T[i - 1].rate && T[i].total > T[i - 1].total); }
-    assert.ok(T[0].rate <= 12, 'slow: a barricade does not come back in a second');
+    assert.ok(T[0].rate <= 15, 'slow: a barricade does not come back in a second');
     assert.equal(ARStructs.turretLimit(1, 'support'), 2); assert.equal(ARStructs.turretLimit(3, 'support'), 4);
 });
 
