@@ -3725,6 +3725,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     ctx.globalAlpha = 1 - u; ctx.beginPath(); ctx.moveTo(px + c * r0, py + s * r0); ctx.lineTo(px + c * r1, py + s * r1); ctx.stroke();
                 }
                 ctx.lineCap = 'butt'; ctx.globalAlpha = 1;
+            } else if (f.k === 'scream') {   // three rings of sound out to the range of the scream, the first fastest, and a flash at the mouth
+                if (age >= 800) { _zFx.splice(i, 1); continue; }
+                ctx.lineJoin = 'round';
+                for (let k = 0; k < 3; k++) {
+                    const u = (age - k * 110) / 620; if (u <= 0 || u >= 1) continue;
+                    const e = 1 - (1 - u) * (1 - u), rr = 24 + (f.r - 24) * e * (1 - k * 0.07);
+                    ctx.globalAlpha = (1 - u) * 0.85; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 7 * (1 - u) + 2; ctx.beginPath(); ctx.arc(f.x0, f.y0, rr, 0, TAU); ctx.stroke();
+                    ctx.strokeStyle = k === 0 ? '#FFFFFF' : '#BFD6FF'; ctx.lineWidth = 3.4 * (1 - u) + 0.8; ctx.beginPath(); ctx.arc(f.x0, f.y0, rr, 0, TAU); ctx.stroke();
+                }
+                if (age < 220) { ctx.globalAlpha = 1 - age / 220; ctx.fillStyle = '#E8F1FF'; ctx.beginPath(); ctx.arc(f.x0, f.y0, 16 + 22 * (age / 220), 0, TAU); ctx.fill(); }
+                ctx.globalAlpha = 1;
             } else {   // summon: a purple ring and sparks round the summoner
                 if (age >= 700) { _zFx.splice(i, 1); continue; }
                 const u = age / 700;
@@ -4240,6 +4251,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const step = 12 * dt; t.ang += Math.abs(da) <= step ? da : Math.sign(da) * step;
             const pop = t.pop ? Math.max(0, 1 - (now - t.pop) / 380) : 0;
             _drawTurret(ctx, t, scale, 1, t.ang, 1 + 0.2 * pop * pop);
+            if (t.stunUntil > now) {   // stunned by a screamer: dimmed, with stars going round it
+                ctx.globalAlpha = 0.42; ctx.fillStyle = '#141B2B'; ctx.beginPath(); ctx.arc(t.x, t.y, R + 1, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 1; ctx.fillStyle = '#FFE27A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
+                for (let k = 0; k < 3; k++) { const a = now * 0.007 + k * 2.094; _star(ctx, t.x + Math.cos(a) * R * 0.62, t.y - R * 0.55 + Math.sin(a) * R * 0.2, 7.5); ctx.fill(); ctx.stroke(); }
+            }
             if ((t.kd === 'tesla' || t.kd === 'bomb') && now - t.flash < 160) {   // the coil flares as it fires, the mortar flashes
                 const a = 1 - (now - t.flash) / 160;
                 ctx.globalAlpha = 0.55 * a; ctx.fillStyle = t.kd === 'bomb' ? '#FFB54D' : t.t === 2 ? '#E9DBFF' : '#7FF6FF'; ctx.beginPath(); ctx.arc(t.x, t.y, 16 + 8 * a, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
@@ -5399,7 +5415,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _setHudText('pbk-earned', '+' + (mine ? mine[3] : 0) + ' in acest val');
     }
     const _PBK_ZOMBIES = [['Normali', '#7DBB45', '/images/zombies/zombi.svg'], ['Rapizi', '#B4D84A', '/images/zombies/zombi_rapid.svg'], ['Tank', '#8B97A1', '/images/zombies/zombi_tanc.svg'],
-        ['Scuipatori', '#9DFF2E', '/images/zombies/zombi_toxic.svg'], ['Explozivi', '#E2773A', '/images/zombies/zombi_exploder.svg'], ['Brute', '#A5AEBD', '/images/zombies/zombi_brute.svg'], ['Summoner', '#B591DC', '/images/zombies/zombi_summoner.svg'], ['Shielded', '#A7C4A2', '/images/zombies/zombi_shielded.svg']];
+        ['Scuipatori', '#9DFF2E', '/images/zombies/zombi_toxic.svg'], ['Explozivi', '#E2773A', '/images/zombies/zombi_exploder.svg'], ['Brute', '#A5AEBD', '/images/zombies/zombi_brute.svg'], ['Summoner', '#B591DC', '/images/zombies/zombi_summoner.svg'], ['Shielded', '#A7C4A2', '/images/zombies/zombi_shielded.svg'],
+        ['Screamer', '#D9A0A0', '/images/zombies/zombi_screamer.svg'], ['Ghouli', '#4B6A45', '/images/zombies/zombi_ghoul.svg'], ['Stalkeri', '#7A6B2A', '/images/zombies/zombi_stalker.svg']];
     function _pbkNext(next, nextWave) {
         _setHudText('pbk-next-n', nextWave);
         const host = _$('pbk-next-rows');
@@ -5514,6 +5531,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     socket.on('boom', ({ x, y, r }) => { _zFxPush(_boomFx(x, y, r)); });
     socket.on('shield-block', (a) => { _zFxPush(_clangFx(a[0], a[1], a[2] / 100)); });
     socket.on('summon', ({ x, y }) => { _zFxPush({ k: 'summon', x0: x, y0: y, t0: performance.now() }); });
+    // A screamer has screamed (x, y, r its range, ms how long the turrets are stunned, ids the turrets it got): rings of sound go out from it, and the turrets look dazed
+    socket.on('scream', ({ x, y, r, ms, ids }) => {
+        const now = performance.now();
+        _zFxPush({ k: 'scream', x0: x, y0: y, r, t0: now });
+        for (let i = 0; i < ids.length; i++) { const t = _turrets.find(q => q.id === ids[i]); if (t) t.stunUntil = now + ms; }
+    });
+    // The zombies the Flamethrowers hit (ids, every 250 ms): they stay red while they burn
+    socket.on('flame-burn', (ids) => { const now = performance.now(); for (let i = 0; i < ids.length; i++) { const z = _zombies[ids[i]]; if (z) z.burnT = now; } });
     socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued, hpMul, grace }) => {
         _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0; _zHpMul = hpMul || 1;
         _ph.graceUntil = grace ? performance.now() + grace * 1000 : 0; _ph.graceN = -1;
@@ -6082,6 +6107,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { r: 30, maxHp: 500, heavy: true, warn: 'SUMMONER', bodyColor: '#8A5FB8', innerColor: '#B591DC', armColor: '#6B449A', armStroke: '#2F1A4A', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.12)' },   // 6 summoner
         { r: 15, maxHp: 200, noScale: true, bodyColor: '#9B7BD0', innerColor: '#C2A9EA', armColor: '#7A5CB8', armStroke: '#3A2A60', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.10)' },   // 7 minion
         { r: 24, maxHp: 520, bigBar: true, bodyColor: '#7C9A78', innerColor: '#A7C4A2', armColor: '#5E7A5A', armStroke: '#25422A', ringColor: '#FF9F1C', ringFill: 'rgba(255,159,28,0.10)' },   // 8 shielded
+        { r: 21, maxHp: 450, bodyColor: '#D9A0A0', innerColor: '#F1C8C4', armColor: '#A8666E', armStroke: '#4A2A2E', ringColor: '#FFD34D', ringFill: 'rgba(255,211,77,0.10)' },   // 9 screamer
+        { r: 23, maxHp: 340, bodyColor: '#3E5A38', innerColor: '#5E8050', armColor: '#2F4A2D', armStroke: '#16240F', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },   // 10 ghoul (the dark normal)
+        { r: 17, maxHp: 160, bodyColor: '#6E5E1E', innerColor: '#8E7B2C', armColor: '#54471A', armStroke: '#2A2308', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 11 stalker (the dark runner)
     ];
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)
@@ -6671,7 +6699,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 ctx.beginPath(); ctx.arc(_zb.x, _zb.y, _zbR, 0, Math.PI*2); ctx.fill();
                 continue;
             }
-            ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow);
+            ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow, _zb.burnT ? Math.max(0, 1 - (_zNow - _zb.burnT) / 600) : 0);
             if (_zType === 4 && _gameMode === 'pve') { ctx.setTransform(_wm); _drawExploderFuse(ctx, _zb, _zDef, _zNow); }
         }
         // HP bars: only on the zombies that are hurt (see _drawZombieBars)

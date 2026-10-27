@@ -590,6 +590,9 @@
         { id: 'zombi_summoner', view: [-90, -67.5, 180, 180], disc: 49.2, sh: [7, 12, 49.5, 45] }, // summoner
         { id: 'zombi_minion', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },    // minion
         { id: 'zombi_shielded', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },  // shielded (the riot shield is held out in front, past the body's circle)
+        { id: 'zombi_screamer', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },  // screamer (from the artifact "Turnuri si zombi noi": pink, a wide fanged grin)
+        { id: 'zombi_ghoul', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },     // ghoul: the dark normal
+        { id: 'zombi_stalker', view: [-60, -45, 120, 120], disc: 29.95, sh: [7, 12, 33, 30] },      // stalker: the dark runner
     ];
     const zombieImgs = ZOMBIE_ART.map(function (a) {
         const e = { img: new Image(), state: 0 };   // 0 loading, 1 ready, 2 failed
@@ -620,7 +623,7 @@
             },
         };
     }
-    function drawZombieSprite(ctx, m, zb, def, typeKey, now) {
+    function drawZombieSprite(ctx, m, zb, def, typeKey, now, hot) {
         let s = null, pad = 0;
         const zp = zombiePainter(def, typeKey);
         if (zp) {
@@ -634,6 +637,12 @@
         ctx.setTransform(m.a * cs + m.c * sn, m.b * cs + m.d * sn, m.c * cs - m.a * sn, m.d * cs - m.b * sn,
                          m.a * zb.x + m.c * zb.y + m.e, m.b * zb.x + m.d * zb.y + m.f);
         ctx.drawImage(s.c, -pad, -pad, pad * 2, pad * 2);
+        if (hot > 0.02 && zp) {   // burning (hit by a Flamethrower): the same picture with a red-orange wash over the body, as strong as `hot`
+            const hk = 'hot' + typeKey, hold = zombieSprites.get(hk);
+            const hs = sprite(hold, pad, function (g) { zp.paint(g); g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(255,70,24,0.45)'; g.fillRect(-pad, -pad, pad * 2, pad * 2); g.globalCompositeOperation = 'source-over'; });
+            if (hs !== hold && hs) zombieSprites.set(hk, hs);
+            if (hs || hold) { ctx.globalAlpha = hot; ctx.drawImage((hs || hold).c, -pad, -pad, pad * 2, pad * 2); ctx.globalAlpha = 1; }
+        }
     }
     // ---------- the PvE base: a stone hexagon fort in the style of the trees, rocks and guns ----------
     // Thick ink outline, a darker lip under every part (the same extrusion as the toy blocks), a light bevel on the

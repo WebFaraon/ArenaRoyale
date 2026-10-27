@@ -1035,29 +1035,30 @@ function _sweepCoins(code, room) {
 }
 const PVE_BREAK_DURATION = 15;
 const PVE_TOTAL_WAVES    = 20;
-// [normal, runner, tank, spitter, exploder, brute, summoner, shielded] per wave (PVE_TYPES, in this order)
-const PVE_TYPES = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'summoner', 'shielded'];
+// [normal, runner, tank, spitter, exploder, brute, summoner, shielded, screamer, ghoul, stalker] per wave (PVE_TYPES, in this order). From wave 13 the
+// ghoul and the stalker (the dark, much tougher normal and runner) take the place of the normal and the runner altogether.
+const PVE_TYPES = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'summoner', 'shielded', 'screamer', 'ghoul', 'stalker'];
 const PVE_WAVES = [
-    [ 9, 0, 0, 0, 0, 0, 0, 0],
-    [11, 3, 0, 0, 0, 0, 0, 0],
-    [14, 5, 0, 0, 0, 0, 0, 0],
-    [13, 5, 2, 0, 0, 0, 0, 0],
-    [15, 7, 3, 2, 0, 0, 0, 0],
-    [17, 7, 4, 3, 2, 0, 0, 0],
-    [17, 9, 4, 3, 3, 0, 0, 2],     // wave 7: the first shielded
-    [18,10, 5, 4, 4, 1, 0, 2],     // wave 8: the first brute
-    [20,10, 5, 4, 5, 1, 0, 3],
-    [18,12, 6, 6, 6, 2, 1, 5],     // wave 10: the first summoner
-    [20,12, 6, 6, 7, 3, 1, 6],
-    [22,14, 6, 7, 8, 3, 2, 6],
-    [23,15, 7, 8, 8, 4, 2, 6],
-    [24,16, 8, 8, 9, 4, 2, 8],
-    [25,17, 8, 9,10, 4, 3, 8],
-    [27,18, 9,10,10, 5, 3, 8],
-    [28,19, 9,10,11, 5, 4,10],
-    [29,21,10,11,12, 6, 4,10],
-    [31,21,10,12,12, 6, 5,11],
-    [33,23,11,13,13, 7, 5,13],     // wave 20
+    [ 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [11, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [14, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [13, 5, 2, 0, 0, 0, 0, 0, 0, 0, 0],
+    [15, 7, 3, 2, 0, 0, 0, 0, 0, 0, 0],
+    [17, 7, 4, 3, 2, 0, 0, 0, 0, 0, 0],
+    [17, 9, 4, 3, 3, 0, 0, 2, 0, 0, 0],     // wave 7: the first shielded
+    [18,10, 5, 4, 4, 1, 0, 2, 0, 0, 0],     // wave 8: the first brute
+    [20,10, 5, 4, 5, 1, 0, 3, 1, 0, 0],     // wave 9: the first screamer
+    [18,12, 6, 6, 6, 2, 1, 5, 1, 0, 0],     // wave 10: the first summoner
+    [20,12, 6, 6, 7, 3, 1, 6, 2, 0, 0],
+    [22,14, 6, 7, 8, 3, 2, 6, 2, 0, 0],
+    [ 0, 0, 7, 8, 8, 4, 2, 6, 3,13, 8],     // wave 13: the dark ones take over from the normal and the runner
+    [ 0, 0, 8, 8, 9, 4, 2, 8, 3,14, 9],
+    [ 0, 0, 8, 9,10, 4, 3, 8, 4,15,10],
+    [ 0, 0, 9,10,10, 5, 3, 8, 4,17,11],
+    [ 0, 0, 9,10,11, 5, 4,10, 5,18,12],
+    [ 0, 0,10,11,12, 6, 4,10, 5,20,13],
+    [ 0, 0,10,12,12, 6, 5,11, 6,21,14],
+    [ 0, 0,11,13,13, 7, 5,13, 6,23,16],     // wave 20
 ];
 // The health of every zombie (but the minions) grows from wave 7: x1 up to wave 6, then +6% a wave (x1.24 at wave 10, x1.84 at wave 20)
 // More players, more zombies: the counts of a wave grow by 40% for each player after the first (1 / 1.4 / 1.8 / 2.2 for 1 to 4 and more), so the extra
@@ -1087,11 +1088,18 @@ const PVE_ZOMBIE_DEFS = {
     // the shielded: walks on to the base like the tank (never goes for a player or hits one, only barricades, turrets and the base) behind a riot shield:
     // what comes at its front (within `half` radians of where it faces) is stopped, a player's bullet or a machine gun turret's round; from the side or
     // the back it is hurt as any. The Tesla bolt, the bombs and the flames go over the shield. See shieldBlocks in zombie-steer.js.
-    shielded: { hp: 520, chaseSpd: 48, patrolSpd: 28, dmg: 0, attackR: 62, attackCd: 1.3, coinsMin: 10, coinsMax: 16, baseDmg: 30, r: 24, hunts: false, mass: 3,
+    shielded: { hp: 520, chaseSpd: 48, patrolSpd: 28, dmg: 0, attackR: 62, attackCd: 1.2, coinsMin: 10, coinsMax: 16, baseDmg: 65, r: 24, hunts: false, mass: 3,
                 shield: { half: 1.25 } },
+    // the screamer: fast and hard-hitting, goes for players like the runner; when it gets near the base it stops for a moment and screams: every turret of any kind
+    // within `range` is stunned for `stun` seconds (it does not fire, flame or heal), then it goes on at the base. Once only.
+    screamer: { hp: 450, chaseSpd: 100, patrolSpd: 50, dmg: 45, attackR: 56, attackCd: 0.9, coinsMin: 8, coinsMax: 12, baseDmg: 50, r: 21, hunts: true, mass: 1.2,
+                scream: { at: 240, range: 300, windup: 0.9, fire: 0.45, stun: 2 } },
+    // the dark versions of the normal and the runner for the late waves: much more health and a harder hit, and nothing else new about them
+    ghoul: { hp: 340, chaseSpd: 66, patrolSpd: 34, dmg: 34, attackR: 58, attackCd: 1.0, coinsMin: 5, coinsMax: 8, baseDmg: 26, r: 23, hunts: true, mass: 2 },
+    stalker: { hp: 160, chaseSpd: 138, patrolSpd: 70, dmg: 20, attackR: 52, attackCd: 0.7, coinsMin: 6, coinsMax: 9, baseDmg: 15, r: 17, hunts: true, mass: 1 },
     minion: { hp: 200, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 2, coinsMax: 4, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
 };
-const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8 };
+const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
 const PVE_UPGRADE_DEFS = {
     dmg:  { baseCost: 6,  costInc: 4, maxUses: 5, apply: (p, n) => { p.damage  = Math.round(p.baseDamage  * (1 + n * 0.05)); } },
@@ -1481,7 +1489,7 @@ function _coinBlockers(room) {
 // _TUR_SPEED, quick but not instant) and the bolt of a Tesla takes TESLA_JUMP_MS to jump from a zombie to the next, so the zombie is hurt
 // when what you see reaches it, not when it is fired. A hit waits in room._hits until its time; a zombie dead by then takes nothing.
 const TURRET_BULLET_SPEED = 1800, TURRET_MUZZLE = 42, TESLA_JUMP_MS = 70;
-const _turretShots = [], _zaps = [], _bombs = [], _flames = [], _chain = [], _NO_BLOCKERS = [];   // (_bombs: [tower id, x, y, flight ms] a bomb; the bombs fly over everything; _flames: [tower id, angle x100] a burst of the jet)
+const _turretShots = [], _zaps = [], _bombs = [], _flames = [], _burnIds = [], _chain = [], _NO_BLOCKERS = [];   // (_bombs: [tower id, x, y, flight ms] a bomb; the bombs fly over everything; _flames: [tower id, angle x100] a burst of the jet)
 function tickTurretHits(code, room, now) {
     const h = room._hits;
     let w = 0;
@@ -1509,12 +1517,20 @@ function blastZombies(code, room, q, now) {
     }
 }
 // A Flamethrower burns, at once, every zombie in its jet (the cone round the axis at ang, reach = its range): the same dmg to each, the armour comes off
+// A screamer has stopped near the base and screams: every turret within its range is stunned, and the clients are told (a ring from the zombie, the stunned look)
+function screamZombie(code, room, z, sc, now) {
+    const ids = [];
+    for (const t of room.turrets) if (Math.hypot(t.x - z.x, t.y - z.y) <= sc.range + ARStructs.TURRET.r) { t.stunUntil = now + sc.stun * 1000; ids.push(t.id); }
+    io.to(code).emit('scream', { x: Math.round(z.x), y: Math.round(z.y), r: sc.range, ms: Math.round(sc.stun * 1000), ids });
+}
+
 function flameZombies(code, room, t, tier, now) {
     for (let i = 0; i < room.zombies.length; i++) {
         const z = room.zombies[i];
         if (!z.alive || z.hp <= 0) continue;
         const zr = (PVE_ZOMBIE_DEFS[z.type] || PVE_ZOMBIE_DEFS.normal).r;
         if (!inCone(t.x, t.y, t.angle, tier.range, tier.cone, z.x, z.y, zr)) continue;
+        _burnIds.push(z.id);
         z.hp -= armoredHit(z, tier.dmg);
         if (z.hp <= 0) turretKill(code, room, z, t, now);
     }
@@ -1533,10 +1549,11 @@ function healAround(room, t, tier, dt) {
 // tick, [turret id, angle x100, zombie id] a shot). A Tesla Tower sends a bolt that jumps on from that zombie (tesla-zaps: [tower id, zombie
 // ids in the order of the chain] a bolt); a Health Station fires at nothing.
 function tickTurrets(code, room, dt, now) {
-    _turretShots.length = 0; _zaps.length = 0; _bombs.length = 0; _flames.length = 0;
+    _turretShots.length = 0; _zaps.length = 0; _bombs.length = 0; _flames.length = 0; _burnIds.length = 0;
     const blockers = _bulletBlockers(room);
     for (let i = 0; i < room.turrets.length; i++) {
         const t = room.turrets[i], kind = ARStructs.turretKind(t), tier = kind.tiers[t.t];
+        if (t.stunUntil > now) continue;                     // stunned by a screamer: it does not fire, flame or heal
         if (t.kd === 'heal') { healAround(room, t, tier, dt); continue; }
         t.cd -= dt;
         if (t.cd > 0) continue;
@@ -1566,6 +1583,7 @@ function tickTurrets(code, room, dt, now) {
     if (_zaps.length) io.to(code).emit('tesla-zaps', _zaps.slice());
     if (_bombs.length) io.to(code).emit('bomb-shots', _bombs.slice());
     if (_flames.length) io.to(code).emit('flame-shots', _flames.slice());
+    if (_burnIds.length) io.to(code).emit('flame-burn', _burnIds.slice());   // the zombies the jets hit this tick (they go red)
 }
 function flushTurretHp(code, room, now) {
     room._turretDirty = false;
@@ -1769,6 +1787,30 @@ function pveWaveResults(room) {
     return { wave: room.pveWave, rows, mvp };
 }
 
+// A free place for a player to come back to by the base: the ring round it (240 out, at `angle`), then other angles and radii, taking the first that is
+// clear of trees, rocks, the base, barricades and turrets by a good margin (a pocket among the walls is not a place); if none is that open, the one with
+// the least margin, and if even that fails the ring itself.
+function pveFreeSpot(room, angle) {
+    const R = PLAYER_R, T = ARStructs.TURRET.r;
+    const clear = (x, y, m) => {
+        if (x < R + 20 || y < R + 20 || x > ARENA_W - R - 20 || y > ARENA_H - R - 20) return false;
+        if (Math.hypot(x - PVE_BASE_X, y - PVE_BASE_Y) < PVE_BASE_R + R + m) return false;
+        for (const o of room.obstacles) if (Math.hypot(x - o.x, y - o.y) < o.r + R + m) return false;
+        for (const b of room.structs) if (ARStructs.distToRect(x, y, b) < R + m) return false;
+        for (const t of room.turrets) if (Math.hypot(x - t.x, y - t.y) < T + R + m) return false;
+        return true;
+    };
+    for (const m of [40, 16, 4]) {
+        for (const rad of [240, 200, 280, 160, 320, 120]) {
+            for (let k = 0; k < 24; k++) {
+                const a = angle + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 12), x = Math.round(PVE_BASE_X + Math.cos(a) * rad), y = Math.round(PVE_BASE_Y + Math.sin(a) * rad);
+                if (clear(x, y, m)) return { x, y };
+            }
+        }
+    }
+    return { x: Math.round(PVE_BASE_X + Math.cos(angle) * 240), y: Math.round(PVE_BASE_Y + Math.sin(angle) * 240) };
+}
+
 function startPveWave(code, room) {
     if (!rooms.has(code) || room.gameEnded || room.pveWaveActive) return;
     room.pveWave++;
@@ -1779,9 +1821,12 @@ function startPveWave(code, room) {
     // Players come back next to the base with full health; a revived one also gets a full magazine and reserve
     room._playerArr.forEach((p, i) => {
         p.wv = { k0: p.kills, dmg: 0, coins: 0 };   // this wave's numbers for the break panel (kills = the counter now; the rest from zero)
-        const angle = (i / Math.max(room._playerArr.length, 1)) * Math.PI * 2 + Math.PI / 4;
-        p.x = Math.round(PVE_BASE_X + Math.cos(angle) * 240);
-        p.y = Math.round(PVE_BASE_Y + Math.sin(angle) * 240);
+        // A player who is alive stays where the last wave left them (the break does not move anybody): putting them back by the base used to drop them
+        // inside the barricades and turrets they had built, with no way out. One who fell comes back by the base, on a free spot.
+        if (!p.alive) {
+            const angle = (i / Math.max(room._playerArr.length, 1)) * Math.PI * 2 + Math.PI / 4, spot = pveFreeSpot(room, angle);
+            p.x = spot.x; p.y = spot.y;
+        }
         // a revived player gets a full magazine and reserve; the ones who lived fill the magazine from the reserve they have (2/34 -> 6/30), nothing for free
         if (!p.alive) ARAmmo.refill(p, p.reserveStart); else { ARAmmo.cancelReload(p); ARAmmo.finishReload(p); }
         p.reloadReq = false; p.lastShotTime = 0;
@@ -2425,6 +2470,15 @@ function startRoomLoop(code, room) {
                     else if (navUsed && room.base && baseD > room.base.r + def.r + 75) { targetX = navX; targetY = navY; }
                     else { targetX = PVE_BASE_X; targetY = PVE_BASE_Y; }
                     let speed = tgtStruct && tgtDist <= def.r + 6 ? 0 : def.chaseSpd;   // against the barricade it stands and hits
+                    if (def.scream) {   // a screamer that has got near the base stops, screams (once) and then goes on
+                        const sc = def.scream;
+                        if (zombie._scream === undefined && room.base && baseD <= room.base.r + def.r + sc.at) { zombie._scream = sc.windup; zombie._sfired = false; }
+                        if (zombie._scream > 0) {
+                            zombie._scream -= dt; speed = 0;
+                            if (!zombie._sfired && zombie._scream <= sc.windup - sc.fire) { zombie._sfired = true; screamZombie(code, room, zombie, sc, now); }
+                            if (zombie._scream <= 0) zombie._scream = -1;
+                        }
+                    }
                     const spit = def.ranged ? pickSpitTarget(room, zombie, def.ranged.range, alivePlayers) : null;
                     if (spit) speed = 0;   // something is in range: it stands and throws
 
@@ -2546,7 +2600,7 @@ function startRoomLoop(code, room) {
                         }
                     } else if (def.ranged) {
                         if (spit && zombie.attackCooldown <= 0) { spitAt(code, room, zombie, def.ranged, spit, now); zombie.attackCooldown = def.ranged.cd; }
-                    } else if (zombie.attackCooldown <= 0) {
+                    } else if (zombie.attackCooldown <= 0 && !(zombie._scream > 0)) {
                         let attacked = false;
                         for (const p of hunts ? alivePlayers : _noPlayers) {   // a type that does not hunt never hits a player
                             if (Math.hypot(p.x - zombie.x, p.y - zombie.y) < def.attackR) {
