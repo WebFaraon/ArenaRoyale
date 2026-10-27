@@ -3761,11 +3761,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
     }
     // The Flamethrower's jet. While the server keeps sending bursts (flame-shots, one every 250 ms, a burst stays _FLAME_LIFE ms) a jet of fire runs from the
-    // nozzle out to the range of the tower: puffs born white-yellow at the nozzle, turning orange, then red, and ending as dark smoke, wider as they go; sparks
-    // fly off it, the ground under the cone glows, and every zombie inside it wears small flames. All of it is worked out from the clock: the only state is
-    // when the last burst came (t.flameT) and when this run of bursts began (t.flameS); the random numbers are a hash of the puff.
-    const _FLAME_LIFE = 330, _FLAME_N = 22, _FLAME_SPARKS = 9;
-    const _FLAME_COL = ['#FFF6D0', '#FFE27A', '#FFC72E', '#FF9A22', '#FF6A1A', '#E8461A'];
+    // nozzle out to the range of the tower. Like a cartoon fire it is made of solid round puffs that grow and then shrink to nothing as they travel (no
+    // see-through blobs piled on each other); every puff is drawn in layers over all the others, so the jet melts into one flame with a single ink edge:
+    // ink, red, orange, yellow, and a white-hot heart that only lives near the nozzle. Round it: dark smoke drifting off the tip, sparks with a tail,
+    // embers, the light on the ground, a flash at the nozzle and flame tongues on every zombie in the cone. Nothing is stored but when the last burst came
+    // (t.flameT) and when this run of bursts began (t.flameS); the rest is worked out from the clock, the puffs in one array reused for every tower.
+    const _FLAME_LIFE = 330, _FLAME_N = 26, _FLAME_SMOKE = 7, _FLAME_SPARKS = 12, _FLAME_EMBERS = 6;
+    const _fp = new Float32Array(_FLAME_N * 4);   // the puffs of one jet: x, y, radius, age (0..1)
     function _fh(k) { const s = Math.sin(k * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
     function _drawFlameFx(ctx, now, nz) {   // nz: how many of _zVisibleList are on screen
         for (let i = 0; i < _turrets.length; i++) {
@@ -3773,51 +3775,66 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (t.kd !== 'flame' || now - t.flameT >= _FLAME_LIFE) continue;
             const tier = ARStructs.turretTiers(t)[t.t], R = tier.range, half = tier.cone, ang = t.ang, ca = Math.cos(ang), sa = Math.sin(ang), tn = Math.tan(half);
             const on = Math.min(1, (now - t.flameS) / 170 + 0.2), off = Math.min(1, (t.flameT + _FLAME_LIFE - now) / 140), I = on * off;   // grows in, dies out
-            const M = 33 + 3 * t.t, Lj = M + (R - M) * (0.4 + 0.6 * on), sz = 1 + 0.12 * t.t;
-            const tx = t.x, ty = t.y, mx = tx + ca * M, my = ty + sa * M;
-            // the glow on the ground: the cone, and a brighter one inside it
-            for (let g = 0; g < 2; g++) {
-                const h = half * (g ? 0.45 : 1);
-                ctx.globalAlpha = (g ? 0.2 : 0.16) * I; ctx.fillStyle = g ? '#FFC72E' : '#FF6A1A';
-                ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(tx + Math.cos(ang - h) * Lj * 1.04, ty + Math.sin(ang - h) * Lj * 1.04); ctx.lineTo(tx + Math.cos(ang + h) * Lj * 1.04, ty + Math.sin(ang + h) * Lj * 1.04); ctx.closePath(); ctx.fill();
+            const M = 33 + 3 * t.t, Lj = M + (R - M) * (0.4 + 0.6 * on), sz = (1 + 0.12 * t.t) * (0.45 + 0.55 * I), tx = t.x, ty = t.y, mx = tx + ca * M, my = ty + sa * M, tid = t.id * 7;
+            // the light the fire throws on the ground
+            ctx.globalAlpha = 0.13 * I; ctx.fillStyle = '#FF7A1F';
+            for (let g = 1; g <= 2; g++) { const d = M + (Lj - M) * g / 2.4; ctx.beginPath(); ctx.arc(tx + ca * d, ty + sa * d, Math.min(d * tn * 1.2 + 14, 70), 0, TAU); ctx.fill(); }
+            // smoke drifting off the tip, behind the fire
+            for (let s = 0; s < _FLAME_SMOKE; s++) {
+                const ph = (now / 1000 + s / _FLAME_SMOKE) % 1, id = tid + s + Math.floor(now / 1000 + s / _FLAME_SMOKE) * 5, d = Lj * 0.82 + ph * 46, lat = (_fh(id) * 2 - 1) * (d * tn * 0.7 + 8);
+                ctx.globalAlpha = 0.5 * (1 - ph) * Math.min(1, ph * 6) * I; ctx.fillStyle = s % 2 ? '#3A3A44' : '#52525E';
+                ctx.beginPath(); ctx.arc(tx + ca * d - sa * lat, ty + sa * d + ca * lat - ph * 26, (6 + 13 * ph) * sz, 0, TAU); ctx.fill();
             }
-            // the zombies in the jet burn: little flames licking up off the body
+            // the puffs, worked out once: born small at the nozzle, swelling, then shrinking to nothing; the farthest first
+            const base = (now / 430) % 1, cyc = Math.floor(now / 430);
+            for (let j = _FLAME_N - 1, o = 0; j >= 0; j--, o += 4) {
+                const ph = (j + base) / _FLAME_N, id = (((j - cyc) % _FLAME_N) + _FLAME_N) % _FLAME_N + tid;
+                const d = M + (Lj - M) * (ph * 0.75 + ph * ph * 0.25), lat = (_fh(id) * 2 - 1) * tn * d * 0.4 + Math.sin(now * 0.013 + id * 1.7) * 3.2 * ph;
+                _fp[o] = tx + ca * d - sa * lat; _fp[o + 1] = ty + sa * d + ca * lat - 5 * ph;
+                _fp[o + 2] = (4 + 22 * Math.pow(ph, 0.7)) * (1 - Math.pow(ph, 2.6)) * sz * (1 + 0.1 * Math.sin(now * 0.03 + id * 2.1)); _fp[o + 3] = ph;
+            }
+            ctx.globalAlpha = 1;
+            for (let pass = 0; pass < 5; pass++) {   // ink edge, red, orange, yellow, white-hot: each over all the puffs
+                ctx.fillStyle = pass === 0 ? '#0B0F1A' : pass === 1 ? '#D93A17' : pass === 2 ? '#FF7A1F' : pass === 3 ? '#FFC72E' : '#FFF6D0';
+                ctx.beginPath();
+                for (let o = 0; o < _FLAME_N * 4; o += 4) {
+                    const r = _fp[o + 2], ph = _fp[o + 3], rr = pass === 0 ? r + 2.6 : pass === 1 ? r : pass === 2 ? r * (0.84 - 0.2 * ph) : pass === 3 ? r * 0.62 * (1 - ph * 0.8) : r * 0.32 * (1 - ph);
+                    if (rr < 0.7) continue;
+                    ctx.moveTo(_fp[o] + rr, _fp[o + 1]); ctx.arc(_fp[o], _fp[o + 1], rr, 0, TAU);
+                }
+                ctx.fill();
+            }
+            // the zombies in the jet burn
             for (let zi = 0; zi < nz; zi++) {
                 const z = _zVisibleList[zi], zr = (_ZB_DEFS[z.type || 0] || _ZB_DEFS[0]).r, dx = z.x - tx, dy = z.y - ty, d = Math.hypot(dx, dy);
                 if (d > R + zr) continue;
                 let da = Math.atan2(dy, dx) - ang; while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
                 if (d > zr && Math.abs(da) > half * 1.08 + Math.asin(Math.min(1, zr / d))) continue;
-                for (let j = 0; j < 4; j++) {
-                    const ph = (now / 300 + j / 4 + _fh(j + (z.id | 0) * 3) * 2) % 1, ox = (_fh(j * 5 + (z.id | 0)) * 2 - 1) * zr * 0.7, oy = (_fh(j * 7 + (z.id | 0) * 2) * 2 - 1) * zr * 0.5;
-                    ctx.globalAlpha = (1 - ph) * 0.95 * I; ctx.fillStyle = _FLAME_COL[2 + Math.min(3, (ph * 4) | 0)];
-                    ctx.beginPath(); ctx.arc(z.x + ox, z.y + oy - ph * zr * 0.9, zr * 0.3 * (1 - ph * 0.65) + 1.5, 0, TAU); ctx.fill();
+                const zid = z.id | 0;
+                for (let j = 0; j < 4; j++) {   // flame tongues that sway and shrink as they rise
+                    const ph = (now / 360 + j / 4 + _fh(j + zid * 3) * 2) % 1, fx = z.x + (_fh(j * 5 + zid) * 2 - 1) * zr * 0.65 + Math.sin(now * 0.02 + j * 2 + zid) * 2, fy = z.y + (_fh(j * 7 + zid * 2) * 2 - 1) * zr * 0.4;
+                    const h = (zr * 0.9 + 6) * (1 - ph * 0.55) * (0.5 + 0.5 * I), w = h * 0.32, sw = Math.sin(now * 0.017 + j * 1.9) * w * 0.7, up = fy - h;
+                    ctx.fillStyle = '#FF7A1F'; ctx.beginPath(); ctx.moveTo(fx - w, fy); ctx.quadraticCurveTo(fx - w, fy - h * 0.55, fx + sw, up); ctx.quadraticCurveTo(fx + w, fy - h * 0.5, fx + w, fy); ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = '#FFD34D'; ctx.beginPath(); ctx.moveTo(fx - w * 0.5, fy); ctx.quadraticCurveTo(fx - w * 0.5, fy - h * 0.4, fx + sw * 0.6, fy - h * 0.66); ctx.quadraticCurveTo(fx + w * 0.5, fy - h * 0.35, fx + w * 0.5, fy); ctx.closePath(); ctx.fill();
                 }
             }
-            // the puffs, the farthest first
-            const base = (now / 460) % 1, cyc = Math.floor(now / 460), tw = tn * 0.72;
-            ctx.strokeStyle = 'rgba(11,15,26,.45)'; ctx.lineWidth = 1.6;
-            for (let j = _FLAME_N - 1; j >= 0; j--) {
-                const ph = (j + base) / _FLAME_N, id = (((j - cyc) % _FLAME_N) + _FLAME_N) % _FLAME_N + t.id * 7;
-                const d = M + (Lj - M) * (ph * 0.7 + ph * ph * 0.3), lat = (_fh(id) * 2 - 1) * tw * d + Math.sin(now * 0.012 + id * 1.7) * 3 * ph;
-                const r = (4 + 12 * Math.pow(ph, 0.8)) * sz, px = tx + ca * d - sa * lat, py = ty + sa * d + ca * lat - 7 * ph;
-                const smoke = ph > 0.82;
-                ctx.globalAlpha = (smoke ? 0.4 * (1 - (ph - 0.82) / 0.18) : 0.92) * I;
-                ctx.fillStyle = smoke ? '#3A3A44' : _FLAME_COL[Math.min(5, (ph * 7.2) | 0)];
-                ctx.beginPath(); ctx.ellipse(px, py, r * 1.5, r, ang, 0, TAU); ctx.fill();   // a drop stretched along the jet, so it streams
-                if (!smoke && ph > 0.3) ctx.stroke();   // the cooler flames are edged in ink like the rest of the game
-            }
-            // sparks flying off the jet
+            // sparks flying off the jet in every direction of the cone, with a tail; embers that rise slowly and go out
             ctx.lineCap = 'round';
             for (let s = 0; s < _FLAME_SPARKS; s++) {
-                const dur = 300 + 140 * _fh(s + t.id), tt = now / dur + _fh(s * 3 + 1) * 4, u = tt % 1, sid = Math.floor(tt) * 13 + s + t.id * 5;
-                const d = M + (Lj - M) * u * 1.12, lat = (_fh(sid) * 2 - 1) * tn * d * 1.1, d2 = Math.max(M, d - 8);
-                ctx.globalAlpha = (1 - u) * I; ctx.strokeStyle = s % 2 ? '#FFC72E' : '#FF8A1F'; ctx.lineWidth = 2.2 * (1 - u * 0.5) + 0.5;
-                ctx.beginPath(); ctx.moveTo(tx + ca * d2 - sa * lat, ty + sa * d2 + ca * lat); ctx.lineTo(tx + ca * d - sa * lat, ty + sa * d + ca * lat); ctx.stroke();
+                const dur = 260 + 220 * _fh(s + tid), tt = now / dur + _fh(s * 3 + 1) * 4, u = tt % 1, sid = Math.floor(tt) * 13 + s + tid, a = ang + (_fh(sid) * 2 - 1) * half * 1.4;
+                const d = M + (Lj - M + 34) * Math.pow(u, 0.8), d2 = Math.max(M, d - 9 * (1 - u * 0.5)), c = Math.cos(a), sn = Math.sin(a);
+                ctx.globalAlpha = (1 - u * u) * I; ctx.strokeStyle = s % 3 ? '#FFC72E' : '#FF7A1F'; ctx.lineWidth = 2.4 * (1 - u * 0.6) + 0.5;
+                ctx.beginPath(); ctx.moveTo(tx + c * d2, ty + sn * d2); ctx.lineTo(tx + c * d, ty + sn * d); ctx.stroke();
             }
             ctx.lineCap = 'butt';
-            // the glow at the nozzle
-            ctx.globalAlpha = (0.55 + 0.2 * Math.sin(now * 0.04)) * I; ctx.fillStyle = '#FFE27A'; ctx.beginPath(); ctx.arc(mx, my, 8 + 3 * on, 0, TAU); ctx.fill();
-            ctx.globalAlpha = I; ctx.fillStyle = '#FFF6D0'; ctx.beginPath(); ctx.arc(mx, my, 4, 0, TAU); ctx.fill();
+            ctx.fillStyle = '#FF9A22';
+            for (let s = 0; s < _FLAME_EMBERS; s++) {
+                const u = (now / 1100 + s / _FLAME_EMBERS) % 1, sid = tid + s + Math.floor(now / 1100 + s / _FLAME_EMBERS) * 3, d = Lj * 0.6 + u * 70, lat = (_fh(sid) * 2 - 1) * (d * tn + 10) + Math.sin(now * 0.008 + s) * 5 * u;
+                ctx.globalAlpha = (1 - u) * I; ctx.beginPath(); ctx.arc(tx + ca * d - sa * lat, ty + sa * d + ca * lat - u * 30, 1.8 * (1 - u) + 0.6, 0, TAU); ctx.fill();
+            }
+            // the flash at the nozzle
+            ctx.globalAlpha = (0.5 + 0.2 * Math.sin(now * 0.04)) * I; ctx.fillStyle = '#FFE27A'; ctx.beginPath(); ctx.arc(mx, my, 9 + 3 * on, 0, TAU); ctx.fill();
+            ctx.globalAlpha = I; ctx.fillStyle = '#FFF6D0'; ctx.beginPath(); ctx.arc(mx, my, 4.2, 0, TAU); ctx.fill();
             ctx.globalAlpha = 1;
         }
     }
