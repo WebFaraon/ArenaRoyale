@@ -278,3 +278,25 @@ test('inCone: range counts from the centre of the tower to the edge of the body;
     assert.equal(inCone(0, 0, Math.PI - 0.1, 125, 0.42, -80, -8, 16), true, 'the axis points at -x: the angle wraps through pi');
     assert.equal(inCone(0, 0, 2, 125, 0.1, 5, 5, 16), true, 'inside the body radius of the centre');
 });
+
+// ---- shieldBlocks: the riot shield of a Shielded zombie ----
+const { shieldBlocks } = require('../../zombie-steer.js');
+
+test('shieldBlocks: what comes at the front (within the half angle of where the zombie faces) is stopped, from the side or the back it is not', () => {
+    const half = 1.05;   // 60 degrees each side
+    assert.equal(shieldBlocks(0, half, 100, 0), true, 'dead ahead');
+    assert.equal(shieldBlocks(0, half, 100, 100), true, '45 degrees off');
+    assert.equal(shieldBlocks(0, half, 100, 200), false, '63 degrees off: the side');
+    assert.equal(shieldBlocks(0, half, 0, 100), false, 'from the side');
+    assert.equal(shieldBlocks(0, half, -100, 0), false, 'from behind');
+    assert.equal(shieldBlocks(0, half, -100, 50), false, 'from behind, a little off');
+});
+
+test('shieldBlocks: it goes by where the zombie faces (the angle wraps) and a zero vector blocks nothing', () => {
+    const half = 1.05;
+    assert.equal(shieldBlocks(Math.PI, half, -100, 10), true, 'faces -x, comes from -x');
+    assert.equal(shieldBlocks(Math.PI, half, 100, 0), false, 'faces -x, comes from +x (behind)');
+    assert.equal(shieldBlocks(3.0, half, 100, -10), false, 'faces about -x, the hit is from +x');
+    assert.equal(shieldBlocks(-3.0, half, -100, 5), true, 'wrap through pi: -3 rad is also about -x');
+    assert.equal(shieldBlocks(1.2, half, 0, 0), false);
+});

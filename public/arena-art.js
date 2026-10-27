@@ -589,6 +589,7 @@
         { id: 'zombi_brute', view: [-90, -67.5, 180, 180], disc: 49.2,  sh: [7, 12, 49.5, 45] },    // brute (the spikes are inside the picture's frame)
         { id: 'zombi_summoner', view: [-90, -67.5, 180, 180], disc: 49.2, sh: [7, 12, 49.5, 45] }, // summoner
         { id: 'zombi_minion', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },    // minion
+        { id: 'zombi_shielded', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },  // shielded (the riot shield is held out in front, past the body's circle)
     ];
     const zombieImgs = ZOMBIE_ART.map(function (a) {
         const e = { img: new Image(), state: 0 };   // 0 loading, 1 ready, 2 failed

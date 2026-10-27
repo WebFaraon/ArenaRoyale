@@ -9,7 +9,7 @@ const Passwords = require('./auth-hash');            // bcrypt (native when it l
 const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
-const { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets, inCone } = require('./zombie-steer.js');
+const { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets, inCone, shieldBlocks } = require('./zombie-steer.js');
 const ZNav = require('./zombie-nav.js');              // where the PvE zombies walk: a distance field round the solid things, through walls at a price
 const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
@@ -1035,29 +1035,29 @@ function _sweepCoins(code, room) {
 }
 const PVE_BREAK_DURATION = 15;
 const PVE_TOTAL_WAVES    = 20;
-// [normal, runner, tank, spitter, exploder, brute, summoner] per wave (PVE_TYPES, in this order)
-const PVE_TYPES = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'summoner'];
+// [normal, runner, tank, spitter, exploder, brute, summoner, shielded] per wave (PVE_TYPES, in this order)
+const PVE_TYPES = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'summoner', 'shielded'];
 const PVE_WAVES = [
-    [ 8,  0,  0,  0,  0,  0,  0],
-    [10,  2,  0,  0,  0,  0,  0],
-    [12,  4,  0,  0,  0,  0,  0],
-    [10,  4,  2,  0,  0,  0,  0],
-    [12,  6,  2,  2,  0,  0,  0],
-    [14,  6,  3,  2,  1,  0,  0],
-    [14,  8,  3,  2,  2,  0,  0],
-    [14,  8,  4,  3,  3,  1,  0],     // wave 8: the first brute
-    [16,  8,  4,  3,  4,  1,  0],
-    [16,10, 4, 5, 5, 2, 1],     // wave 10: the first summoner
-    [18,10, 4, 5, 6, 2, 1],
-    [18,12, 5, 6, 6, 2, 1],
-    [20,12, 5, 6, 7, 3, 2],
-    [20,14, 6, 7, 7, 3, 2],
-    [22,14, 6, 7, 8, 3, 2],
-    [22,16, 7, 8, 8, 4, 2],
-    [24,16, 7, 8, 9, 4, 3],
-    [24,18, 8, 9, 9, 4, 3],
-    [26,18, 8, 9,10, 5, 3],
-    [28,20, 9,10,11, 6, 4],     // wave 20
+    [ 8, 0, 0, 0, 0, 0, 0, 0],
+    [10, 2, 0, 0, 0, 0, 0, 0],
+    [12, 4, 0, 0, 0, 0, 0, 0],
+    [10, 4, 2, 0, 0, 0, 0, 0],
+    [12, 6, 2, 2, 0, 0, 0, 0],
+    [14, 6, 3, 2, 1, 0, 0, 0],
+    [13, 8, 3, 2, 2, 0, 0, 1],
+    [13, 8, 4, 3, 3, 1, 0, 1],     // wave 8: the first brute
+    [15, 8, 4, 3, 4, 1, 0, 1],
+    [14,10, 4, 5, 5, 2, 1, 2],     // wave 10: the first summoner
+    [16,10, 4, 5, 6, 2, 1, 2],
+    [16,12, 5, 6, 6, 2, 1, 2],
+    [18,12, 5, 6, 7, 3, 2, 2],
+    [17,14, 6, 7, 7, 3, 2, 3],
+    [19,14, 6, 7, 8, 3, 2, 3],
+    [19,16, 7, 8, 8, 4, 2, 3],
+    [21,16, 7, 8, 9, 4, 3, 3],
+    [20,18, 8, 9, 9, 4, 3, 4],
+    [22,18, 8, 9,10, 5, 3, 4],
+    [24,20, 9,10,11, 6, 4, 4],     // wave 20
 ];
 // The health of every zombie (but the minions) grows from wave 7: x1 up to wave 6, then +6% a wave (x1.24 at wave 10, x1.84 at wave 20)
 const pveHpMul = (wave) => wave <= 6 ? 1 : Math.round((1 + (wave - 6) * 0.06) * 100) / 100;
@@ -1080,9 +1080,14 @@ const PVE_ZOMBIE_DEFS = {
     // the summoner: a big slow one that walks on to the base and brings 2 minions out every 14 s (at most 4 of its own alive; they stay when it dies)
     summoner: { hp: 500, chaseSpd: 34, patrolSpd: 20, dmg: 0, attackR: 0, attackCd: 1.5, coinsMin: 15, coinsMax: 23, baseDmg: 25, r: 30, hunts: false, mass: 8, heavy: true, large: true,
                 summon: { first: 6, every: 14, count: 2, max: 4 } },
+    // the shielded: walks on to the base like the tank (never goes for a player or hits one, only barricades, turrets and the base) behind a riot shield:
+    // what comes at its front (within `half` radians of where it faces) is stopped, a player's bullet or a machine gun turret's round; from the side or
+    // the back it is hurt as any. The Tesla bolt, the bombs and the flames go over the shield. See shieldBlocks in zombie-steer.js.
+    shielded: { hp: 400, chaseSpd: 48, patrolSpd: 28, dmg: 0, attackR: 62, attackCd: 1.3, coinsMin: 10, coinsMax: 16, baseDmg: 30, r: 24, hunts: false, mass: 3,
+                shield: { half: 1.05 } },
     minion: { hp: 200, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 2, coinsMax: 4, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
 };
-const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7 };
+const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
 const PVE_UPGRADE_DEFS = {
     dmg:  { baseCost: 6,  costInc: 4, maxUses: 5, apply: (p, n) => { p.damage  = Math.round(p.baseDamage  * (1 + n * 0.05)); } },
@@ -1352,7 +1357,7 @@ const PVE_BATCH_SIZE   = 10; // zombi per mini-wave
 const PVE_BATCH_DELAY  = 8;  // secunde intre mini-wave-uri
 
 function prepareAndSpawnWave(room, waveIndex) {
-    const wc = PVE_WAVES[waveIndex] || [8, 0, 0, 0, 0, 0, 0];
+    const wc = PVE_WAVES[waveIndex] || [8, 0, 0, 0, 0, 0, 0, 0];
     const types = [];
     PVE_TYPES.forEach((t, k) => { for (let n = 0; n < (wc[k] || 0); n++) types.push(t); });
     // Shuffle
@@ -1481,6 +1486,7 @@ function tickTurretHits(code, room, now) {
         if (q.r) { blastZombies(code, room, q, now); continue; }   // a bomb lands
         const z = q.z;
         if (!z.alive || z.hp <= 0) continue;
+        if (q.sx !== undefined && zombieShielded(code, room, z, q.sx - z.x, q.sy - z.y, now)) continue;   // the round hit a shield
         z.hp -= armoredHit(z, q.dmg);
         if (z.hp <= 0) turretKill(code, room, z, q, now);
     }
@@ -1547,7 +1553,7 @@ function tickTurrets(code, room, dt, now) {
             _zaps.push(row);
         } else {
             const fly = Math.max(35, Math.min(170, (Math.hypot(z.x - t.x, z.y - t.y) - TURRET_MUZZLE) / TURRET_BULLET_SPEED * 1000));   // as long as the client draws it
-            room._hits.push({ at: now + fly, z, dmg: tier.dmg, ownerId: t.ownerId });
+            room._hits.push({ at: now + fly, z, dmg: tier.dmg, ownerId: t.ownerId, sx: t.x, sy: t.y });   // (sx, sy: where it came from, for a shield)
             _turretShots.push(t.id, Math.round(t.angle * 100), z.id);
         }
     }
@@ -1584,6 +1590,17 @@ function flushStructHp(code, room, now) {
 
 // ---------- PvE: what the zombies do to what is built, to the players and to the base ----------
 // What a hit takes off a zombie with armour: the armour comes off the hit, but never more than four fifths of it (a weak turret still scratches it)
+// Does the shield of a Shielded zombie stop what comes from the direction (ax, ay) (the vector from the zombie towards where it came from)? It tells
+// the clients (shield-block: x, y, angle to the attacker, at most one every 90 ms for a zombie) so they can show the clang.
+function zombieShielded(code, room, zombie, ax, ay, now) {
+    const sh = (PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal).shield;
+    if (!sh || !shieldBlocks(zombie.angle, sh.half, ax, ay)) return false;
+    if (!(now - (zombie._blkAt || 0) < 90)) {
+        zombie._blkAt = now;
+        io.to(code).emit('shield-block', [Math.round(zombie.x), Math.round(zombie.y), Math.round(Math.atan2(ay, ax) * 100)]);
+    }
+    return true;
+}
 function armoredHit(zombie, dmg) {
     const a = (PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal).armor;
     return a ? Math.max(dmg * 0.2, dmg - a) : dmg;
@@ -2624,6 +2641,8 @@ function startRoomLoop(code, room) {
                 let keep = true;
                 if (hit.kind === 1) {
                     keep = false;
+                } else if (hit.kind === 2 && room.mode === 'pve' && zombieShielded(code, room, hit.target, -b.dx, -b.dy, now)) {
+                    keep = false;   // the shield of a Shielded took it
                 } else if (hit.kind === 2) {
                     const zombie = hit.target;
                     const _zPrevHp = zombie.hp;

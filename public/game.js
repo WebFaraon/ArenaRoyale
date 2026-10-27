@@ -2426,7 +2426,7 @@ function _drawHpBar(ctx, x, y, w, h, ratio, ol) {
 // The bars of the zombies that are hurt: the player's bar made small (an ink frame round a sunk track, the fill a
 // small toy block with its lip and bevel). A zombie at full health has none. All of them together cost a few fills:
 // the frames, the tracks, then the lip and the face of each colour, then the bevels.
-const _ZBAR_H = 6, _ZBAR_OL = 1.6, _ZBAR_H_BIG = 8;   // the heavy ones (tank, brute, summoner) get a wider, taller bar with the number on it: they have so much health that a hit moved the small bar by a fraction of a pixel
+const _ZBAR_H = 6, _ZBAR_OL = 1.6, _ZBAR_H_BIG = 8;   // the heavy ones (tank, brute, summoner, and the shielded: def.bigBar) get a wider, taller bar with the number on it: they have so much health that a hit moved the small bar by a fraction of a pixel
 let _zHpMul = 1;   // the health the wave's zombies have grown to (server: pve-wave-start hpMul); the minions do not grow (def.noScale)
 const _zMaxHp = (def) => def.noScale ? def.maxHp : def.maxHp * _zHpMul;
 const _zbX = [], _zbY = [], _zbW = [], _zbF = [], _zbH = [], _zbBand = [];
@@ -2435,7 +2435,7 @@ function _drawZombieBars(ctx, list, n, defs) {
     let big = 0;
     for (let i = 0; i < n; i++) {
         const z = list[i], def = defs[z.type || 0] || defs[0];
-        const ratio = Math.max(0, Math.min(1, z.hp / _zMaxHp(def))), hv = !!def.heavy, w = hv ? Math.max(48, def.r * 2.4) : Math.max(24, def.r * 1.6), h = hv ? _ZBAR_H_BIG : _ZBAR_H;
+        const ratio = Math.max(0, Math.min(1, z.hp / _zMaxHp(def))), hv = !!(def.heavy || def.bigBar), w = hv ? Math.max(48, def.r * 2.4) : Math.max(24, def.r * 1.6), h = hv ? _ZBAR_H_BIG : _ZBAR_H;
         if (hv) big++;
         _zbW[i] = w; _zbH[i] = h; _zbX[i] = z.x - w / 2; _zbY[i] = z.y - def.r - 12 - h;
         _zbF[i] = Math.max(1.5, w * ratio);
@@ -3601,6 +3601,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let i = 0; i < 7; i++) f.ch.push({ a: _rnd() * TAU, v: 90 + _rnd() * 150, s: 3 + _rnd() * 3, rot: _rnd() * TAU });             // chunks
         return f;
     }
+    // The clang of a shield stopping a round or a bullet (event shield-block: [zombie x, zombie y, angle x100 to where it came from]): a flash and a ring on
+    // the shield and a few sparks glancing off to the sides.
+    function _clangFx(x, y, a) {
+        const f = { k: 'clang', x0: x, y0: y, a, t0: performance.now(), sp: [] };
+        for (let i = 0; i < 6; i++) f.sp.push({ a: a + (_rnd() * 2 - 1) * 1.5, v: 70 + _rnd() * 90, l: 7 + _rnd() * 8 });
+        return f;
+    }
     function _drawZombieFx(ctx, now) {
         for (let i = _zFx.length - 1; i >= 0; i--) {
             const f = _zFx[i], age = now - f.t0;
@@ -3707,6 +3714,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     ctx.beginPath(); ctx.arc(f.x0 + Math.cos(d.a) * (d.d + d.v * t), f.y0 + Math.sin(d.a) * (d.d + d.v * t) - 24 * u - 14 * t, d.s * (0.5 + 1.1 * u), 0, TAU); ctx.fill();
                 }
                 ctx.globalAlpha = 1;
+            } else if (f.k === 'clang') {
+                if (age >= 260) { _zFx.splice(i, 1); continue; }
+                const u = age / 260, px = f.x0 + Math.cos(f.a) * 31, py = f.y0 + Math.sin(f.a) * 31;
+                if (age < 120) { ctx.globalAlpha = 1 - age / 120; ctx.fillStyle = '#FFF6D0'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6; _star(ctx, px, py, 6 + 15 * (1 - age / 120)); ctx.fill(); ctx.stroke(); }
+                ctx.globalAlpha = (1 - u) * 0.9; ctx.strokeStyle = '#DCE6F2'; ctx.lineWidth = 3 * (1 - u) + 0.8; ctx.beginPath(); ctx.arc(px, py, 6 + 22 * u, 0, TAU); ctx.stroke();
+                ctx.lineCap = 'round'; ctx.strokeStyle = '#FFE27A'; ctx.lineWidth = 2;
+                for (let k = 0; k < f.sp.length; k++) {
+                    const d = f.sp[k], r0 = d.v * u * 0.6, r1 = r0 + d.l * (1 - u), c = Math.cos(d.a), s = Math.sin(d.a);
+                    ctx.globalAlpha = 1 - u; ctx.beginPath(); ctx.moveTo(px + c * r0, py + s * r0); ctx.lineTo(px + c * r1, py + s * r1); ctx.stroke();
+                }
+                ctx.lineCap = 'butt'; ctx.globalAlpha = 1;
             } else {   // summon: a purple ring and sparks round the summoner
                 if (age >= 700) { _zFx.splice(i, 1); continue; }
                 const u = age / 700;
@@ -5325,7 +5343,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _setHudText('pbk-earned', '+' + (mine ? mine[3] : 0) + ' in acest val');
     }
     const _PBK_ZOMBIES = [['Normali', '#7DBB45', '/images/zombies/zombi.svg'], ['Rapizi', '#B4D84A', '/images/zombies/zombi_rapid.svg'], ['Tank', '#8B97A1', '/images/zombies/zombi_tanc.svg'],
-        ['Scuipatori', '#9DFF2E', '/images/zombies/zombi_toxic.svg'], ['Explozivi', '#E2773A', '/images/zombies/zombi_exploder.svg'], ['Brute', '#A5AEBD', '/images/zombies/zombi_brute.svg'], ['Summoner', '#B591DC', '/images/zombies/zombi_summoner.svg']];
+        ['Scuipatori', '#9DFF2E', '/images/zombies/zombi_toxic.svg'], ['Explozivi', '#E2773A', '/images/zombies/zombi_exploder.svg'], ['Brute', '#A5AEBD', '/images/zombies/zombi_brute.svg'], ['Summoner', '#B591DC', '/images/zombies/zombi_summoner.svg'], ['Shielded', '#A7C4A2', '/images/zombies/zombi_shielded.svg']];
     function _pbkNext(next, nextWave) {
         _setHudText('pbk-next-n', nextWave);
         const host = _$('pbk-next-rows');
@@ -5437,6 +5455,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     socket.on('acid', ({ a }) => { _zFxPush(_acidFx(a)); });
     socket.on('boom', ({ x, y, r }) => { _zFxPush(_boomFx(x, y, r)); });
+    socket.on('shield-block', (a) => { _zFxPush(_clangFx(a[0], a[1], a[2] / 100)); });
     socket.on('summon', ({ x, y }) => { _zFxPush({ k: 'summon', x0: x, y0: y, t0: performance.now() }); });
     socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued, hpMul }) => {
         _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0; _zHpMul = hpMul || 1;
@@ -5999,6 +6018,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { r: 34, maxHp: 900, heavy: true, warn: 'BRUTA', bodyColor: '#7B8493', innerColor: '#A5AEBD', armColor: '#59616E', armStroke: '#262B34', ringColor: '#C0C6D0', ringFill: 'rgba(192,198,208,0.10)' },   // 5 brute
         { r: 30, maxHp: 500, heavy: true, warn: 'SUMMONER', bodyColor: '#8A5FB8', innerColor: '#B591DC', armColor: '#6B449A', armStroke: '#2F1A4A', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.12)' },   // 6 summoner
         { r: 15, maxHp: 200, noScale: true, bodyColor: '#9B7BD0', innerColor: '#C2A9EA', armColor: '#7A5CB8', armStroke: '#3A2A60', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.10)' },   // 7 minion
+        { r: 24, maxHp: 400, bigBar: true, bodyColor: '#7C9A78', innerColor: '#A7C4A2', armColor: '#5E7A5A', armStroke: '#25422A', ringColor: '#FF9F1C', ringFill: 'rgba(255,159,28,0.10)' },   // 8 shielded
     ];
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)

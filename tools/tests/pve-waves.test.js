@@ -1,6 +1,6 @@
 // node --test tools/tests/pve-waves.test.js
 // The PvE wave table of server.js (read as text: the server is not a module): one row per wave, growing a little each time.
-// A row is [normal, runner, tank, spitter, exploder, brute, summoner] (PVE_TYPES).
+// A row is [normal, runner, tank, spitter, exploder, brute, summoner, shielded] (PVE_TYPES).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -18,7 +18,7 @@ const sum = (w) => w.reduce((a, b) => a + b, 0);
 test('there is one row for each of the waves, and 20 waves; every row has a count for each type, and each type has a definition', () => {
     assert.equal(total, 20);
     assert.equal(waves.length, total);
-    assert.deepEqual(types, ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'summoner']);
+    assert.deepEqual(types, ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'summoner', 'shielded']);
     for (const w of waves) assert.equal(w.length, types.length);
     for (const t of types.concat('minion')) assert.ok(hp(t) > 0, t + ' has health');
 });
@@ -37,6 +37,15 @@ test('the new kinds come in one at a time: tanks from wave 4, spitters 5, explod
     const first = (k) => waves.findIndex(w => w[k] > 0) + 1;
     assert.deepEqual([2, 3, 4, 5, 6].map(k => first(k)).slice(0, 5), [4, 5, 6, 8, 10]);
     assert.equal(first(0), 1);
+});
+
+test('the shielded come in at wave 7 (one, then more), take the place of walkers, and do not outnumber the tanks and normals together', () => {
+    const k = types.indexOf('shielded');
+    assert.equal(waves.findIndex(w => w[k] > 0) + 1, 7);
+    for (const w of waves) assert.ok(w[k] <= w[0] / 2 && w[k] <= 4);
+    assert.equal(hp('shielded'), 400);
+    assert.match(defs, /shielded:[^}]*coinsMin: 10, coinsMax: 16/);
+    assert.match(defs, /shielded:[^}]*hunts: false/);
 });
 
 test('the heavy ones do not outnumber the rest: tanks at most half of the walkers, brutes and summoners fewer than the tanks', () => {

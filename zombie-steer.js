@@ -206,4 +206,13 @@ function inCone(ox, oy, ang, range, half, zx, zy, zr) {
     while (da < -Math.PI) da += Math.PI * 2;
     return Math.abs(da) <= half + Math.asin(Math.min(1, zr / d));
 }
-module.exports = { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets, inCone, BEND, STRUCT_BEND };
+// Does a shield held out in front of a zombie that faces `angle` stop what comes from the direction (ax, ay) (a vector from the zombie towards where the
+// attack came from)? True when that direction is within `half` radians of where the zombie faces; from the side or the back the shield does nothing.
+function shieldBlocks(angle, half, ax, ay) {
+    if (!(ax || ay)) return false;
+    let da = Math.atan2(ay, ax) - angle;
+    while (da > Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+    return Math.abs(da) <= half;
+}
+module.exports = { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets, inCone, shieldBlocks, BEND, STRUCT_BEND };
