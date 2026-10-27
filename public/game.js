@@ -3778,105 +3778,126 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.globalAlpha = 1;
         }
     }
-    // The Flamethrower's jet: one tongue of fire flowing out of the nozzle, not a stream of shots. While the server keeps sending bursts (flame-shots, one
-    // every 250 ms, a burst stays _FLAME_LIFE ms, so the flame holds while they keep coming) it is drawn as four stacked ragged shapes along a centre line that sways: narrow, bright and compact at the
-    // nozzle, widening into a cone, more turbulent and torn the further it goes, thinning and breaking up at the end. From the outside in: the dark
-    // orange-red rim (the widest, the most ragged, with little tongues licking out of it), the orange body, the yellow, and a small near-white core that
-    // only lives close to the nozzle. It comes out compact and runs forward quickly (_FLAME_RAMP ms), "breathes" a little, and every point of every edge
-    // wobbles on its own phase so no two stretches look alike. Round it, kept discreet: sparks, embers, a few torn-off flecks and a little smoke at the tip only.
-    // Nothing is stored but when the last burst came (t.flameT) and when this run began (t.flameS); the rest is worked out from the clock, in arrays reused
-    // for every tower (no allocation per frame).
-    const _FLAME_LIFE = 400, _FLAME_RAMP = 380, _FM = 15, _FLAME_LICKS = 6, _FLAME_FLECKS = 4, _FLAME_SPARKS = 7, _FLAME_EMBERS = 4;
-    const _fcx = new Float32Array(_FM), _fcy = new Float32Array(_FM), _fenv = new Float32Array(_FM), _fnx = new Float32Array(_FM), _fny = new Float32Array(_FM);   // the centre line: x, y, half width, the unit normal
-    const _fpx = new Float32Array(2 * _FM), _fpy = new Float32Array(2 * _FM);                                                                                    // the outline of one layer
-    const _fex = new Float32Array(2 * _FM), _fey = new Float32Array(2 * _FM);                                                                                    // the outline of the outer layer (where the licks and flecks start)
-    // [colour, alpha, width (of the envelope), where it ends along the jet, how ragged its edge is]: rim, body, yellow, core
-    const _FLAME_LAYERS = [['#C8381A', 0.82, 1.0, 1.0, 1.0], ['#FF8A1F', 0.95, 0.78, 0.9, 0.75], ['#FFD43B', 1, 0.5, 0.66, 0.5], ['#FFF8DC', 1, 0.2, 0.36, 0.3]];
+    // The Flamethrower's fire. It is made of many separate pieces of flame, each with its own place in the world: every frame, while the server keeps sending
+    // bursts (flame-shots, one every 250 ms, a burst stays _FLAME_LIFE ms), new pieces are born at the nozzle pointing where the barrel points at that moment,
+    // and from then on they fly on their own (a little drag, a little turbulence), swell, shrink and burn out. So when the turret turns to another target the
+    // fire already out there does not follow the barrel: it carries on where it was going and the new fire comes out the new way, and what is left behind
+    // (torn bits, sparks, embers, a little smoke at the tip) drifts and goes out by itself. A piece is a ragged wisp (a smooth shape with six irregular points,
+    // longer than wide, lying along its flight), not a circle: laid over each other they make the flame. Its colour goes with how hot it still is: the young ones
+    // near the axis white-yellow (they live shortest, so the white core stays near the nozzle), then yellow, orange, dark orange, and the ones thrown wide, the rim,
+    // darker and softer. They are drawn coolest first so the hot ones end on top. Narrow at the nozzle, opening into a cone, more turbulent, thinner and
+    // more broken towards the end. The pieces live in typed arrays on the tower (t._fx, made once), so nothing is allocated per frame.
+    const _FLAME_LIFE = 400, _FLAME_RAMP = 380, _FP = 320, _FLAME_DRAG = 2.2, _FLAME_LIFE0 = 0.42;
+    const _FHEAT_COL = ['#FFF8DC', '#FFD43B', '#FF8A1F', '#E0501B', '#A92D18'], _FHEAT_ALPHA = [1, 1, 0.92, 0.8, 0.55];
+    const _fbIdx = [new Int16Array(_FP), new Int16Array(_FP), new Int16Array(_FP), new Int16Array(_FP), new Int16Array(_FP)], _fbN = new Int16Array(5), _fwx = new Float32Array(6), _fwy = new Float32Array(6);
     function _fh(k) { const s = Math.sin(k * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
-    // A smooth closed shape through n points (quadratic curves through the midpoints: no corners)
-    function _smoothShape(ctx, xs, ys, n) {
-        ctx.beginPath(); ctx.moveTo((xs[n - 1] + xs[0]) / 2, (ys[n - 1] + ys[0]) / 2);
-        for (let i = 0; i < n; i++) { const j = i + 1 === n ? 0 : i + 1; ctx.quadraticCurveTo(xs[i], ys[i], (xs[i] + xs[j]) / 2, (ys[i] + ys[j]) / 2); }
-        ctx.closePath();
+    function _flameFx(t) {
+        if (!t._fx) t._fx = { x: new Float32Array(_FP), y: new Float32Array(_FP), vx: new Float32Array(_FP), vy: new Float32Array(_FP), age: new Float32Array(_FP), life: new Float32Array(_FP), size: new Float32Array(_FP),
+                              lat: new Float32Array(_FP), rnd: new Float32Array(_FP * 6), kind: new Uint8Array(_FP), n: 0, acc: 0, sacc: 0, cnt: 0, last: 0 };
+        return t._fx;
+    }
+    // kind: 0 body, 1 core, 2 spark, 3 ember, 4 smoke
+    function _fSpawn(fx, kind, x, y, ang, speed, life, size, lat, back) {
+        if (fx.n >= _FP) return;
+        const i = fx.n++, c = Math.cos(ang), s = Math.sin(ang), id = ++fx.cnt;
+        fx.x[i] = x + c * speed * back; fx.y[i] = y + s * speed * back; fx.vx[i] = c * speed; fx.vy[i] = s * speed; fx.age[i] = back; fx.life[i] = life; fx.size[i] = size; fx.lat[i] = lat; fx.kind[i] = kind;
+        for (let k = 0; k < 6; k++) fx.rnd[i * 6 + k] = _fh(id * 7.31 + k * 3.7 + i);
+    }
+    function _fKill(fx, i) {   // the last piece takes its place
+        const l = --fx.n;
+        if (i !== l) {
+            fx.x[i] = fx.x[l]; fx.y[i] = fx.y[l]; fx.vx[i] = fx.vx[l]; fx.vy[i] = fx.vy[l]; fx.age[i] = fx.age[l]; fx.life[i] = fx.life[l]; fx.size[i] = fx.size[l]; fx.lat[i] = fx.lat[l]; fx.kind[i] = fx.kind[l];
+            for (let k = 0; k < 6; k++) fx.rnd[i * 6 + k] = fx.rnd[l * 6 + k];
+        }
+    }
+    // One ragged wisp lying along (dx, dy): six irregular points, closed with smooth curves. Adds to the current path.
+    function _fWisp(ctx, x, y, dx, dy, hl, hw, r, o) {
+        const nx = -dy, ny = dx;
+        const a = hl * (1 + 0.35 * r[o]), b = hl * 0.12, c = hl * (0.55 + 0.3 * r[o + 1]), d = hl * (0.85 + 0.35 * r[o + 2]);   // tip, shoulders, tail corners, tail notch (along the flight)
+        const wr = hw * (0.85 + 0.35 * r[o + 3]), wl = hw * (0.85 + 0.35 * r[o + 4]), tc = hw * (0.3 + 0.4 * r[o + 5]);
+        _fwx[0] = x + dx * a;                  _fwy[0] = y + dy * a;
+        _fwx[1] = x + dx * b + nx * wr;        _fwy[1] = y + dy * b + ny * wr;
+        _fwx[2] = x - dx * c + nx * tc;        _fwy[2] = y - dy * c + ny * tc;
+        _fwx[3] = x - dx * d;                  _fwy[3] = y - dy * d;
+        _fwx[4] = x - dx * c - nx * tc * (0.6 + 0.8 * r[o + 3]); _fwy[4] = y - dy * c - ny * tc * (0.6 + 0.8 * r[o + 3]);
+        _fwx[5] = x + dx * b - nx * wl;        _fwy[5] = y + dy * b - ny * wl;
+        ctx.moveTo((_fwx[5] + _fwx[0]) / 2, (_fwy[5] + _fwy[0]) / 2);
+        for (let k = 0; k < 6; k++) { const m = k === 5 ? 0 : k + 1; ctx.quadraticCurveTo(_fwx[k], _fwy[k], (_fwx[k] + _fwx[m]) / 2, (_fwy[k] + _fwy[m]) / 2); }
     }
     function _drawFlameFx(ctx, now) {
-        for (let i = 0; i < _turrets.length; i++) {
-            const t = _turrets[i];
-            if (t.kd !== 'flame' || now - t.flameT >= _FLAME_LIFE) continue;
-            const tier = ARStructs.turretTiers(t)[t.t], R = tier.range, half = tier.cone, ang = t.ang, ca = Math.cos(ang), sa = Math.sin(ang), seed = t.id * 7;
-            const ramp = Math.min(1, (now - t.flameS) / _FLAME_RAMP), e = 1 - (1 - ramp) * (1 - ramp), fade = Math.min(1, (t.flameT + _FLAME_LIFE - now) / 120);   // full while the bursts keep coming (one every 250 ms), a short fade once they stop
-            const M0 = 33 + 3 * t.t, tx = t.x, ty = t.y, mx = tx + ca * M0, my = ty + sa * M0, nx = -sa, ny = ca;
-            const breath = 1 + 0.045 * Math.sin(now * 0.0083 + seed) + 0.03 * Math.sin(now * 0.019 + seed * 1.7);   // the length breathes
-            const L = (R - M0) * (0.3 + 0.7 * e) * (0.5 + 0.5 * fade) * breath;
-            const Wmax = 0.5 * Math.tan(half) * L * (0.8 + 0.2 * e) * (1 + 0.05 * Math.sin(now * 0.007 + seed * 2)) * (0.6 + 0.4 * fade);
-            // the centre line: it sways more the further it goes; the half width: 2.6 at the nozzle, opening out, closing to nothing at the end
-            for (let k = 0; k < _FM; k++) {
-                const u = k / (_FM - 1), tail = Math.max(0, (u - 0.72) / 0.28);
-                _fenv[k] = (2.6 + (Wmax - 2.6) * Math.pow(u, 1.15)) * (1 - Math.pow(tail, 1.5));
-                const sway = (Math.sin(now * 0.0062 + seed + u * 4.2) * 0.6 + Math.sin(now * 0.0117 + seed * 2.3 + u * 7.9) * 0.4) * (1.5 + 11 * u * u);
-                _fcx[k] = mx + ca * L * u + nx * sway; _fcy[k] = my + sa * L * u + ny * sway;
-            }
-            ctx.globalAlpha = 0.07 * e * fade; ctx.fillStyle = '#FF7A1F';   // a faint light on the ground along the jet
-            ctx.beginPath(); ctx.ellipse(mx + ca * L * 0.5, my + sa * L * 0.5, L * 0.55 + 6, Wmax * 0.8 + 6, ang, 0, TAU); ctx.fill();
-            // the four layers, each its own outline: points along the top edge, then back along the bottom edge; every edge point wobbles on its own phases
-            for (let l = 0; l < 4; l++) {
-                const lay = _FLAME_LAYERS[l], wmul = lay[2], end = lay[3], rough = lay[4], phT = _fh(seed + l * 13) * TAU, phB = _fh(seed + l * 13 + 5) * TAU;
-                for (let k = 0; k < _FM; k++) {
-                    const u = k / (_FM - 1), tp = Math.max(0, (u - end * 0.72) / (end * 0.28 + 1e-6)), w = _fenv[k] * wmul * (u >= end ? 0 : 1 - Math.pow(Math.min(1, tp), 1.5));
-                    const amp = (w + 4.5 * u * u) * (0.06 + 0.32 * u) * rough * (1 + 1.2 * Math.max(0, (u - 0.7) / 0.3));   // more turbulent the further it goes; at the tail the edge tears instead of closing in a point
-                    const nT = Math.sin(now * 0.013 + k * 1.9 + phT) * 0.5 + Math.sin(now * 0.0217 + k * 3.7 + phT * 1.3) * 0.35 + Math.sin(now * 0.0061 + k * 0.9 + phT * 0.7) * 0.4;
-                    const nB = Math.sin(now * 0.0119 + k * 2.3 + phB) * 0.5 + Math.sin(now * 0.0233 + k * 3.1 + phB * 1.1) * 0.35 + Math.sin(now * 0.0057 + k * 1.1 + phB * 0.8) * 0.4;
-                    const top = Math.max(0, w + amp * nT), bot = Math.max(0, w + amp * nB);
-                    _fpx[k] = _fcx[k] + nx * top; _fpy[k] = _fcy[k] + ny * top;
-                    _fpx[2 * _FM - 1 - k] = _fcx[k] - nx * bot; _fpy[2 * _FM - 1 - k] = _fcy[k] - ny * bot;
+        for (let ti = 0; ti < _turrets.length; ti++) {
+            const t = _turrets[ti];
+            if (t.kd !== 'flame') continue;
+            const firing = now - t.flameT < _FLAME_LIFE;
+            if (!firing && (!t._fx || t._fx.n === 0)) continue;
+            const fx = _flameFx(t), dt = fx.last ? Math.min(0.05, Math.max(0, (now - fx.last) / 1000)) : 0.016; fx.last = now;
+            const tier = ARStructs.turretTiers(t)[t.t], R = tier.range, half = tier.cone, ang = t.ang, M0 = 33 + 3 * t.t, L = R - M0, tx = t.x, ty = t.y, mx = tx + Math.cos(ang) * M0, my = ty + Math.sin(ang) * M0, seed = t.id * 7;
+            const ramp = Math.min(1, (now - t.flameS) / _FLAME_RAMP), e = 1 - (1 - ramp) * (1 - ramp), sc = 1 + 0.1 * t.t;
+            const v0 = L / ((1 - Math.exp(-_FLAME_DRAG * _FLAME_LIFE0)) / _FLAME_DRAG) * (0.78 + 0.22 * e);   // how fast it leaves: the body just reaches the end of the range
+            if (firing) {   // new pieces: the ones that come out later are not all on the same spot (each is moved on by a part of the frame)
+                fx.acc += 230 * (0.35 + 0.65 * e) * dt;
+                while (fx.acc >= 1) {
+                    fx.acc -= 1;
+                    const core = Math.random() < 0.38, u = Math.random() * 2 - 1, lat = (u < 0 ? -1 : 1) * Math.pow(Math.abs(u), 1.7) * (core ? 0.25 : 1);
+                    _fSpawn(fx, core ? 1 : 0, mx, my, ang + lat * half * 0.6 * (0.55 + 0.45 * e), v0 * (core ? 1 : 0.8 + 0.3 * Math.random()), (core ? 0.11 + 0.05 * Math.random() : _FLAME_LIFE0 * (0.8 + 0.4 * Math.random()) * (1 - 0.25 * Math.abs(lat))),
+                            (core ? 4.2 : 5.8 + 3.2 * Math.random()) * sc, lat, Math.random() * dt);
                 }
-                if (l === 0) { _fex.set(_fpx); _fey.set(_fpy); }
-                ctx.fillStyle = lay[0]; ctx.globalAlpha = lay[1] * (0.4 + 0.6 * fade);
-                _smoothShape(ctx, _fpx, _fpy, 2 * _FM); ctx.fill();
+                fx.sacc += 16 * dt;   // sparks
+                while (fx.sacc >= 1) { fx.sacc -= 1; _fSpawn(fx, 2, mx, my, ang + (Math.random() * 2 - 1) * half * 1.1, v0 * (0.5 + 0.5 * Math.random()), 0.3 + 0.25 * Math.random(), 1, 0, Math.random() * dt); }
             }
-            // little tongues licking out of the rim, and flecks torn off it (both start on the outer outline)
-            ctx.fillStyle = '#E8561C';
-            for (let k = 0; k < _FLAME_LICKS; k++) {
-                const dur = 230 + 140 * _fh(k + seed), tt = now / dur + _fh(k * 3 + seed) * 5, u = tt % 1, sid = Math.floor(tt) * 11 + k + seed;
-                const ik = 3 + Math.floor(_fh(sid) * (_FM - 7)), top = _fh(sid + 1) < 0.5, bi = top ? ik : 2 * _FM - 1 - ik, bx = _fex[bi], by = _fey[bi];
-                const out = (top ? 1 : -1), len = (5 + 9 * (ik / _FM)) * Math.sin(u * Math.PI) * (0.4 + 0.6 * e), wd = 2.2 + 2.4 * (ik / _FM);
-                ctx.globalAlpha = 0.9 * fade;
-                ctx.beginPath(); ctx.moveTo(bx - ca * wd, by - sa * wd);
-                ctx.quadraticCurveTo(bx + nx * out * len * 0.5, by + ny * out * len * 0.5, bx + nx * out * len + ca * len * 0.7, by + ny * out * len + sa * len * 0.7);
-                ctx.quadraticCurveTo(bx + nx * out * len * 0.3 + ca * wd * 1.4, by + ny * out * len * 0.3 + sa * wd * 1.4, bx + ca * wd, by + sa * wd);
-                ctx.closePath(); ctx.fill();
+            // move, age, burn out; a piece that burns out at the far end sometimes leaves an ember or a little smoke behind
+            const shared = Math.sin(now * 0.0062 + seed);
+            for (let i = fx.n - 1; i >= 0; i--) {
+                const a = fx.age[i] + dt, life = fx.life[i], k = fx.kind[i];
+                if (a >= life) {
+                    if (k === 0 && fx.n < _FP - 4) {
+                        const r = Math.random();
+                        if (r < 0.1) _fSpawn(fx, 4, fx.x[i], fx.y[i], Math.atan2(fx.vy[i], fx.vx[i]) + (Math.random() - 0.5), 22 + 18 * Math.random(), 0.8 + 0.4 * Math.random(), 5 + 3 * Math.random(), 0, 0);
+                        else if (r < 0.22) _fSpawn(fx, 3, fx.x[i], fx.y[i], Math.atan2(fx.vy[i], fx.vx[i]) + (Math.random() - 0.5) * 2, 30 + 40 * Math.random(), 0.5 + 0.5 * Math.random(), 1, 0, 0);
+                    }
+                    _fKill(fx, i); continue;
+                }
+                fx.age[i] = a;
+                const drag = k === 4 ? 1.2 : k === 3 ? 1.6 : k === 2 ? 1.4 : _FLAME_DRAG, f = Math.max(0, 1 - drag * dt);
+                let vx = fx.vx[i] * f, vy = fx.vy[i] * f;
+                if (k <= 1) {   // turbulence: a push sideways to the flight that gets stronger as it ages, part shared by the whole flame, part its own
+                    const sp = Math.hypot(vx, vy) || 1, acc = (shared * 0.55 + Math.sin(now * 0.009 + fx.rnd[i * 6] * 40 + a * 11) * 0.45) * (30 + 190 * a / life) * dt;
+                    vx += -vy / sp * acc; vy += vx / sp * acc;
+                }
+                fx.vx[i] = vx; fx.vy[i] = vy; fx.x[i] += vx * dt; fx.y[i] += vy * dt;
             }
-            for (let k = 0; k < _FLAME_FLECKS; k++) {   // a fleck: a tiny torn bit of fire that drifts forward and out and goes out
-                const dur = 380 + 200 * _fh(k + seed + 40), tt = now / dur + _fh(k * 5 + seed) * 5, u = tt % 1, sid = Math.floor(tt) * 7 + k + seed;
-                const ik = 8 + Math.floor(_fh(sid) * (_FM - 10)), top = _fh(sid + 1) < 0.5, bi = top ? ik : 2 * _FM - 1 - ik, out = top ? 1 : -1;
-                const fx = _fex[bi] + nx * out * (4 + 12 * u) + ca * (6 + 20 * u), fy = _fey[bi] + ny * out * (4 + 12 * u) + sa * (6 + 20 * u), r = (2.6 * (1 - u) + 0.6) * (0.5 + 0.5 * e), rot = _fh(sid + 2) * TAU + u * 3;
-                ctx.globalAlpha = (1 - u) * fade; ctx.fillStyle = k % 2 ? '#FF7A1F' : '#E8561C';
-                ctx.beginPath(); ctx.moveTo(fx + Math.cos(rot) * r * 1.6, fy + Math.sin(rot) * r * 1.6); ctx.lineTo(fx + Math.cos(rot + 1.9) * r, fy + Math.sin(rot + 1.9) * r);
-                ctx.lineTo(fx + Math.cos(rot + 3.4) * r * 1.2, fy + Math.sin(rot + 3.4) * r * 1.2); ctx.lineTo(fx + Math.cos(rot + 4.7) * r, fy + Math.sin(rot + 4.7) * r); ctx.closePath(); ctx.fill();
+            // sort the flame pieces by how hot they are
+            _fbN.fill(0);
+            for (let i = 0; i < fx.n; i++) {
+                const k = fx.kind[i]; if (k > 1) continue;
+                const a = fx.age[i] / fx.life[i], h = Math.pow(1 - a, 1.1) * (1 - 0.5 * Math.abs(fx.lat[i])) * (k === 1 ? 1.2 : 1), b = h >= 0.72 ? 0 : h >= 0.5 ? 1 : h >= 0.3 ? 2 : h >= 0.15 ? 3 : 4;
+                _fbIdx[b][_fbN[b]++] = i;
             }
-            // a little smoke, only at the very end
-            ctx.fillStyle = '#3A3A44';
-            for (let s = 0; s < 3; s++) {
-                const ph = (now / 1200 + s / 3) % 1, sid = seed + s + Math.floor(now / 1200 + s / 3) * 5, d = L * 0.96 + ph * 36, lat = (_fh(sid) * 2 - 1) * (Wmax * 0.5 + 6);
-                ctx.globalAlpha = 0.16 * (1 - ph) * Math.min(1, ph * 6) * e * fade;
-                ctx.beginPath(); ctx.arc(mx + ca * d + nx * lat, my + sa * d + ny * lat - ph * 22, 6 + 9 * ph, 0, TAU); ctx.fill();
+            ctx.fillStyle = '#3A3A44';   // the smoke, first
+            for (let i = 0; i < fx.n; i++) if (fx.kind[i] === 4) { const a = fx.age[i] / fx.life[i]; ctx.globalAlpha = 0.17 * (1 - a) * Math.min(1, a * 8); ctx.beginPath(); ctx.arc(fx.x[i], fx.y[i], fx.size[i] * (0.7 + 1.6 * a), 0, TAU); ctx.fill(); }
+            for (let b = 4; b >= 0; b--) {   // the coolest first, the hottest last
+                const n = _fbN[b]; if (!n) continue;
+                ctx.fillStyle = _FHEAT_COL[b]; ctx.globalAlpha = _FHEAT_ALPHA[b]; ctx.beginPath();
+                for (let q = 0; q < n; q++) {
+                    const i = _fbIdx[b][q], a = fx.age[i] / fx.life[i], vx = fx.vx[i], vy = fx.vy[i], sp = Math.hypot(vx, vy) || 1;
+                    const hw = fx.size[i] * (0.55 + 1.25 * Math.pow(a, 0.7)) * (1 - Math.pow(a, 2.4)) * (1 + 0.12 * Math.sin(now * 0.02 + fx.rnd[i * 6 + 2] * 30));
+                    if (hw < 0.5) continue;
+                    _fWisp(ctx, fx.x[i], fx.y[i], vx / sp, vy / sp, hw * 2.3, hw, fx.rnd, i * 6);
+                }
+                ctx.fill();
             }
-            // sparks with a tail flying out of the flame, and embers that rise and go out
-            ctx.lineCap = 'round';
-            for (let s = 0; s < _FLAME_SPARKS; s++) {
-                const dur = 260 + 220 * _fh(s + seed), tt = now / dur + _fh(s * 3 + 1) * 4, u = tt % 1, sid = Math.floor(tt) * 13 + s + seed, a = ang + (_fh(sid) * 2 - 1) * half * 1.2;
-                const d = M0 + L * (0.35 + 0.8 * Math.pow(u, 0.8)), d2 = Math.max(M0, d - 9 * (1 - u * 0.5)), c = Math.cos(a), sn = Math.sin(a);
-                ctx.globalAlpha = (1 - u * u) * e * fade; ctx.strokeStyle = s % 3 ? '#FFC72E' : '#FF7A1F'; ctx.lineWidth = 2.2 * (1 - u * 0.6) + 0.5;
-                ctx.beginPath(); ctx.moveTo(tx + c * d2, ty + sn * d2); ctx.lineTo(tx + c * d, ty + sn * d); ctx.stroke();
+            ctx.lineCap = 'round';   // sparks with a tail
+            for (let i = 0; i < fx.n; i++) if (fx.kind[i] === 2) {
+                const a = fx.age[i] / fx.life[i], vx = fx.vx[i], vy = fx.vy[i], sp = Math.hypot(vx, vy) || 1, len = 8 * (1 - a * 0.5);
+                ctx.globalAlpha = 1 - a * a; ctx.strokeStyle = fx.rnd[i * 6] < 0.66 ? '#FFC72E' : '#FF7A1F'; ctx.lineWidth = 2.2 * (1 - a * 0.6) + 0.5;
+                ctx.beginPath(); ctx.moveTo(fx.x[i] - vx / sp * len, fx.y[i] - vy / sp * len); ctx.lineTo(fx.x[i], fx.y[i]); ctx.stroke();
             }
-            ctx.lineCap = 'butt'; ctx.fillStyle = '#FF9A22';
-            for (let s = 0; s < _FLAME_EMBERS; s++) {
-                const u = (now / 1100 + s / _FLAME_EMBERS) % 1, sid = seed + s + Math.floor(now / 1100 + s / _FLAME_EMBERS) * 3, d = L * 0.6 + u * 60, lat = (_fh(sid) * 2 - 1) * (d * Math.tan(half) * 0.7 + 8) + Math.sin(now * 0.008 + s) * 5 * u;
-                ctx.globalAlpha = (1 - u) * e * fade; ctx.beginPath(); ctx.arc(mx + ca * d + nx * lat, my + sa * d + ny * lat - u * 26, 1.7 * (1 - u) + 0.6, 0, TAU); ctx.fill();
+            ctx.lineCap = 'butt'; ctx.fillStyle = '#FF9A22';   // embers
+            for (let i = 0; i < fx.n; i++) if (fx.kind[i] === 3) { const a = fx.age[i] / fx.life[i]; ctx.globalAlpha = 1 - a; ctx.beginPath(); ctx.arc(fx.x[i], fx.y[i], 1.7 * (1 - a) + 0.6, 0, TAU); ctx.fill(); }
+            if (firing) {   // the flash at the nozzle
+                ctx.globalAlpha = 0.55 + 0.2 * Math.sin(now * 0.04); ctx.fillStyle = '#FFE27A'; ctx.beginPath(); ctx.arc(mx, my, 6 + 3 * e, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 1; ctx.fillStyle = '#FFF8DC'; ctx.beginPath(); ctx.arc(mx, my, 3 + e, 0, TAU); ctx.fill();
             }
-            // the flash at the nozzle
-            ctx.globalAlpha = (0.55 + 0.2 * Math.sin(now * 0.04)) * fade; ctx.fillStyle = '#FFE27A'; ctx.beginPath(); ctx.arc(mx, my, 6 + 3 * e, 0, TAU); ctx.fill();
-            ctx.globalAlpha = fade; ctx.fillStyle = '#FFF8DC'; ctx.beginPath(); ctx.arc(mx, my, 3 + e, 0, TAU); ctx.fill();
             ctx.globalAlpha = 1;
         }
     }
