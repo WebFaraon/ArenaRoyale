@@ -45,7 +45,21 @@ test('the wave tells the HUD how many zombies it brings: all of them and the one
         assert.ok(w, 'wave 1 started');
         assert.equal(w.wave, 1);
         assert.equal(w.zombies, 8, 'wave 1 = 8 zombies');
-        assert.equal(w.queued, 0, 'all 8 come at once');
+        assert.equal(w.queued, 8, 'none out yet: the first batch waits for the grace seconds');
+        assert.equal(w.grace, 8, 'the HUD is told how long the wait is');
+        c.s.close();
+    });
+});
+
+test('the first batch comes out when the grace is over, and the HUD hears about it (pve-subwave)', async () => {
+    await withServer(async (base) => {
+        const c = await pveClient(base, 'st_grace');
+        c.s.on('pve-subwave', (d) => { (c.ev['pve-subwave'] = c.ev['pve-subwave'] || []).push(d); });
+        await sleep(6000);
+        assert.equal(c.ev['pve-subwave'], undefined, 'nothing 6 s in');
+        await sleep(3500);
+        assert.ok(c.ev['pve-subwave'], 'the batch came out after the 8 s');
+        assert.equal(c.ev['pve-subwave'][0].queued, 0, 'wave 1 is one batch of 8: nothing left in the queue');
         c.s.close();
     });
 });

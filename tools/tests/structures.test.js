@@ -100,14 +100,14 @@ test('E repairs a hurt barricade, upgrades a whole one, and does nothing at the 
     assert.equal(S.useAction(bar({ t: 3, hp: 5, maxHp: 1600 })), 'repair');
 });
 
-test('the ghost: 80 in front of the player, lying across the way they look', () => {
+test('the ghost: 120 in front of the player, lying across the way they look', () => {
     const o = { x: 0, y: 0, o: 0 };
-    S.placement(1000, 1000, 1, 0, o);          // looking right: stands up (o = 1), 80 to the right
-    assert.deepEqual([o.x, o.y, o.o], [1080, 1000, 1]);
+    S.placement(1000, 1000, 1, 0, o);          // looking right: stands up (o = 1), 120 to the right
+    assert.deepEqual([o.x, o.y, o.o], [1120, 1000, 1]);
     S.placement(1000, 1000, 0, -1, o);         // looking up: lies down
-    assert.deepEqual([o.x, o.y, o.o], [1000, 920, 0]);
+    assert.deepEqual([o.x, o.y, o.o], [1000, 880, 0]);
     S.placement(1000, 1000, 3, 4, o);          // a slanted look is normalised; mostly down: lies down
-    assert.deepEqual([Math.round(o.x), Math.round(o.y), o.o], [1048, 1064, 0]);
+    assert.deepEqual([Math.round(o.x), Math.round(o.y), o.o], [1072, 1096, 0]);
 });
 
 const ctxOf = (o) => Object.assign({ w: 2600, h: 2600, obstacles: [], base: { x: 1300, y: 1300, r: 85 }, structs: [], players: [], playerR: 30, count: 0 }, o);

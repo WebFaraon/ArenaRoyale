@@ -5074,6 +5074,20 @@ button:disabled { cursor: not-allowed; }
 #pve-warn b { font-size: 1.05rem; letter-spacing: .05em; }
 #pve-warn span { font-size: .85rem; }
 @keyframes pveWarnIn { from { transform: translateX(-50%) scale(.6); opacity: 0; } }
+/* the seconds before the first zombie of a wave (repair, upgrade): the same pill as the warning, in blue */
+#pve-grace {
+    position: absolute; left: 50%; top: calc(max(12px, var(--safe-t)) + 58px); transform: translateX(-50%);
+    display: none; align-items: center; gap: 9px; padding: 5px 16px 8px;
+    background: var(--c-sky); border: var(--o) solid var(--ink-line); border-radius: 999px;
+    box-shadow: inset 0 -4px 0 var(--l-sky), inset 0 2px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45);
+    color: #fff; font-weight: 800; text-shadow: var(--stroke-sm); white-space: nowrap; zoom: var(--hk, 1);
+}
+#pve-grace.is-on { display: flex; animation: pveGraceIn .35s var(--spring); }
+#pve-grace .ic { width: 1.3rem; height: 1.3rem; filter: drop-shadow(0 2px 0 var(--ink-line)); }
+#pve-grace b { font-size: 1.05rem; letter-spacing: .05em; }
+#pve-grace span { font-size: .85rem; }
+#pve-grace i { font-style: normal; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+@keyframes pveGraceIn { from { transform: translateX(-50%) scale(.6); opacity: 0; } }
 /* right column: minimap, coins, feed (under the DBG and settings buttons) */
 #pve-right { position: absolute; right: max(12px, var(--safe-r)); top: calc(max(12px, var(--safe-t)) + 60px); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 #pve-minimap { position: relative; width: 150px; height: 150px; padding: 0; overflow: hidden; border-radius: 14px; zoom: var(--hk-mm, 1); }
@@ -5301,7 +5315,11 @@ button:disabled { cursor: not-allowed; }
 .pbk-nbar i { display: block; height: 100%; border-radius: .3em; }
 .pbk-ncnt { flex: none; width: 1.9em; text-align: right; font-size: 1.3em; text-shadow: var(--stroke); font-variant-numeric: tabular-nums; }
 
-/* phones and short screens: one strip of results under the header, the shop and the next wave side by side */
+/* after GATA: the cards stay in sight but nothing can be bought */
+.pbk-c.is-done { filter: saturate(.55) brightness(.8); }
+
+/* phones and short screens: the shop takes the whole left side (two tabs, the cards big: 3 x 2, no scrolling), the results and the next wave
+   stack in a narrow column on the right. The cards share the height that is left, so the pictures get as big as the screen allows. */
 @media (max-height: 520px), (max-width: 760px) {
     #pve-upgrade-panel { padding: calc(var(--safe-t) + 6px) calc(var(--safe-r) + 8px) calc(var(--safe-b) + 6px) calc(var(--safe-l) + 8px); }
     .pbk-fit { gap: .7em; font-size: clamp(9px, 2.55dvh, 12px); }
@@ -5318,33 +5336,49 @@ button:disabled { cursor: not-allowed; }
     .pbk-coins-txt em { display: none; }
     #pve-skip-btn.pbk-go { width: 7em; height: 4.2em; border-radius: .9em; }
     #pve-skip-btn.pbk-go span { font-size: 1.6em; }
-    #pve-skip-btn.pbk-go .ic { width: 1.4em; height: 1.4em; }
-    .pbk-body { grid-template-columns: minmax(0, 1fr) 17em; grid-template-areas: "left left" "mid right"; grid-template-rows: auto minmax(0, 1fr); gap: .7em; }
-    .pbk-left { flex-direction: row; }
-    .pbk-team, .pbk-res .pbk-card-h { display: none; }
-    .pbk-res { flex: 1; padding: .5em .7em .65em; flex-direction: row; align-items: center; border-radius: .9em; }
-    .pbk-mvp { order: 2; flex: none; max-width: 18em; padding: .3em .6em .45em; }
-    .pbk-stats { flex: 1; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5em; }
-    .pbk-stat { padding: .35em .5em .4em; }
-    .pbk-stat b { font-size: 1.5em; }
-    .pbk-stat em { font-size: .62em; margin-top: .2em; }
-    .pbk-card { padding: .7em .8em .85em; gap: .5em; border-radius: .9em; }
+
+    .pbk-body { grid-template-columns: minmax(0, 1fr) 15.5em; grid-template-areas: "mid res" "mid right"; grid-template-rows: auto minmax(0, 1fr); gap: .7em; }
+    .pbk-left { display: contents; }
+    .pbk-team { display: none; }
+    .pbk-res { grid-area: res; padding: .5em .6em .6em; gap: .4em; border-radius: .9em; }
+    .pbk-res .pbk-card-h { display: none; }
+    .pbk-mvp { order: 2; padding: .25em .5em .4em; font-size: .85em; }
+    .pbk-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .35em; }
+    .pbk-stat { padding: .3em .2em .35em; text-align: center; }
+    .pbk-stat > i { flex-direction: column; gap: .15em; }
+    .pbk-stat .pic, .pbk-stat .ic { width: 1.3em; height: 1.3em; }
+    .pbk-stat b { font-size: 1.3em; }
+    .pbk-stat em { display: none; }
+    .pbk-right { grid-area: right; min-height: 0; }
+    .pbk-next { flex: 1; min-height: 0; overflow: hidden auto; padding: .5em .7em .6em; gap: .35em; }
+    .pbk-card { border-radius: .9em; }
+    .pbk-next-total { gap: .4em; }
+    .pbk-next-total b { font-size: 2.2em; }
+    .pbk-next-total span { font-size: .8em; line-height: 1.1; }
+    .pbk-nrow + .pbk-nrow { margin-top: .25em; }
+    .pbk-nrow img { width: 1.9em; height: 1.9em; }
+    .pbk-nlbl { width: 4.6em; font-size: .85em; }
+    .pbk-ncnt { font-size: 1.1em; }
+
     .pbk-tabs { gap: .5em; }
-    .pbk-tab { height: 2.4em; padding: 0 1em .1em; font-size: .95em; border-radius: .7em; }
-    .pbk-cards { grid-template-columns: repeat(auto-fill, minmax(8.6em, 1fr)); gap: .7em; }
-    .pbk-c { padding: .45em .45em .6em; gap: .35em; border-radius: .9em; }
-    .pbk-c-ic, .pbk-c.is-big .pbk-c-ic { height: 3.8em; }
-    .pbk-c.is-big .pbk-c-ic img { width: 4.2em; height: 3.4em; }
-    .pbk-c.is-big .pbk-c-ic .ic { width: 2.4em; height: 2.4em; }
-    .pbk-c-ic .ic { width: 2.4em; height: 2.4em; }
-    .pbk-c-ic img { width: 3.4em; height: 3em; }
-    .pbk-c-name { font-size: 1.1em; }
-    .pbk-buy, .pbk-lock { height: 2.4em; border-radius: .7em; font-size: 1em; }
+    .pbk-tab[data-tab="all"], .pbk-tab[data-tab="support"] { display: none; }
+    .pbk-tab { height: 2.5em; padding: 0 1.4em .1em; font-size: 1em; border-radius: .7em; }
+    .pbk-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); align-content: stretch; gap: .7em;
+                 overflow: hidden; padding: .3em .3em .5em; margin: -.3em -.3em 0; -webkit-mask-image: none; mask-image: none; }
+    .pbk-c { padding: .45em .5em .6em; gap: .3em; border-radius: 1em; min-height: 0; }
+    .pbk-c-ic, .pbk-c.is-big .pbk-c-ic { flex: 1; height: auto; min-height: 0; border-radius: .7em; }
+    .pbk-c-ic { overflow: hidden; }
+    .pbk-c-ic img, .pbk-c.is-big .pbk-c-ic img { position: absolute; left: 3%; top: 3%; width: 94%; height: 94%; }
+    .pbk-c-ic .ic, .pbk-c.is-big .pbk-c-ic .ic { width: 2.6em; height: 2.6em; }
+    .pbk-c-tag { font-size: .95em; }
+    .pbk-c-name { font-size: 1.25em; }
+    .pbk-lvl { display: none; }   /* the bars say the level; the room goes to the picture */
+    .pbk-seg { height: .6em; }
+    .pbk-buy, .pbk-lock { height: 2.3em; border-radius: .7em; font-size: 1.1em; }
     .pbk-lock { font-size: .75em; }
-    .pbk-inv { padding: .35em .6em .45em; gap: .4em; }
-    .pbk-next-total b { font-size: 2.4em; }
-    .pbk-nrow img { width: 2em; height: 2em; }
-    .pbk-nlbl { width: 5.4em; }
+    .pbk-inv { padding: .3em .6em .4em; gap: .4em; }
+    .pbk-inv-h { display: none; }
+    .pbk-pill { font-size: .85em; padding: .1em .6em .22em; }
 }
 @media (prefers-reduced-motion: reduce) { .pbk-c.is-pop { animation: none; } }
 

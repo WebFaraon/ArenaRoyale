@@ -1355,6 +1355,7 @@ function createPveZombie(type, id, hpMul, atX, atY) {
 // Returneaza primul batch de zombi si populeaza room.pveSpawnQueue cu restul
 const PVE_BATCH_SIZE   = 10; // zombi per mini-wave
 const PVE_BATCH_DELAY  = 8;  // secunde intre mini-wave-uri
+const PVE_START_GRACE  = 8;  // secunde de la inceputul valului pana apare primul lot: timp sa reparam / upgradam constructiile (la valuri mari nu ajungea)
 
 function prepareAndSpawnWave(room, waveIndex) {
     const wc = PVE_WAVES[waveIndex] || [8, 0, 0, 0, 0, 0, 0, 0];
@@ -1787,10 +1788,15 @@ function startPveWave(code, room) {
     });
     room.pveHpMul = pveHpMul(room.pveWave);
     room._acid = []; room._hits.length = 0;
-    room.zombies = prepareAndSpawnWave(room, room.pveWave - 1);
+    // Nothing comes out at once: the first batch goes to the front of the queue and waits PVE_START_GRACE s (the same timer the later batches use),
+    // so the players can walk to what they built and repair or upgrade it before the first zombie. The HUD counts the queued ones as "left".
+    const first = prepareAndSpawnWave(room, room.pveWave - 1);
+    room.pveSpawnQueue.unshift(first.map(z => z.type));
+    room.zombies = [];
+    room.pveSpawnTimer = PVE_START_GRACE;
     // zombies = how many this wave brings in all, queued = the ones that have not come yet (the HUD shows "left / total": the ones on the map + queued)
-    io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, hpMul: room.pveHpMul, batches: room.pveSpawnQueue.length + 1,
-        zombies: room.zombies.length + pveQueuedCount(room), queued: pveQueuedCount(room) });
+    io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, hpMul: room.pveHpMul, batches: room.pveSpawnQueue.length,
+        zombies: pveQueuedCount(room), queued: pveQueuedCount(room), grace: PVE_START_GRACE });
 }
 
 function pveVictory(code, room) {
@@ -3222,6 +3228,7 @@ io.on('connection', (socket) => {
         if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
         const p = r.room.players[socket.id];
         if (!p) return;
+        if (r.room.pveSkipVotes.has(socket.id)) { socket.emit('upgrade-result', { ok: false, reason: 'ready' }); return; }   // after GATA nothing is bought
         if (type === 'reserve') {
             // the MUNITIE button: a pack of rounds (the gun's starting reserve) for a flat price, as often as the coins allow
             if (p.coins < PVE_RESERVE_COST) { socket.emit('upgrade-result', { ok: false }); return; }

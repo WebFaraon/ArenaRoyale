@@ -4049,12 +4049,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         e.useIc.setAttribute('href', act === 'repair' ? '#wrench' : '#chevrons-up');
     }
     // ---- effects: pieces, dust, rings, sparkles (all of them over a second or less) ----
-    // k: 'break' | 'repair' | 'upgrade'; the particles are worked out once here and moved by the age in _drawStructFx
+    // k: 'break' | 'repair' | 'upgrade' | 'place'; the particles are worked out once here and moved by the age in _drawStructFx
     function _fxSpawn(k, s, now) {
         const tur = s.k === 't';
         const parts = [], len = tur ? ARStructs.TURRET.r : ARStructs.halfW(s) > ARStructs.halfH(s) ? ARStructs.halfW(s) : ARStructs.halfH(s);
         const horiz = tur || !s.o, r = Math.random;
-        const n = k === 'break' ? 18 : k === 'upgrade' ? 12 : 7;
+        const n = k === 'break' ? 18 : k === 'place' ? 16 : k === 'upgrade' ? 12 : 7;
         for (let i = 0; i < n; i++) {
             const along = (r() * 2 - 1) * len * 0.9;
             if (tur) { const a = r() * Math.PI * 2, d = r() * len * 0.8; parts.push({ ox: Math.cos(a) * d, oy: Math.sin(a) * d, a: r() * Math.PI * 2, v: 0.5 + r(), rot: r() * Math.PI, rs: (r() - 0.5) * 9, sz: 3.5 + r() * 4, c: (r() * 3) | 0 }); continue; }
@@ -4076,7 +4076,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _drawStructFx(ctx, now) {
         for (let i = _structFx.length - 1; i >= 0; i--) {
-            const f = _structFx[i], dur = f.k === 'break' ? 1100 : f.k === 'upgrade' ? 1000 : 900, t = (now - f.t0) / dur;
+            const f = _structFx[i], dur = f.k === 'break' ? 1100 : f.k === 'upgrade' ? 1000 : f.k === 'place' ? 750 : 900, t = (now - f.t0) / dur;
             if (t >= 1) { _structFx.splice(i, 1); continue; }
             const e = 1 - (1 - t) * (1 - t);     // ease out
             const hw = f.round ? ARStructs.TURRET.r : f.o ? 17 : 54, hh = f.round ? ARStructs.TURRET.r : f.o ? 54 : 17;
@@ -4101,6 +4101,49 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     ctx.fillStyle = pal[p.c];
                     ctx.beginPath(); ctx.rect(-p.sz, -p.sz * 0.55, p.sz * 2, p.sz * 1.1); ctx.fill(); ctx.stroke();
                     ctx.restore();
+                }
+            } else if (f.k === 'place') {
+                // Set down on the ground: a flash on the shape, a shock ring that races out, puffs of dust along the base, and then what it is made of
+                // flies out: wood splinters for a barricade, sparks and bits of metal for a turret, a few glints last
+                const e3 = 1 - (1 - t) * (1 - t) * (1 - t), metal = f.round;
+                if (t < 0.22) { ctx.fillStyle = 'rgba(255,255,255,' + (0.6 * (1 - t / 0.22)).toFixed(3) + ')'; _fxShape(ctx, f, hw, hh); ctx.fill(); }
+                ctx.lineWidth = 5 * (1 - t) + 1; ctx.strokeStyle = (metal ? 'rgba(190,230,255,' : 'rgba(240,222,176,') + (0.8 * (1 - t) * (1 - t)).toFixed(3) + ')';
+                if (f.round) { ctx.beginPath(); ctx.arc(f.x, f.y, f.len + 4 + 46 * e3, 0, Math.PI * 2); ctx.stroke(); }
+                else { const g = 6 + 34 * e3; ctx.beginPath(); ctx.roundRect(f.x - hw - g, f.y - hh - g, (hw + g) * 2, (hh + g) * 2, 10 + g * 0.5); ctx.stroke(); }
+                for (let k = 0; k < f.parts.length; k++) {   // dust
+                    const p = f.parts[k], d = (8 + 40 * p.v) * e3;
+                    ctx.fillStyle = 'rgba(214,198,164,' + (0.5 * (1 - t) * (1 - t)).toFixed(3) + ')';
+                    ctx.beginPath(); ctx.arc(f.x + p.ox + Math.cos(p.a) * d, f.y + p.oy + Math.sin(p.a) * d, 5 + 11 * e3 * p.v, 0, Math.PI * 2); ctx.fill();
+                }
+                const fade = 1 - Math.max(0, (t - 0.5) / 0.5);
+                ctx.globalAlpha = fade;
+                if (metal) {   // sparks with a tail, and a few bits of metal
+                    ctx.lineCap = 'round';
+                    for (let k = 0; k < f.parts.length; k++) {
+                        const p = f.parts[k], d = (14 + 70 * p.v) * e3, d0 = Math.max(0, d - 9 - 6 * p.v), c = Math.cos(p.a), sn = Math.sin(p.a);
+                        ctx.lineWidth = 2.6 * (1 - t) + 0.8; ctx.strokeStyle = k % 3 === 0 ? '#FFFFFF' : k % 3 === 1 ? '#FFD84A' : '#FF9F3D';
+                        ctx.beginPath(); ctx.moveTo(f.x + p.ox * 0.6 + c * d0, f.y + p.oy * 0.6 + sn * d0); ctx.lineTo(f.x + p.ox * 0.6 + c * d, f.y + p.oy * 0.6 + sn * d); ctx.stroke();
+                    }
+                    ctx.lineWidth = 1.4; ctx.strokeStyle = '#0B0F1A';
+                    for (let k = 0; k < f.parts.length; k += 4) {
+                        const p = f.parts[k], d = (24 + 56 * p.v) * e3;
+                        ctx.save(); ctx.translate(f.x + p.ox * 0.6 + Math.cos(p.a) * d, f.y + p.oy * 0.6 + Math.sin(p.a) * d - 10 * Math.sin(Math.PI * t) * p.v); ctx.rotate(p.rot + p.rs * t);
+                        ctx.fillStyle = f.pal ? f.pal[1 + (k & 1)] : '#8E9AB0'; ctx.beginPath(); ctx.rect(-2.6, -2.6, 5.2, 5.2); ctx.fill(); ctx.stroke(); ctx.restore();
+                    }
+                } else {   // wood splinters that hop up and land
+                    ctx.lineWidth = 1.4; ctx.strokeStyle = '#0B0F1A';
+                    for (let k = 0; k < f.parts.length; k++) {
+                        const p = f.parts[k], d = (16 + 52 * p.v) * e3, hop = 14 * p.v * Math.sin(Math.PI * Math.min(1, t * 1.25));
+                        ctx.save(); ctx.translate(f.x + p.ox + Math.cos(p.a) * d, f.y + p.oy + Math.sin(p.a) * d - hop); ctx.rotate(p.rot + p.rs * t);
+                        ctx.fillStyle = pal[p.c]; ctx.beginPath(); ctx.rect(-p.sz * 0.9, -p.sz * 0.3, p.sz * 1.8, p.sz * 0.6); ctx.fill(); ctx.stroke(); ctx.restore();
+                    }
+                }
+                if (t > 0.25) {   // glints
+                    ctx.globalAlpha = 1 - t; ctx.fillStyle = pal[2]; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.2;
+                    for (let k = 0; k < f.parts.length; k += 4) {
+                        const p = f.parts[k], gx = f.x + p.ox * 0.8 + Math.cos(p.a * 2) * 10, gy = f.y + p.oy * 0.8 - 6 - 16 * (t - 0.25);
+                        _star(ctx, gx, gy, 3 + p.sz * 0.7 * Math.sin(Math.PI * (t - 0.25) / 0.75)); ctx.fill(); ctx.stroke();
+                    }
                 }
             } else if (f.k === 'repair') {
                 // a green glow over the barricade and plus signs rising from it
@@ -4802,7 +4845,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 _zb.type = zArr[_zi + 5] || 0;
                 const _zHeavy = _gameMode === 'pve' && _ZB_DEFS[_zb.type] && _ZB_DEFS[_zb.type].heavy;   // the ones a player cannot push (tank, brute, summoner)
                 if (_zHeavy && _zb.hp > 0) _tanks.push(_zb.sx, _zb.sy, _ZB_DEFS[_zb.type].r);
-                if (_zHeavy && _zPrevHp < 0) _pveWarnTank(_zb.sx, _zb.sy, _ZB_DEFS[_zb.type].warn);   // one has come into the packet
+                if (_zHeavy && _zPrevHp < 0) _pveWarnFirst(_zb.type);   // one has come into the packet
                 _zb.seen = _zGen;
                 if (_zPrevHp > 0 && _zPrevHp - _zb.hp > 0.5) {
                     hitEffects.push({ x: _zb.sx, y: _zb.sy, life: 2.0 });
@@ -5222,11 +5265,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { id: 'bomb', tab: 'build', name: 'Bomb Tower', img: '/images/pve/icon_bomb.svg', kd: 'bomb', held: () => _bar.invO, cost: () => ARStructs.turretBuyCost('bomb'), tag: () => 'x' + _bar.invO },
         { id: 'flame', tab: 'build', name: 'Flamethrower', img: '/images/pve/icon_flame.svg', kd: 'flame', held: () => _bar.invF, cost: () => ARStructs.turretBuyCost('flame'), tag: () => 'x' + _bar.invF },
         { id: 'heal', tab: 'build', name: 'Health Station', img: '/images/pve/icon_station.svg', kd: 'heal', held: () => _bar.invH, cost: () => ARStructs.turretBuyCost('heal'), tag: () => 'x' + _bar.invH },
-        { id: 'dmg', tab: 'weapon', name: 'Damage', ic: 'crosshair', lvl: n => '+' + n * 5 + '%' },
-        { id: 'ammo', tab: 'weapon', name: 'Incarcator', ic: 'bolt', lvl: n => '+' + n * 12 + '%' },
-        { id: 'reserve', tab: 'weapon', name: 'Munitie', ic: 'package', cost: () => _PVE_RESERVE_COST, tag: () => '+' + _myReservePack() },
-        { id: 'hp', tab: 'support', name: 'HP Max', ic: 'heart-pulse', lvl: n => '+' + n * 15 },
-        { id: 'spd', tab: 'support', name: 'Viteza', ic: 'gauge', lvl: n => '+' + n * 4 + '%' },
+        { id: 'dmg', tab: 'weapon', name: 'Damage', img: '/images/pve/upg_damage.svg', lvl: n => '+' + n * 5 + '%' },
+        { id: 'ammo', tab: 'weapon', name: 'Incarcator', img: '/images/pve/upg_magazine.svg', lvl: n => '+' + n * 12 + '%' },
+        { id: 'reserve', tab: 'weapon', name: 'Munitie', img: '/images/pickups/ammo_box.svg', cost: () => _PVE_RESERVE_COST, tag: () => '+' + _myReservePack() },
+        { id: 'hp', tab: 'support', name: 'HP Max', img: '/images/pve/upg_hp.svg', lvl: n => '+' + n * 15 },
+        { id: 'spd', tab: 'support', name: 'Viteza', img: '/images/pve/upg_speed.svg', lvl: n => '+' + n * 4 + '%' },
     ];
     const _pbk = { tab: 'all', cards: null, iv: 0, res: null, ready: new Set(), votes: 0, total: 1, voted: false, nextWave: 2, shownTeam: '' };
     const _$ = id => document.getElementById(id);
@@ -5255,9 +5298,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             _pbk.tab = b.dataset.tab; _pbkTabs();
         });
     }
+    // On a phone (the same test as the compact CSS) there are two tabs, CONSTRUCTII (6 cards) and UPGRADE (the weapon and support ones, 5 cards),
+    // so each fills the screen with big cards and nothing scrolls; the other tabs only exist on a bigger screen.
+    const _pbkCompactMq = window.matchMedia('(max-height: 520px), (max-width: 760px)');
+    _pbkCompactMq.addEventListener('change', () => { if (_pbk.cards) _pbkTabs(); });
     function _pbkTabs() {
-        for (const b of _$('pbk-tabs').children) b.classList.toggle('is-on', b.dataset.tab === _pbk.tab);
-        for (const { c, el } of _pbk.cards.values()) el.style.display = (_pbk.tab === 'all' || c.tab === _pbk.tab) ? '' : 'none';
+        const compact = _pbkCompactMq.matches;
+        if (compact && (_pbk.tab === 'all' || _pbk.tab === 'support')) _pbk.tab = _pbk.tab === 'support' ? 'weapon' : 'build';
+        for (const b of _$('pbk-tabs').children) { b.classList.toggle('is-on', b.dataset.tab === _pbk.tab); if (b.dataset.tab === 'weapon') b.textContent = compact ? 'UPGRADE-URI' : 'ARME'; }
+        for (const { c, el } of _pbk.cards.values()) el.style.display = (_pbk.tab === 'all' || c.tab === _pbk.tab || (compact && _pbk.tab === 'weapon' && c.tab === 'support')) ? '' : 'none';
     }
 
     // Cheap and idempotent: only what changed is written (called at every purchase, coin and inventory change while the panel is up)
@@ -5291,12 +5340,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 label = maxed ? 'MAX' : String(cost);
                 if (maxed) cost = 0;
             }
-            const poor = !maxed && coins < cost;
-            const key = label + (maxed ? 'm' : poor ? 'p' : 'o');
+            const poor = !maxed && coins < cost, done = _pbk.voted;   // after GATA nothing is bought
+            const key = label + (maxed ? 'm' : poor ? 'p' : 'o') + (done ? 'd' : '');
             if (k.buyKey !== key) {
                 k.buyKey = key;
                 k.cost.textContent = label;
-                k.buy.disabled = maxed || poor;
+                k.buy.disabled = maxed || poor || done;
+                k.el.classList.toggle('is-done', done);
                 k.buy.classList.toggle('is-max', maxed);
                 k.buy.classList.toggle('is-poor', poor);
             }
@@ -5310,7 +5360,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (el.__k === s) return;
         el.__k = s;
         el.innerHTML = `<span class="pbk-inv-h">INVENTAR</span><span class="pbk-pill"><img src="/images/pve/icon_barricade_wood.svg" alt="" draggable="false">x${_bar.inv}</span>` +
-            `<span class="pbk-pill"><img src="/images/pve/icon_turret_mg.svg" alt="" draggable="false">x${_bar.invT}</span><span class="pbk-pill"><img src="/images/pve/icon_tesla.svg" alt="" draggable="false">x${_bar.invE}</span><span class="pbk-pill"><img src="/images/pve/icon_bomb.svg" alt="" draggable="false">x${_bar.invO}</span><span class="pbk-pill"><img src="/images/pve/icon_flame.svg" alt="" draggable="false">x${_bar.invF}</span><span class="pbk-pill"><img src="/images/pve/icon_station.svg" alt="" draggable="false">x${_bar.invH}</span><span class="pbk-pill">${ico('package')}${ammoState.reserve | 0}</span>`;
+            `<span class="pbk-pill"><img src="/images/pve/icon_turret_mg.svg" alt="" draggable="false">x${_bar.invT}</span><span class="pbk-pill"><img src="/images/pve/icon_tesla.svg" alt="" draggable="false">x${_bar.invE}</span><span class="pbk-pill"><img src="/images/pve/icon_bomb.svg" alt="" draggable="false">x${_bar.invO}</span><span class="pbk-pill"><img src="/images/pve/icon_flame.svg" alt="" draggable="false">x${_bar.invF}</span><span class="pbk-pill"><img src="/images/pve/icon_station.svg" alt="" draggable="false">x${_bar.invH}</span><span class="pbk-pill"><img src="/images/pickups/ammo_box.svg" alt="" draggable="false">${ammoState.reserve | 0}</span>`;
     }
     const _pbkMine = () => { const r = _pbk.res; if (!r) return null; for (const row of r.rows) if (row[0] === socket.id) return row; return null; };
 
@@ -5409,6 +5459,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         socket.emit('pve-skip');
         _$('pve-skip-btn').disabled = true;
         _setHudText('pbk-go-txt', 'AI VOTAT');
+        updateUpgradeButtons();   // after GATA nothing more is bought (the server refuses it too)
     };
 
     socket.on('pve-coins', ({ coins, earned, x, y }) => {
@@ -5463,8 +5514,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     socket.on('boom', ({ x, y, r }) => { _zFxPush(_boomFx(x, y, r)); });
     socket.on('shield-block', (a) => { _zFxPush(_clangFx(a[0], a[1], a[2] / 100)); });
     socket.on('summon', ({ x, y }) => { _zFxPush({ k: 'summon', x0: x, y0: y, t0: performance.now() }); });
-    socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued, hpMul }) => {
+    socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued, hpMul, grace }) => {
         _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0; _zHpMul = hpMul || 1;
+        _ph.graceUntil = grace ? performance.now() + grace * 1000 : 0; _ph.graceN = -1;
         const _of = document.getElementById('pve-wave-of'); if (_of && total) _of.textContent = total;
         if (_BB.on) ARBlackBox.event('wave-start', wave);   // the server puts everyone back by the base here: a jump, by design
         _waveStartAt = performance.now();
@@ -5501,7 +5553,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // ---- turrets (events turret-add / -hp / -upd / -del, turret-shots: [turret id, angle x100, zombie id] a shot) ----
     socket.on('turret-add', (s) => {
         const a = (s.a | 0) / 100;
-        _turrets.push({ id: s.id, k: 't', kd: s.kd || 'mg', x: s.x, y: s.y, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, ang: a, tang: a, flash: 0, flameT: -1e9, flameS: 0, pop: performance.now() });
+        const _now = performance.now(), _t = { id: s.id, k: 't', kd: s.kd || 'mg', x: s.x, y: s.y, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, ang: a, tang: a, flash: 0, flameT: -1e9, flameS: 0, pop: _now };
+        _turrets.push(_t); _fxSpawn('place', _t, _now);
         _pveFeed(`${s.by} a plasat ${s.kd === 'tesla' ? 'o Tesla Tower' : s.kd === 'bomb' ? 'o Bomb Tower' : s.kd === 'flame' ? 'un Flamethrower' : s.kd === 'heal' ? 'o Health Station' : 'o tureta'}`);
     });
     socket.on('turret-hp', (rows) => {
@@ -5582,7 +5635,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_zapFx.length > 40) _zapFx.splice(0, _zapFx.length - 40);
     });
     socket.on('struct-add', (s) => {
-        _structs.push({ id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by });
+        const _now = performance.now(), _s = { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, pop: _now };   // pop: it lands with a little swell
+        _structs.push(_s); _fxSpawn('place', _s, _now);
         _pveFeed(`${s.by} a plasat o baricada`);
     });
     socket.on('struct-hp', (rows) => {
@@ -5775,12 +5829,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // ---------- PvE HUD (DOM): the team, the wave, a warning, the minimap, a feed ----------
     // Like the bottom HUD, the DOM is touched only when something it shows changes. The minimap is a small canvas redrawn ten times a second.
     const _PVE_COLORS = ['#FF8A1F', '#1FD1A5', '#FF5A6A', '#5B9BFF', '#FFC72E', '#B070FF', '#7DE04A', '#FF7AC8'];
-    const _ph = { rows: new Map(), roster: '', kills: -1, left: -1, total: 0, queued: 0, fill: -1, of: 0, slow: 0, mm: null, mmx: null, warnAt: -1e9, warnTimer: 0,
+    const _ph = { rows: new Map(), roster: '', kills: -1, left: -1, total: 0, queued: 0, fill: -1, of: 0, slow: 0, mm: null, mmx: null, warned: new Set(), warnTimer: 0, graceUntil: 0, graceN: -1,
                   els: null, rowsEl: null };
     const _pveColor = (id, i) => _PVE_COLORS[(((playerMeta[id] && playerMeta[id].slot) ?? i) | 0) % _PVE_COLORS.length];
     function _pveHudReset() {
         _ph.rows.clear(); _ph.roster = ''; _ph.kills = _ph.left = _ph.fill = _ph.of = _ph.shownTotal = -1; _ph.total = 0; _ph.queued = 0; _ph.slow = 0;
-        _ph.els = null; _ph.mm = null; _ph.warnAt = -1e9;
+        _ph.els = null; _ph.mm = null; _ph.warned.clear(); _ph.graceUntil = 0;
         const w = document.getElementById('pve-warn'); if (w) w.classList.remove('is-on');
         const f = document.getElementById('pve-feed'); if (f) f.textContent = '';
         const r = document.getElementById('pve-team-rows'); if (r) r.textContent = '';
@@ -5795,18 +5849,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         setTimeout(() => { if (it.parentNode) it.parentNode.removeChild(it); }, 6000);
         while (f.children.length > 3) f.removeChild(f.firstChild);
     }
-    // A tank shows up at the edge of the map: say it, and from which side of you (once every 8 s, not for each one of a group)
-    function _pveWarnTank(zx, zy, kind) {
-        const now = performance.now();
-        if (now - _ph.warnAt < 8000) return;
-        _ph.warnAt = now;
-        const ox = predX !== null ? predX : _PVE_BASE.x, oy = predY !== null ? predY : _PVE_BASE.y;
-        const dx = zx - ox, dy = zy - oy;
-        const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'din dreapta' : 'din stanga') : (dy > 0 ? 'de jos' : 'de sus');
+    // The first Brute and the first Summoner of the match: one warning each, when the first of the kind comes into the packet (no tank, no direction)
+    function _pveWarnFirst(type) {
+        const kind = _ZB_DEFS[type] && _ZB_DEFS[type].warn;
+        if (!kind || _ph.warned.has(type)) return;
+        _ph.warned.add(type);
         const w = document.getElementById('pve-warn');
         if (!w) return;
-        document.getElementById('pve-warn-type').textContent = kind || 'TANK';
-        document.getElementById('pve-warn-dir').textContent = 'se apropie ' + dir;
+        document.getElementById('pve-warn-type').textContent = kind;
+        document.getElementById('pve-warn-dir').textContent = 'se apropie';
         w.classList.remove('is-on'); void w.offsetWidth; w.classList.add('is-on');
         clearTimeout(_ph.warnTimer);
         _ph.warnTimer = setTimeout(() => w.classList.remove('is-on'), 5000);
@@ -5819,6 +5870,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     function _pveHud(players, now) {
         const e = _ph.els || _pveHudCache();
         if (!e.rows) return;
+        if (_ph.graceUntil) {   // the seconds before the first zombie of the wave: a pill with the count (the DOM is touched when the second changes)
+            const left = Math.ceil((_ph.graceUntil - now) / 1000), g = document.getElementById('pve-grace');
+            if (left <= 0 || _pveState.waveBreak) { _ph.graceUntil = 0; _ph.graceN = -1; if (g) g.classList.remove('is-on'); }
+            else if (left !== _ph.graceN) { _ph.graceN = left; const n = document.getElementById('pve-grace-n'); if (n) n.textContent = left; if (g && !g.classList.contains('is-on')) g.classList.add('is-on'); }
+        }
         // the roster: one row per player, in slot order; rebuilt only when somebody joins or leaves
         const ids = Object.keys(players).sort((a, b) => ((playerMeta[a] && playerMeta[a].slot) | 0) - ((playerMeta[b] && playerMeta[b].slot) | 0));
         _ph.ids = ids;
@@ -6019,7 +6075,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _ZB_DEFS = [
         { r: 20, maxHp: 100, bodyColor: '#5E9253', innerColor: '#7DB26A', armColor: '#4A7A42', armStroke: '#25422A', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },
         { r: 16, maxHp: 50,  bodyColor: '#C27A33', innerColor: '#E39A4D', armColor: '#9D5F26', armStroke: '#4C2D10', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },
-        { r: 28, maxHp: 500, heavy: true, warn: 'TANK', bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
+        { r: 28, maxHp: 500, heavy: true, bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
         { r: 20, maxHp: 160, bodyColor: '#8BC34A', innerColor: '#B9E36B', armColor: '#6D9A38', armStroke: '#2D4A12', ringColor: '#9DFF2E', ringFill: 'rgba(157,255,46,0.10)' },   // 3 spitter
         { r: 18, maxHp: 110, bodyColor: '#E2773A', innerColor: '#F7A862', armColor: '#B85A22', armStroke: '#5A2A0E', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 4 exploder
         { r: 34, maxHp: 900, heavy: true, warn: 'BRUTA', bodyColor: '#7B8493', innerColor: '#A5AEBD', armColor: '#59616E', armStroke: '#262B34', ringColor: '#C0C6D0', ringFill: 'rgba(192,198,208,0.10)' },   // 5 brute

@@ -18,8 +18,8 @@
         long: 108, short: 34,          // the sprite's size (public/images/pve/barricades), the hitbox is the same
         maxPerRoom: 20,
         detectRange: 130,              // a zombie that has no player to chase goes for a barricade this close (a player is 320 away)
-        placeDist: 80,                 // the ghost: this far in front of the player (to the centre of the barricade)
-        placeRange: 140,               // the server takes a placement no further than this from the player
+        placeDist: 120,                // the ghost: this far in front of the player (to the centre of the barricade); 80 before, too close to put a wall ahead of you
+        placeRange: 180,               // the server takes a placement no further than this from the player (placeDist plus 60 for the lag)
         useRange: 16,                  // E (repair / upgrade) works when the edge of the player is this close to its surface: up against it
         repairShare: 0.5,              // fully repairing costs this share of the price of the tier
         workMs: 1000,                  // a repair takes this long, an upgrade what its tier says (ms): the player stands still up against it; the cost is paid when it ends
@@ -49,7 +49,7 @@
     const TURRET = {
         r: 31,
         detectRange: 130,              // like the barricades: a zombie with no player to chase goes for a turret this close (to its surface)
-        placeDist: 80, placeRange: 140, useRange: 16, repairShare: 0.5, workMs: 1000,
+        placeDist: 110, placeRange: 170, useRange: 16, repairShare: 0.5, workMs: 1000,
         kinds: {
             mg: { name: 'Tureta', inv: 'turret', maxPerRoom: 6, perExtraPlayer: 3, tiers: [
                 { id: 'mg',     name: 'Mitraliera', hp: 300, total: 20, up: 0,  ms: 0,    range: 320, cd: 0.20, dmg: 10 },
