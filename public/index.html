@@ -821,6 +821,117 @@
             <a href="#" class="lb-btn gameover-lb" onclick="openLeaderboard(); return false;"><img class="pic" src="/images/ui/leaderboard.svg" alt="" aria-hidden="true" draggable="false">LEADERBOARD</a>
         </div>
     </div>
+
+    <!-- PvE end board: victory (all waves held) / base fallen. Filled by public/game.js _peRender from the pve-end event -->
+    <div id="pve-end" data-result="win" role="dialog" aria-modal="true" aria-labelledby="pe-title">
+        <svg class="pe-confetti" viewBox="0 0 1440 810" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g>
+            <rect x="120" y="60" width="14" height="8" fill="#FFC72E" transform="rotate(25 127 64)"/><rect x="210" y="150" width="12" height="7" fill="#fff" transform="rotate(-40 216 153)"/><rect x="330" y="40" width="14" height="8" fill="#FF7A1F" transform="rotate(60 337 44)"/><rect x="420" y="120" width="12" height="7" fill="#46D46A" transform="rotate(10 426 123)"/><rect x="500" y="70" width="14" height="8" fill="#FFC72E" transform="rotate(-25 507 74)"/><rect x="640" y="36" width="14" height="8" fill="#38A7F2" transform="rotate(-60 647 40)"/><rect x="800" y="44" width="14" height="8" fill="#FF7A1F" transform="rotate(35 807 48)"/><rect x="880" y="180" width="12" height="7" fill="#FFC72E" transform="rotate(-15 886 183)"/><rect x="940" y="90" width="14" height="8" fill="#fff" transform="rotate(70 947 94)"/><rect x="1030" y="140" width="12" height="7" fill="#46D46A" transform="rotate(-50 1036 143)"/><rect x="1110" y="50" width="14" height="8" fill="#FFC72E" transform="rotate(20 1117 54)"/><rect x="1200" y="170" width="12" height="7" fill="#FF7A1F" transform="rotate(-30 1206 173)"/><rect x="1290" y="80" width="14" height="8" fill="#38A7F2" transform="rotate(45 1297 84)"/><rect x="1350" y="200" width="12" height="7" fill="#fff" transform="rotate(-70 1356 203)"/><rect x="70" y="240" width="12" height="7" fill="#FF7A1F" transform="rotate(15 76 243)"/><rect x="1380" y="290" width="12" height="7" fill="#FFC72E" transform="rotate(-20 1386 293)"/>
+            <circle cx="260" cy="90" r="5" fill="#FFC72E"/><circle cx="740" cy="170" r="5" fill="#FF7A1F"/><circle cx="1170" cy="110" r="5" fill="#fff"/><circle cx="90" cy="150" r="5" fill="#46D46A"/><circle cx="1260" cy="240" r="5" fill="#38A7F2"/>
+        </g></svg>
+        <svg class="pe-swarm" viewBox="0 0 1440 810" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g stroke="#0A1013" stroke-width="5" opacity=".85">
+            <circle cx="-6" cy="170" r="54" fill="#5E9A30"/><circle cx="-14" cy="330" r="44" fill="#4F7A2A"/><circle cx="12" cy="520" r="58" fill="#5E9A30"/><circle cx="-10" cy="690" r="48" fill="#4F7A2A"/>
+            <circle cx="1446" cy="200" r="52" fill="#5E9A30"/><circle cx="1456" cy="370" r="46" fill="#4F7A2A"/><circle cx="1430" cy="560" r="58" fill="#5E9A30"/><circle cx="1452" cy="720" r="46" fill="#4F7A2A"/>
+            <circle cx="260" cy="832" r="52" fill="#4F7A2A"/><circle cx="520" cy="846" r="44" fill="#5E9A30"/><circle cx="900" cy="840" r="50" fill="#5E9A30"/><circle cx="1160" cy="834" r="44" fill="#4F7A2A"/>
+        </g><g fill="#3F6320" opacity=".85"><circle cx="-6" cy="170" r="26"/><circle cx="12" cy="520" r="28"/><circle cx="1446" cy="200" r="26"/><circle cx="1430" cy="560" r="28"/><circle cx="520" cy="846" r="22"/><circle cx="900" cy="840" r="24"/></g></svg>
+        <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="pe-base-sym" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="47" style="fill:var(--pe-halo)"/>
+            <polygon points="50,6 88,28 88,72 50,94 12,72 12,28" fill="#8B97A1" stroke="#0A1013" stroke-width="3.5" stroke-linejoin="round"/>
+            <polygon points="50,24 72,37 72,63 50,76 28,63 28,37" fill="#3B434B" stroke="#0A1013" stroke-width="3" stroke-linejoin="round"/>
+            <circle cx="50" cy="50" r="11" stroke="#0A1013" stroke-width="3" style="fill:var(--pe-core)"/>
+            <circle cx="46" cy="46" r="3.4" fill="#D6FFE1" style="opacity:var(--pe-shine)"/>
+            <g stroke="#0A1013" stroke-width="2.4" style="fill:var(--pe-node)"><circle cx="50" cy="6" r="4.5"/><circle cx="88" cy="28" r="4.5"/><circle cx="88" cy="72" r="4.5"/><circle cx="50" cy="94" r="4.5"/><circle cx="12" cy="72" r="4.5"/><circle cx="12" cy="28" r="4.5"/></g>
+            <path d="M50 6l-6 22 9 10-8 14 7 12-4 22" fill="none" stroke="#0A1013" stroke-width="3.4" stroke-linejoin="round" style="opacity:var(--pe-crack)"/>
+        </symbol></svg>
+
+        <div class="pe-fit">
+            <header class="pe-head">
+                <div class="pe-chip">SURVIVAL<i></i>PvE<i></i><span id="pe-count">1 JUCATOR</span></div>
+                <div class="pe-title-row">
+                    <svg class="pe-base" aria-hidden="true"><use href="#pe-base-sym"/></svg>
+                    <h2 id="pe-title">VICTORIE!</h2>
+                    <svg class="pe-base" aria-hidden="true"><use href="#pe-base-sym"/></svg>
+                </div>
+                <div class="pe-sub"><span id="pe-sub-lbl"></span><b id="pe-sub-num"></b><span id="pe-sub-tail"></span></div>
+            </header>
+
+            <div class="pe-body">
+                <!-- you -->
+                <section class="pe-card pe-me">
+                    <div class="pe-id">
+                        <div class="pe-avatar"><img id="pe-av-img" alt="" style="display:none"><svg class="ic" id="pe-av-ph" aria-hidden="true"><use href="#user"/></svg></div>
+                        <div class="pe-id-txt"><b id="pe-nick">JUCATOR</b><em id="pe-rank">RECRUT</em></div>
+                    </div>
+                    <div class="pe-lvl" id="pe-lvl">
+                        <span class="pe-lv" id="pe-lv-a">LV 1</span>
+                        <svg class="ic pe-lv-arrow" aria-hidden="true"><use href="#arrow-right"/></svg>
+                        <span class="pe-lv is-new" id="pe-lv-b">LV 2</span>
+                    </div>
+                    <div class="pe-newlvl" id="pe-newlvl">NIVEL NOU!</div>
+                    <div class="pe-xp">
+                        <div class="pe-xp-row"><b id="pe-xp-gain">+0 XP</b><span id="pe-xp-txt"></span></div>
+                        <div class="pe-bar"><i id="pe-xp-fill"></i></div>
+                        <small id="pe-xp-more"></small>
+                    </div>
+                    <div class="pe-kinds">
+                        <h3>ZOMBI ELIMINATI DE ECHIPA</h3>
+                        <div class="pe-kinds-grid">
+                            <div class="pe-kind"><img src="/images/zombies/zombi.svg" alt="" draggable="false"><div><b id="pe-k-normal">0</b><em>NORMALI</em></div></div>
+                            <div class="pe-kind"><img src="/images/zombies/zombi_rapid.svg" alt="" draggable="false"><div><b id="pe-k-runner">0</b><em>RAPIZI</em></div></div>
+                            <div class="pe-kind"><img src="/images/zombies/zombi_tanc.svg" alt="" draggable="false"><div><b id="pe-k-heavy">0</b><em>GREI</em></div></div>
+                            <div class="pe-kind"><img src="/images/zombies/zombi_toxic.svg" alt="" draggable="false"><div><b id="pe-k-special">0</b><em>SPECIALI</em></div></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- the team and the road through the waves -->
+                <section class="pe-card pe-mid">
+                    <div class="pe-stats">
+                        <div class="pe-stat"><b id="pe-st-waves">0</b><em>VALURI</em></div>
+                        <div class="pe-stat"><b><img class="pic" src="/images/zombies/zombi.svg" alt="" draggable="false"><span id="pe-st-zombies">0</span></b><em>ZOMBI ELIMINATI</em></div>
+                        <div class="pe-stat"><b id="pe-st-base">0</b><em>BAZA RAMASA</em><span class="pe-bar is-thin"><i id="pe-st-base-fill"></i></span></div>
+                        <div class="pe-stat"><b id="pe-st-time">0:00</b><em>TIMP IN MECI</em></div>
+                    </div>
+                    <div class="pe-path">
+                        <div class="pe-path-h"><h3>DRUMUL PRIN VALURI</h3><span id="pe-path-note"></span></div>
+                        <div class="pe-ms" id="pe-ms"></div>
+                        <div class="pe-pips" id="pe-pips"></div>
+                    </div>
+                    <div class="pe-team">
+                        <div class="pe-trow is-h"><span>ECHIPA</span><span>ELIMINARI</span><span>DAUNE PRIMITE</span><span>MONEDE ADUNATE</span></div>
+                        <div id="pe-rows"></div>
+                    </div>
+                </section>
+
+                <!-- what the match paid -->
+                <section class="pe-card pe-rew">
+                    <h3>RECOMPENSE</h3>
+                    <div class="pe-prizes">
+                        <div class="pe-prize is-coin"><img class="pic" src="/images/ui/monede.svg" alt="" draggable="false"><b id="pe-p-coins">+0</b><em>MONEDE</em></div>
+                        <div class="pe-prize is-gem"><img class="pic" src="/images/ui/diamante.svg" alt="" draggable="false"><b id="pe-p-gems">+0</b><em>DIAMANTE</em></div>
+                        <div class="pe-prize is-xp"><svg class="ic" aria-hidden="true"><use href="#zap"/></svg><b id="pe-p-xp">+0</b><em>XP</em></div>
+                    </div>
+                    <div class="pe-why">
+                        <h3>DIN CE AI CASTIGAT MONEDELE</h3>
+                        <div class="pe-why-row"><span id="pe-w-waves"></span><b id="pe-w-waves-c"></b></div>
+                        <div class="pe-why-row"><span>Eliminarile tale</span><b id="pe-w-kills-c"></b></div>
+                        <div class="pe-why-row"><span>Bonus de victorie</span><b id="pe-w-win-c"></b></div>
+                        <div class="pe-why-row is-sum"><span id="pe-w-gem-note"></span><b class="is-gem" id="pe-w-gems"></b></div>
+                    </div>
+                    <div class="pe-mission" id="pe-mission" hidden>
+                        <div class="pe-mission-h" id="pe-mis-h"></div>
+                        <div class="pe-mission-row"><span id="pe-mis-title"></span><b id="pe-mis-val"></b></div>
+                        <div class="pe-bar is-gold"><i id="pe-mis-fill"></i></div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="pe-actions">
+                <button type="button" id="pe-again" class="pe-btn is-go"><svg class="ic" aria-hidden="true"><use href="#refresh-cw"/></svg><span><b id="pe-again-lbl">JOACA DIN NOU</b><em id="pe-again-sub">Survival PvE</em></span></button>
+                <button type="button" id="pe-share" class="pe-btn is-gold"><svg class="ic" aria-hidden="true"><use href="#share-2"/></svg><b>PARTAJEAZA</b></button>
+                <button type="button" id="pe-lobby" class="pe-btn" onclick="returnToLobby()"><svg class="ic" aria-hidden="true"><use href="#door-open"/></svg><b>LOBBY</b></button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- ========== SETARI ========== -->

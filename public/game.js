@@ -1168,6 +1168,8 @@ const _LVL_XP = (() => {
     for (let n = 2; n <= 50; n++) { t.push(t[t.length - 1] + inc); if (n >= 3) inc += 50; }
     return t;
 })();
+// the rank names by level (the lobby card, the friends list, the end board of a PvE match)
+const _RANK_NAMES = ['Recrut','Novice','Cercetaș','Supraviețuitor','Vânător','Duelist','Raider','Mercenar','Asaltor','Veteran','Eliminator','Striker','Gladiator','Dominator','Executor','Predator','Berserker','Shadow','Phantom','Ravager','Titan','Conqueror','Warlord','Bloodhound','Reaper','Destroyer','Overkiller','Nemesis','Juggernaut','Annihilator','Apex Hunter','Void Walker','Deathbringer','Skullcrusher','Iron Legend','Chaos Knight','Doom Slayer','Inferno Lord','Storm Bringer','War Titan','Eternal Fang','Dark Sovereign','Oblivion','Cataclysm','Supreme Predator','Immortal','Ascendant','Mythic','Legendary','Battle Royale God'];
 function getLevelFromXP(xp) {
     for (let n = _LVL_XP.length - 1; n >= 1; n--) { if (xp >= _LVL_XP[n]) return n; }
     return 1;
@@ -1203,7 +1205,7 @@ function renderFriendsPanel() {
             friendsList.innerHTML = friendsData.friends.map(f => {
                 const lvl   = getLevelFromXP(f.xp || 0);
                 const tier  = getTier(lvl);
-                const rankName = ['Recrut','Novice','Cercetaș','Supraviețuitor','Vânător','Duelist','Raider','Mercenar','Asaltor','Veteran','Eliminator','Striker','Gladiator','Dominator','Executor','Predator','Berserker','Shadow','Phantom','Ravager','Titan','Conqueror','Warlord','Bloodhound','Reaper','Destroyer','Overkiller','Nemesis','Juggernaut','Annihilator','Apex Hunter','Void Walker','Deathbringer','Skullcrusher','Iron Legend','Chaos Knight','Doom Slayer','Inferno Lord','Storm Bringer','War Titan','Eternal Fang','Dark Sovereign','Oblivion','Cataclysm','Supreme Predator','Immortal','Ascendant','Mythic','Legendary','Battle Royale God'][lvl - 1] || 'Recrut';
+                const rankName = _RANK_NAMES[lvl - 1] || 'Recrut';
                 return `
                 <div class="friend-row">
                     <span class="friend-online-dot ${f.online ? 'online' : ''}"></span>
@@ -1679,18 +1681,7 @@ function prepopulateLobby() {
     const xpNeeded = (LVL_XP[level + 1] || LVL_XP[level] + 9999) - LVL_XP[level];
     const xpPct    = Math.round(Math.min(1, xpInLvl / xpNeeded) * 100);
 
-    const RANKS = [
-        'Recrut','Novice','Cercetaș','Supraviețuitor','Vânător',
-        'Duelist','Raider','Mercenar','Asaltor','Veteran',
-        'Eliminator','Striker','Gladiator','Dominator','Executor',
-        'Predator','Berserker','Shadow','Phantom','Ravager',
-        'Titan','Conqueror','Warlord','Bloodhound','Reaper',
-        'Destroyer','Overkiller','Nemesis','Juggernaut','Annihilator',
-        'Apex Hunter','Void Walker','Deathbringer','Skullcrusher','Iron Legend',
-        'Chaos Knight','Doom Slayer','Inferno Lord','Storm Bringer','War Titan',
-        'Eternal Fang','Dark Sovereign','Oblivion','Cataclysm','Supreme Predator',
-        'Immortal','Ascendant','Mythic','Legendary','Battle Royale God',
-    ];
+    const RANKS = _RANK_NAMES;
     const rank = RANKS[Math.min(49, level - 1)];
     const winRate  = games > 0 ? Math.round(wins / games * 100) : 0;
 
@@ -3206,6 +3197,20 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
             const btn = document.getElementById('btn-rematch');
             btn.disabled = true;
             btn.textContent = 'Asteptand...';
+        };
+        // the PvE end board: same vote, its own buttons
+        document.getElementById('pve-end').style.display = 'none';
+        document.getElementById('pe-again').onclick = () => {
+            socket.emit('rematch');
+            document.getElementById('pe-again').disabled = true;
+            document.getElementById('pe-again-sub').textContent = 'Astept ceilalti jucatori...';
+        };
+        document.getElementById('pe-share').onclick = () => {
+            const d = _peData; if (!d) return;
+            const text = `Am aparat baza ${d.total}/${d.total} valuri in Arena Royale (Survival PvE)!`;
+            if (navigator.share) { navigator.share({ text, url: location.origin }).catch(() => {}); return; }
+            const done = () => showToast('Text copiat');
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text + ' ' + location.origin).then(done, () => {});
         };
         if (!gameLoopStarted) {
             gameLoopStarted = true;
@@ -5275,6 +5280,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         currentProfile.coins        = data.coins        ?? 1000;
         currentProfile.diamonds     = data.diamonds     || 0;
         if (data.missions) currentProfile.missions = data.missions;
+        if (data.missionNote !== undefined && _peData) { _peNote = data.missionNote; if (document.getElementById('pve-end').style.display === 'flex') _peMission(_peNote); }   // the mission box of the PvE end board
         // totals per weapon after this match (server.js WEAPON STATS); no UI yet, see ?dev=weapons
         if (data.weaponStats) currentProfile.weapon_stats = data.weaponStats;
     });
@@ -5366,6 +5372,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     socket.on('rematch-vote', ({ count, total }) => {
         const btn = document.getElementById('btn-rematch');
         btn.textContent = `JOACA DIN NOU (${count}/${total})`;
+        const peSub = document.getElementById('pe-again-sub'); if (peSub) peSub.textContent = `Survival PvE \u00B7 ${count} / ${total} gata`;
     });
 
     // ---- PvE events ----
@@ -5885,18 +5892,102 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }, _panelDelay);
     });
 
-    socket.on('pve-end', ({ result, wavesCleared }) => {
+    // ---------- PvE END BOARD ----------
+    // The board of the end of a PvE match (index.html #pve-end). Everything in it comes from the pve-end event: the team table, the zombies by
+    // family, the base, the time and what THIS player is paid (server.js pveFinish, pve-rewards.js). Only the mission box waits for round-stats.
+    let _peData = null, _peXp0 = 0, _peNote;
+    const _peSet = (id, v) => { const e = document.getElementById(id); if (e && e.textContent !== String(v)) e.textContent = v; };
+    const _peN = n => (Number(n) || 0).toLocaleString();
+    const _PE_COIN = '<img class="pic" src="/images/ui/monede.svg" alt="" draggable="false">', _PE_GEM = '<img class="pic" src="/images/ui/diamante.svg" alt="" draggable="false">';
+    function _peMission(note) {
+        const box = document.getElementById('pe-mission'); if (!box) return;
+        if (!note) { box.hidden = true; return; }
+        box.hidden = false; box.classList.toggle('is-done', !!note.done);
+        document.getElementById('pe-mis-h').innerHTML = note.done ? '<svg class="ic" aria-hidden="true"><use href="#check"/></svg>MISIUNE FINALIZATA' : '';
+        _peSet('pe-mis-title', note.done ? note.title : 'Misiune: ' + note.title);
+        const val = document.getElementById('pe-mis-val');
+        val.innerHTML = note.done
+            ? '+' + (note.coins | 0) + ' ' + _PE_COIN + ((note.diamonds | 0) > 0 ? ' <span class="is-gem">+' + (note.diamonds | 0) + ' ' + _PE_GEM + '</span>' : '')
+            : (note.prog | 0) + ' / ' + (note.goal | 0);
+        document.getElementById('pe-mis-fill').style.width = Math.round(Math.min(1, (note.prog || 0) / Math.max(1, note.goal || 1)) * 100) + '%';
+    }
+    function _peRender(d) {
+        const win = d.result === 'victory', r = d.reward, root = document.getElementById('pve-end');
+        root.dataset.result = win ? 'win' : 'lose';
+        _peSet('pe-count', d.team.length === 1 ? '1 JUCATOR' : d.team.length + ' JUCATORI');
+        _peSet('pe-title', win ? 'VICTORIE!' : 'BAZA A CAZUT');
+        _peSet('pe-sub-lbl', win ? 'BAZA A REZISTAT TOATE VALURILE' : 'AI REZISTAT PANA LA VALUL');
+        _peSet('pe-sub-num', win ? d.total + ' / ' + d.total : d.wave);
+        _peSet('pe-sub-tail', win ? '' : 'din ' + d.total);
+        // you: level and xp from what the account had when the match ended plus what it paid
+        const xp1 = _peXp0 + r.xp, l0 = getLevelFromXP(_peXp0), l1 = getLevelFromXP(xp1);
+        const from = _LVL_XP[l1], need = (_LVL_XP[l1 + 1] ?? from + 9999) - from, into = xp1 - from, tier = getTier(l1);
+        _peSet('pe-nick', currentNickname || 'JUCATOR');
+        const rk = document.getElementById('pe-rank'); rk.textContent = String(_RANK_NAMES[Math.min(49, l1 - 1)]).toUpperCase(); rk.style.color = tier.color;
+        const ch = getSelectedCharacter(), img = document.getElementById('pe-av-img');
+        if (ch) { img.src = skinPreviewSrc(ch.id, SKIN_PREVIEW.avatar); img.style.display = 'block'; document.getElementById('pe-av-ph').style.display = 'none'; img.parentNode.style.borderColor = tier.color; }
+        document.getElementById('pe-lvl').classList.toggle('is-up', l1 > l0);
+        _peSet('pe-lv-a', 'LV ' + (l1 > l0 ? l0 : l1)); _peSet('pe-lv-b', 'LV ' + l1);
+        _peSet('pe-xp-gain', '+' + _peN(r.xp) + ' XP'); _peSet('pe-xp-txt', 'LV ' + l1 + ' \u00B7 ' + _peN(into) + ' / ' + _peN(need));
+        _peSet('pe-xp-more', l1 > l0 ? '' : 'Mai ai ' + _peN(need - into) + ' XP pana la LV ' + (l1 + 1));
+        const fill = document.getElementById('pe-xp-fill'); fill.style.width = '0%';
+        requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = Math.round(Math.min(1, into / need) * 100) + '%'; }));
+        for (const k of ['normal', 'runner', 'heavy', 'special']) _peSet('pe-k-' + k, _peN(d.kinds[k]));
+        // the numbers of the match
+        const w = document.getElementById('pe-st-waves'); w.innerHTML = (win ? d.total : d.wave) + '<small>/ ' + d.total + '</small>'; w.parentNode.className = 'pe-stat ' + (win ? 'is-good' : 'is-bad');
+        _peSet('pe-st-zombies', _peN(d.zombies));
+        const bh = document.getElementById('pe-st-base'); bh.innerHTML = _peN(d.base.hp) + '<small>/ ' + _peN(d.base.max) + '</small>';
+        document.getElementById('pe-st-base-fill').style.width = Math.round(Math.max(0, Math.min(1, d.base.hp / Math.max(1, d.base.max))) * 100) + '%';
+        _peSet('pe-st-time', Math.floor(d.timeSec / 60) + ':' + String(d.timeSec % 60).padStart(2, '0'));
+        // the road through the waves, with the diamond thresholds
+        _peSet('pe-path-note', win ? d.total + ' din ' + d.total + ' valuri terminate' : 'baza a cazut in valul ' + d.wave);
+        const ms = document.getElementById('pe-ms'), pips = document.getElementById('pe-pips'), gm = new Map(r.milestones.map(m => [m.wave, m]));
+        ms.textContent = ''; pips.textContent = '';
+        for (let i = 1; i <= d.total; i++) {
+            const cell = document.createElement('div'), m = gm.get(i);
+            if (m) { const g = document.createElement('span'); g.className = 'pe-gem' + (m.got ? '' : ' is-off'); g.innerHTML = _PE_GEM + '+' + (m.gems | 0); cell.appendChild(g); }
+            ms.appendChild(cell);
+            const pip = document.createElement('div'), fell = !win && i === d.wave;
+            pip.className = 'pe-pip' + (win || i <= r.wavesCleared ? ' is-done' : fell ? ' is-fall' : '');
+            pip.textContent = fell ? '\u00D7' : i; pips.appendChild(pip);
+        }
+        // the team
+        const rows = document.getElementById('pe-rows'); rows.textContent = '';
+        d.team.forEach((t, i) => {
+            const me = t.id === socket.id, row = document.createElement('div'), nm = document.createElement('div'), dot = document.createElement('i'), name = document.createElement('span');
+            row.className = 'pe-trow' + (me ? ' is-me' : ''); nm.className = 'pe-tn'; dot.style.background = _pveColor(t.id, i);
+            name.textContent = t.name + (me ? ' (tu)' : ''); nm.append(dot, name);
+            if (t.id === d.mvp) { const mv = document.createElement('span'); mv.className = 'pe-mvp'; mv.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#crown"/></svg>MVP'; nm.appendChild(mv); }
+            const k = document.createElement('span'), dm = document.createElement('span'), c = document.createElement('span');
+            k.className = 'pe-k'; k.textContent = _peN(t.kills); dm.className = 'pe-d'; dm.textContent = _peN(t.dmg); c.className = 'pe-c'; c.textContent = _peN(t.coins);
+            row.append(nm, k, dm, c); rows.appendChild(row);
+        });
+        // what it paid
+        _peSet('pe-p-coins', '+' + _peN(r.coins)); _peSet('pe-p-gems', '+' + _peN(r.gems)); _peSet('pe-p-xp', '+' + _peN(r.xp));
+        const [lw, lk, lv] = r.lines;
+        _peSet('pe-w-waves', lw.n + (lw.n === 1 ? ' val terminat' : ' valuri terminate')); _peSet('pe-w-waves-c', '+' + _peN(lw.coins));
+        _peSet('pe-w-kills-c', '+' + _peN(lk.coins)); _peSet('pe-w-win-c', '+' + _peN(lv.coins));
+        const got = r.milestones.filter(m => m.got).map(m => m.wave);
+        _peSet('pe-w-gem-note', win ? 'Praguri de val: ' + got.join(', ') : got.length ? 'Praguri de val atinse: ' + got.join(', ') : 'Niciun prag de val atins');
+        document.getElementById('pe-w-gems').innerHTML = '+' + (r.gems | 0) + ' ' + _PE_GEM;
+        _peMission(_peNote);
+        _peSet('pe-again-lbl', win ? 'JOACA DIN NOU' : 'INCEARCA DIN NOU'); _peSet('pe-again-sub', 'Survival PvE');
+        const again = document.getElementById('pe-again'); again.disabled = false;
+        document.getElementById('pve-top-hud').style.display = 'none';   // the match HUD is not needed behind the board (game-start shows it again)
+        document.getElementById('screen-gameover').style.display = 'none';
+        root.style.display = 'flex';
+        try { again.focus({ preventScroll: true }); } catch (_) {}
+    }
+    socket.on('pve-end', (d) => {
         gameEnded = true;
         moveDir.x = 0; moveDir.y = 0; isShooting = false;
         hidePvePanel();
+        _peData = d; _peNote = undefined;
+        _peXp0 = currentProfile ? (currentProfile.xp || 0) : 0;   // before round-stats (sent after this event) overwrites it
         setTimeout(() => {
-            if (result === 'victory') {
-                document.getElementById('gameover-title').textContent = 'VICTORIE!';
-                document.getElementById('gameover-msg').textContent   = `Ati supravietuit toate cele ${wavesCleared} wave-uri!`;
-            } else {
-                document.getElementById('gameover-title').textContent = 'INFRANGERE!';
-                document.getElementById('gameover-msg').textContent   = `Baza a cazut dupa ${wavesCleared} wave${wavesCleared === 1 ? '' : '-uri'} complete!`;
-            }
+            if (_peData && _peData.reward && Array.isArray(_peData.team)) { _peRender(_peData); return; }
+            document.getElementById('gameover-title').textContent = d.result === 'victory' ? 'VICTORIE!' : 'INFRANGERE!';
+            document.getElementById('gameover-msg').textContent   = d.result === 'victory' ? `Ati supravietuit toate cele ${d.wavesCleared} wave-uri!` : `Baza a cazut dupa ${d.wavesCleared} wave${d.wavesCleared === 1 ? '' : '-uri'} complete!`;
             document.getElementById('round-stats-section').style.display = 'none';
             document.getElementById('screen-gameover').style.display = 'flex';
         }, 1500);
@@ -5914,6 +6005,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         btn.disabled    = false;
         btn.textContent = 'JOACA DIN NOU';
         document.getElementById('screen-gameover').style.display = 'none';
+        document.getElementById('pve-end').style.display        = 'none';
+        _peData = null;
         document.getElementById('screen-game').style.display     = 'none';
         document.getElementById('screen-waiting').style.display  = 'flex';
         document.getElementById('btn-start-game').style.display  = isHost ? 'block' : 'none';

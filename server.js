@@ -13,6 +13,7 @@ const { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets, inCone,
 const ZNav = require('./zombie-nav.js');              // where the PvE zombies walk: a distance field round the solid things, through walls at a price
 const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
+const PveRewards = require('./pve-rewards');   // what a PvE match pays and the zombie families of the end board
 const ARShared = require('./public/combat-shared');
 const ARNet = require('./public/netproto');           // the state packet, protocol 3 (shared with the client)
 const KIT_HEAL = ARNet.KIT_HEAL, KIT_AMMO = ARNet.KIT_AMMO;   // the two kinds of kit on the ground (netproto.js)
@@ -648,21 +649,25 @@ function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner, info
 async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner, info = {}) {
     const k = killsThisRound || 0;
     if (info.rs) missionWeaponKills(info.rs, info.ws, info.mode || 'br');
-    let missions;
+    let missions, missionNote = null;
     try {
-        const ms = Missions.applyRound(await loadMissions(nickname), { mode: info.mode || 'br', rs: info.rs, wave: info.wave, isWinner });
+        const before = await loadMissions(nickname);
+        const prog0 = new Map(before.list.map(e => [e.id, e.prog]));
+        const ms = Missions.applyRound(before, { mode: info.mode || 'br', rs: info.rs, wave: info.wave, isWinner });
         await saveMissions(nickname, ms);
         missions = Missions.toClient(ms);
+        if (info.mode === 'pve') missionNote = Missions.roundNote(prog0, ms);   // the mission the PvE end board shows
     } catch (err) { console.error('[Missions] round update error:', err); }
-    const earnedXP       = k * 10 + (isWinner ? 50 : 0);
-    const earnedCoins    = k * 10 + (isWinner ? 50 : 0);
-    const earnedDiamonds = isWinner ? 1 : 0;
+    // PvE pays by waves and zombies (PveRewards, the numbers of the end board); battle royale by kills
+    const earnedXP       = info.reward ? info.reward.xp    : k * 10 + (isWinner ? 50 : 0);
+    const earnedCoins    = info.reward ? info.reward.coins : k * 10 + (isWinner ? 50 : 0);
+    const earnedDiamonds = info.reward ? info.reward.gems  : (isWinner ? 1 : 0);
 
     const basic = {
         killsThisRound: k, killsTotal: k, winsTotal: isWinner ? 1 : 0,
         gamesPlayed: 1, killRate: k.toFixed(1), isWinner,
         earnedXP, earnedCoins, earnedDiamonds,
-        xp: earnedXP, coins: 1000 + earnedCoins, diamonds: earnedDiamonds, missions
+        xp: earnedXP, coins: 1000 + earnedCoins, diamonds: earnedDiamonds, missions, missionNote
     };
     if (!supabase) {
         basic.weaponStats = addWeaponStats(weaponStatsMem.get(nickname), info.ws);
@@ -726,7 +731,7 @@ async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinne
             gamesPlayed: newGames,
             killRate: newGames > 0 ? (newKills / newGames).toFixed(1) : '0.0',
             isWinner, earnedXP, earnedCoins, earnedDiamonds,
-            xp: newXP, coins: newCoins, diamonds: newDiamonds, missions,
+            xp: newXP, coins: newCoins, diamonds: newDiamonds, missions, missionNote,
             weaponStats: weaponTotals
         });
         emitWeaponSkinsUnlocked(socketId, nickname, unlockedNow);
@@ -1021,6 +1026,7 @@ function _payCoins(code, taken) {
         if (!p._coinGot) continue;
         p.coins += p._coinGot;
         if (p.wv) p.wv.coins += p._coinGot;   // the break panel: coins earned in this wave
+        p.pveTot.coins += p._coinGot;         // the end board: in the whole match
         io.to(p.id).emit('pve-coins', { coins: p.coins, earned: p._coinGot, x: p.x, y: p.y });
         p._coinGot = 0;
     }
@@ -1463,6 +1469,7 @@ function destroyTurret(code, room, t) {
 // touched): the team counter of the HUD goes to whoever placed the turret; the missions and the weapon counts are not credited.
 function turretKill(code, room, zombie, t, now) {
     zombie.hp = 0; zombie.alive = false;
+    room.pveKinds[PveRewards.kindOf(zombie.type)]++;
     const owner = room.players[t.ownerId];
     if (owner && owner.alive) owner.kills++;
     const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
@@ -1680,7 +1687,7 @@ function hurtBuilt(code, room, s, dmg) {
 }
 function hurtPlayer(code, room, p, dmg, now) {
     if (!p.alive) return;
-    if (p.wv) p.wv.dmg += Math.min(dmg, Math.max(0, p.hp));
+    if (p.wv) { const d = Math.min(dmg, Math.max(0, p.hp)); p.wv.dmg += d; p.pveTot.dmg += d; }
     p.hp -= dmg; p.lastDamageTime = now;
     if (p.hp <= 0) eliminatePlayer(code, room, p, 'zombie');
 }
@@ -1858,6 +1865,7 @@ function pveFreeSpot(room, angle) {
 function startPveWave(code, room) {
     if (!rooms.has(code) || room.gameEnded || room.pveWaveActive) return;
     room.pveWave++;
+    if (room.pveWave === 1) room.pveT0 = Date.now();
     room.pveWaveActive = true;
     room.pveWaveBreak  = false;
     room.pveBreakTimer = 0;
@@ -1892,25 +1900,36 @@ function startPveWave(code, room) {
         zombies: pveQueuedCount(room), queued: pveQueuedCount(room), grace: PVE_START_GRACE });
 }
 
-function pveVictory(code, room) {
+// The end of a PvE match: one board for everybody (the team table, the zombies by family, the base, the time) and, for each player, what the
+// match pays him (PveRewards.compute: the same numbers are written to the account by endPlayerRound). Not in gs2.
+function pveEndBoard(room, victory) {
+    const team = room._playerArr.map(p => ({ id: p.id, name: p.name, slot: p.slot, kills: p.kills | 0, dmg: Math.round(p.pveTot.dmg), coins: p.pveTot.coins | 0 }));
+    let mvp = null, best = 0;
+    for (const t of team) if (t.kills > best) { best = t.kills; mvp = t.id; }
+    const kinds = { ...room.pveKinds };
+    return {
+        result: victory ? 'victory' : 'defeat',
+        wavesCleared: victory ? PveRewards.TOTAL_WAVES : Math.max(0, room.pveWave - 1), wave: room.pveWave, total: PveRewards.TOTAL_WAVES,
+        base: { hp: room.base ? Math.round(room.base.hp) : 0, max: room.base ? room.base.maxHp : PVE_BASE_HP },
+        timeSec: room.pveT0 ? Math.max(0, Math.round((Date.now() - room.pveT0) / 1000)) : 0,
+        zombies: PveRewards.KINDS.reduce((n, k) => n + kinds[k], 0), kinds, team, mvp,
+    };
+}
+function pveFinish(code, room, victory) {
     if (room.gameEnded) return;
     room.gameEnded = true;
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
-    io.to(code).emit('pve-end', { result: 'victory', wavesCleared: room.pveWave });
-    room._playerArr.forEach(p => endPlayerRound(p, true, { mode: 'pve', rs: p.rs, wave: room.pveWave }));
+    const board = pveEndBoard(room, victory);
+    room._playerArr.forEach(p => {
+        const reward = PveRewards.compute({ wavesCleared: board.wavesCleared, victory, kills: p.kills });
+        io.to(p.id).emit('pve-end', { ...board, reward });
+        endPlayerRound(p, victory, { mode: 'pve', rs: p.rs, wave: room.pveWave, reward });
+    });
     setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
-    console.log(`[${code}] PvE Victorie!`);
+    console.log(victory ? `[${code}] PvE Victorie!` : `[${code}] PvE Infrangere (baza distrusa la wave ${room.pveWave})`);
 }
-
-function pveDefeat(code, room) {
-    if (room.gameEnded) return;
-    room.gameEnded = true;
-    if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
-    io.to(code).emit('pve-end', { result: 'defeat', wavesCleared: room.pveWave > 0 ? room.pveWave - 1 : 0 });
-    room._playerArr.forEach(p => endPlayerRound(p, false, { mode: 'pve', rs: p.rs, wave: room.pveWave }));
-    setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
-    console.log(`[${code}] PvE Infrangere (baza distrusa la wave ${room.pveWave})`);
-}
+function pveVictory(code, room) { pveFinish(code, room, true); }
+function pveDefeat(code, room) { pveFinish(code, room, false); }
 
 // ---------- MAP SEASON ----------
 // The look of the trees and rocks (public/data/map-objects.json: seasons, sprites in public/images/map/<season>/).
@@ -1952,6 +1971,7 @@ function newRoom(hostId, mode = 'br') {
         base: mode === 'pve' ? { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R } : null,
         pveWave: 0, pveWaveActive: false, pveWaveBreak: false, pveBreakTimer: 0, pveSkipVotes: new Set(),
         pveSpawnQueue: [], pveSpawnTimer: 0,
+        pveKinds: PveRewards.newKinds(), pveT0: 0,   // PvE end board: zombies killed by family, when wave 1 began
         structs: [], turrets: [], _hits: [], nextStructId: 0, _structDirty: false, _structHpAt: 0,   // PvE: what the players built (barricades, turrets; ids from one counter), sent by events, not in gs2
         nextSlot: 0,   // players are named by a small number in the state packet (netproto.js)
         gameStarted:     false,
@@ -2023,6 +2043,7 @@ function addPlayer(code, room, socket, data) {
         baseMaxHp: maxHp, baseDamage: damage, baseSpeed: speed, baseAmmoMax: _ws.ammoMax,
         pveUpgrades: { dmg: 0, spd: 0, hp: 0, ammo: 0 },
         pveInv: newInv(),   // PvE: what they bought and have not placed yet
+        pveTot: { dmg: 0, coins: 0 },   // PvE end board: damage taken and coins picked up in the whole match (wv is per wave)
     };
     room._playerArr.push(room.players[socket.id]);
 
@@ -2648,7 +2669,7 @@ function startRoomLoop(code, room) {
                         let attacked = false;
                         for (const p of hunts ? alivePlayers : _noPlayers) {   // a type that does not hunt never hits a player
                             if (Math.hypot(p.x - zombie.x, p.y - zombie.y) < def.attackR) {
-                                if (p.wv) p.wv.dmg += Math.min(def.dmg, Math.max(0, p.hp));
+                                if (p.wv) { const d = Math.min(def.dmg, Math.max(0, p.hp)); p.wv.dmg += d; p.pveTot.dmg += d; }
                                 p.hp -= def.dmg; p.lastDamageTime = now;
                                 zombie.attackCooldown = def.attackCd;
                                 if (p.hp <= 0) eliminatePlayer(code, room, p, 'zombie');
@@ -2768,6 +2789,7 @@ function startRoomLoop(code, room) {
                             if (room.mode === 'pve') { _zOwner.rs.pveKills++; _zOwner.kills++; }   // the team counter of the HUD (kills travels in gs2); not the BR total, see endPlayerRound
                         }
                         if (room.mode === 'pve') {
+                            room.pveKinds[PveRewards.kindOf(zombie.type)]++;
                             // The coins (the same count as before) drop around the zombie and lie there; whoever touches them gets them
                             // (the coin step after the kits, below). One event for the whole drop.
                             const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
@@ -3068,6 +3090,7 @@ function triggerRematch(code, room) {
     room.pveSkipVotes.clear();
     room.pveSpawnQueue = []; room.pveSpawnTimer = 0;
     room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
+    room.pveKinds = PveRewards.newKinds(); room.pveT0 = 0;
     room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;
     setTimeout(() => { if (rooms.has(code)) room.countdownActive = false; }, 3700);
     assignSpawnPositions(room._playerArr, room.obstacles);
@@ -3079,7 +3102,7 @@ function triggerRematch(code, room) {
         p.maxHp   = p.baseMaxHp   || p.maxHp;
         p.ammoMax = p.baseAmmoMax || p.ammoMax;
         p.pveUpgrades = { dmg: 0, spd: 0, hp: 0, ammo: 0 };
-        p.pveInv = newInv(); p.work = null;
+        p.pveInv = newInv(); p.work = null; p.pveTot = { dmg: 0, coins: 0 };
         p.coins = 0;
         flushWeaponStats(p); // anything not saved yet from the last match
         p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0; p.rs = Missions.newRoundStats();
@@ -3225,6 +3248,7 @@ io.on('connection', (socket) => {
             room.zombies = [];
             room.base = { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R };
             room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
+            room.pveKinds = PveRewards.newKinds(); room.pveT0 = 0;
             room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;
         } else {
             assignSpawnPositions(room._playerArr, room.obstacles);
@@ -3235,7 +3259,7 @@ io.on('connection', (socket) => {
             p.shooting = false; p.shootCooldown = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
             p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
             p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0; p.lastInputAt = 0; p.stalled = false;
-            p.pveInv = newInv(); p.work = null;
+            p.pveInv = newInv(); p.work = null; p.pveTot = { dmg: 0, coins: 0 };
         });
 
         const playersMeta = {};

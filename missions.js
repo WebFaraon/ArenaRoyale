@@ -141,6 +141,22 @@ function claim(state, missionId) {
     return { ok: true, coins: d.coins, diamonds: d.diamonds };
 }
 
+// The one mission the end board of a PvE match shows: a mission this round finished (the richest first), else the one that moved furthest
+// toward its goal. before: Map mission id -> progress before the round; state: after applyRound. null when no mission moved.
+function roundNote(before, state) {
+    let best = null, bestScore = -1;
+    for (const e of state.list) {
+        const d = BY_ID[e.id];
+        if (!d || e.claimed) continue;
+        const was = before.get(e.id) || 0;
+        if (e.prog <= was) continue;
+        const done = e.prog >= d.goal && was < d.goal;
+        const score = done ? 1000 + d.coins + d.diamonds * 100 : e.prog / d.goal;
+        if (score > bestScore) { bestScore = score; best = { id: d.id, title: d.title, goal: d.goal, prog: Math.min(e.prog, d.goal), coins: d.coins, diamonds: d.diamonds, done }; }
+    }
+    return best;
+}
+
 function newRoundStats() { return { brKills: 0, pveKills: 0, zKills: 0, kits: 0, dmg: 0, wk: {}, pwk: {}, bwk: {} }; }
 
-module.exports = { POOL, WEAPONS, WNAME, today, freshState, normalize, applyRound, toClient, claim, newRoundStats, pickDaily };
+module.exports = { POOL, WEAPONS, WNAME, today, freshState, normalize, applyRound, toClient, claim, newRoundStats, pickDaily, roundNote };
