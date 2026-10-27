@@ -67,9 +67,9 @@
                 { id: 'siege',    name: 'Bomb III', hp: 700, total: 180, up: 80, ms: 3000, range: 380, cd: 1.2, dmg: 70, splash: 90 },
             ] },
             flame: { name: 'Flamethrower', inv: 'flame', maxPerRoom: 2, perExtraPlayer: 1, tiers: [
-                { id: 'pilot',   name: 'Flame I',   hp: 320, total: 35,  up: 0,  ms: 0,    range: 150, cd: 0.25, dmg: 8,  cone: 0.42 },
-                { id: 'burner',  name: 'Flame II',  hp: 500, total: 80,  up: 45, ms: 2000, range: 170, cd: 0.25, dmg: 12, cone: 0.46 },
-                { id: 'inferno', name: 'Flame III', hp: 750, total: 150, up: 70, ms: 3000, range: 190, cd: 0.25, dmg: 18, cone: 0.50 },
+                { id: 'pilot',   name: 'Flame I',   hp: 500, total: 35,  up: 0,  ms: 0,    range: 185, cd: 0.25, dmg: 12, cone: 0.45 },
+                { id: 'burner',  name: 'Flame II',  hp: 800, total: 80,  up: 45, ms: 2000, range: 215, cd: 0.25, dmg: 20, cone: 0.50 },
+                { id: 'inferno', name: 'Flame III', hp: 1250, total: 150, up: 70, ms: 3000, range: 245, cd: 0.25, dmg: 32, cone: 0.55 },
             ] },
             heal: { name: 'Health Station', inv: 'heal', maxPerRoom: 1, perExtraPlayer: 1, tiers: [
                 { id: 'aid',      name: 'Health I',   hp: 300, total: 25,  up: 0,  ms: 0,    range: 130, rate: 6 },

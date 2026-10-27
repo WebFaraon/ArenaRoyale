@@ -3778,71 +3778,105 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.globalAlpha = 1;
         }
     }
-    // The Flamethrower's jet. While the server keeps sending bursts (flame-shots, one every 250 ms, a burst stays _FLAME_LIFE ms) fire pours out of the
-    // nozzle. It does not appear all at once: it starts as a short tongue and grows into the full jet over _FLAME_RAMP ms (more particles, longer reach),
-    // and shrinks again when the bursts stop. The jet is a stream of separate particles (not one blob): each is born at the nozzle on a ray inside the cone,
-    // flies out, swells and shrinks, and goes white-yellow -> yellow -> orange -> red -> dark red -> smoke. The hottest part is drawn additively (it glows and brightens
-    // where it is thick), the rest and the smoke normally, the smoke first. Round it: sparks with a tail, embers, smoke, the light on the ground and a flash at the nozzle.
-    // Nothing is stored but when the last burst came (t.flameT) and when this run began (t.flameS); everything else is worked out from the clock.
-    const _FLAME_LIFE = 330, _FLAME_RAMP = 900, _FLAME_P = 72, _FLAME_SMOKE = 8, _FLAME_SPARKS = 12, _FLAME_EMBERS = 6;
-    const _FLAME_COL = ['#FFF6D0', '#FFD94D', '#FF9A22', '#FF5A1F', '#B8321A'], _FLAME_ALPHA = [0.7, 0.62, 0.72, 0.78, 0.72];
-    const _fpx = new Float32Array(_FLAME_P), _fpy = new Float32Array(_FLAME_P), _fpr = new Float32Array(_FLAME_P), _fpb = new Uint8Array(_FLAME_P), _fpa = new Float32Array(_FLAME_P);
+    // The Flamethrower's jet: one tongue of fire flowing out of the nozzle, not a stream of shots. While the server keeps sending bursts (flame-shots, one
+    // every 250 ms, a burst stays _FLAME_LIFE ms, so the flame holds while they keep coming) it is drawn as four stacked ragged shapes along a centre line that sways: narrow, bright and compact at the
+    // nozzle, widening into a cone, more turbulent and torn the further it goes, thinning and breaking up at the end. From the outside in: the dark
+    // orange-red rim (the widest, the most ragged, with little tongues licking out of it), the orange body, the yellow, and a small near-white core that
+    // only lives close to the nozzle. It comes out compact and runs forward quickly (_FLAME_RAMP ms), "breathes" a little, and every point of every edge
+    // wobbles on its own phase so no two stretches look alike. Round it, kept discreet: sparks, embers, a few torn-off flecks and a little smoke at the tip only.
+    // Nothing is stored but when the last burst came (t.flameT) and when this run began (t.flameS); the rest is worked out from the clock, in arrays reused
+    // for every tower (no allocation per frame).
+    const _FLAME_LIFE = 400, _FLAME_RAMP = 380, _FM = 15, _FLAME_LICKS = 6, _FLAME_FLECKS = 4, _FLAME_SPARKS = 7, _FLAME_EMBERS = 4;
+    const _fcx = new Float32Array(_FM), _fcy = new Float32Array(_FM), _fenv = new Float32Array(_FM), _fnx = new Float32Array(_FM), _fny = new Float32Array(_FM);   // the centre line: x, y, half width, the unit normal
+    const _fpx = new Float32Array(2 * _FM), _fpy = new Float32Array(2 * _FM);                                                                                    // the outline of one layer
+    const _fex = new Float32Array(2 * _FM), _fey = new Float32Array(2 * _FM);                                                                                    // the outline of the outer layer (where the licks and flecks start)
+    // [colour, alpha, width (of the envelope), where it ends along the jet, how ragged its edge is]: rim, body, yellow, core
+    const _FLAME_LAYERS = [['#C8381A', 0.82, 1.0, 1.0, 1.0], ['#FF8A1F', 0.95, 0.78, 0.9, 0.75], ['#FFD43B', 1, 0.5, 0.66, 0.5], ['#FFF8DC', 1, 0.2, 0.36, 0.3]];
     function _fh(k) { const s = Math.sin(k * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
+    // A smooth closed shape through n points (quadratic curves through the midpoints: no corners)
+    function _smoothShape(ctx, xs, ys, n) {
+        ctx.beginPath(); ctx.moveTo((xs[n - 1] + xs[0]) / 2, (ys[n - 1] + ys[0]) / 2);
+        for (let i = 0; i < n; i++) { const j = i + 1 === n ? 0 : i + 1; ctx.quadraticCurveTo(xs[i], ys[i], (xs[i] + xs[j]) / 2, (ys[i] + ys[j]) / 2); }
+        ctx.closePath();
+    }
     function _drawFlameFx(ctx, now) {
         for (let i = 0; i < _turrets.length; i++) {
             const t = _turrets[i];
             if (t.kd !== 'flame' || now - t.flameT >= _FLAME_LIFE) continue;
-            const tier = ARStructs.turretTiers(t)[t.t], R = tier.range, half = tier.cone, ang = t.ang, ca = Math.cos(ang), sa = Math.sin(ang);
-            const ramp = Math.min(1, (now - t.flameS) / _FLAME_RAMP), e = ramp * ramp * (3 - 2 * ramp), fade = Math.min(1, (t.flameT + _FLAME_LIFE - now) / 220);
-            const M = 33 + 3 * t.t, reach = M + (R - M) * (0.28 + 0.72 * e) * (0.5 + 0.5 * fade), sz = (1 + 0.12 * t.t) * (0.55 + 0.45 * e) * (0.6 + 0.4 * fade);
-            const n = Math.ceil(_FLAME_P * (0.22 + 0.78 * e) * fade), tx = t.x, ty = t.y, mx = tx + ca * M, my = ty + sa * M, tid = t.id * 7;
-            // the light the fire throws on the ground
-            ctx.globalAlpha = 0.12 * e * fade; ctx.fillStyle = '#FF7A1F';
-            for (let g = 1; g <= 2; g++) { const d = M + (reach - M) * g / 2.4; ctx.beginPath(); ctx.arc(tx + ca * d, ty + sa * d, Math.min(d * Math.tan(half) * 1.1 + 12, 64), 0, TAU); ctx.fill(); }
-            // smoke drifting off the tip
+            const tier = ARStructs.turretTiers(t)[t.t], R = tier.range, half = tier.cone, ang = t.ang, ca = Math.cos(ang), sa = Math.sin(ang), seed = t.id * 7;
+            const ramp = Math.min(1, (now - t.flameS) / _FLAME_RAMP), e = 1 - (1 - ramp) * (1 - ramp), fade = Math.min(1, (t.flameT + _FLAME_LIFE - now) / 120);   // full while the bursts keep coming (one every 250 ms), a short fade once they stop
+            const M0 = 33 + 3 * t.t, tx = t.x, ty = t.y, mx = tx + ca * M0, my = ty + sa * M0, nx = -sa, ny = ca;
+            const breath = 1 + 0.045 * Math.sin(now * 0.0083 + seed) + 0.03 * Math.sin(now * 0.019 + seed * 1.7);   // the length breathes
+            const L = (R - M0) * (0.3 + 0.7 * e) * (0.5 + 0.5 * fade) * breath;
+            const Wmax = 0.5 * Math.tan(half) * L * (0.8 + 0.2 * e) * (1 + 0.05 * Math.sin(now * 0.007 + seed * 2)) * (0.6 + 0.4 * fade);
+            // the centre line: it sways more the further it goes; the half width: 2.6 at the nozzle, opening out, closing to nothing at the end
+            for (let k = 0; k < _FM; k++) {
+                const u = k / (_FM - 1), tail = Math.max(0, (u - 0.72) / 0.28);
+                _fenv[k] = (2.6 + (Wmax - 2.6) * Math.pow(u, 1.15)) * (1 - Math.pow(tail, 1.5));
+                const sway = (Math.sin(now * 0.0062 + seed + u * 4.2) * 0.6 + Math.sin(now * 0.0117 + seed * 2.3 + u * 7.9) * 0.4) * (1.5 + 11 * u * u);
+                _fcx[k] = mx + ca * L * u + nx * sway; _fcy[k] = my + sa * L * u + ny * sway;
+            }
+            ctx.globalAlpha = 0.07 * e * fade; ctx.fillStyle = '#FF7A1F';   // a faint light on the ground along the jet
+            ctx.beginPath(); ctx.ellipse(mx + ca * L * 0.5, my + sa * L * 0.5, L * 0.55 + 6, Wmax * 0.8 + 6, ang, 0, TAU); ctx.fill();
+            // the four layers, each its own outline: points along the top edge, then back along the bottom edge; every edge point wobbles on its own phases
+            for (let l = 0; l < 4; l++) {
+                const lay = _FLAME_LAYERS[l], wmul = lay[2], end = lay[3], rough = lay[4], phT = _fh(seed + l * 13) * TAU, phB = _fh(seed + l * 13 + 5) * TAU;
+                for (let k = 0; k < _FM; k++) {
+                    const u = k / (_FM - 1), tp = Math.max(0, (u - end * 0.72) / (end * 0.28 + 1e-6)), w = _fenv[k] * wmul * (u >= end ? 0 : 1 - Math.pow(Math.min(1, tp), 1.5));
+                    const amp = (w + 4.5 * u * u) * (0.06 + 0.32 * u) * rough * (1 + 1.2 * Math.max(0, (u - 0.7) / 0.3));   // more turbulent the further it goes; at the tail the edge tears instead of closing in a point
+                    const nT = Math.sin(now * 0.013 + k * 1.9 + phT) * 0.5 + Math.sin(now * 0.0217 + k * 3.7 + phT * 1.3) * 0.35 + Math.sin(now * 0.0061 + k * 0.9 + phT * 0.7) * 0.4;
+                    const nB = Math.sin(now * 0.0119 + k * 2.3 + phB) * 0.5 + Math.sin(now * 0.0233 + k * 3.1 + phB * 1.1) * 0.35 + Math.sin(now * 0.0057 + k * 1.1 + phB * 0.8) * 0.4;
+                    const top = Math.max(0, w + amp * nT), bot = Math.max(0, w + amp * nB);
+                    _fpx[k] = _fcx[k] + nx * top; _fpy[k] = _fcy[k] + ny * top;
+                    _fpx[2 * _FM - 1 - k] = _fcx[k] - nx * bot; _fpy[2 * _FM - 1 - k] = _fcy[k] - ny * bot;
+                }
+                if (l === 0) { _fex.set(_fpx); _fey.set(_fpy); }
+                ctx.fillStyle = lay[0]; ctx.globalAlpha = lay[1] * (0.4 + 0.6 * fade);
+                _smoothShape(ctx, _fpx, _fpy, 2 * _FM); ctx.fill();
+            }
+            // little tongues licking out of the rim, and flecks torn off it (both start on the outer outline)
+            ctx.fillStyle = '#E8561C';
+            for (let k = 0; k < _FLAME_LICKS; k++) {
+                const dur = 230 + 140 * _fh(k + seed), tt = now / dur + _fh(k * 3 + seed) * 5, u = tt % 1, sid = Math.floor(tt) * 11 + k + seed;
+                const ik = 3 + Math.floor(_fh(sid) * (_FM - 7)), top = _fh(sid + 1) < 0.5, bi = top ? ik : 2 * _FM - 1 - ik, bx = _fex[bi], by = _fey[bi];
+                const out = (top ? 1 : -1), len = (5 + 9 * (ik / _FM)) * Math.sin(u * Math.PI) * (0.4 + 0.6 * e), wd = 2.2 + 2.4 * (ik / _FM);
+                ctx.globalAlpha = 0.9 * fade;
+                ctx.beginPath(); ctx.moveTo(bx - ca * wd, by - sa * wd);
+                ctx.quadraticCurveTo(bx + nx * out * len * 0.5, by + ny * out * len * 0.5, bx + nx * out * len + ca * len * 0.7, by + ny * out * len + sa * len * 0.7);
+                ctx.quadraticCurveTo(bx + nx * out * len * 0.3 + ca * wd * 1.4, by + ny * out * len * 0.3 + sa * wd * 1.4, bx + ca * wd, by + sa * wd);
+                ctx.closePath(); ctx.fill();
+            }
+            for (let k = 0; k < _FLAME_FLECKS; k++) {   // a fleck: a tiny torn bit of fire that drifts forward and out and goes out
+                const dur = 380 + 200 * _fh(k + seed + 40), tt = now / dur + _fh(k * 5 + seed) * 5, u = tt % 1, sid = Math.floor(tt) * 7 + k + seed;
+                const ik = 8 + Math.floor(_fh(sid) * (_FM - 10)), top = _fh(sid + 1) < 0.5, bi = top ? ik : 2 * _FM - 1 - ik, out = top ? 1 : -1;
+                const fx = _fex[bi] + nx * out * (4 + 12 * u) + ca * (6 + 20 * u), fy = _fey[bi] + ny * out * (4 + 12 * u) + sa * (6 + 20 * u), r = (2.6 * (1 - u) + 0.6) * (0.5 + 0.5 * e), rot = _fh(sid + 2) * TAU + u * 3;
+                ctx.globalAlpha = (1 - u) * fade; ctx.fillStyle = k % 2 ? '#FF7A1F' : '#E8561C';
+                ctx.beginPath(); ctx.moveTo(fx + Math.cos(rot) * r * 1.6, fy + Math.sin(rot) * r * 1.6); ctx.lineTo(fx + Math.cos(rot + 1.9) * r, fy + Math.sin(rot + 1.9) * r);
+                ctx.lineTo(fx + Math.cos(rot + 3.4) * r * 1.2, fy + Math.sin(rot + 3.4) * r * 1.2); ctx.lineTo(fx + Math.cos(rot + 4.7) * r, fy + Math.sin(rot + 4.7) * r); ctx.closePath(); ctx.fill();
+            }
+            // a little smoke, only at the very end
             ctx.fillStyle = '#3A3A44';
-            for (let s = 0; s < _FLAME_SMOKE; s++) {
-                const ph = (now / 1100 + s / _FLAME_SMOKE) % 1, id = tid + s + Math.floor(now / 1100 + s / _FLAME_SMOKE) * 5, d = reach * 0.8 + ph * 50, lat = (_fh(id) * 2 - 1) * (d * Math.tan(half) * 0.7 + 8);
-                ctx.globalAlpha = 0.3 * (1 - ph) * Math.min(1, ph * 6) * e * fade;
-                ctx.beginPath(); ctx.arc(tx + ca * d - sa * lat, ty + sa * d + ca * lat - ph * 26, (6 + 14 * ph) * sz, 0, TAU); ctx.fill();
+            for (let s = 0; s < 3; s++) {
+                const ph = (now / 1200 + s / 3) % 1, sid = seed + s + Math.floor(now / 1200 + s / 3) * 5, d = L * 0.96 + ph * 36, lat = (_fh(sid) * 2 - 1) * (Wmax * 0.5 + 6);
+                ctx.globalAlpha = 0.16 * (1 - ph) * Math.min(1, ph * 6) * e * fade;
+                ctx.beginPath(); ctx.arc(mx + ca * d + nx * lat, my + sa * d + ny * lat - ph * 22, 6 + 9 * ph, 0, TAU); ctx.fill();
             }
-            // the particles: each on its own ray inside the cone, more of them near the axis
-            for (let k = 0; k < n; k++) {
-                const dur = 420 + 220 * _fh(k + tid), tt = now / dur + _fh(k * 3 + 1) * 5, ph = tt % 1, sid = Math.floor(tt) * 17 + k + tid;
-                let u = _fh(sid) * 2 - 1; u = u < 0 ? -Math.pow(-u, 1.5) : Math.pow(u, 1.5);
-                const a = ang + u * half * 0.9, dd = (reach - M) * Math.pow(ph, 0.8), wob = Math.sin(now * 0.011 + sid * 1.3) * 3 * ph;
-                _fpx[k] = mx + Math.cos(a) * dd - sa * wob; _fpy[k] = my + Math.sin(a) * dd + ca * wob - 6 * ph;
-                _fpr[k] = (4 + 18 * Math.pow(ph, 0.6)) * (1 - Math.pow(ph, 2.4)) * sz;
-                _fpb[k] = ph < 0.14 ? 0 : ph < 0.32 ? 1 : ph < 0.52 ? 2 : ph < 0.72 ? 3 : ph < 0.86 ? 4 : 5;
-                _fpa[k] = ph;
-            }
-            ctx.fillStyle = '#3A3A44';   // the cooled-off ones are smoke: drawn plainly, under the fire
-            for (let k = 0; k < n; k++) if (_fpb[k] === 5) { ctx.globalAlpha = 0.26 * (1 - (_fpa[k] - 0.86) / 0.14) * fade; ctx.beginPath(); ctx.arc(_fpx[k], _fpy[k], _fpr[k] * 1.3 + 1, 0, TAU); ctx.fill(); }
-            for (let b = 4; b >= 0; b--) {   // dark red first, the white-hot heart last; the two hottest add up (they glow), the rest are laid on plainly (added to the grass they would go lime)
-                ctx.globalCompositeOperation = b < 2 ? 'lighter' : 'source-over';
-                ctx.fillStyle = _FLAME_COL[b]; ctx.globalAlpha = _FLAME_ALPHA[b] * fade;
-                ctx.beginPath();
-                for (let k = 0; k < n; k++) if (_fpb[k] === b && _fpr[k] > 0.6) { ctx.moveTo(_fpx[k] + _fpr[k], _fpy[k]); ctx.arc(_fpx[k], _fpy[k], _fpr[k], 0, TAU); }
-                ctx.fill();
-            }
-            ctx.globalCompositeOperation = 'source-over';
-            // sparks flying off the jet in every direction of the cone, with a tail; embers that rise slowly and go out
+            // sparks with a tail flying out of the flame, and embers that rise and go out
             ctx.lineCap = 'round';
             for (let s = 0; s < _FLAME_SPARKS; s++) {
-                const dur = 260 + 220 * _fh(s + tid), tt = now / dur + _fh(s * 3 + 1) * 4, u = tt % 1, sid = Math.floor(tt) * 13 + s + tid, a = ang + (_fh(sid) * 2 - 1) * half * 1.4;
-                const d = M + (reach - M + 34) * Math.pow(u, 0.8), d2 = Math.max(M, d - 9 * (1 - u * 0.5)), c = Math.cos(a), sn = Math.sin(a);
-                ctx.globalAlpha = (1 - u * u) * e * fade; ctx.strokeStyle = s % 3 ? '#FFC72E' : '#FF7A1F'; ctx.lineWidth = 2.4 * (1 - u * 0.6) + 0.5;
+                const dur = 260 + 220 * _fh(s + seed), tt = now / dur + _fh(s * 3 + 1) * 4, u = tt % 1, sid = Math.floor(tt) * 13 + s + seed, a = ang + (_fh(sid) * 2 - 1) * half * 1.2;
+                const d = M0 + L * (0.35 + 0.8 * Math.pow(u, 0.8)), d2 = Math.max(M0, d - 9 * (1 - u * 0.5)), c = Math.cos(a), sn = Math.sin(a);
+                ctx.globalAlpha = (1 - u * u) * e * fade; ctx.strokeStyle = s % 3 ? '#FFC72E' : '#FF7A1F'; ctx.lineWidth = 2.2 * (1 - u * 0.6) + 0.5;
                 ctx.beginPath(); ctx.moveTo(tx + c * d2, ty + sn * d2); ctx.lineTo(tx + c * d, ty + sn * d); ctx.stroke();
             }
-            ctx.lineCap = 'butt';
-            ctx.fillStyle = '#FF9A22';
+            ctx.lineCap = 'butt'; ctx.fillStyle = '#FF9A22';
             for (let s = 0; s < _FLAME_EMBERS; s++) {
-                const u = (now / 1100 + s / _FLAME_EMBERS) % 1, sid = tid + s + Math.floor(now / 1100 + s / _FLAME_EMBERS) * 3, d = reach * 0.6 + u * 70, lat = (_fh(sid) * 2 - 1) * (d * Math.tan(half) + 10) + Math.sin(now * 0.008 + s) * 5 * u;
-                ctx.globalAlpha = (1 - u) * e * fade; ctx.beginPath(); ctx.arc(tx + ca * d - sa * lat, ty + sa * d + ca * lat - u * 30, 1.8 * (1 - u) + 0.6, 0, TAU); ctx.fill();
+                const u = (now / 1100 + s / _FLAME_EMBERS) % 1, sid = seed + s + Math.floor(now / 1100 + s / _FLAME_EMBERS) * 3, d = L * 0.6 + u * 60, lat = (_fh(sid) * 2 - 1) * (d * Math.tan(half) * 0.7 + 8) + Math.sin(now * 0.008 + s) * 5 * u;
+                ctx.globalAlpha = (1 - u) * e * fade; ctx.beginPath(); ctx.arc(mx + ca * d + nx * lat, my + sa * d + ny * lat - u * 26, 1.7 * (1 - u) + 0.6, 0, TAU); ctx.fill();
             }
             // the flash at the nozzle
-            ctx.globalAlpha = (0.5 + 0.2 * Math.sin(now * 0.04)) * fade; ctx.fillStyle = '#FFE27A'; ctx.beginPath(); ctx.arc(mx, my, 7 + 4 * e, 0, TAU); ctx.fill();
-            ctx.globalAlpha = fade; ctx.fillStyle = '#FFF6D0'; ctx.beginPath(); ctx.arc(mx, my, 3.4 + 1.2 * e, 0, TAU); ctx.fill();
+            ctx.globalAlpha = (0.55 + 0.2 * Math.sin(now * 0.04)) * fade; ctx.fillStyle = '#FFE27A'; ctx.beginPath(); ctx.arc(mx, my, 6 + 3 * e, 0, TAU); ctx.fill();
+            ctx.globalAlpha = fade; ctx.fillStyle = '#FFF8DC'; ctx.beginPath(); ctx.arc(mx, my, 3 + e, 0, TAU); ctx.fill();
             ctx.globalAlpha = 1;
         }
     }
