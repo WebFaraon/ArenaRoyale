@@ -1,2 +1,6 @@
 node_modules/
 .env
+tools/catalog/data.json
+tools/catalog/catalog.html
+tools/catalog/sheet.html
+tools/catalog/zsheet.html
