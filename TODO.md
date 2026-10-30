@@ -1,7 +1,7 @@
 # TODO — Blastridge
 
 Convenție: **Fapt** = verificat în repo sau în producție în această sesiune. **De verificat** = nu pot confirma din repo; nu e dat ca fapt.
-Producția = Kamatera, ramura **`skinuri-noi`** (nu `main`). **Verificat pe VPS** (2026-10-20, după deploy: `git rev-parse HEAD`, pm2, log-uri): HEAD în producție = `dc1143f` (G1–G7 + G5 + G6; verificat pe VPS 2026-10-21: pm2 online, 9 restart-uri, `[Auth] bcrypt nativ activ`, o singură linie `[LAG]` de 37 ms la pornire, `game.js` servit conține `_rsTick`, build `e23d443e50`). Rollback: `9a9c220` (mai adânc: `4060c2a`, `5126971`, apoi `8dbf785`).
+Producția = Kamatera, ramura **`skinuri-noi`**. **Verificat pe VPS la 2026-10-30:** codul activ este `8bbdcc5`, build `8fb2ed7e50`, PM2 rulează din `/root/ArenaRoyale`, pagina are titlul Blastridge, iar logo-ul și iconița returnează HTTP 200. Rollback-ul runtime-ului precedent este copia `/root/releases/arena-ammo-diag-cb5add2`; checkout-ul anterior era la `6446fc3`.
 
 | Grup | Commit | În producție? |
 |---|---|---|
