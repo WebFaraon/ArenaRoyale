@@ -85,6 +85,7 @@
 <symbol id="maximize" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" /></symbol>
 <symbol id="wifi" viewBox="0 0 24 24"><path d="M12 20h.01" /><path d="M2 8.82a15 15 0 0 1 20 0" /><path d="M5 12.859a10 10 0 0 1 14 0" /><path d="M8.5 16.429a5 5 0 0 1 7 0" /></symbol>
 <symbol id="arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></symbol>
+<symbol id="wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /></symbol>
 <symbol id="chevrons-up" viewBox="0 0 24 24"><path d="m17 11-5-5-5 5" /><path d="m17 18-5-5-5 5" /></symbol>
 <symbol id="castle" viewBox="0 0 24 24"><path d="M10 5V3" /><path d="M14 5V3" /><path d="M15 21v-3a3 3 0 0 0-6 0v3" /><path d="M18 3v8" /><path d="M18 5H6" /><path d="M22 11H2" /><path d="M22 9v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9" /><path d="M6 3v8" /></symbol>
 <symbol id="share-2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" x2="15.42" y1="13.51" y2="17.49" /><line x1="15.41" x2="8.59" y1="6.51" y2="10.49" /></symbol>
@@ -601,62 +602,154 @@
     <div id="zone-left"></div>
     <div id="zone-right"></div>
 
-    <!-- PvE top HUD wrapper -->
-    <div id="pve-top-hud" style="display:none">
-        <div id="pve-hud">
-            <div id="pve-wave-badge">WAVE <span id="pve-wave-num">0</span><span class="pve-wave-tot">/10</span></div>
-            <div class="pve-hud-sep"></div>
-            <div id="pve-base-section">
-                <span class="pve-base-label">BASE</span>
-                <div class="pve-base-bar-outer"><div class="pve-base-bar-inner" id="pve-base-bar-inner"></div></div>
-                <span id="pve-base-hp-text">1000</span>
-            </div>
+    <!-- Bottom of the match: the gun (rounds in the magazine / reserve) and the health, one small block (game.js _hudBottom) -->
+    <div id="hud-bottom" style="display:none">
+        <div class="hb-gun">
+            <span class="hb-icon" id="hb-icon"></span>
+            <span class="hb-count" id="hb-count"><b id="hb-mag">0</b><i>/</i><em id="hb-reserve">0</em></span>
+            <span class="hb-dry" id="hb-dry">OUT OF AMMO</span>
+            <span class="hb-segs" id="hb-segs"></span>
         </div>
-        <div id="pve-coins-badge">
-            <img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false">
-            <span id="pve-coins-num">0</span>
+        <div class="hb-hp">
+            <span class="hb-hpbar"><span id="hb-hpfill"></span><b id="hb-hptxt">0</b></span>
+        </div>
+    </div>
+    <div id="hud-ping" style="display:none"><span class="hp-dot" id="hud-ping-dot"></span><span id="hud-ping-ms">-- ms</span></div>
+    <!-- Reload on a touch screen (a keyboard has R) -->
+    <button id="btn-reload" class="btn-reload" style="display:none" aria-label="Reload"><svg class="ic" aria-hidden="true"><use href="#refresh-cw"/></svg></button>
+
+    <!-- PvE HUD (game.js _pveHud): the team, the wave, a warning, the minimap, the coins, a feed, the build bar -->
+    <div id="pve-top-hud" style="display:none">
+        <div id="pve-team" class="pve-blk">
+            <div class="pt-head"><span class="pt-title">TEAM</span><span class="pt-kills">Eliminations <b id="pve-team-kills">0</b></span></div>
+            <div id="pve-team-rows"></div>
+        </div>
+        <div id="pve-wave" class="pve-blk">
+            <div class="pw-row">
+                <div class="pw-cell"><span class="pw-lbl">WAVE</span><b class="pw-num"><span id="pve-wave-num">0</span><i>/<span id="pve-wave-of">20</span></i></b></div>
+                <div class="pw-cell pw-mid"><span class="pw-lbl">ZOMBIES</span><b class="pw-left"><span id="pve-left">0</span><i>/ <span id="pve-total">0</span></i></b></div>
+                <div class="pw-cell pw-base"><span class="pw-lbl">BASE</span><div class="pve-base-bar-outer"><div class="pve-base-bar-inner" id="pve-base-bar-inner"></div></div><b class="pw-hp" id="pve-base-hp-text">1000</b></div>
+            </div>
+            <div class="pw-bar"><span id="pve-wave-fill"></span></div>
+        </div>
+        <div id="pve-warn">
+            <svg class="ic" aria-hidden="true"><use href="#triangle-alert"/></svg>
+            <b id="pve-warn-type">TANK</b><span id="pve-warn-dir">approaching</span>
+        </div>
+        <div id="pve-grace">
+            <svg class="ic" aria-hidden="true"><use href="#wrench"/></svg>
+            <b>GET READY</b><span>zombies arrive in <i id="pve-grace-n">8</i></span>
+        </div>
+        <div id="pve-right">
+            <div id="pve-minimap" class="pve-blk"><canvas id="pve-mm" width="300" height="300"></canvas></div>
+            <div id="pve-coins-badge">
+                <img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false">
+                <span id="pve-coins-num">0</span>
+            </div>
+            <div id="pve-feed"></div>
+        </div>
+        <button id="pve-use" type="button" style="display:none"><i class="pu-key">E</i><svg class="ic pu-ic" aria-hidden="true"><use href="#wrench"/></svg><span id="pve-use-txt">REPAIR</span><span class="pu-cost"><img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false"><b id="pve-use-cost">0</b></span></button>
+        <div id="pve-place-bar" style="display:none">
+            <button id="pve-place-ok" type="button">PLACE</button>
+            <button id="pve-place-x" type="button" aria-label="Cancel"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+        </div>
+        <div id="pve-build">
+            <div class="pb-slot is-empty" id="pb-barricade" role="button" aria-label="Barricade">
+                <i class="pb-key">1</i>
+                <img class="pb-ic" src="/images/pve/icon_barricade_wood.svg" alt="" aria-hidden="true" draggable="false">
+                <b class="pb-name">Barricade</b><em class="pb-cost" id="pb-barricade-cost">x0</em>
+            </div>
+            <div class="pb-slot is-empty" id="pb-turret" role="button" aria-label="Turret">
+                <i class="pb-key">2</i>
+                <img class="pb-ic" src="/images/pve/icon_turret_mg.svg" alt="" aria-hidden="true" draggable="false">
+                <b class="pb-name">Turret</b><em class="pb-cost" id="pb-turret-cost">x0</em>
+            </div>
+            <div class="pb-slot is-empty" id="pb-tesla" role="button" aria-label="Tesla Tower">
+                <i class="pb-key">3</i>
+                <img class="pb-ic" src="/images/pve/icon_tesla.svg" alt="" aria-hidden="true" draggable="false">
+                <b class="pb-name">Tesla</b><em class="pb-cost" id="pb-tesla-cost">x0</em>
+            </div>
+            <div class="pb-slot is-empty" id="pb-heal" role="button" aria-label="Health Station">
+                <i class="pb-key">4</i>
+                <img class="pb-ic" src="/images/pve/icon_station.svg" alt="" aria-hidden="true" draggable="false">
+                <b class="pb-name">Health</b><em class="pb-cost" id="pb-heal-cost">x0</em>
+            </div>
+            <div class="pb-slot is-empty" id="pb-bomb" role="button" aria-label="Bomb Tower">
+                <i class="pb-key">5</i>
+                <img class="pb-ic" src="/images/pve/icon_bomb.svg" alt="" aria-hidden="true" draggable="false">
+                <b class="pb-name">Bomb</b><em class="pb-cost" id="pb-bomb-cost">x0</em>
+            </div>
+            <div class="pb-slot is-empty" id="pb-flame" role="button" aria-label="Flamethrower">
+                <i class="pb-key">6</i>
+                <img class="pb-ic" src="/images/pve/icon_flame.svg" alt="" aria-hidden="true" draggable="false">
+                <b class="pb-name">Flame</b><em class="pb-cost" id="pb-flame-cost">x0</em>
+            </div>
+            <div class="pb-slot is-empty" id="pb-support" role="button" aria-label="Support Tower">
+                <i class="pb-key">7</i>
+                <img class="pb-ic" src="/images/pve/icon_support.svg" alt="" aria-hidden="true" draggable="false">
+                <b class="pb-name">Support</b><em class="pb-cost" id="pb-support-cost">x0</em>
+            </div>
         </div>
     </div>
 
-    <!-- PvE Upgrade Panel -->
+    <!-- PvE between-waves panel: results + team (left), shop (centre), next wave (right). Built by game.js (_pbk*) -->
     <div id="pve-upgrade-panel" style="display:none">
-        <div class="pve-upg-header">
-            <span class="pve-upg-title"><svg class="ic" aria-hidden="true"><use href="#chevrons-up"/></svg>UPGRADE</span>
-            <span id="pve-upgrade-wave-info" class="pve-upg-wave">Wave 1<svg class="ic" aria-hidden="true"><use href="#arrow-right"/></svg>2</span>
+        <div class="pbk-fit" id="pbk-fit">
+            <header class="pbk-head">
+                <div class="pbk-box pbk-done">
+                    <span class="pbk-check"><svg class="ic" aria-hidden="true"><use href="#check"/></svg></span>
+                    <span class="pbk-done-txt"><b id="pbk-done-title">WAVE 1</b><em>COMPLETE</em></span>
+                </div>
+                <div class="pbk-box pbk-time">
+                    <div class="pbk-time-row">
+                        <span class="pbk-time-lbl" id="pbk-next-lbl">WAVE 2 STARTS IN</span>
+                        <b class="pbk-time-num" id="pbk-time">0:15</b>
+                        <span class="pbk-ready"><b id="pbk-ready-n">0 / 1</b> players ready</span>
+                    </div>
+                    <div class="pve-upg-timer-wrap"><div class="pve-upg-timer-bar" id="pve-upg-timer-bar"></div></div>
+                </div>
+                <div class="pbk-box pbk-coins">
+                    <img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false">
+                    <span class="pbk-coins-txt"><b id="pve-upgrade-coins">0</b><em id="pbk-earned">+0 this wave</em></span>
+                </div>
+                <button id="pve-skip-btn" class="pbk-go" onclick="skipWaveBreak()"><span id="pbk-go-txt">READY</span></button>
+            </header>
+            <div class="pbk-body">
+                <aside class="pbk-left">
+                    <section class="pbk-card pbk-res">
+                        <div class="pbk-card-h"><span>WAVE RESULTS</span></div>
+                        <div class="pbk-mvp" id="pbk-mvp" style="display:none"><svg class="ic" aria-hidden="true"><use href="#crown"/></svg><span id="pbk-mvp-txt"></span></div>
+                        <div class="pbk-stats">
+                            <div class="pbk-stat pbk-well is-hot"><i><img class="pic" src="/images/ui/eliminari.svg" alt="" aria-hidden="true" draggable="false"><b id="pbk-st-kills">0</b></i><em>YOUR ELIMINATIONS</em></div>
+                            <div class="pbk-stat pbk-well"><i><img class="pic" src="/images/zombies/zombi.svg" alt="" aria-hidden="true" draggable="false"><b id="pbk-st-team">0</b></i><em>ZOMBIES ELIMINATED</em></div>
+                            <div class="pbk-stat pbk-well"><i><svg class="ic" aria-hidden="true"><use href="#heart-pulse"/></svg><b id="pbk-st-dmg">0</b></i><em>DAMAGE TAKEN</em></div>
+                            <div class="pbk-stat pbk-well is-gold"><i><img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false"><b id="pbk-st-coins">0</b></i><em>COINS EARNED</em></div>
+                        </div>
+                    </section>
+                    <section class="pbk-card pbk-team">
+                        <div class="pbk-card-h"><span>TEAM</span></div>
+                        <div id="pbk-team-rows"></div>
+                    </section>
+                </aside>
+                <main class="pbk-mid">
+                    <div class="pbk-tabs" id="pbk-tabs" role="tablist">
+                        <button class="pbk-tab is-on" data-tab="all" role="tab">ALL</button>
+                        <button class="pbk-tab" data-tab="build" role="tab">STRUCTURES</button>
+                        <button class="pbk-tab" data-tab="support" role="tab">SUPPORT</button>
+                        <button class="pbk-tab" data-tab="weapon" role="tab">WEAPONS</button>
+                    </div>
+                    <div class="pbk-cards" id="pbk-cards"></div>
+                    <div class="pbk-inv" id="pbk-inv"></div>
+                </main>
+                <aside class="pbk-right">
+                    <section class="pbk-card pbk-next">
+                        <div class="pbk-card-h"><span>NEXT WAVE</span><b class="pbk-next-n" id="pbk-next-n">2</b></div>
+                        <div class="pbk-next-total"><b id="pbk-next-total">0</b><span>zombies are coming</span></div>
+                        <div id="pbk-next-rows"></div>
+                                            </section>
+                </aside>
+            </div>
         </div>
-        <div class="pve-upg-coins"><img class="pic" src="/images/pickups/moneda_pve.svg" alt="" aria-hidden="true" draggable="false"><span id="pve-upgrade-coins">0</span><span class="pve-upg-coins-lbl">coins</span></div>
-        <div class="pve-upg-grid">
-            <button class="pve-upg-btn" data-type="dmg" onclick="buyUpgrade('dmg')">
-                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#crosshair"/></svg>
-                <span class="pve-upg-name">DAMAGE</span>
-                <span class="pve-upg-val">+5%</span>
-                <span class="pve-upg-cost">6</span>
-                <div class="pve-upg-segs"></div>
-            </button>
-            <button class="pve-upg-btn" data-type="spd" onclick="buyUpgrade('spd')">
-                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#gauge"/></svg>
-                <span class="pve-upg-name">SPEED</span>
-                <span class="pve-upg-val">+4%</span>
-                <span class="pve-upg-cost">5</span>
-                <div class="pve-upg-segs"></div>
-            </button>
-            <button class="pve-upg-btn" data-type="hp" onclick="buyUpgrade('hp')">
-                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#heart-pulse"/></svg>
-                <span class="pve-upg-name">HP MAX</span>
-                <span class="pve-upg-val">+15</span>
-                <span class="pve-upg-cost">7</span>
-                <div class="pve-upg-segs"></div>
-            </button>
-            <button class="pve-upg-btn" data-type="ammo" onclick="buyUpgrade('ammo')">
-                <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#bolt"/></svg>
-                <span class="pve-upg-name">AMMO</span>
-                <span class="pve-upg-val">+12%</span>
-                <span class="pve-upg-cost">4</span>
-                <div class="pve-upg-segs"></div>
-            </button>
-        </div>
-        <button id="pve-skip-btn" onclick="skipWaveBreak()">SKIP</button>
-        <div class="pve-upg-timer-wrap"><div class="pve-upg-timer-bar" id="pve-upg-timer-bar"></div></div>
     </div>
 
     <!-- Spectator HUD -->
@@ -675,7 +768,6 @@
     <div class="hud-actions">
     <button id="btn-debug-toggle" onclick="window._toggleDbg && window._toggleDbg()" title="Debug overlay">DBG</button>
     <button id="btn-settings-game" onclick="openSettings()" title="Settings" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
-    <button id="btn-leave-game" onclick="showLeaveConfirm()" title="Leave game"><svg class="ic" aria-hidden="true"><use href="#x"/></svg><span>LEAVE</span></button>
     </div>
 
     <div id="leave-confirm">
@@ -723,6 +815,117 @@
             <a href="#" class="lb-btn gameover-lb" onclick="openLeaderboard(); return false;"><img class="pic" src="/images/ui/leaderboard.svg" alt="" aria-hidden="true" draggable="false">LEADERBOARD</a>
         </div>
     </div>
+
+    <!-- PvE end board: victory (all waves held) / base fallen. Filled by public/game.js _peRender from the pve-end event -->
+    <div id="pve-end" data-result="win" role="dialog" aria-modal="true" aria-labelledby="pe-title">
+        <svg class="pe-confetti" viewBox="0 0 1440 810" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g>
+            <rect x="120" y="60" width="14" height="8" fill="#FFC72E" transform="rotate(25 127 64)"/><rect x="210" y="150" width="12" height="7" fill="#fff" transform="rotate(-40 216 153)"/><rect x="330" y="40" width="14" height="8" fill="#FF7A1F" transform="rotate(60 337 44)"/><rect x="420" y="120" width="12" height="7" fill="#46D46A" transform="rotate(10 426 123)"/><rect x="500" y="70" width="14" height="8" fill="#FFC72E" transform="rotate(-25 507 74)"/><rect x="640" y="36" width="14" height="8" fill="#38A7F2" transform="rotate(-60 647 40)"/><rect x="800" y="44" width="14" height="8" fill="#FF7A1F" transform="rotate(35 807 48)"/><rect x="880" y="180" width="12" height="7" fill="#FFC72E" transform="rotate(-15 886 183)"/><rect x="940" y="90" width="14" height="8" fill="#fff" transform="rotate(70 947 94)"/><rect x="1030" y="140" width="12" height="7" fill="#46D46A" transform="rotate(-50 1036 143)"/><rect x="1110" y="50" width="14" height="8" fill="#FFC72E" transform="rotate(20 1117 54)"/><rect x="1200" y="170" width="12" height="7" fill="#FF7A1F" transform="rotate(-30 1206 173)"/><rect x="1290" y="80" width="14" height="8" fill="#38A7F2" transform="rotate(45 1297 84)"/><rect x="1350" y="200" width="12" height="7" fill="#fff" transform="rotate(-70 1356 203)"/><rect x="70" y="240" width="12" height="7" fill="#FF7A1F" transform="rotate(15 76 243)"/><rect x="1380" y="290" width="12" height="7" fill="#FFC72E" transform="rotate(-20 1386 293)"/>
+            <circle cx="260" cy="90" r="5" fill="#FFC72E"/><circle cx="740" cy="170" r="5" fill="#FF7A1F"/><circle cx="1170" cy="110" r="5" fill="#fff"/><circle cx="90" cy="150" r="5" fill="#46D46A"/><circle cx="1260" cy="240" r="5" fill="#38A7F2"/>
+        </g></svg>
+        <svg class="pe-swarm" viewBox="0 0 1440 810" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g stroke="#0A1013" stroke-width="5" opacity=".85">
+            <circle cx="-6" cy="170" r="54" fill="#5E9A30"/><circle cx="-14" cy="330" r="44" fill="#4F7A2A"/><circle cx="12" cy="520" r="58" fill="#5E9A30"/><circle cx="-10" cy="690" r="48" fill="#4F7A2A"/>
+            <circle cx="1446" cy="200" r="52" fill="#5E9A30"/><circle cx="1456" cy="370" r="46" fill="#4F7A2A"/><circle cx="1430" cy="560" r="58" fill="#5E9A30"/><circle cx="1452" cy="720" r="46" fill="#4F7A2A"/>
+            <circle cx="260" cy="832" r="52" fill="#4F7A2A"/><circle cx="520" cy="846" r="44" fill="#5E9A30"/><circle cx="900" cy="840" r="50" fill="#5E9A30"/><circle cx="1160" cy="834" r="44" fill="#4F7A2A"/>
+        </g><g fill="#3F6320" opacity=".85"><circle cx="-6" cy="170" r="26"/><circle cx="12" cy="520" r="28"/><circle cx="1446" cy="200" r="26"/><circle cx="1430" cy="560" r="28"/><circle cx="520" cy="846" r="22"/><circle cx="900" cy="840" r="24"/></g></svg>
+        <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="pe-base-sym" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="47" style="fill:var(--pe-halo)"/>
+            <polygon points="50,6 88,28 88,72 50,94 12,72 12,28" fill="#8B97A1" stroke="#0A1013" stroke-width="3.5" stroke-linejoin="round"/>
+            <polygon points="50,24 72,37 72,63 50,76 28,63 28,37" fill="#3B434B" stroke="#0A1013" stroke-width="3" stroke-linejoin="round"/>
+            <circle cx="50" cy="50" r="11" stroke="#0A1013" stroke-width="3" style="fill:var(--pe-core)"/>
+            <circle cx="46" cy="46" r="3.4" fill="#D6FFE1" style="opacity:var(--pe-shine)"/>
+            <g stroke="#0A1013" stroke-width="2.4" style="fill:var(--pe-node)"><circle cx="50" cy="6" r="4.5"/><circle cx="88" cy="28" r="4.5"/><circle cx="88" cy="72" r="4.5"/><circle cx="50" cy="94" r="4.5"/><circle cx="12" cy="72" r="4.5"/><circle cx="12" cy="28" r="4.5"/></g>
+            <path d="M50 6l-6 22 9 10-8 14 7 12-4 22" fill="none" stroke="#0A1013" stroke-width="3.4" stroke-linejoin="round" style="opacity:var(--pe-crack)"/>
+        </symbol></svg>
+
+        <div class="pe-fit">
+            <header class="pe-head">
+                <div class="pe-chip">SURVIVAL<i></i>PvE<i></i><span id="pe-count">1 PLAYER</span></div>
+                <div class="pe-title-row">
+                    <svg class="pe-base" aria-hidden="true"><use href="#pe-base-sym"/></svg>
+                    <h2 id="pe-title">VICTORY!</h2>
+                    <svg class="pe-base" aria-hidden="true"><use href="#pe-base-sym"/></svg>
+                </div>
+                <div class="pe-sub"><span id="pe-sub-lbl"></span><b id="pe-sub-num"></b><span id="pe-sub-tail"></span></div>
+            </header>
+
+            <div class="pe-body">
+                <!-- you -->
+                <section class="pe-card pe-me">
+                    <div class="pe-id">
+                        <div class="pe-avatar"><img id="pe-av-img" alt="" style="display:none"><svg class="ic" id="pe-av-ph" aria-hidden="true"><use href="#user"/></svg></div>
+                        <div class="pe-id-txt"><b id="pe-nick">PLAYER</b><em id="pe-rank">RECRUIT</em></div>
+                    </div>
+                    <div class="pe-lvl" id="pe-lvl">
+                        <span class="pe-lv" id="pe-lv-a">LV 1</span>
+                        <svg class="ic pe-lv-arrow" aria-hidden="true"><use href="#arrow-right"/></svg>
+                        <span class="pe-lv is-new" id="pe-lv-b">LV 2</span>
+                    </div>
+                    <div class="pe-newlvl" id="pe-newlvl">NEW LEVEL!</div>
+                    <div class="pe-xp">
+                        <div class="pe-xp-row"><b id="pe-xp-gain">+0 XP</b><span id="pe-xp-txt"></span></div>
+                        <div class="pe-bar"><i id="pe-xp-fill"></i></div>
+                        <small id="pe-xp-more"></small>
+                    </div>
+                    <div class="pe-kinds">
+                        <h3>ZOMBIES ELIMINATED BY TEAM</h3>
+                        <div class="pe-kinds-grid">
+                            <div class="pe-kind"><img src="/images/zombies/zombi.svg" alt="" draggable="false"><div><b id="pe-k-normal">0</b><em>NORMAL</em></div></div>
+                            <div class="pe-kind"><img src="/images/zombies/zombi_rapid.svg" alt="" draggable="false"><div><b id="pe-k-runner">0</b><em>RUNNERS</em></div></div>
+                            <div class="pe-kind"><img src="/images/zombies/zombi_tanc.svg" alt="" draggable="false"><div><b id="pe-k-heavy">0</b><em>TANKS</em></div></div>
+                            <div class="pe-kind"><img src="/images/zombies/zombi_toxic.svg" alt="" draggable="false"><div><b id="pe-k-special">0</b><em>SPECIAL</em></div></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- the team and the road through the waves -->
+                <section class="pe-card pe-mid">
+                    <div class="pe-stats">
+                        <div class="pe-stat"><b id="pe-st-waves">0</b><em>WAVES</em></div>
+                        <div class="pe-stat"><b><img class="pic" src="/images/zombies/zombi.svg" alt="" draggable="false"><span id="pe-st-zombies">0</span></b><em>ZOMBIES ELIMINATED</em></div>
+                        <div class="pe-stat"><b id="pe-st-base">0</b><em>BASE HEALTH LEFT</em><span class="pe-bar is-thin"><i id="pe-st-base-fill"></i></span></div>
+                        <div class="pe-stat"><b id="pe-st-time">0:00</b><em>MATCH TIME</em></div>
+                    </div>
+                    <div class="pe-path">
+                        <div class="pe-path-h"><h3>WAVE PROGRESS</h3><span id="pe-path-note"></span></div>
+                        <div class="pe-ms" id="pe-ms"></div>
+                        <div class="pe-pips" id="pe-pips"></div>
+                    </div>
+                    <div class="pe-team">
+                        <div class="pe-trow is-h"><span>TEAM</span><span>ELIMINATIONS</span><span>DAMAGE TAKEN</span><span>COINS COLLECTED</span></div>
+                        <div id="pe-rows"></div>
+                    </div>
+                </section>
+
+                <!-- what the match paid -->
+                <section class="pe-card pe-rew">
+                    <h3>REWARDS</h3>
+                    <div class="pe-prizes">
+                        <div class="pe-prize is-coin"><img class="pic" src="/images/ui/monede.svg" alt="" draggable="false"><b id="pe-p-coins">+0</b><em>COINS</em></div>
+                        <div class="pe-prize is-gem"><img class="pic" src="/images/ui/diamante.svg" alt="" draggable="false"><b id="pe-p-gems">+0</b><em>GEMS</em></div>
+                        <div class="pe-prize is-xp"><svg class="ic" aria-hidden="true"><use href="#zap"/></svg><b id="pe-p-xp">+0</b><em>XP</em></div>
+                    </div>
+                    <div class="pe-why">
+                        <h3>COIN BREAKDOWN</h3>
+                        <div class="pe-why-row"><span id="pe-w-waves"></span><b id="pe-w-waves-c"></b></div>
+                        <div class="pe-why-row"><span>Your eliminations</span><b id="pe-w-kills-c"></b></div>
+                        <div class="pe-why-row"><span>Victory bonus</span><b id="pe-w-win-c"></b></div>
+                        <div class="pe-why-row is-sum"><span id="pe-w-gem-note"></span><b class="is-gem" id="pe-w-gems"></b></div>
+                    </div>
+                    <div class="pe-mission" id="pe-mission" hidden>
+                        <div class="pe-mission-h" id="pe-mis-h"></div>
+                        <div class="pe-mission-row"><span id="pe-mis-title"></span><b id="pe-mis-val"></b></div>
+                        <div class="pe-bar is-gold"><i id="pe-mis-fill"></i></div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="pe-actions">
+                <button type="button" id="pe-again" class="pe-btn is-go"><svg class="ic" aria-hidden="true"><use href="#refresh-cw"/></svg><span><b id="pe-again-lbl">PLAY AGAIN</b><em id="pe-again-sub">Survival PvE</em></span></button>
+                <button type="button" id="pe-share" class="pe-btn is-gold"><svg class="ic" aria-hidden="true"><use href="#share-2"/></svg><b>SHARE</b></button>
+                <button type="button" id="pe-lobby" class="pe-btn" onclick="returnToLobby()"><svg class="ic" aria-hidden="true"><use href="#door-open"/></svg><b>LOBBY</b></button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- ========== SETARI ========== -->
@@ -754,6 +957,13 @@
                     <div><div class="settings-name">Fullscreen</div><div class="settings-hint" id="set-fs-hint">Hide the browser bar</div></div>
                 </div>
                 <button class="settings-btn" id="set-fs">ENTER</button>
+            </div>
+            <div class="settings-row" id="set-row-leave" style="display:none">
+                <div class="settings-label">
+                    <img class="pic" src="/images/ui/iesi_din_cont.svg" alt="" aria-hidden="true" draggable="false">
+                    <div><div class="settings-name">Match</div><div class="settings-hint">Leave this round and return to the lobby</div></div>
+                </div>
+                <button class="settings-btn settings-logout" onclick="closeSettings(); showLeaveConfirm()">LEAVE MATCH</button>
             </div>
             <div class="settings-row" id="set-row-logout">
                 <div class="settings-label">
@@ -806,6 +1016,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
 <script src="combat-shared.js"></script>
 <script src="netproto.js"></script>
+<script src="ammo.js"></script>
+<script src="structures.js"></script>
 <script src="interp.js"></script>
 <script src="frame-cap.js"></script>
 <script src="pve-coins.js"></script>

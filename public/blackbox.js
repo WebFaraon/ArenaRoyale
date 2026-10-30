@@ -15,8 +15,8 @@
 //     and for how long; a late packet while the page was blocked is not the network's fault;
 //   - the frame's own cost (js) against the time between frames: a long frame whose JS was short was waited on by
 //     something else (GPU, raster, the system);
-//   - the packets: a gap that ends in a burst, with every tick present and the page free, is the network; missing
-//     tick numbers mean the server did not send them (a slow link's backpressure, or a loaded server).
+//   - the packets: a gap that ends in a burst, with every tick present and the page free, needs the server trace
+//     to distinguish late emission from buffering after emission; missing ticks need a server skip decision.
 // ============================================
 (function (root, factory) {
     const api = factory(root);
@@ -54,7 +54,7 @@
         'frame-cost':  'Cadrul însuși a costat prea mult (JS sau desen): vezi câți zombi, gloanțe și jucători erau în scenă.',
         'main-thread': 'Pagina a fost blocată în afara cadrului (alt script, extensie, GC sau sistemul): nu e rețeaua.',
         'gc':          'Pagina a fost blocată, iar memoria JS a scăzut brusc în același timp: probabil garbage collection.',
-        'network':     'Pachetele au fost întârziate și au sosit grămadă, cu pagina liberă și fără tick-uri lipsă: rețea sau WiFi.',
+        'network':     'Pachetele au sosit în rafală, cu pagina liberă și fără tickuri lipsă; urma serverului arată dacă au fost emise târziu sau reținute ulterior.',
         'server-loop': 'Serverul însuși a fost blocat (event-loop) în același timp cu întârzierea pachetelor: nu e rețeaua ta.',
         'server-ticks': 'Au lipsit tick-uri: serverul nu le-a trimis acestui client (backpressure pe o conexiune lentă, sau server încărcat).',
         'render':      'Cadru lung fără blocare de JS: GPU, raster, compositor sau sistemul (termic, alt proces, vsync).',
@@ -186,7 +186,7 @@
         return { summary: summary, incidents: incidents, thresholds: { frameSpikeMs: r1(thrF), packetGapMs: r1(thrG), stallMs: STALL_MS, predictionErrorPx: CSP_BAD_PX } };
     }
 
-    const api = { on: false, analyze: analyze, CAUSES: CAUSES, WINDOW_MS: WINDOW_MS };
+    const api = { on: false, netActive: false, analyze: analyze, CAUSES: CAUSES, WINDOW_MS: WINDOW_MS };
     if (typeof window === 'undefined' || typeof document === 'undefined') return api;
 
     // ---------- the recorder (browser) ----------
@@ -212,11 +212,17 @@
     Ring.prototype.clear = function () { this.n = 0; this.i = 0; };
 
     const frames = new Ring(3, 30000), packets = new Ring(7, 9000), cspR = new Ring(2, 9000), heapR = new Ring(2, 600), pingR = new Ring(2, 200), countsR = new Ring(4, 200);
+    let decodeR = null, handlerR = null, interpR = null, clockR = null; // allocated only after F8
     let events = [];
     let hooks = null, startedAt = 0, startedWall = 0, lastFrame = 0, lastPacket = 0, lastTick = -1, lastBeat = 0;
+    let netSession = null, serverReport = null, lastIncidentAsk = -Infinity, pendingSave = null, saveTimer = null;
+    let gameplayFinished = false;
+    let netCaptures = [];
+    let netClockTimer = null;
     let beatTimer = 0, heapTimer = 0, countTimer = 0, clockTimer = 0, observer = null, indicator = null;
 
     function toast(msg) { try { if (typeof root.showToast === 'function') root.showToast(msg); } catch (e) { /* no toast */ } }
+    function gameplayActive() { try { return !gameplayFinished && !!(hooks && hooks.isGameplayActive && hooks.isGameplayActive()); } catch (_) { return !gameplayFinished; } }
     function pushEvent(t, type, dur, info) {
         events.push({ t: t, type: type, dur: dur || 0, info: info === undefined ? null : info });
         if (events.length > 1500) events = events.slice(-1000);
@@ -232,6 +238,25 @@
         const gap = lastPacket ? now - lastPacket : 0, tg = lastTick >= 0 ? tick - lastTick - 1 : 0;
         lastPacket = now; lastTick = tick;
         packets.push(now, tick, gap, tg, nPlayers, nBullets, nZombies);
+        if (netSession && gap > 50 && now - lastIncidentAsk > 30000 && hooks && hooks.socket) {
+            lastIncidentAsk = now;
+            const activeSession = netSession, activeSocket = hooks.socket;
+            setTimeout(function () { try {
+                if (api.netActive && netSession === activeSession && hooks && hooks.socket === activeSocket)
+                    activeSocket.emit('netdiag-incident', { tick: tick });
+            } catch (_) { endNet(); } }, 0);
+        }
+    };
+    api.decode = function (start, end, tick) {
+        if (api.netActive && Number.isInteger(tick)) decodeR.push(end, tick, start, end);
+    };
+    api.handler = function (end, tick, start, bufferLength, pendingInputs, interpDelay) {
+        if (!api.netActive) return;
+        handlerR.push(end, tick, end - start, bufferLength, pendingInputs, interpDelay);
+    };
+    api.interp = function (now, tick, age, delay, extrap, bufferLength) {
+        if (!api.netActive) return;
+        interpR.push(now, tick, age, delay, extrap, bufferLength);
     };
     api.csp = function (now, err) { cspR.push(now, err); };
     // The pong carries the server's wall clock and its recent event-loop stalls. The offset between the two clocks is the one of the
@@ -262,7 +287,8 @@
     function sampleCounts() { if (hooks && hooks.counts) { const c = hooks.counts(); countsR.push(performance.now(), c[0], c[1], c[2]); } }
     function onVis() { pushEvent(performance.now(), 'visibility', 0, document.visibilityState); }
     function onResize() { pushEvent(performance.now(), 'resize', 0, [innerWidth, innerHeight]); }
-    function onDisc(reason) { pushEvent(performance.now(), 'disconnect', 0, String(reason)); }
+    function endNet() { api.netActive = false; clearInterval(netClockTimer); netClockTimer = null; }
+    function onDisc(reason) { try { pushEvent(performance.now(), 'disconnect', 0, String(reason)); endNet(); } catch (_) { endNet(); } }
     function onReconn() { pushEvent(performance.now(), 'reconnect', 0, null); }
 
     function header() {
@@ -291,6 +317,19 @@
             window: { seconds: r1((now - t0) / 1000), wallStart: new Date(wallStart).toISOString(), wallEnd: new Date(wallNow).toISOString() },
             header: header(), summary: analysis.summary, thresholds: analysis.thresholds, incidents: analysis.incidents,
             series: { frames: rec.frames, packets: rec.packets, predictionError: rec.csp, heapBytes: rec.heap, pingMs: rec.pings, sceneCounts: rec.counts, events: rec.events },
+            netDiagnostic: {
+                session: netSession, server: serverReport,
+                captures: netCaptures,
+                decode: decodeR ? decodeR.rows(from, t0).map(function (row) { row[2] = r1(row[2] - t0); row[3] = r1(row[3] - t0); return row; }) : [],
+                handler: handlerR ? handlerR.rows(from, t0) : [],
+                interpolation: interpR ? interpR.rows(from, t0) : [], clock: clockR ? clockR.rows(from, 0) : [],
+                legend: {
+                    decode: '[t ms, tick, decode start ms, decode end ms]',
+                    handler: '[t ms, tick, handler duration ms, state buffer length, pending inputs, interpolation delay ms]',
+                    interpolation: '[t ms, selected tick, snapshot receive age ms, interpolation delay ms, extrapolating, state buffer length]',
+                    clock: '[client send performance.now ms, server receive performance.now ms, server send performance.now ms, client receive performance.now ms, corrected RTT ms, server minus client offset estimate ms, uncertainty at least RTT/2 ms]',
+                },
+            },
             legend: {
                 frames: '[t ms, ms since the previous frame, ms the frame\'s own work took]', packets: '[t ms, tick, ms since the previous packet, ticks missing, players, bullets, zombies]',
                 predictionError: '[t ms, px]', heapBytes: '[t ms, used JS heap]', pingMs: '[t ms, rtt ms]', sceneCounts: '[t ms, zombies, bullets, players]',
@@ -304,6 +343,23 @@
     }
     function save(reason) {
         if (!api.on) return null;
+        pendingSave = reason;
+        scheduleSave();
+        return null;
+    }
+    function flushPendingSave() {
+        if (!pendingSave || gameplayActive()) return;
+        const reason = pendingSave;
+        clearInterval(saveTimer); saveTimer = null;
+        try { saveNow(reason); pendingSave = null; }
+        catch (_) { if (!saveTimer) saveTimer = setInterval(function () { try { flushPendingSave(); } catch (_) { endNet(); } }, 1000); }
+    }
+    function scheduleSave() {
+        if (!pendingSave) return;
+        if (!saveTimer) saveTimer = setInterval(function () { try { flushPendingSave(); } catch (_) { endNet(); } }, 1000);
+        setTimeout(function () { try { flushPendingSave(); } catch (_) { endNet(); } }, 0);
+    }
+    function saveNow(reason) {
         const rep = snapshot(reason), d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
         const name = 'arena-blackbox-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.json';
         root.__arBBLast = rep;
@@ -319,7 +375,7 @@
         indicator.className = 'bb-rec'; indicator.setAttribute('role', 'status');
         document.body.appendChild(indicator);
         paintIndicator();
-        clockTimer = setInterval(paintIndicator, 1000);
+        clockTimer = setInterval(function () { try { paintIndicator(); } catch (_) { endNet(); } }, 1000);
     }
     function paintIndicator() {
         if (!indicator) return;
@@ -329,13 +385,20 @@
     function hideIndicator() { clearInterval(clockTimer); if (indicator) { indicator.remove(); indicator = null; } }
 
     api.start = function () {
-        if (api.on || !hooks) return false;
-        frames.clear(); packets.clear(); cspR.clear(); heapR.clear(); pingR.clear(); countsR.clear(); events = [];
+        if (api.on || !hooks || pendingSave) return false;
+        frames.clear(); packets.clear(); cspR.clear(); heapR.clear(); pingR.clear(); countsR.clear();
+        decodeR = null; handlerR = null; interpR = null; clockR = null;
+        events = [];
+        netSession = null; serverReport = null; netCaptures = []; lastIncidentAsk = -Infinity;
+        api.netActive = false;
         lastFrame = 0; lastPacket = 0; lastTick = -1;
         startedAt = performance.now(); startedWall = Date.now(); lastBeat = startedAt;
         api.on = true;
-        beatTimer = setInterval(beat, BEAT_MS); heapTimer = setInterval(sampleHeap, 250); countTimer = setInterval(sampleCounts, 1000);
-        try { observer = new PerformanceObserver(function (list) { list.getEntries().forEach(function (e) { pushEvent(e.startTime, 'longtask', e.duration); }); }); observer.observe({ entryTypes: ['longtask'] }); } catch (e) { observer = null; }
+        if (hooks.socket) try { hooks.socket.emit('netdiag-start'); } catch (_) {}
+        beatTimer = setInterval(function () { try { beat(); } catch (_) { endNet(); } }, BEAT_MS);
+        heapTimer = setInterval(function () { try { sampleHeap(); } catch (_) { endNet(); } }, 250);
+        countTimer = setInterval(function () { try { sampleCounts(); } catch (_) { endNet(); } }, 1000);
+        try { observer = new PerformanceObserver(function (list) { try { list.getEntries().forEach(function (e) { pushEvent(e.startTime, 'longtask', e.duration); }); } catch (_) { endNet(); } }); observer.observe({ entryTypes: ['longtask'] }); } catch (e) { observer = null; }
         document.addEventListener('visibilitychange', onVis); window.addEventListener('resize', onResize);
         showIndicator();
         toast('Black box pornit. F9 salvează acum, F8 oprește și salvează.');
@@ -343,34 +406,121 @@
     };
     api.stop = function (saveReport) {
         if (!api.on) return null;
-        const rep = saveReport ? save('stop') : null;
+        let rep = null;
+        try { if (saveReport) rep = save('stop'); } catch (_) {}
+        if (hooks && hooks.socket && netSession) try { hooks.socket.emit('netdiag-stop'); } catch (_) {}
+        endNet();
         api.on = false;
         clearInterval(beatTimer); clearInterval(heapTimer); clearInterval(countTimer);
-        if (observer) { observer.disconnect(); observer = null; }
-        document.removeEventListener('visibilitychange', onVis); window.removeEventListener('resize', onResize);
-        hideIndicator();
+        if (observer) { try { observer.disconnect(); } catch (_) {} observer = null; }
+        try { document.removeEventListener('visibilitychange', onVis); } catch (_) {}
+        try { window.removeEventListener('resize', onResize); } catch (_) {}
+        try { hideIndicator(); } catch (_) {}
         return rep;
     };
-    api.save = function (reason) { return save(reason || 'manual'); };
-    api.report = function () { return api.on ? snapshot('api') : null; };
+    api.save = function (reason) { try { return save(reason || 'manual'); } catch (_) { endNet(); return null; } };
+    api.report = function () { try { return api.on && !gameplayActive() ? snapshot('api') : null; } catch (_) { endNet(); return null; } };
+    api.gameplayEnded = function () { gameplayFinished = true; scheduleSave(); };
+    api.hasPendingSave = function () { return !!pendingSave; };
+    api.whenSaved = function (timeoutMs) {
+        if (!pendingSave) return Promise.resolve();
+        return new Promise(function (resolve) {
+            let poll, deadline;
+            function done() { clearInterval(poll); clearTimeout(deadline); resolve(); }
+            poll = setInterval(function () { if (!pendingSave) done(); }, 20);
+            deadline = setTimeout(done, timeoutMs || 2000);
+        });
+    };
+
+    function onNetReady(data) {
+        if (!api.on || !data || typeof data.session !== 'string') return;
+        netSession = data.session;
+        decodeR = new Ring(4, 9000); handlerR = new Ring(6, 9000);
+        interpR = new Ring(6, 12000); clockR = new Ring(7, 200);
+        api.netActive = true;
+        clearInterval(netClockTimer);
+        const ping = function () { try { if (api.netActive && hooks && hooks.socket) hooks.socket.emit('netdiag-ping', performance.now()); } catch (_) { endNet(); } };
+        ping();
+        netClockTimer = setInterval(ping, 2000);
+    }
+    function onNetPong(clientSend, serverReceive, serverSend) {
+        if (!api.on || !netSession) return;
+        const clientReceive = performance.now();
+        const correctedRtt = (clientReceive - clientSend) - (serverSend - serverReceive);
+        if (!Number.isFinite(correctedRtt) || correctedRtt < 0) return;
+        const offset = ((serverReceive - clientSend) + (serverSend - clientReceive)) / 2;
+        clockR.push(clientSend, serverReceive, serverSend, clientReceive, correctedRtt, offset, correctedRtt / 2);
+    }
+    function onNetReport(data) {
+        if (!api.on || !data || data.session !== netSession) return;
+        serverReport = data;
+        if (data.ok) {
+            // Keep a small incident window while the long report is deferred until match end.
+            setTimeout(function () { try {
+                if (!api.on || netSession !== data.session) return;
+                const from = performance.now() - 8000;
+                netCaptures.push({ id: data.id, incidentTick: data.incidentTick,
+                    packets: packets.rows(from, startedAt),
+                    decode: decodeR ? decodeR.rows(from, startedAt) : [],
+                    handler: handlerR ? handlerR.rows(from, startedAt) : [],
+                    clock: clockR ? clockR.rows(from, 0) : [] });
+                if (netCaptures.length > 3) netCaptures.shift();
+                save('netdiag-incident');
+            } catch (_) { endNet(); } }, 50);
+        }
+    }
+    function onNetQueued(data) {
+        if (api.on && data && data.session === netSession)
+            serverReport = { id: data.id, session: data.session, incidentTick: data.incidentTick, status: 'queued' };
+    }
+    function onNetEnded(data) { if (data && data.session === netSession) { endNet(); scheduleSave(); } }
 
     function onKey(e) {
         if (e.repeat) return;
         if (e.key === 'F8') { e.preventDefault(); if (api.on) api.stop(true); else api.start(); }
         else if (e.key === 'F9') { e.preventDefault(); if (api.on) save('F9'); else toast('Pornește black box-ul cu F8, apoi F9 salvează.'); }
     }
+    function safeCallback(fn) { return function () { try { return fn.apply(null, arguments); } catch (_) { endNet(); } }; }
+    const safeReady = safeCallback(onNetReady), safePong = safeCallback(onNetPong);
+    const safeReport = safeCallback(onNetReport), safeQueued = safeCallback(onNetQueued), safeEnded = safeCallback(onNetEnded);
+    const safeKey = safeCallback(onKey), safeReconn = safeCallback(onReconn);
     // game.js: attach({ socket, meta(): extra header fields, counts(): [zombies, bullets, players] }) when a match starts
     api.attach = function (h) {
         api.detach();
         hooks = h;
-        window.addEventListener('keydown', onKey);
-        if (h.socket) { h.socket.on('disconnect', onDisc); if (h.socket.io) h.socket.io.on('reconnect', onReconn); }
+        gameplayFinished = false;
+        window.addEventListener('keydown', safeKey);
+        if (h.socket) {
+            h.socket.on('disconnect', onDisc);
+            h.socket.on('netdiag-ready', safeReady);
+            h.socket.on('netdiag-pong', safePong);
+            h.socket.on('netdiag-export-ready', safeReport);
+            h.socket.on('netdiag-export-failed', safeReport);
+            h.socket.on('netdiag-export-queued', safeQueued);
+            h.socket.on('netdiag-ended', safeEnded);
+            if (h.socket.io) h.socket.io.on('reconnect', safeReconn);
+        }
     };
     api.detach = function () {   // the match is over: save what there is and stop
-        window.removeEventListener('keydown', onKey);
+        gameplayFinished = true;
+        window.removeEventListener('keydown', safeKey);
         if (api.on) api.stop(true);
-        if (hooks && hooks.socket) { try { hooks.socket.off('disconnect', onDisc); if (hooks.socket.io) hooks.socket.io.off('reconnect', onReconn); } catch (e) { /* socket gone */ } }
+        if (hooks && hooks.socket) { try {
+            hooks.socket.off('disconnect', onDisc);
+            hooks.socket.off('netdiag-ready', safeReady);
+            hooks.socket.off('netdiag-pong', safePong);
+            hooks.socket.off('netdiag-export-ready', safeReport);
+            hooks.socket.off('netdiag-export-failed', safeReport);
+            hooks.socket.off('netdiag-export-queued', safeQueued);
+            hooks.socket.off('netdiag-ended', safeEnded);
+            if (hooks.socket.io) hooks.socket.io.off('reconnect', safeReconn);
+        } catch (e) { /* socket gone */ } }
         hooks = null;
+        scheduleSave();
     };
+    for (const name of ['frame', 'packet', 'decode', 'handler', 'interp', 'csp', 'ping', 'event']) {
+        const original = api[name];
+        api[name] = function () { try { return original.apply(api, arguments); } catch (_) { endNet(); return undefined; } };
+    }
     return api;
 });

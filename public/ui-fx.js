@@ -295,6 +295,10 @@
             const lobby = document.getElementById('screen-lobby');
             const logoutRow = document.getElementById('set-row-logout');
             if (logoutRow) logoutRow.style.display = lobby && lobby.style.display !== 'none' ? '' : 'none';
+            // Leaving the round is in here too, during a match only (the red corner button is gone)
+            const game = document.getElementById('screen-game');
+            const leaveRow = document.getElementById('set-row-leave');
+            if (leaveRow) leaveRow.style.display = game && game.style.display !== 'none' ? '' : 'none';
             settingsEl.style.display = 'flex';
         };
         window.closeSettings = function () { if (settingsEl) settingsEl.style.display = 'none'; };

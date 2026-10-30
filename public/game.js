@@ -385,7 +385,7 @@ const WEAPONS = [];        // { id, name, desc, class, fireModeLabel, ...ARShare
 const WEAPON_CLASSES = []; // { id, name } in menu order
 const WEAPON_LOADOUT = {}; // id -> loadout base values and growth per point (HP/DMG/SPD)
 const _WEAPON_DATA = {};   // id -> its WEAPONS entry
-let WEAPON_RULES = null;   // aimDelay, reloadDelay, bulletRadius: the same for every gun
+let WEAPON_RULES = null;   // aimDelay, bulletRadius: the same for every gun
 let DEFAULT_WEAPON = null;
 // Per-jucator: socketId → weaponId (populat din player-image si playersMeta)
 const _playerWeapons = new Map();
@@ -619,29 +619,28 @@ function _arsColorName(hex) {
 }
 // The bars: each gun's raw value, shown relative to the best gun (0..1). Damage is one shot (every pellet),
 // fire rate is bullets per second (a burst counts all its bullets), range is speed x lifetime, accuracy
-// drops with the spread (radians), reload is the time to fill the magazine (faster = longer bar).
+// drops with the spread (radians), reload is the time a reload takes (faster = longer bar).
 function _arsBars(wid) {
     const raw = {};
     for (const w of WEAPONS) {
         const rate = w.fireMode === 'burst' ? w.burstCount / (w.shootCd + (w.burstCount - 1) * w.burstDelay) : 1 / w.shootCd;
         raw[w.id] = {
             dmg: WEAPON_LOADOUT[w.id].baseDmg * (w.pellets || 1), rate, range: w.bulletSpeed * w.bulletLife,
-            acc: Math.max(0.05, 1 - (w.spread || 0)), ammo: w.ammoMax, reload: w.ammoMax / w.reloadRate,
+            acc: Math.max(0.05, 1 - (w.spread || 0)), ammo: w.ammoMax, reload: w.reloadSeconds,
         };
     }
     const all = Object.values(raw), me = raw[wid];
     const rel = k => me[k] / Math.max(...all.map(v => v[k]));
-    const level = v => v >= 0.8 ? 'Very high' : v >= 0.6 ? 'High' : v >= 0.4 ? 'Medium' : v >= 0.2 ? 'Low' : 'Very low';
-    const speed = v => v >= 0.8 ? 'Very fast' : v >= 0.6 ? 'Fast' : v >= 0.4 ? 'Medium' : v >= 0.2 ? 'Slow' : 'Very slow';
-    const w = _WEAPON_DATA[wid];
+    const level = v => v >= 0.8 ? 'Foarte mare' : v >= 0.6 ? 'Mare' : v >= 0.4 ? 'Medie' : v >= 0.2 ? 'Mica' : 'Foarte mica';
+    const speed = v => v >= 0.8 ? 'Foarte rapida' : v >= 0.6 ? 'Rapida' : v >= 0.4 ? 'Medie' : v >= 0.2 ? 'Lenta' : 'Foarte lenta';
     const reload = Math.min(...all.map(v => v.reload)) / me.reload;
     return [
         ['DAMAGE', rel('dmg'), level(rel('dmg'))],
-        ['FIRE RATE', rel('rate'), level(rel('rate'))],
-        ['RANGE', rel('range'), level(rel('range'))],
-        ['ACCURACY', rel('acc'), level(rel('acc'))],
-        ['MAGAZINE', rel('ammo'), me.ammo + (w.fireMode === 'burst' ? ' bursts' : ' rounds')],
-        ['RELOAD', reload, speed(reload)],
+        ['CADENTA', rel('rate'), level(rel('rate'))],
+        ['BATAIE', rel('range'), level(rel('range'))],
+        ['PRECIZIE', rel('acc'), level(rel('acc'))],
+        ['MAGAZINE', rel('ammo'), me.ammo + ' gloante'],
+        ['REINCARCARE', reload, speed(reload)],
     ];
 }
 
@@ -1169,6 +1168,8 @@ const _LVL_XP = (() => {
     for (let n = 2; n <= 50; n++) { t.push(t[t.length - 1] + inc); if (n >= 3) inc += 50; }
     return t;
 })();
+// the rank names by level (the lobby card, the friends list, the end board of a PvE match)
+const _RANK_NAMES = ['Recruit','Novice','Scout','Survivor','Hunter','Duelist','Raider','Mercenary','Assaulter','Veteran','Eliminator','Striker','Gladiator','Dominator','Executor','Predator','Berserker','Shadow','Phantom','Ravager','Titan','Conqueror','Warlord','Bloodhound','Reaper','Destroyer','Overkiller','Nemesis','Juggernaut','Annihilator','Apex Hunter','Void Walker','Deathbringer','Skullcrusher','Iron Legend','Chaos Knight','Doom Slayer','Inferno Lord','Storm Bringer','War Titan','Eternal Fang','Dark Sovereign','Oblivion','Cataclysm','Supreme Predator','Immortal','Ascendant','Mythic','Legendary','Battle Royale God'];
 function getLevelFromXP(xp) {
     for (let n = _LVL_XP.length - 1; n >= 1; n--) { if (xp >= _LVL_XP[n]) return n; }
     return 1;
@@ -1204,7 +1205,7 @@ function renderFriendsPanel() {
             friendsList.innerHTML = friendsData.friends.map(f => {
                 const lvl   = getLevelFromXP(f.xp || 0);
                 const tier  = getTier(lvl);
-                const rankName = ['Recruit','Novice','Scout','Survivor','Hunter','Duelist','Raider','Mercenary','Assaulter','Veteran','Eliminator','Striker','Gladiator','Dominator','Executor','Predator','Berserker','Shadow','Phantom','Ravager','Titan','Conqueror','Warlord','Bloodhound','Reaper','Destroyer','Overkiller','Nemesis','Juggernaut','Annihilator','Apex Hunter','Void Walker','Deathbringer','Skullcrusher','Iron Legend','Chaos Knight','Doom Slayer','Inferno Lord','Storm Bringer','War Titan','Eternal Fang','Dark Sovereign','Oblivion','Cataclysm','Supreme Predator','Immortal','Ascendant','Mythic','Legendary','Battle Royale God'][lvl - 1] || 'Recruit';
+                const rankName = _RANK_NAMES[lvl - 1] || 'Recruit';
                 return `
                 <div class="friend-row">
                     <span class="friend-online-dot ${f.online ? 'online' : ''}"></span>
@@ -1334,7 +1335,7 @@ function showForceLogout(msg) {
     overlay.innerHTML = `
         <div class="ar-forcelogout-title">${ico('triangle-alert')}Deconectat</div>
         <div class="ar-forcelogout-msg">${msg}</div>
-        <button onclick="location.reload()">OK</button>
+        <button onclick="reloadAfterDiagnostic()">OK</button>
     `;
     document.body.appendChild(overlay);
 }
@@ -1357,7 +1358,17 @@ function _checkBuild(build) {
     overlay.className = 'ar-forcelogout ar-newbuild';
     overlay.innerHTML = `<div class="ar-forcelogout-title">${ico('refresh-cw')}New version detected. Reloading...</div>`;
     document.body.appendChild(overlay);
-    setTimeout(() => location.reload(), 2000);
+    setTimeout(reloadAfterDiagnostic, 2000);
+}
+function reloadAfterDiagnostic() {
+    const bb = window.ARBlackBox;
+    const hasReport = bb && (bb.on || (typeof bb.hasPendingSave === 'function' && bb.hasPendingSave()));
+    if (!hasReport || !window._gameCleanup) { location.reload(); return; }
+    try {
+        window._gameCleanup();
+        window._gameCleanup = null;
+        bb.whenSaved(2000).then(() => location.reload(), () => location.reload());
+    } catch (_) { location.reload(); }
 }
 function _watchBuild(socket) {
     socket.on('build', _checkBuild);
@@ -1513,7 +1524,7 @@ function authSuccess(nickname, password, player, token) {
 }
 
 function logoutToAuth() {
-    location.reload();
+    reloadAfterDiagnostic();
 }
 
 async function doLogin() {
@@ -1670,18 +1681,7 @@ function prepopulateLobby() {
     const xpNeeded = (LVL_XP[level + 1] || LVL_XP[level] + 9999) - LVL_XP[level];
     const xpPct    = Math.round(Math.min(1, xpInLvl / xpNeeded) * 100);
 
-    const RANKS = [
-        'Recruit','Novice','Scout','Survivor','Hunter',
-        'Duelist','Raider','Mercenary','Assaulter','Veteran',
-        'Eliminator','Striker','Gladiator','Dominator','Executor',
-        'Predator','Berserker','Shadow','Phantom','Ravager',
-        'Titan','Conqueror','Warlord','Bloodhound','Reaper',
-        'Destroyer','Overkiller','Nemesis','Juggernaut','Annihilator',
-        'Apex Hunter','Void Walker','Deathbringer','Skullcrusher','Iron Legend',
-        'Chaos Knight','Doom Slayer','Inferno Lord','Storm Bringer','War Titan',
-        'Eternal Fang','Dark Sovereign','Oblivion','Cataclysm','Supreme Predator',
-        'Immortal','Ascendant','Mythic','Legendary','Battle Royale God',
-    ];
+    const RANKS = _RANK_NAMES;
     const rank = RANKS[Math.min(49, level - 1)];
     const winRate  = games > 0 ? Math.round(wins / games * 100) : 0;
 
@@ -2408,7 +2408,7 @@ function _drawHpBar(ctx, x, y, w, h, ratio, ol) {
     ctx.fillStyle = '#1B252C'; ctx.beginPath(); ctx.roundRect(x, y, w, h, h * 0.45); ctx.fill();
     if (ratio <= 0) return;
     const c = ratio > 0.5 ? TOY.green : ratio > 0.25 ? TOY.gold : TOY.red;
-    const fw = Math.max(h * 0.9, w * ratio);
+    const fw = Math.max(1.5, w * ratio);   // exactly what is left (the old minimum of a bar's height showed 12-22% on a bar with almost nothing)
     ctx.fillStyle = c[1]; ctx.beginPath(); ctx.roundRect(x, y, fw, h, h * 0.45); ctx.fill();
     ctx.fillStyle = c[0]; ctx.beginPath(); ctx.roundRect(x, y, fw, h * 0.7, [h * 0.45, h * 0.45, 2, 2]); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(x + h * 0.4, y + h * 0.12, Math.max(0, fw - h * 0.8), Math.max(1, h * 0.14));
@@ -2417,37 +2417,50 @@ function _drawHpBar(ctx, x, y, w, h, ratio, ol) {
 // The bars of the zombies that are hurt: the player's bar made small (an ink frame round a sunk track, the fill a
 // small toy block with its lip and bevel). A zombie at full health has none. All of them together cost a few fills:
 // the frames, the tracks, then the lip and the face of each colour, then the bevels.
-const _ZBAR_H = 6, _ZBAR_OL = 1.6;
-const _zbX = [], _zbY = [], _zbW = [], _zbF = [], _zbBand = [];
+const _ZBAR_H = 6, _ZBAR_OL = 1.6, _ZBAR_H_BIG = 8;   // the heavy ones (tank, brute, summoner, and the shielded: def.bigBar) get a wider, taller bar with the number on it: they have so much health that a hit moved the small bar by a fraction of a pixel
+let _zHpMul = 1;   // the health the wave's zombies have grown to (server: pve-wave-start hpMul); the minions do not grow (def.noScale)
+const _zMaxHp = (def) => def.noScale ? def.maxHp : def.maxHp * _zHpMul;
+const _zbX = [], _zbY = [], _zbW = [], _zbF = [], _zbH = [], _zbBand = [];
 function _drawZombieBars(ctx, list, n, defs) {
-    const h = _ZBAR_H, ol = _ZBAR_OL, rad = h * 0.45;
+    const ol = _ZBAR_OL;
+    let big = 0;
     for (let i = 0; i < n; i++) {
         const z = list[i], def = defs[z.type || 0] || defs[0];
-        const ratio = Math.max(0, Math.min(1, z.hp / def.maxHp)), w = Math.max(24, def.r * 1.6);
-        _zbW[i] = w; _zbX[i] = z.x - w / 2; _zbY[i] = z.y - def.r - 12 - h;
-        _zbF[i] = Math.max(h * 0.9, w * ratio);
+        const ratio = Math.max(0, Math.min(1, z.hp / _zMaxHp(def))), hv = !!(def.heavy || def.bigBar), w = hv ? Math.max(48, def.r * 2.4) : Math.max(24, def.r * 1.6), h = hv ? _ZBAR_H_BIG : _ZBAR_H;
+        if (hv) big++;
+        _zbW[i] = w; _zbH[i] = h; _zbX[i] = z.x - w / 2; _zbY[i] = z.y - def.r - 12 - h;
+        _zbF[i] = Math.max(1.5, w * ratio);
         _zbBand[i] = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
     }
     ctx.beginPath();
-    for (let i = 0; i < n; i++) ctx.roundRect(_zbX[i] - ol, _zbY[i] - ol, _zbW[i] + ol * 2, h + ol * 2, rad + ol);
+    for (let i = 0; i < n; i++) ctx.roundRect(_zbX[i] - ol, _zbY[i] - ol, _zbW[i] + ol * 2, _zbH[i] + ol * 2, _zbH[i] * 0.45 + ol);
     ctx.fillStyle = INK; ctx.fill();
     ctx.beginPath();
-    for (let i = 0; i < n; i++) ctx.roundRect(_zbX[i], _zbY[i], _zbW[i], h, rad);
+    for (let i = 0; i < n; i++) ctx.roundRect(_zbX[i], _zbY[i], _zbW[i], _zbH[i], _zbH[i] * 0.45);
     ctx.fillStyle = '#1B252C'; ctx.fill();
     const bands = [TOY.green, TOY.gold, TOY.red];
     for (let b = 0; b < 3; b++) {
         let any = false;
         ctx.beginPath();
-        for (let i = 0; i < n; i++) if (_zbBand[i] === b) { ctx.roundRect(_zbX[i], _zbY[i], _zbF[i], h, rad); any = true; }
+        for (let i = 0; i < n; i++) if (_zbBand[i] === b) { ctx.roundRect(_zbX[i], _zbY[i], _zbF[i], _zbH[i], _zbH[i] * 0.45); any = true; }
         if (!any) continue;
         ctx.fillStyle = bands[b][1]; ctx.fill();
         ctx.beginPath();
-        for (let i = 0; i < n; i++) if (_zbBand[i] === b) ctx.roundRect(_zbX[i], _zbY[i], _zbF[i], h * 0.7, [rad, rad, 1.5, 1.5]);
+        for (let i = 0; i < n; i++) if (_zbBand[i] === b) ctx.roundRect(_zbX[i], _zbY[i], _zbF[i], _zbH[i] * 0.7, [_zbH[i] * 0.45, _zbH[i] * 0.45, 1.5, 1.5]);
         ctx.fillStyle = bands[b][0]; ctx.fill();
     }
     ctx.beginPath();
-    for (let i = 0; i < n; i++) ctx.rect(_zbX[i] + h * 0.4, _zbY[i] + h * 0.12, Math.max(0, _zbF[i] - h * 0.8), Math.max(0.8, h * 0.14));
+    for (let i = 0; i < n; i++) ctx.rect(_zbX[i] + _zbH[i] * 0.4, _zbY[i] + _zbH[i] * 0.12, Math.max(0, _zbF[i] - _zbH[i] * 0.8), Math.max(0.8, _zbH[i] * 0.14));
     ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fill();
+    if (big) {   // the exact health of the heavy ones, on the bar (an ink shadow, then white: no strokeText, which is slow)
+        ctx.font = 'bold 8px Sen, Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        for (let i = 0; i < n; i++) {
+            if (_zbH[i] !== _ZBAR_H_BIG) continue;
+            const s = String(Math.ceil(list[i].hp)), cx = _zbX[i] + _zbW[i] / 2, cy = _zbY[i] + _zbH[i] / 2 + 0.5;
+            ctx.fillStyle = INK; ctx.fillText(s, cx + 0.8, cy + 0.8); ctx.fillStyle = '#FFFFFF'; ctx.fillText(s, cx, cy);
+        }
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    }
 }
 
 // Labels made before the web font arrived would keep the fallback font: redo them once it loads
@@ -3183,7 +3196,21 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
             socket.emit('rematch');
             const btn = document.getElementById('btn-rematch');
             btn.disabled = true;
-            btn.textContent = 'Asteptand...';
+            btn.textContent = 'Waiting...';
+        };
+        // the PvE end board: same vote, its own buttons
+        document.getElementById('pve-end').style.display = 'none';
+        document.getElementById('pe-again').onclick = () => {
+            socket.emit('rematch');
+            document.getElementById('pe-again').disabled = true;
+            document.getElementById('pe-again-sub').textContent = 'Waiting for the other players...';
+        };
+        document.getElementById('pe-share').onclick = () => {
+            const d = _peData; if (!d) return;
+            const text = `We reached wave ${d.wave}/${d.total} in Blastridge (Survival PvE)!`;
+            if (navigator.share) { navigator.share({ text, url: location.origin }).catch(() => {}); return; }
+            const done = () => showToast('Text copied');
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text + ' ' + location.origin).then(done, () => {});
         };
         if (!gameLoopStarted) {
             gameLoopStarted = true;
@@ -3196,7 +3223,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
         document.getElementById('game-ui').style.display     = _isPve ? 'none' : 'block';
     });
 
-    socket.on('game-reset', () => { location.reload(); });
+    socket.on('game-reset', reloadAfterDiagnostic);
 
     window._gameSocket = socket;
 }
@@ -3280,8 +3307,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _vig = { c: null, w: 0, h: 0, dpr: 0 };   // the cached zone vignette
     const _zl = { sec: -1, st: -1, fs: 0, text: '', key: '', w: 0, h: 0 }; // the cached zone label (see TIMER ZONA)
     const _zombies        = [];  // by zombie id (server.js), hp -1 = dead / not drawn
+    const _tanks          = [];  // the tanks of the latest packet, [x, y, r] each: a player cannot push them, so to the prediction they are a wall
     let   _zSeenGen       = 0;   // state packet counter, to spot zombies missing from the latest one
     const _zombieDeathFx  = [];
+    let _gjX = null, _gjY = null, _gjBurst = 0;   // the camera of the last frame, and the frames left of the burst of tile builds after a jump
     const _pveState = { baseHp: 1000, baseMaxHp: 1000, wave: 0, waveBreak: false, breakTimer: 0, breakTimerMax: 15, myCoins: 0 };
     const _playerDeathFx  = [];  // { x, y, startTime, shards }
     const _prevPlayerAlive = {};
@@ -3315,9 +3344,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const damageNumbers  = [];
     let _myLastKills     = -1; // -1 = neinitializat; previne notificari din gs-uri stale dupa reset
 
-    const ammoState      = { ammo: 10, max: 10, reloading: false, reloadProgress: 1 };
-    // Cache ammo bar pe OffscreenCanvas — redesenat doar la schimbarea starii, nu la 60fps
-    const _ammoBarCache  = { oc: null, key: '' };
+    // The classic magazine (public/ammo.js): rounds ready to fire, the size of the magazine, the reserve, a reload in progress.
+    // The server is the truth; this copy also predicts your own shots and reloads so the HUD and the bullets answer at once.
+    const ammoState      = { ammo: 0, ammoMax: 1, reserve: 0, reloading: false, reloadProgress: 0 };
+    const _AMMO_FULL = () => {
+        const wd = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {};
+        ammoState.ammoMax = wd.ammoMax || 1; ammoState.ammo = ammoState.ammoMax; ammoState.reserve = wd.reserveStart || 0;
+        ammoState.reloading = false; ammoState.reloadProgress = 0;
+    };
+    _AMMO_FULL();
+    let   _reloadWanted    = false;  // R (or the touch button) pressed: goes out with the next input
+    let   _reloadHoldUntil = 0;      // a reload you started stays on screen until the server confirms it (about one RTT)
 
 
 
@@ -3347,7 +3384,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _pendingBurstShots = []; // {spawnAt, x, y, dx, dy, life}
     let   _clientNextShotAt = 0;  // performance.now() timestamp of the next allowed local shot
     let   _ammoHoldUntil    = 0;  // keep the locally predicted ammo until the server confirms it
-    const _ammoRow          = [0, 0, 0, 0, 0];
+    const _ammoRow          = [0, 0, 0, 0, 0, 0];
     const _ownLinked        = new Map(); // server bullet id -> client bullet
     const _ownUnmatched     = new Map(); // server bullet id -> first time seen without a prediction
     const _GHOST_GRACE_MS   = 50;
@@ -3475,8 +3512,979 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _PVE_BASE_R    = 85;
     const _PVE_BASE      = { x: ARENA_W / 2, y: ARENA_H / 2, r: _PVE_BASE_R };   // a solid circle for bullets and players
     const _solidOut      = { x: 0, y: 0 };
+
+    // ---------- PvE: barricades (public/structures.js: the server decides, this predicts and draws) ----------
+    // They arrive by events (struct-add / -hp / -upd / -del, pve-inv), not in gs2. The art is public/images/pve/barricades/<material><state><h|v>.svg
+    // (from the Baricade si Turete artifact): 4 materials, whole / damaged / broken, lying down or standing up, so nothing is ever rotated.
+    const _structs     = [];   // on the field: { id, x, y, o, t, hp, maxHp, by }
+    const _turrets     = [];   // the turrets (round, server.js room.turrets): { id, k: 't', x, y, t, hp, maxHp, by, ang (drawn), tang (aimed), flash }
+    const _turretFx    = [];   // tracers of the shots: { x0, y0, x1, y1, t0, tier }
+    const _bombFx      = [];   // the bombs of the Bomb Towers: { x0, y0, x1, y1, t0, dur, r } (it flies for dur ms, then the blast of radius r)
+    const _zapFx       = [];   // the bolts of the Tesla Towers: { t0, segs: [{ pts: flat [x, y, ...], t0 }], hits: [{ x, y, t0 }] }
+    const _structDying = [];   // broken ones, drawn as pieces for a second: { s, t0 }
+    const _bar = { inv: 0, invT: 0, invE: 0, invH: 0, invO: 0, invF: 0, invS: 0, kind: 'b', act: null, can: true, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
+    const _structFx = [];      // the effects: break, repair, upgrade { k, x, y, o, t0, parts }
+    // colours of the chips by material (wood, stone, metal, obsidian): light, dark, highlight
+    const _BAR_PAL = [['#D9A24E', '#8F5A1E', '#F4D48A'], ['#A39B8E', '#6B655B', '#D2CBBF'], ['#9AA7B4', '#5E6B78', '#D3DCE5'], ['#6A52B0', '#241C42', '#B79CF5']];
+    function _barImg(tier, st, o) {
+        const key = ARStructs.BARRICADE.tiers[tier].id + st + (o ? 'v' : 'h');
+        let im = _bar.imgs.get(key);
+        if (!im) { im = new Image(); im.src = arAsset('/images/pve/barricades/' + key + '.svg'); _bar.imgs.set(key, im); }
+        return im.complete && im.naturalWidth ? im : null;
+    }
+    // One cached bitmap per picture and scale (like the labels): the SVG is rastered at the pixel size it is drawn at
+    function _barSprite(tier, st, o, scale) {
+        const im = _barImg(tier, st, o);
+        if (!im) return null;
+        const w = o ? 68 : 136, h = o ? 136 : 68;
+        return _labelSprite('BAR|' + tier + st + o, scale, w, h, g => g.drawImage(im, 0, 0, w, h));
+    }
+    // ---- turrets: the base stays, the head turns to what it fires at; the art is public/images/pve/turrets/{base,head}<level>.svg (100 x 100 units, the base disc has the radius 31) ----
+    const _TUR_PAL = [['#A9C46A', '#4F5A2A', '#E4F0B0'], ['#6C9BD8', '#2F4A7A', '#CFE3FF'], ['#8FF3FF', '#24505E', '#FFFFFF']];
+    // the colours of the effects (break, repair, upgrade) by kind and level; the kind is what the server calls it (ARStructs.TURRET.kinds): mg, tesla, heal
+    const _PAL_BY_KIND = { mg: _TUR_PAL, tesla: [['#8FF3FF', '#2F3A5F', '#FFFFFF'], ['#8FF3FF', '#2F3A5F', '#FFFFFF'], ['#D3B8FF', '#2F3A5F', '#FFFFFF']], bomb: [['#FFB54D', '#4A3F35', '#FFF3C4'], ['#FFB54D', '#4A3F35', '#FFF3C4'], ['#FF7A3D', '#4A3F35', '#FFF3C4']], heal: [['#7BF0A6', '#2E6B52', '#EAF7EF'], ['#7BF0A6', '#2E6B52', '#EAF7EF'], ['#7BF0A6', '#2E6B52', '#EAF7EF']], flame: [['#FF9F3D', '#5A2A22', '#FFF0C4'], ['#FF9F3D', '#5A2A22', '#FFF0C4'], ['#FFC72E', '#5A2A22', '#FFF0C4']], support: [['#C79A3B', '#7A5A1E', '#FFE9A8'], ['#C79A3B', '#7A5A1E', '#FFE9A8'], ['#E0B040', '#7A5A1E', '#FFF3C4']] };
+    // what the build keys / slots are: 1 barricade, 2 machine gun turret, 3 Tesla Tower, 4 Health Station, 5 Bomb Tower, 6 Flamethrower, 7 Support Tower (kd: the kind for the server, inv: the field of _bar that holds how many you have)
+    const _BAR_KINDS = { b: { inv: 'inv' }, t: { kd: 'mg', inv: 'invT' }, e: { kd: 'tesla', inv: 'invE' }, h: { kd: 'heal', inv: 'invH' }, o: { kd: 'bomb', inv: 'invO' }, f: { kd: 'flame', inv: 'invF' }, d: { kd: 'support', inv: 'invS' } };
+    const _TUR_COL = ['#FFE27A', '#FFB84A', '#7FE9FF'];   // the tracer by level
+    function _turImg(part, tier) {
+        const key = 'T' + part + (tier + 1);
+        let im = _bar.imgs.get(key);
+        if (!im) { im = new Image(); im.src = arAsset('/images/pve/turrets/' + part + (tier + 1) + '.svg'); _bar.imgs.set(key, im); }
+        return im.complete && im.naturalWidth ? im : null;
+    }
+    function _turSprite(part, tier, scale) {
+        const im = _turImg(part, tier);
+        if (!im) return null;
+        return _labelSprite('TUR|' + part + tier, scale, 100, 100, g => g.drawImage(im, 0, 0, 100, 100));
+    }
+    function _drawTurret(ctx, t, scale, alpha, ang, k) {
+        ctx.globalAlpha = alpha;
+        ctx.save(); ctx.translate(t.x, t.y); if (k !== 1) ctx.scale(k, k);
+        if (t.kd === 'tesla' || t.kd === 'heal' || t.kd === 'bomb' || t.kd === 'support') {   // one picture, nothing turns: the Tesla Tower, the Bomb Tower (its mortar points up), the Health Station and the Support Tower (its pad: the drone is another picture, _drawDrones)
+            const b = _turSprite(t.kd === 'tesla' ? 'tesla' : t.kd === 'bomb' ? 'bomb' : t.kd === 'support' ? 'support_base' : 'station', t.t, scale);
+            if (b) ctx.drawImage(b.c, -b.w / 2, -b.h / 2, b.w, b.h);
+        } else {
+            const fl = t.kd === 'flame', b = _turSprite(fl ? 'flame_base' : 'base', t.t, scale), h = _turSprite(fl ? 'flame_head' : 'head', t.t, scale);   // (the Flamethrower has its own pair)
+            if (b) ctx.drawImage(b.c, -b.w / 2, -b.h / 2, b.w, b.h);
+            if (h) { ctx.rotate(ang - Math.PI / 2); ctx.drawImage(h.c, -h.w / 2, -h.h / 2, h.w, h.h); }   // the barrel is drawn pointing down: 0 deg is +y
+        }
+        ctx.restore();
+        ctx.globalAlpha = 1;
+    }
+    // The shots: a muzzle flash and a bullet that flies from the barrel to the zombie (the energy one is a bolt with a tail), a spark where it lands.
+    // The hit itself was at once on the server; the bullet is only what you see, so it is quick (1800 units/s).
+    const _TUR_SPEED = 1800;
+    const _TUR_TRAIL = ['255,226,122', '255,184,74', '127,233,255'], _TUR_TL = [58, 58, 74];   // the trail of a round: colour and length by level
+    // A fading trail behind the round, in four steps of rising strength (no gradient made every frame); a = overall strength
+    function _turTrail(ctx, f, bx, by, len, a, w) {
+        const tx = bx - f.dx * len, ty = by - f.dy * len;
+        ctx.lineWidth = w + 2.4; ctx.strokeStyle = 'rgba(11,15,26,' + (0.22 * a).toFixed(2) + ')';   // a faint ink edge, so it reads on the grass
+        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.lineWidth = w;
+        for (let k = 0; k < 4; k++) {
+            ctx.strokeStyle = 'rgba(' + _TUR_TRAIL[f.tier] + ',' + ((0.2 + 0.26 * k) * a).toFixed(2) + ')';
+            ctx.beginPath(); ctx.moveTo(tx + (bx - tx) * k / 4, ty + (by - ty) * k / 4); ctx.lineTo(bx, by); ctx.stroke();
+        }
+    }
+    // ---- the new zombies' effects (events acid / boom / summon, not in gs2): acid thrown by a spitter, an exploder going off, a summoner calling ----
+    // Each effect gets its random numbers once, when the event comes (parts); what is drawn each frame is worked out from the age only.
+    const TAU = Math.PI * 2;
+    const _zFx = [];   // { k: 'acid'|'boom'|'summon', x0, y0, x1, y1, r, dur, t0, parts }
+    function _zFxPush(f) { if (_zFx.length >= 60) _zFx.shift(); _zFx.push(f); }
+    const _rnd = Math.random;
+    function _acidFx(a) {
+        const f = { k: 'acid', x0: a[0], y0: a[1], x1: a[2], y1: a[3], dur: a[4], r: 44, t0: performance.now(), drops: [], bub: [], puff: [] };
+        for (let i = 0; i < 7; i++) f.drops.push({ a: _rnd() * TAU, v: 40 + _rnd() * 70, s: 2 + _rnd() * 2.4 });        // the spray at the mouth
+        for (let i = 0; i < 12; i++) f.bub.push({ a: _rnd() * TAU, v: 55 + _rnd() * 110, s: 2.4 + _rnd() * 3.4, h: 18 + _rnd() * 34 });   // the splash
+        for (let i = 0; i < 6; i++) f.puff.push({ a: _rnd() * TAU, d: _rnd() * 30, ph: _rnd(), s: 8 + _rnd() * 8 });    // the sizzle: smoke rising off the puddle
+        return f;
+    }
+    function _boomFx(x, y, r) {
+        const f = { k: 'boom', x0: x, y0: y, r, t0: performance.now(), sp: [], sm: [], ch: [] };
+        for (let i = 0; i < 18; i++) f.sp.push({ a: _rnd() * TAU, v: 160 + _rnd() * 260, l: 6 + _rnd() * 10, c: _rnd() < 0.4 ? 0 : 1 });   // sparks
+        for (let i = 0; i < 9; i++) f.sm.push({ a: _rnd() * TAU, d: _rnd() * r * 0.5, v: 10 + _rnd() * 30, s: 14 + _rnd() * 16 });          // smoke
+        for (let i = 0; i < 7; i++) f.ch.push({ a: _rnd() * TAU, v: 90 + _rnd() * 150, s: 3 + _rnd() * 3, rot: _rnd() * TAU });             // chunks
+        return f;
+    }
+    // The clang of a shield stopping a round or a bullet (event shield-block: [zombie x, zombie y, angle x100 to where it came from]): a flash and a ring on
+    // the shield and a few sparks glancing off to the sides.
+    function _clangFx(x, y, a) {
+        const f = { k: 'clang', x0: x, y0: y, a, t0: performance.now(), sp: [] };
+        for (let i = 0; i < 6; i++) f.sp.push({ a: a + (_rnd() * 2 - 1) * 1.5, v: 70 + _rnd() * 90, l: 7 + _rnd() * 8 });
+        return f;
+    }
+    function _drawZombieFx(ctx, now) {
+        for (let i = _zFx.length - 1; i >= 0; i--) {
+            const f = _zFx[i], age = now - f.t0;
+            if (age < 0) continue;   // not yet (a bomb's blast is queued for when it lands)
+            if (f.k === 'acid') {
+                const T = f.dur + 1500;
+                if (age >= T) { _zFx.splice(i, 1); continue; }
+                const dx = f.x1 - f.x0, dy = f.y1 - f.y0, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+                const arc = Math.min(70, len * 0.22), at = (u) => [f.x0 + dx * u, f.y0 + dy * u - Math.sin(u * Math.PI) * arc];
+                if (age < 260) {   // the spit: a spray of drops from the mouth and a green flash
+                    const u = age / 260;
+                    ctx.globalAlpha = (1 - u) * 0.6; ctx.fillStyle = '#C6FF3D'; ctx.beginPath(); ctx.arc(f.x0, f.y0, 8 + 16 * u, 0, TAU); ctx.fill();
+                    ctx.globalAlpha = 1 - u; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4; ctx.fillStyle = '#9DFF2E';
+                    for (let k = 0; k < f.drops.length; k++) { const d = f.drops[k], r = d.v * u * 0.45; ctx.beginPath(); ctx.arc(f.x0 + Math.cos(d.a) * r, f.y0 + Math.sin(d.a) * r - 8 * u, d.s * (1 - u * 0.5), 0, TAU); ctx.fill(); ctx.stroke(); }
+                    ctx.globalAlpha = 1;
+                }
+                if (age < f.dur) {
+                    const u = age / f.dur, p = at(u), wob = 1 + 0.18 * Math.sin(age * 0.035);
+                    // the trail: blobs left behind, smaller and paler, with drips falling off them
+                    for (let k = 7; k >= 1; k--) {
+                        const uu = u - k * 0.05; if (uu <= 0) continue;
+                        const q = at(uu), t = 1 - k / 8, sw = Math.sin(uu * 40 + k) * 2.2;
+                        ctx.globalAlpha = 0.5 * t; ctx.fillStyle = k % 2 ? '#7DDB1E' : '#9DFF2E';
+                        ctx.beginPath(); ctx.arc(q[0] + nx * sw, q[1] + ny * sw + k * 0.9, 6 * t + 1, 0, TAU); ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(f.x0 + dx * u + 3, f.y0 + dy * u + 6, 8, 4, 0, 0, TAU); ctx.fill();
+                    // the blob: a glow, an ink edge, the body, a shine, bubbles on its skin
+                    ctx.fillStyle = 'rgba(157,255,46,.28)'; ctx.beginPath(); ctx.arc(p[0], p[1], 14 * wob, 0, TAU); ctx.fill();
+                    ctx.fillStyle = '#9DFF2E'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2.6;
+                    ctx.beginPath(); ctx.ellipse(p[0], p[1], 8.5 * wob, 8.5 / wob, age * 0.01, 0, TAU); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#C6FF3D'; ctx.beginPath(); ctx.arc(p[0] + 2.5, p[1] + 2, 3.2, 0, TAU); ctx.fill();
+                    ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.arc(p[0] - 3, p[1] - 3.2, 2.3, 0, TAU); ctx.fill();
+                    for (let k = 0; k < 3; k++) { const ang = age * 0.012 + k * 2.1; ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(p[0] + Math.cos(ang) * 5, p[1] + Math.sin(ang) * 5, 1.2, 0, TAU); ctx.fill(); }
+                } else {   // it landed
+                    const u = (age - f.dur) / 1500, a = 1 - u;
+                    // the shock ring and the puddle, which spreads fast then sits and dries
+                    const spread = Math.min(1, (age - f.dur) / 180);
+                    ctx.globalAlpha = 0.5 * Math.min(1, a * 1.6); ctx.fillStyle = '#7DDB1E';
+                    ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r * (0.55 + 0.45 * spread), 0, TAU); ctx.fill();   // a circle, the view is from above: it ends as wide as the real splash (f.r)
+                    ctx.fillStyle = '#9DFF2E'; ctx.globalAlpha = 0.45 * Math.min(1, a * 1.6);
+                    ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r * (0.5 + 0.4 * spread), 0, TAU); ctx.fill();
+                    ctx.globalAlpha = 0.85 * Math.min(1, a * 1.6); ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.stroke();
+                    if (age - f.dur < 320) { const w = (age - f.dur) / 320; ctx.globalAlpha = 1 - w; ctx.strokeStyle = '#C6FF3D'; ctx.lineWidth = 4 * (1 - w) + 1; ctx.beginPath(); ctx.arc(f.x1, f.y1, 10 + (f.r + 18) * w, 0, TAU); ctx.stroke(); }
+                    // drops thrown up and out, falling back
+                    const t = (age - f.dur) / 1000;
+                    if (t < 0.75) {
+                        ctx.fillStyle = '#9DFF2E'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.3;
+                        for (let k = 0; k < f.bub.length; k++) {
+                            const d = f.bub[k], r = d.v * t * 0.6, z = d.h * Math.sin(t / 0.75 * Math.PI);
+                            ctx.globalAlpha = 1 - t / 0.75;
+                            ctx.beginPath(); ctx.arc(f.x1 + Math.cos(d.a) * r, f.y1 + Math.sin(d.a) * r - z, d.s * (1 - t * 0.5), 0, TAU); ctx.fill(); ctx.stroke();
+                        }
+                    }
+                    // bubbles popping on the puddle, smoke rising off it
+                    ctx.globalAlpha = a; ctx.strokeStyle = 'rgba(230,255,170,.9)'; ctx.lineWidth = 1.2;
+                    for (let k = 0; k < f.puff.length; k++) {
+                        const d = f.puff[k], ph = (u * 3 + d.ph) % 1, bx = f.x1 + Math.cos(d.a) * d.d, by = f.y1 + Math.sin(d.a) * d.d;
+                        ctx.beginPath(); ctx.arc(bx, by, 1.5 + 4 * ph, 0, TAU); ctx.stroke();
+                        ctx.globalAlpha = a * 0.22 * (1 - ph); ctx.fillStyle = '#B9E36B'; ctx.beginPath(); ctx.arc(bx + Math.sin(ph * 6 + d.a) * 4, by - 10 - ph * 34, d.s * (0.5 + ph * 0.7), 0, TAU); ctx.fill();
+                        ctx.globalAlpha = a;
+                    }
+                    ctx.globalAlpha = 1;
+                }
+            } else if (f.k === 'boom') {
+                const T = 2600;
+                if (age >= T) { _zFx.splice(i, 1); continue; }
+                const t = age / 1000, r = f.r;
+                // the scorch mark that stays and fades
+                const scorch = Math.max(0, 1 - Math.max(0, age - 300) / (T - 300));
+                ctx.globalAlpha = 0.3 * scorch; ctx.fillStyle = '#1A1A22'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * 0.75, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 0.5 * scorch; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.setLineDash([6, 7]); ctx.stroke(); ctx.setLineDash([]);
+                if (age < 140) { const w = age / 140; ctx.globalAlpha = 1 - w; ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * (0.55 + 0.45 * w), 0, TAU); ctx.fill(); }   // the flash
+                if (age < 520) {   // the fireball: orange with a yellow heart that shrinks
+                    const w = age / 520, e = 1 - (1 - Math.min(1, w * 1.7)) * (1 - Math.min(1, w * 1.7));
+                    ctx.globalAlpha = (1 - w) * 0.85; ctx.fillStyle = '#FF6A1A'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * 0.95 * e, 0, TAU); ctx.fill();
+                    ctx.fillStyle = '#FFB02E'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * 0.7 * e, 0, TAU); ctx.fill();
+                    ctx.globalAlpha = (1 - w); ctx.fillStyle = '#FFF3C4'; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * 0.4 * (1 - w * 0.6), 0, TAU); ctx.fill();
+                    ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 3; ctx.globalAlpha = (1 - w) * 0.8; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * 0.95 * e, 0, TAU); ctx.stroke();
+                }
+                if (age < 460) { const w = age / 460; ctx.globalAlpha = (1 - w) * 0.9; ctx.strokeStyle = '#FFE27A'; ctx.lineWidth = 7 * (1 - w) + 1; ctx.beginPath(); ctx.arc(f.x0, f.y0, r * (0.4 + 1.1 * w), 0, TAU); ctx.stroke(); }   // the shock ring
+                // sparks with a short tail, decelerating
+                if (age < 700) {
+                    ctx.lineCap = 'round';
+                    for (let k = 0; k < f.sp.length; k++) {
+                        const d = f.sp[k], u = age / 700, e = 1 - (1 - u) * (1 - u), rr = d.v * 0.7 * e, rt = d.v * 0.7 * (1 - (1 - Math.max(0, u - 0.08)) * (1 - Math.max(0, u - 0.08)));
+                        const cx = Math.cos(d.a), cy = Math.sin(d.a);
+                        ctx.globalAlpha = 1 - u; ctx.strokeStyle = d.c ? '#FFC72E' : '#FF6A1A'; ctx.lineWidth = 2.6 * (1 - u * 0.6) + 0.6;
+                        ctx.beginPath(); ctx.moveTo(f.x0 + cx * rt, f.y0 + cy * rt); ctx.lineTo(f.x0 + cx * rr, f.y0 + cy * rr); ctx.stroke();
+                    }
+                    // chunks of the thing, tumbling out
+                    ctx.fillStyle = '#5A4636'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
+                    for (let k = 0; k < f.ch.length; k++) {
+                        const d = f.ch[k], u = age / 700, rr = d.v * 0.55 * (1 - (1 - u) * (1 - u)), z = 26 * Math.sin(u * Math.PI);
+                        ctx.globalAlpha = 1 - u * u;
+                        ctx.save(); ctx.translate(f.x0 + Math.cos(d.a) * rr, f.y0 + Math.sin(d.a) * rr - z); ctx.rotate(d.rot + u * 9);
+                        ctx.beginPath(); ctx.rect(-d.s, -d.s * 0.6, d.s * 2, d.s * 1.2); ctx.fill(); ctx.stroke(); ctx.restore();
+                    }
+                }
+                // smoke: dark puffs that swell and rise, then thin out
+                for (let k = 0; k < f.sm.length; k++) {
+                    const d = f.sm[k], u = Math.min(1, Math.max(0, (age - 120) / 1400)); if (u <= 0) continue;
+                    ctx.globalAlpha = 0.45 * (1 - u) * Math.min(1, u * 5); ctx.fillStyle = k % 3 === 0 ? '#4B4F5A' : '#2F323B';
+                    ctx.beginPath(); ctx.arc(f.x0 + Math.cos(d.a) * (d.d + d.v * t), f.y0 + Math.sin(d.a) * (d.d + d.v * t) - 24 * u - 14 * t, d.s * (0.5 + 1.1 * u), 0, TAU); ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+            } else if (f.k === 'clang') {
+                if (age >= 260) { _zFx.splice(i, 1); continue; }
+                const u = age / 260, px = f.x0 + Math.cos(f.a) * 31, py = f.y0 + Math.sin(f.a) * 31;
+                if (age < 120) { ctx.globalAlpha = 1 - age / 120; ctx.fillStyle = '#FFF6D0'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6; _star(ctx, px, py, 6 + 15 * (1 - age / 120)); ctx.fill(); ctx.stroke(); }
+                ctx.globalAlpha = (1 - u) * 0.9; ctx.strokeStyle = '#DCE6F2'; ctx.lineWidth = 3 * (1 - u) + 0.8; ctx.beginPath(); ctx.arc(px, py, 6 + 22 * u, 0, TAU); ctx.stroke();
+                ctx.lineCap = 'round'; ctx.strokeStyle = '#FFE27A'; ctx.lineWidth = 2;
+                for (let k = 0; k < f.sp.length; k++) {
+                    const d = f.sp[k], r0 = d.v * u * 0.6, r1 = r0 + d.l * (1 - u), c = Math.cos(d.a), s = Math.sin(d.a);
+                    ctx.globalAlpha = 1 - u; ctx.beginPath(); ctx.moveTo(px + c * r0, py + s * r0); ctx.lineTo(px + c * r1, py + s * r1); ctx.stroke();
+                }
+                ctx.lineCap = 'butt'; ctx.globalAlpha = 1;
+            } else if (f.k === 'scream') {   // three rings of sound out to the range of the scream, the first fastest, and a flash at the mouth
+                if (age >= 800) { _zFx.splice(i, 1); continue; }
+                ctx.lineJoin = 'round';
+                for (let k = 0; k < 3; k++) {
+                    const u = (age - k * 110) / 620; if (u <= 0 || u >= 1) continue;
+                    const e = 1 - (1 - u) * (1 - u), rr = 24 + (f.r - 24) * e * (1 - k * 0.07);
+                    ctx.globalAlpha = (1 - u) * 0.85; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 7 * (1 - u) + 2; ctx.beginPath(); ctx.arc(f.x0, f.y0, rr, 0, TAU); ctx.stroke();
+                    ctx.strokeStyle = k === 0 ? '#FFFFFF' : '#BFD6FF'; ctx.lineWidth = 3.4 * (1 - u) + 0.8; ctx.beginPath(); ctx.arc(f.x0, f.y0, rr, 0, TAU); ctx.stroke();
+                }
+                if (age < 220) { ctx.globalAlpha = 1 - age / 220; ctx.fillStyle = '#E8F1FF'; ctx.beginPath(); ctx.arc(f.x0, f.y0, 16 + 22 * (age / 220), 0, TAU); ctx.fill(); }
+                ctx.globalAlpha = 1;
+            } else {   // summon: a purple ring and sparks round the summoner
+                if (age >= 700) { _zFx.splice(i, 1); continue; }
+                const u = age / 700;
+                ctx.globalAlpha = (1 - u) * 0.9; ctx.strokeStyle = '#B070FF'; ctx.lineWidth = 5 * (1 - u) + 1;
+                ctx.beginPath(); ctx.arc(f.x0, f.y0, 36 + 90 * u, 0, TAU); ctx.stroke();
+                ctx.fillStyle = '#E3C75A';
+                for (let k = 0; k < 8; k++) { const ang = k * 0.785 + u * 2, rr = 36 + 90 * u; ctx.beginPath(); ctx.arc(f.x0 + Math.cos(ang) * rr, f.y0 + Math.sin(ang) * rr, 3.4 * (1 - u), 0, TAU); ctx.fill(); }
+                ctx.globalAlpha = 1;
+            }
+        }
+        ctx.lineCap = 'butt';
+    }
+    // The exploder wears its fuse: a spark that flickers and spits sparks, and a red glow that beats faster the nearer it is to what it will blow up
+    // (you, a turret or a barricade). Drawn on the zombie itself, by its position and heading; nothing is stored. The fuse is where the picture has it.
+    const _FUSE_PX = -26.4, _FUSE_PY = -19.9;   // in the picture's units, y towards where it looks
+    function _drawExploderFuse(ctx, z, def, now) {
+        const k = def.r / 38.5, a = (z.angle || 0) - Math.PI / 2, cs = Math.cos(a), sn = Math.sin(a);
+        const fx = z.x + (_FUSE_PX * cs - _FUSE_PY * sn) * k, fy = z.y + (_FUSE_PX * sn + _FUSE_PY * cs) * k;
+        // the nearest thing to blow up
+        let nd = 1e9;
+        if (predX !== null && !_selfDead) nd = Math.hypot(predX - z.x, predY - z.y);
+        for (let i = 0; i < _turrets.length; i++) { const d = Math.hypot(_turrets[i].x - z.x, _turrets[i].y - z.y) - 31; if (d < nd) nd = d; }
+        for (let i = 0; i < _structs.length; i++) { const d = Math.hypot(_structs[i].x - z.x, _structs[i].y - z.y) - 40; if (d < nd) nd = d; }
+        const near = Math.max(0, Math.min(1, (260 - nd) / 220)), beat = 0.5 + 0.5 * Math.sin(now * (0.006 + 0.03 * near) + z.id);
+        if (near > 0) { ctx.globalAlpha = (0.12 + 0.3 * near) * beat; ctx.fillStyle = '#FF3B3B'; ctx.beginPath(); ctx.arc(z.x, z.y, def.r * (1.5 + 0.5 * beat), 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+        const fl = 0.6 + 0.4 * Math.sin(now * 0.05 + z.id * 1.7);
+        ctx.fillStyle = 'rgba(255,200,60,' + (0.35 * fl).toFixed(2) + ')'; ctx.beginPath(); ctx.arc(fx, fy, 6 + 3 * fl, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#FFF3C4'; ctx.beginPath(); ctx.arc(fx, fy, 2 + fl, 0, TAU); ctx.fill();
+        // a few sparks flying off, each a little way through its life (phases offset by the zombie)
+        for (let s = 0; s < 4; s++) {
+            const ph = ((now / 420) + s * 0.25 + z.id * 0.37) % 1, ang = (z.id * 2.3 + s * 1.9 + Math.floor((now / 420) + s * 0.25 + z.id * 0.37) * 1.3) % TAU, rr = 4 + 14 * ph;
+            ctx.globalAlpha = 1 - ph; ctx.fillStyle = s % 2 ? '#FFC72E' : '#FF8A1F';
+            ctx.beginPath(); ctx.arc(fx + Math.cos(ang) * rr, fy + Math.sin(ang) * rr - 5 * ph, 1.6 * (1 - ph) + 0.4, 0, TAU); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+    }
+    // A bomb: it is thrown up from the tower and comes down on the spot (a faint ring on the ground shows where, the size of the blast), a shadow on the
+    // ground goes before it; when it lands the exploder's blast (`_boomFx`, queued in `bomb-shots` for the landing time) goes off with the real radius (the server hurts what is inside then). All of it is drawn from the age.
+    function _drawBombFx(ctx, now) {
+        for (let i = _bombFx.length - 1; i >= 0; i--) {
+            const f = _bombFx[i], age = now - f.t0;
+            if (age >= f.dur) { _bombFx.splice(i, 1); continue; }
+            const u = age / f.dur, x = f.x0 + (f.x1 - f.x0) * u, y = f.y0 + (f.y1 - f.y0) * u, lift = Math.sin(u * Math.PI) * (26 + Math.hypot(f.x1 - f.x0, f.y1 - f.y0) * 0.14);
+            ctx.globalAlpha = 0.18 + 0.14 * u; ctx.strokeStyle = '#FF8A1F'; ctx.lineWidth = 2; ctx.setLineDash([7, 6]);
+            ctx.beginPath(); ctx.arc(f.x1, f.y1, f.r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);   // where it will come down
+            ctx.globalAlpha = 0.28; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();   // its shadow
+            ctx.globalAlpha = 1; ctx.fillStyle = '#2B2F3A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2.2;
+            ctx.beginPath(); ctx.arc(x, y - lift, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(x - 2.2, y - lift - 2.4, 1.9, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = (Math.floor(now / 60) & 1) ? '#FFD34D' : '#FF7A1F'; ctx.beginPath(); ctx.arc(x + 3.6, y - lift - 6.6, 2.3, 0, Math.PI * 2); ctx.fill();   // the fuse sparks
+            ctx.globalAlpha = 1;
+        }
+    }
+    // The Flamethrower's fire. It is made of many separate pieces of flame, each with its own place in the world: every frame, while the server keeps sending
+    // bursts (flame-shots, one every 250 ms, a burst stays _FLAME_LIFE ms), new pieces are born at the nozzle pointing where the barrel points at that moment,
+    // and from then on they fly on their own (a little drag, a little turbulence), swell, shrink and burn out. So when the turret turns to another target the
+    // fire already out there does not follow the barrel: it carries on where it was going and the new fire comes out the new way, and what is left behind
+    // (torn bits, sparks, embers, a little smoke at the tip) drifts and goes out by itself. A piece is a ragged wisp (a smooth shape with six irregular points,
+    // longer than wide, lying along its flight), not a circle: laid over each other they make the flame. Its colour goes with how hot it still is: the young ones
+    // near the axis white-yellow (they live shortest, so the white core stays near the nozzle), then yellow, orange, dark orange, and the ones thrown wide, the rim,
+    // darker and softer. They are drawn coolest first so the hot ones end on top. Narrow at the nozzle, opening into a cone, more turbulent, thinner and
+    // more broken towards the end. The pieces live in typed arrays on the tower (t._fx, made once), so nothing is allocated per frame.
+    const _FLAME_LIFE = 400, _FLAME_RAMP = 380, _FP = 320, _FLAME_DRAG = 2.2, _FLAME_LIFE0 = 0.42;
+    const _FHEAT_COL = ['#FFF8DC', '#FFD43B', '#FF8A1F', '#E0501B', '#A92D18'], _FHEAT_ALPHA = [1, 1, 0.92, 0.8, 0.55];
+    const _fbIdx = [new Int16Array(_FP), new Int16Array(_FP), new Int16Array(_FP), new Int16Array(_FP), new Int16Array(_FP)], _fbN = new Int16Array(5), _fwx = new Float32Array(6), _fwy = new Float32Array(6);
+    function _fh(k) { const s = Math.sin(k * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
+    function _flameFx(t) {
+        if (!t._fx) t._fx = { x: new Float32Array(_FP), y: new Float32Array(_FP), vx: new Float32Array(_FP), vy: new Float32Array(_FP), age: new Float32Array(_FP), life: new Float32Array(_FP), size: new Float32Array(_FP),
+                              lat: new Float32Array(_FP), rnd: new Float32Array(_FP * 6), kind: new Uint8Array(_FP), n: 0, acc: 0, sacc: 0, cnt: 0, last: 0 };
+        return t._fx;
+    }
+    // kind: 0 body, 1 core, 2 spark, 3 ember, 4 smoke
+    function _fSpawn(fx, kind, x, y, ang, speed, life, size, lat, back) {
+        if (fx.n >= _FP) return;
+        const i = fx.n++, c = Math.cos(ang), s = Math.sin(ang), id = ++fx.cnt;
+        fx.x[i] = x + c * speed * back; fx.y[i] = y + s * speed * back; fx.vx[i] = c * speed; fx.vy[i] = s * speed; fx.age[i] = back; fx.life[i] = life; fx.size[i] = size; fx.lat[i] = lat; fx.kind[i] = kind;
+        for (let k = 0; k < 6; k++) fx.rnd[i * 6 + k] = _fh(id * 7.31 + k * 3.7 + i);
+    }
+    function _fKill(fx, i) {   // the last piece takes its place
+        const l = --fx.n;
+        if (i !== l) {
+            fx.x[i] = fx.x[l]; fx.y[i] = fx.y[l]; fx.vx[i] = fx.vx[l]; fx.vy[i] = fx.vy[l]; fx.age[i] = fx.age[l]; fx.life[i] = fx.life[l]; fx.size[i] = fx.size[l]; fx.lat[i] = fx.lat[l]; fx.kind[i] = fx.kind[l];
+            for (let k = 0; k < 6; k++) fx.rnd[i * 6 + k] = fx.rnd[l * 6 + k];
+        }
+    }
+    // One ragged wisp lying along (dx, dy): six irregular points, closed with smooth curves. Adds to the current path.
+    function _fWisp(ctx, x, y, dx, dy, hl, hw, r, o) {
+        const nx = -dy, ny = dx;
+        const a = hl * (1 + 0.35 * r[o]), b = hl * 0.12, c = hl * (0.55 + 0.3 * r[o + 1]), d = hl * (0.85 + 0.35 * r[o + 2]);   // tip, shoulders, tail corners, tail notch (along the flight)
+        const wr = hw * (0.85 + 0.35 * r[o + 3]), wl = hw * (0.85 + 0.35 * r[o + 4]), tc = hw * (0.3 + 0.4 * r[o + 5]);
+        _fwx[0] = x + dx * a;                  _fwy[0] = y + dy * a;
+        _fwx[1] = x + dx * b + nx * wr;        _fwy[1] = y + dy * b + ny * wr;
+        _fwx[2] = x - dx * c + nx * tc;        _fwy[2] = y - dy * c + ny * tc;
+        _fwx[3] = x - dx * d;                  _fwy[3] = y - dy * d;
+        _fwx[4] = x - dx * c - nx * tc * (0.6 + 0.8 * r[o + 3]); _fwy[4] = y - dy * c - ny * tc * (0.6 + 0.8 * r[o + 3]);
+        _fwx[5] = x + dx * b - nx * wl;        _fwy[5] = y + dy * b - ny * wl;
+        ctx.moveTo((_fwx[5] + _fwx[0]) / 2, (_fwy[5] + _fwy[0]) / 2);
+        for (let k = 0; k < 6; k++) { const m = k === 5 ? 0 : k + 1; ctx.quadraticCurveTo(_fwx[k], _fwy[k], (_fwx[k] + _fwx[m]) / 2, (_fwy[k] + _fwy[m]) / 2); }
+    }
+    function _drawFlameFx(ctx, now) {
+        for (let ti = 0; ti < _turrets.length; ti++) {
+            const t = _turrets[ti];
+            if (t.kd !== 'flame') continue;
+            const firing = now - t.flameT < _FLAME_LIFE;
+            if (!firing && (!t._fx || t._fx.n === 0)) continue;
+            const fx = _flameFx(t), dt = fx.last ? Math.min(0.05, Math.max(0, (now - fx.last) / 1000)) : 0.016; fx.last = now;
+            const tier = ARStructs.turretTiers(t)[t.t], R = tier.range, half = tier.cone, ang = t.ang, M0 = 33 + 3 * t.t, L = R - M0, tx = t.x, ty = t.y, mx = tx + Math.cos(ang) * M0, my = ty + Math.sin(ang) * M0, seed = t.id * 7;
+            const ramp = Math.min(1, (now - t.flameS) / _FLAME_RAMP), e = 1 - (1 - ramp) * (1 - ramp), sc = 1 + 0.1 * t.t;
+            const v0 = L / ((1 - Math.exp(-_FLAME_DRAG * _FLAME_LIFE0)) / _FLAME_DRAG) * (0.78 + 0.22 * e);   // how fast it leaves: the body just reaches the end of the range
+            if (firing) {   // new pieces: the ones that come out later are not all on the same spot (each is moved on by a part of the frame)
+                fx.acc += 230 * (0.35 + 0.65 * e) * dt;
+                while (fx.acc >= 1) {
+                    fx.acc -= 1;
+                    const core = Math.random() < 0.38, u = Math.random() * 2 - 1, lat = (u < 0 ? -1 : 1) * Math.pow(Math.abs(u), 1.7) * (core ? 0.25 : 1);
+                    _fSpawn(fx, core ? 1 : 0, mx, my, ang + lat * half * 0.6 * (0.55 + 0.45 * e), v0 * (core ? 1 : 0.8 + 0.3 * Math.random()), (core ? 0.11 + 0.05 * Math.random() : _FLAME_LIFE0 * (0.8 + 0.4 * Math.random()) * (1 - 0.25 * Math.abs(lat))),
+                            (core ? 4.2 : 5.8 + 3.2 * Math.random()) * sc, lat, Math.random() * dt);
+                }
+                fx.sacc += 16 * dt;   // sparks
+                while (fx.sacc >= 1) { fx.sacc -= 1; _fSpawn(fx, 2, mx, my, ang + (Math.random() * 2 - 1) * half * 1.1, v0 * (0.5 + 0.5 * Math.random()), 0.3 + 0.25 * Math.random(), 1, 0, Math.random() * dt); }
+            }
+            // move, age, burn out; a piece that burns out at the far end sometimes leaves an ember or a little smoke behind
+            const shared = Math.sin(now * 0.0062 + seed);
+            for (let i = fx.n - 1; i >= 0; i--) {
+                const a = fx.age[i] + dt, life = fx.life[i], k = fx.kind[i];
+                if (a >= life) {
+                    if (k === 0 && fx.n < _FP - 4) {
+                        const r = Math.random();
+                        if (r < 0.1) _fSpawn(fx, 4, fx.x[i], fx.y[i], Math.atan2(fx.vy[i], fx.vx[i]) + (Math.random() - 0.5), 22 + 18 * Math.random(), 0.8 + 0.4 * Math.random(), 5 + 3 * Math.random(), 0, 0);
+                        else if (r < 0.22) _fSpawn(fx, 3, fx.x[i], fx.y[i], Math.atan2(fx.vy[i], fx.vx[i]) + (Math.random() - 0.5) * 2, 30 + 40 * Math.random(), 0.5 + 0.5 * Math.random(), 1, 0, 0);
+                    }
+                    _fKill(fx, i); continue;
+                }
+                fx.age[i] = a;
+                const drag = k === 4 ? 1.2 : k === 3 ? 1.6 : k === 2 ? 1.4 : _FLAME_DRAG, f = Math.max(0, 1 - drag * dt);
+                let vx = fx.vx[i] * f, vy = fx.vy[i] * f;
+                if (k <= 1) {   // turbulence: a push sideways to the flight that gets stronger as it ages, part shared by the whole flame, part its own
+                    const sp = Math.hypot(vx, vy) || 1, acc = (shared * 0.55 + Math.sin(now * 0.009 + fx.rnd[i * 6] * 40 + a * 11) * 0.45) * (30 + 190 * a / life) * dt;
+                    vx += -vy / sp * acc; vy += vx / sp * acc;
+                }
+                fx.vx[i] = vx; fx.vy[i] = vy; fx.x[i] += vx * dt; fx.y[i] += vy * dt;
+            }
+            // sort the flame pieces by how hot they are
+            _fbN.fill(0);
+            for (let i = 0; i < fx.n; i++) {
+                const k = fx.kind[i]; if (k > 1) continue;
+                const a = fx.age[i] / fx.life[i], h = Math.pow(1 - a, 1.1) * (1 - 0.5 * Math.abs(fx.lat[i])) * (k === 1 ? 1.2 : 1), b = h >= 0.72 ? 0 : h >= 0.5 ? 1 : h >= 0.3 ? 2 : h >= 0.15 ? 3 : 4;
+                _fbIdx[b][_fbN[b]++] = i;
+            }
+            ctx.fillStyle = '#3A3A44';   // the smoke, first
+            for (let i = 0; i < fx.n; i++) if (fx.kind[i] === 4) { const a = fx.age[i] / fx.life[i]; ctx.globalAlpha = 0.17 * (1 - a) * Math.min(1, a * 8); ctx.beginPath(); ctx.arc(fx.x[i], fx.y[i], fx.size[i] * (0.7 + 1.6 * a), 0, TAU); ctx.fill(); }
+            for (let b = 4; b >= 0; b--) {   // the coolest first, the hottest last
+                const n = _fbN[b]; if (!n) continue;
+                ctx.fillStyle = _FHEAT_COL[b]; ctx.globalAlpha = _FHEAT_ALPHA[b]; ctx.beginPath();
+                for (let q = 0; q < n; q++) {
+                    const i = _fbIdx[b][q], a = fx.age[i] / fx.life[i], vx = fx.vx[i], vy = fx.vy[i], sp = Math.hypot(vx, vy) || 1;
+                    const hw = fx.size[i] * (0.55 + 1.25 * Math.pow(a, 0.7)) * (1 - Math.pow(a, 2.4)) * (1 + 0.12 * Math.sin(now * 0.02 + fx.rnd[i * 6 + 2] * 30));
+                    if (hw < 0.5) continue;
+                    _fWisp(ctx, fx.x[i], fx.y[i], vx / sp, vy / sp, hw * 2.3, hw, fx.rnd, i * 6);
+                }
+                ctx.fill();
+            }
+            ctx.lineCap = 'round';   // sparks with a tail
+            for (let i = 0; i < fx.n; i++) if (fx.kind[i] === 2) {
+                const a = fx.age[i] / fx.life[i], vx = fx.vx[i], vy = fx.vy[i], sp = Math.hypot(vx, vy) || 1, len = 8 * (1 - a * 0.5);
+                ctx.globalAlpha = 1 - a * a; ctx.strokeStyle = fx.rnd[i * 6] < 0.66 ? '#FFC72E' : '#FF7A1F'; ctx.lineWidth = 2.2 * (1 - a * 0.6) + 0.5;
+                ctx.beginPath(); ctx.moveTo(fx.x[i] - vx / sp * len, fx.y[i] - vy / sp * len); ctx.lineTo(fx.x[i], fx.y[i]); ctx.stroke();
+            }
+            ctx.lineCap = 'butt'; ctx.fillStyle = '#FF9A22';   // embers
+            for (let i = 0; i < fx.n; i++) if (fx.kind[i] === 3) { const a = fx.age[i] / fx.life[i]; ctx.globalAlpha = 1 - a; ctx.beginPath(); ctx.arc(fx.x[i], fx.y[i], 1.7 * (1 - a) + 0.6, 0, TAU); ctx.fill(); }
+            if (firing) {   // the flash at the nozzle
+                ctx.globalAlpha = 0.55 + 0.2 * Math.sin(now * 0.04); ctx.fillStyle = '#FFE27A'; ctx.beginPath(); ctx.arc(mx, my, 6 + 3 * e, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 1; ctx.fillStyle = '#FFF8DC'; ctx.beginPath(); ctx.arc(mx, my, 3 + e, 0, TAU); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
+    }
+    // A Tesla bolt: from the tower to the first zombie, on to the next, and so on (the server: tesla-zaps [tower id, zombie ids in the chain]). Each leg is
+    // a jagged line worked out once here (the jags stay still while it lasts) and shown 70 ms after the one before, which is when the server hurts
+    // that zombie; a leg stays 130 ms, fading, with a spark where it lands.
+    const _ZAP_STEP = 70, _ZAP_LIFE = 230;
+    // One jagged path from (x0, y0) to (x1, y1): points in a flat array. The jags are worked out once (here) and stay still while the leg lasts, except that a
+    // second path is made too and the bolt flickers between the two.
+    function _zapPath(x0, y0, x1, y1) {
+        const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1, n = Math.max(3, Math.ceil(len / 16)), nx = -dy / len, ny = dx / len, pts = [x0, y0];
+        for (let i = 1; i < n; i++) { const o = (Math.random() * 2 - 1) * Math.min(11, len * 0.18) * Math.sin(Math.PI * i / n + 0.35); pts.push(x0 + dx * i / n + nx * o, y0 + dy * i / n + ny * o); }
+        pts.push(x1, y1);
+        return pts;
+    }
+    // A leg of the bolt: two flickering paths, a couple of forks that leave the main one, and sparks that fly off it
+    function _zapLeg(x0, y0, x1, y1) {
+        const a = _zapPath(x0, y0, x1, y1), b = _zapPath(x0, y0, x1, y1), len = Math.hypot(x1 - x0, y1 - y0) || 1, ux = (x1 - x0) / len, uy = (y1 - y0) / len, forks = [], sp = [];
+        const nf = len > 70 ? 3 : 2;
+        for (let f = 0; f < nf; f++) {   // a fork: from a point of the path, off to the side, in two or three short bends
+            const k = 1 + ((Math.random() * (a.length / 2 - 2)) | 0), px = a[k * 2], py = a[k * 2 + 1], side = Math.random() < 0.5 ? -1 : 1, ang = Math.atan2(uy, ux) + side * (0.5 + Math.random() * 0.7);
+            const pts = [px, py]; let cx = px, cy = py, aa = ang;
+            for (let i = 0; i < 3; i++) { aa += (Math.random() - 0.5) * 0.9; const l = 9 + Math.random() * 12; cx += Math.cos(aa) * l; cy += Math.sin(aa) * l; pts.push(cx, cy); }
+            forks.push(pts);
+        }
+        for (let i = 0; i < 14; i++) {   // sparks: they start on the bolt and fly out, slowing as they go
+            const k = (Math.random() * (a.length / 2)) | 0, ang = Math.random() * TAU, v = 40 + Math.random() * 90;
+            sp.push({ x: a[k * 2], y: a[k * 2 + 1], vx: Math.cos(ang) * v, vy: Math.sin(ang) * v, life: 150 + Math.random() * 150 });
+        }
+        return { a, b, forks, sp, x1, y1 };
+    }
+    function _zapPoly(ctx, pts) { ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.stroke(); }
+    function _drawZapFx(ctx, now) {
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        for (let i = _zapFx.length - 1; i >= 0; i--) {
+            const f = _zapFx[i], last = f.segs[f.segs.length - 1];
+            if (now - last.t0 >= _ZAP_LIFE) { _zapFx.splice(i, 1); continue; }
+            for (let k = 0; k < f.segs.length; k++) {
+                const s = f.segs[k], age = now - s.t0;
+                if (age < 0 || age >= _ZAP_LIFE) continue;
+                const u = age / _ZAP_LIFE, a = 1 - u * u, flick = 0.8 + 0.2 * Math.sin(age * 0.11 + k), pts = ((age / 45) | 0) % 2 ? s.leg.b : s.leg.a;
+                // the glow: three wide strokes, each fainter and wider, round the bolt (no shadow blur: that is slow)
+                ctx.strokeStyle = f.col;
+                ctx.globalAlpha = a * 0.12 * flick; ctx.lineWidth = 38; _zapPoly(ctx, pts);
+                ctx.globalAlpha = a * 0.2 * flick; ctx.lineWidth = 22; _zapPoly(ctx, pts);
+                ctx.globalAlpha = a * 0.34 * flick; ctx.lineWidth = 12; _zapPoly(ctx, pts);
+                // the bolt: a thin ink edge, the colour, a white core
+                ctx.globalAlpha = a * 0.9; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 7.4; _zapPoly(ctx, pts);
+                ctx.globalAlpha = a; ctx.strokeStyle = f.col; ctx.lineWidth = 4.8; _zapPoly(ctx, pts);
+                ctx.globalAlpha = a * flick; ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2.2; _zapPoly(ctx, pts);
+                for (let q = 0; q < s.leg.forks.length; q++) {   // the forks: thinner, they go out first
+                    const fa = a * Math.max(0, 1 - u * 1.8);
+                    if (fa <= 0.02) break;
+                    ctx.globalAlpha = fa; ctx.strokeStyle = f.col; ctx.lineWidth = 3.4; _zapPoly(ctx, s.leg.forks[q]);
+                    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.3; _zapPoly(ctx, s.leg.forks[q]);
+                }
+                // where it lands: a glow, a bright star and a ring that spreads
+                const ex = s.leg.x1, ey = s.leg.y1;
+                ctx.globalAlpha = a * 0.28; ctx.fillStyle = f.col; ctx.beginPath(); ctx.arc(ex, ey, 22 + 16 * u, 0, TAU); ctx.fill();
+                ctx.globalAlpha = a; ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
+                _star(ctx, ex, ey, 9 + 13 * (1 - u)); ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = a * 0.8; ctx.strokeStyle = f.col; ctx.lineWidth = 2.2 * (1 - u) + 0.6; ctx.beginPath(); ctx.arc(ex, ey, 8 + 28 * u, 0, TAU); ctx.stroke();
+                // sparks flying off the bolt
+                ctx.fillStyle = '#FFFFFF';
+                for (let q = 0; q < s.leg.sp.length; q++) {
+                    const p = s.leg.sp[q]; if (age >= p.life) continue;
+                    const e = 1 - Math.exp(-age * 0.011), pu = age / p.life;
+                    ctx.globalAlpha = (1 - pu) * 0.95; ctx.beginPath(); ctx.arc(p.x + p.vx * e * 0.09, p.y + p.vy * e * 0.09 + pu * 5, 2.6 * (1 - pu * 0.6) + 0.5, 0, TAU); ctx.fill();
+                }
+                if (k === 0) {   // at the tower: a flash and a few small arcs round it
+                    const R = ARStructs.TURRET.r;
+                    if (age < 140) {
+                        const fu = age / 140;
+                        ctx.globalAlpha = (1 - fu) * 0.45; ctx.fillStyle = f.col; ctx.beginPath(); ctx.arc(s.leg.a[0], s.leg.a[1], R * (0.6 + 0.7 * fu), 0, TAU); ctx.fill();
+                        ctx.globalAlpha = (1 - fu) * 0.9; ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.6;
+                        for (let q = 0; q < 3; q++) { const a0 = s.leg.sp[q].vx * 0.07 + q * 2.1 + age * 0.02; ctx.beginPath(); ctx.arc(s.leg.a[0], s.leg.a[1], R + 3, a0, a0 + 0.7); ctx.stroke(); }
+                    }
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
+    }
+    function _drawTurretFx(ctx, now) {
+        for (let i = _turretFx.length - 1; i >= 0; i--) {
+            const f = _turretFx[i], age = now - f.t0;
+            if (age >= f.dur + 90) { _turretFx.splice(i, 1); continue; }
+            const col = _TUR_COL[f.tier], en = f.tier === 2;
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            if (age < f.dur) {
+                const u = age / f.dur, bx = f.x0 + (f.x1 - f.x0) * u, by = f.y0 + (f.y1 - f.y0) * u, L = en ? 26 : 15, tail = Math.min(L, u * f.len);
+                const tx = bx - f.dx * tail, ty = by - f.dy * tail;
+                _turTrail(ctx, f, bx, by, Math.min(_TUR_TL[f.tier], u * f.len), 1, en ? 6 : 4);   // the long trail first, the round on top of it
+                if (en) {   // a ball of energy
+                    ctx.fillStyle = col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(bx, by, 2.6, 0, Math.PI * 2); ctx.fill();
+                } else {    // a short round with an ink edge, like the bullets of the guns
+                    ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 5.4; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke();
+                    ctx.strokeStyle = col; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke();
+                }
+            } else {      // it landed: a small spark that goes out in 90 ms, and the trail with it
+                const a = 1 - (age - f.dur) / 90;
+                _turTrail(ctx, f, f.x1, f.y1, Math.min(_TUR_TL[f.tier], f.len) * a, a, en ? 6 : 4);
+                ctx.globalAlpha = a; ctx.fillStyle = col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
+                _star(ctx, f.x1, f.y1, (en ? 11 : 7) * (0.6 + 0.4 * a)); ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+            if (age < 70) {   // the muzzle flash
+                const a = 1 - age / 70;
+                ctx.globalAlpha = a; ctx.fillStyle = col; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6;
+                _star(ctx, f.x0, f.y0, 6 + 6 * a); ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        }
+    }
+    function _barEls() {
+        const g = id => document.getElementById(id);
+        return _bar.els = { slot: g('pb-barricade'), cost: g('pb-barricade-cost'), tslot: g('pb-turret'), tcost: g('pb-turret-cost'), eslot: g('pb-tesla'), ecost: g('pb-tesla-cost'), oslot: g('pb-bomb'), ocost: g('pb-bomb-cost'), fslot: g('pb-flame'), fcost: g('pb-flame-cost'), hslot: g('pb-heal'), hcost: g('pb-heal-cost'), sslot: g('pb-support'), scost: g('pb-support-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar') };
+    }
+    function _barUi() {
+        const e = _bar.els || _barEls();
+        if (e.slot) { e.slot.classList.toggle('is-empty', _bar.inv <= 0 && !(_bar.place && _bar.kind === 'b')); e.slot.classList.toggle('is-on', _bar.place && _bar.kind === 'b'); }
+        if (e.cost) e.cost.textContent = 'x' + _bar.inv;
+        if (e.tslot) { e.tslot.classList.toggle('is-empty', _bar.invT <= 0 && !(_bar.place && _bar.kind === 't')); e.tslot.classList.toggle('is-on', _bar.place && _bar.kind === 't'); }
+        if (e.tcost) e.tcost.textContent = 'x' + _bar.invT;
+        if (e.eslot) { e.eslot.classList.toggle('is-empty', _bar.invE <= 0 && !(_bar.place && _bar.kind === 'e')); e.eslot.classList.toggle('is-on', _bar.place && _bar.kind === 'e'); }
+        if (e.ecost) e.ecost.textContent = 'x' + _bar.invE;
+        if (e.hslot) { e.hslot.classList.toggle('is-empty', _bar.invH <= 0 && !(_bar.place && _bar.kind === 'h')); e.hslot.classList.toggle('is-on', _bar.place && _bar.kind === 'h'); }
+        if (e.hcost) e.hcost.textContent = 'x' + _bar.invH;
+        if (e.sslot) { e.sslot.classList.toggle('is-empty', _bar.invS <= 0 && !(_bar.place && _bar.kind === 'd')); e.sslot.classList.toggle('is-on', _bar.place && _bar.kind === 'd'); }
+        if (e.scost) e.scost.textContent = 'x' + _bar.invS;
+        if (e.oslot) { e.oslot.classList.toggle('is-empty', _bar.invO <= 0 && !(_bar.place && _bar.kind === 'o')); e.oslot.classList.toggle('is-on', _bar.place && _bar.kind === 'o'); }
+        if (e.ocost) e.ocost.textContent = 'x' + _bar.invO;
+        if (e.fslot) { e.fslot.classList.toggle('is-empty', _bar.invF <= 0 && !(_bar.place && _bar.kind === 'f')); e.fslot.classList.toggle('is-on', _bar.place && _bar.kind === 'f'); }
+        if (e.fcost) e.fcost.textContent = 'x' + _bar.invF;
+        if (e.pbar) e.pbar.style.display = _bar.place && !isDesktop ? '' : 'none';
+    }
+    // 1 (or the slot): the placement mode, with the ghost in front of you. While it is on, the trigger does not fire.
+    // kind: 'b' barricade (key 1), 't' turret (2), 'e' Tesla Tower (3), 'h' Health Station (4), 'o' Bomb Tower (5) or 'f' Flamethrower (6); the same key again, or Esc, puts the ghost away; another key swaps it
+    function _barPlaceMode(on, kind) {
+        if (kind) { if (on === undefined) on = !(_bar.place && _bar.kind === kind); } else if (on === undefined) on = !_bar.place;
+        if (on) {
+            if (_gameMode !== 'pve' || _selfDead || gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
+            const k = kind || _bar.kind;
+            if (_bar[_BAR_KINDS[k].inv] <= 0) return;
+            _bar.kind = k; _bar.why = null;
+            isShooting = false; aimStartTime = null;
+        }
+        _bar.place = !!on;
+        _barUi();
+    }
+    function _barPlace() {
+        if (!_bar.place || predX === null) return;
+        if (_bar.why) return;   // the ghost is red: nothing to say
+        if (_bar.kind !== 'b') socket.emit('place-turret', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), kd: _BAR_KINDS[_bar.kind].kd });
+        else socket.emit('place-struct', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), o: _bar.g.o });
+    }
+    function _barUse() { if (_bar.use && !_bar.place) socket.emit('use-struct', { id: _bar.use.id }); }
+    // Where the ghost stands and whether the barricade can go there (the same check the server makes)
+    function _barGhost(players, now, zoom) {
+        if (!_bar.place) return;
+        if (_selfDead || gameEnded || _pveState.waveBreak) { _barPlaceMode(false); return; }
+        if (predX === null) return;
+        const pl = _bar.pl; pl.length = 0;
+        for (const id in players) { const p = players[id]; if (p.alive && p.hp > 0) pl.push(id === socket.id ? { x: predX, y: predY } : p); }
+        if (_bar.kind !== 'b') {
+            _bar.g.kd = _BAR_KINDS[_bar.kind].kd;
+            ARStructs.turretPlacement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g, mouseActive ? _mouseOff / zoom : undefined);
+            _bar.why = ARStructs.checkPlaceTurret(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, roomPlayers: Math.max(1, Object.keys(players).length) });
+            return;
+        }
+        ARStructs.placement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g, mouseActive ? _mouseOff / zoom : undefined);
+        _bar.why = ARStructs.checkPlace(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, count: _structs.length });
+    }
+    // The barricade within reach of you, and what E would do to it (the prompt changes only when that does)
+    function _barUseTick() {
+        let best = null, bd = 1e9;
+        if (predX !== null && !_bar.place && !_selfDead && !_pveState.waveBreak) {
+            const reach = PLAYER_HIT_R + ARStructs.BARRICADE.useRange;
+            for (let i = 0; i < _structs.length; i++) { const d = ARStructs.distToRect(predX, predY, _structs[i]); if (d <= reach && d < bd) { bd = d; best = _structs[i]; } }
+            for (let i = 0; i < _turrets.length; i++) { const d = ARStructs.turretDist(predX, predY, _turrets[i]); if (d <= PLAYER_HIT_R + ARStructs.TURRET.useRange && d < bd) { bd = d; best = _turrets[i]; } }
+        }
+        _bar.use = best;
+        const tur = best && best.k === 't';
+        const act = best && !_bar.work.has(best.id) ? (tur ? ARStructs.turretUseAction(best) : ARStructs.useAction(best)) : null;   // not while it is being worked on
+        const cost = !act ? 0 : tur ? (act === 'repair' ? ARStructs.turretRepairCost(best) : ARStructs.turretUpgradeCost(best)) : act === 'repair' ? ARStructs.repairCost(best) : ARStructs.upgradeCost(best);
+        const can = _pveState.myCoins >= cost;
+        _bar.act = act; _bar.can = can;   // for the highlight on the thing E would work on
+        const key = act ? act + cost + (can ? 'y' : 'n') : '';
+        if (key === _bar.useKey) return;
+        _bar.useKey = key;
+        const e = _bar.els || _barEls();
+        if (!e.use) return;
+        e.use.style.display = act ? '' : 'none';
+        if (!act) return;
+        e.use.classList.toggle('is-repair', act === 'repair');
+        e.use.classList.toggle('is-upgrade', act === 'upgrade');
+        e.use.classList.toggle('is-bad', !can);
+        e.useTxt.textContent = act === 'repair' ? 'REPAIR' : 'UPGRADE';
+        e.useCost.textContent = cost;
+        e.useIc.setAttribute('href', act === 'repair' ? '#wrench' : '#chevrons-up');
+    }
+    // ---- effects: pieces, dust, rings, sparkles (all of them over a second or less) ----
+    // k: 'break' | 'repair' | 'upgrade' | 'place'; the particles are worked out once here and moved by the age in _drawStructFx
+    function _fxSpawn(k, s, now) {
+        const tur = s.k === 't';
+        const parts = [], len = tur ? ARStructs.TURRET.r : ARStructs.halfW(s) > ARStructs.halfH(s) ? ARStructs.halfW(s) : ARStructs.halfH(s);
+        const horiz = tur || !s.o, r = Math.random;
+        const n = k === 'break' ? 18 : k === 'place' ? 16 : k === 'upgrade' ? 12 : 7;
+        for (let i = 0; i < n; i++) {
+            const along = (r() * 2 - 1) * len * 0.9;
+            if (tur) { const a = r() * Math.PI * 2, d = r() * len * 0.8; parts.push({ ox: Math.cos(a) * d, oy: Math.sin(a) * d, a: r() * Math.PI * 2, v: 0.5 + r(), rot: r() * Math.PI, rs: (r() - 0.5) * 9, sz: 3.5 + r() * 4, c: (r() * 3) | 0 }); continue; }
+            parts.push({ ox: horiz ? along : (r() * 2 - 1) * 12, oy: horiz ? (r() * 2 - 1) * 12 : along,
+                         a: r() * Math.PI * 2, v: 0.5 + r(), rot: r() * Math.PI, rs: (r() - 0.5) * 9, sz: 3.5 + r() * 4, c: (r() * 3) | 0 });
+        }
+        _structFx.push({ k, x: s.x, y: s.y, o: s.o, t: s.t, t0: now, parts, len, round: tur, pal: tur ? (_PAL_BY_KIND[s.kd || 'mg'] || _TUR_PAL)[s.t] : null });
+        if (_structFx.length > 40) _structFx.shift();
+    }
+    function _fxShape(ctx, f, hw, hh) {   // the outline of the thing the effect plays over: a barricade's rectangle or a turret's disc
+        ctx.beginPath();
+        if (f.round) ctx.arc(f.x, f.y, hw + 2, 0, Math.PI * 2); else ctx.roundRect(f.x - hw - 2, f.y - hh - 2, hw * 2 + 4, hh * 2 + 4, 8);
+    }
+    function _star(ctx, x, y, r) {   // a four-point sparkle
+        ctx.beginPath();
+        ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.3, y - r * 0.3); ctx.lineTo(x + r, y); ctx.lineTo(x + r * 0.3, y + r * 0.3);
+        ctx.lineTo(x, y + r); ctx.lineTo(x - r * 0.3, y + r * 0.3); ctx.lineTo(x - r, y); ctx.lineTo(x - r * 0.3, y - r * 0.3);
+        ctx.closePath();
+    }
+    function _drawStructFx(ctx, now) {
+        for (let i = _structFx.length - 1; i >= 0; i--) {
+            const f = _structFx[i], dur = f.k === 'break' ? 1100 : f.k === 'upgrade' ? 1000 : f.k === 'place' ? 750 : 900, t = (now - f.t0) / dur;
+            if (t >= 1) { _structFx.splice(i, 1); continue; }
+            const e = 1 - (1 - t) * (1 - t);     // ease out
+            const hw = f.round ? ARStructs.TURRET.r : f.o ? 17 : 54, hh = f.round ? ARStructs.TURRET.r : f.o ? 54 : 17;
+            const pal = f.pal || _BAR_PAL[f.t] || _BAR_PAL[0];
+            ctx.save();
+            if (f.k === 'break') {
+                // a ring of shock, puffs of dust, and the chips flying out
+                ctx.lineWidth = 4 * (1 - t); ctx.strokeStyle = 'rgba(255,255,255,' + (0.55 * (1 - t)).toFixed(3) + ')';
+                ctx.beginPath(); ctx.arc(f.x, f.y, 14 + f.len * 0.9 * e, 0, Math.PI * 2); ctx.stroke();
+                for (let k = 0; k < f.parts.length; k += 3) {
+                    const p = f.parts[k];
+                    ctx.fillStyle = 'rgba(205,190,160,' + (0.5 * (1 - t)).toFixed(3) + ')';
+                    ctx.beginPath(); ctx.arc(f.x + p.ox + Math.cos(p.a) * 26 * e * p.v, f.y + p.oy + Math.sin(p.a) * 26 * e * p.v, 9 + 16 * e * p.v, 0, Math.PI * 2); ctx.fill();
+                }
+                const fade = 1 - Math.max(0, (t - 0.55) / 0.45);
+                ctx.globalAlpha = fade; ctx.lineWidth = 1.6; ctx.strokeStyle = '#0B0F1A';
+                for (let k = 0; k < f.parts.length; k++) {
+                    const p = f.parts[k], d = (60 + 90 * p.v) * e;
+                    ctx.save();
+                    ctx.translate(f.x + p.ox + Math.cos(p.a) * d, f.y + p.oy + Math.sin(p.a) * d);
+                    ctx.rotate(p.rot + p.rs * t);
+                    ctx.fillStyle = pal[p.c];
+                    ctx.beginPath(); ctx.rect(-p.sz, -p.sz * 0.55, p.sz * 2, p.sz * 1.1); ctx.fill(); ctx.stroke();
+                    ctx.restore();
+                }
+            } else if (f.k === 'place') {
+                // Set down on the ground: a flash on the shape, a shock ring that races out, puffs of dust along the base, and then what it is made of
+                // flies out: wood splinters for a barricade, sparks and bits of metal for a turret, a few glints last
+                const e3 = 1 - (1 - t) * (1 - t) * (1 - t), metal = f.round;
+                if (t < 0.22) { ctx.fillStyle = 'rgba(255,255,255,' + (0.6 * (1 - t / 0.22)).toFixed(3) + ')'; _fxShape(ctx, f, hw, hh); ctx.fill(); }
+                ctx.lineWidth = 5 * (1 - t) + 1; ctx.strokeStyle = (metal ? 'rgba(190,230,255,' : 'rgba(240,222,176,') + (0.8 * (1 - t) * (1 - t)).toFixed(3) + ')';
+                if (f.round) { ctx.beginPath(); ctx.arc(f.x, f.y, f.len + 4 + 46 * e3, 0, Math.PI * 2); ctx.stroke(); }
+                else { const g = 6 + 34 * e3; ctx.beginPath(); ctx.roundRect(f.x - hw - g, f.y - hh - g, (hw + g) * 2, (hh + g) * 2, 10 + g * 0.5); ctx.stroke(); }
+                for (let k = 0; k < f.parts.length; k++) {   // dust
+                    const p = f.parts[k], d = (8 + 40 * p.v) * e3;
+                    ctx.fillStyle = 'rgba(214,198,164,' + (0.5 * (1 - t) * (1 - t)).toFixed(3) + ')';
+                    ctx.beginPath(); ctx.arc(f.x + p.ox + Math.cos(p.a) * d, f.y + p.oy + Math.sin(p.a) * d, 5 + 11 * e3 * p.v, 0, Math.PI * 2); ctx.fill();
+                }
+                const fade = 1 - Math.max(0, (t - 0.5) / 0.5);
+                ctx.globalAlpha = fade;
+                if (metal) {   // sparks with a tail, and a few bits of metal
+                    ctx.lineCap = 'round';
+                    for (let k = 0; k < f.parts.length; k++) {
+                        const p = f.parts[k], d = (14 + 70 * p.v) * e3, d0 = Math.max(0, d - 9 - 6 * p.v), c = Math.cos(p.a), sn = Math.sin(p.a);
+                        ctx.lineWidth = 2.6 * (1 - t) + 0.8; ctx.strokeStyle = k % 3 === 0 ? '#FFFFFF' : k % 3 === 1 ? '#FFD84A' : '#FF9F3D';
+                        ctx.beginPath(); ctx.moveTo(f.x + p.ox * 0.6 + c * d0, f.y + p.oy * 0.6 + sn * d0); ctx.lineTo(f.x + p.ox * 0.6 + c * d, f.y + p.oy * 0.6 + sn * d); ctx.stroke();
+                    }
+                    ctx.lineWidth = 1.4; ctx.strokeStyle = '#0B0F1A';
+                    for (let k = 0; k < f.parts.length; k += 4) {
+                        const p = f.parts[k], d = (24 + 56 * p.v) * e3;
+                        ctx.save(); ctx.translate(f.x + p.ox * 0.6 + Math.cos(p.a) * d, f.y + p.oy * 0.6 + Math.sin(p.a) * d - 10 * Math.sin(Math.PI * t) * p.v); ctx.rotate(p.rot + p.rs * t);
+                        ctx.fillStyle = f.pal ? f.pal[1 + (k & 1)] : '#8E9AB0'; ctx.beginPath(); ctx.rect(-2.6, -2.6, 5.2, 5.2); ctx.fill(); ctx.stroke(); ctx.restore();
+                    }
+                } else {   // wood splinters that hop up and land
+                    ctx.lineWidth = 1.4; ctx.strokeStyle = '#0B0F1A';
+                    for (let k = 0; k < f.parts.length; k++) {
+                        const p = f.parts[k], d = (16 + 52 * p.v) * e3, hop = 14 * p.v * Math.sin(Math.PI * Math.min(1, t * 1.25));
+                        ctx.save(); ctx.translate(f.x + p.ox + Math.cos(p.a) * d, f.y + p.oy + Math.sin(p.a) * d - hop); ctx.rotate(p.rot + p.rs * t);
+                        ctx.fillStyle = pal[p.c]; ctx.beginPath(); ctx.rect(-p.sz * 0.9, -p.sz * 0.3, p.sz * 1.8, p.sz * 0.6); ctx.fill(); ctx.stroke(); ctx.restore();
+                    }
+                }
+                if (t > 0.25) {   // glints
+                    ctx.globalAlpha = 1 - t; ctx.fillStyle = pal[2]; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.2;
+                    for (let k = 0; k < f.parts.length; k += 4) {
+                        const p = f.parts[k], gx = f.x + p.ox * 0.8 + Math.cos(p.a * 2) * 10, gy = f.y + p.oy * 0.8 - 6 - 16 * (t - 0.25);
+                        _star(ctx, gx, gy, 3 + p.sz * 0.7 * Math.sin(Math.PI * (t - 0.25) / 0.75)); ctx.fill(); ctx.stroke();
+                    }
+                }
+            } else if (f.k === 'repair') {
+                // a green glow over the barricade and plus signs rising from it
+                ctx.fillStyle = 'rgba(70,212,106,' + (0.5 * (1 - t)).toFixed(3) + ')';
+                _fxShape(ctx, f, hw, hh); ctx.fill();
+                ctx.globalAlpha = 1 - t * t; ctx.lineCap = 'round';
+                for (let k = 0; k < f.parts.length; k++) {
+                    const p = f.parts[k], px = f.x + p.ox, py = f.y + p.oy - 10 - 44 * e * p.v, sz = 4 + p.sz * 0.5;
+                    ctx.lineWidth = 5.5; ctx.strokeStyle = '#0B0F1A';
+                    ctx.beginPath(); ctx.moveTo(px - sz, py); ctx.lineTo(px + sz, py); ctx.moveTo(px, py - sz); ctx.lineTo(px, py + sz); ctx.stroke();
+                    ctx.lineWidth = 2.6; ctx.strokeStyle = '#7CF08C';
+                    ctx.beginPath(); ctx.moveTo(px - sz, py); ctx.lineTo(px + sz, py); ctx.moveTo(px, py - sz); ctx.lineTo(px, py + sz); ctx.stroke();
+                }
+            } else {
+                // upgrade: a flash, a golden ring spreading out, sparkles bursting
+                if (t < 0.4) { ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - t / 0.4)).toFixed(3) + ')'; _fxShape(ctx, f, hw, hh); ctx.fill(); }
+                ctx.lineWidth = 5 * (1 - t) + 1; ctx.strokeStyle = 'rgba(255,199,46,' + (0.9 * (1 - t)).toFixed(3) + ')';
+                ctx.beginPath(); ctx.arc(f.x, f.y, 16 + (f.len + 16) * e, 0, Math.PI * 2); ctx.stroke();
+                ctx.globalAlpha = 1 - t * t; ctx.lineWidth = 1.6; ctx.strokeStyle = '#0B0F1A'; ctx.fillStyle = '#FFD84A';
+                for (let k = 0; k < f.parts.length; k++) {
+                    const p = f.parts[k], d = (30 + 60 * p.v) * e;
+                    _star(ctx, f.x + p.ox * 0.5 + Math.cos(p.a) * d, f.y + p.oy * 0.5 + Math.sin(p.a) * d - 12 * e, 4 + p.sz * 0.9 * (1 - t * 0.5));
+                    ctx.fill(); ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+    }
+    // The ring over a barricade somebody is repairing or upgrading: it fills over the time the work takes
+    function _drawWorkRings(ctx, now, visL, visT, visR, visB) {
+        _bar.work.forEach((w, id) => {
+            const s = _structs.find(q => q.id === id) || _turrets.find(q => q.id === id);
+            if (!s) return;
+            const tur = s.k === 't';
+            const hh = tur ? ARStructs.TURRET.r : ARStructs.halfH(s), cx = s.x, cy = s.y - hh - 34;
+            if (cx < visL - 30 || cx > visR + 30 || cy < visT - 30 || cy > visB + 30) return;
+            const p = Math.max(0, Math.min(1, (now - w.t0) / w.dur)), rep = w.action === 'repair';
+            const col = rep ? '#46D46A' : '#FFC72E';
+            // sparks off the work
+            ctx.fillStyle = col;
+            for (let k = 0; k < 3; k++) {
+                const ph = ((now / 220) + k / 3) % 1, seed = Math.floor(now / 220 + k * 7);
+                const hx = (((seed * 9301 + 49297) % 233280) / 233280 - 0.5) * 2 * (tur ? 22 : s.o ? 12 : 48), hy = (((seed * 7919 + 1237) % 233280) / 233280 - 0.5) * 2 * (tur ? 22 : s.o ? 48 : 12);
+                ctx.globalAlpha = 1 - ph; ctx.beginPath(); ctx.arc(s.x + hx, s.y + hy - ph * 16, 2.6, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            // the ring: ink frame, dark track, the arc, and the picture of what it is
+            ctx.beginPath(); ctx.arc(cx, cy, 19, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fill();
+            ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI * 2); ctx.fillStyle = '#1B252C'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#0B0F1A'; ctx.stroke();
+            ctx.lineCap = 'round'; ctx.lineWidth = 5; ctx.strokeStyle = col;
+            if (p > 0.01) { ctx.beginPath(); ctx.arc(cx, cy, 13, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); ctx.stroke(); }
+            ctx.lineWidth = 2.4; ctx.strokeStyle = '#FFFFFF'; ctx.lineJoin = 'round';
+            ctx.beginPath();
+            if (rep) { ctx.moveTo(cx - 5, cy); ctx.lineTo(cx + 5, cy); ctx.moveTo(cx, cy - 5); ctx.lineTo(cx, cy + 5); }
+            else { ctx.moveTo(cx - 5, cy + 3); ctx.lineTo(cx, cy - 3); ctx.lineTo(cx + 5, cy + 3); }
+            ctx.stroke();
+        });
+    }
+    // ---- the Support Tower's drone: its own picture (support_drone<level>.svg), flown between the pad and what it mends; the server says where to (drone-go / drone-home) and the
+    // flight takes the time it announces; the flight, the height and the effects are worked out here from the age of the event ----
+    const _dPose = { x: 0, y: 0, z: 0 }, _dSpotP = { x: 0, y: 0 };
+    const _dEase = (u) => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+    function _dronePose(t, now, out) {
+        const d = t.dr;
+        if (!d || d.ph === 0) { out.x = t.x; out.y = t.y; out.z = 0; return out; }
+        const D = ARStructs.TURRET.kinds.support.drone, e = now - d.t0;
+        if (d.ph === 1) {
+            const TO = d.dock ? D.takeoff : 0;
+            if (e >= d.ms) { d.ph = 2; out.x = d.tx; out.y = d.ty; out.z = 1; return out; }
+            if (e < TO) { out.x = d.fx; out.y = d.fy; out.z = _dEase(e / TO); return out; }
+            const k = _dEase((e - TO) / Math.max(1, d.ms - TO));
+            out.x = d.fx + (d.tx - d.fx) * k; out.y = d.fy + (d.ty - d.fy) * k; out.z = 1; return out;
+        }
+        if (d.ph === 2) { out.x = d.tx; out.y = d.ty; out.z = 1; return out; }
+        if (d.ph === 4) {   // just placed: it rises off the pad, hovers a moment and sets down again (unless the server sends it off to mend something)
+            out.x = t.x; out.y = t.y;
+            if (e >= d.ms) { d.ph = 0; out.z = 0; return out; }
+            out.z = e < D.takeoff ? _dEase(e / D.takeoff) : e < D.takeoff + 350 ? 1 : 1 - _dEase((e - D.takeoff - 350) / D.landing);
+            return out;
+        }
+        const mv = Math.max(1, d.ms - D.landing);   // 3: on its way home, then down onto the pad
+        if (e >= d.ms) { d.ph = 0; out.x = t.x; out.y = t.y; out.z = 0; return out; }
+        if (e < mv) { const k = _dEase(e / mv); out.x = d.fx + (t.x - d.fx) * k; out.y = d.fy + (t.y - d.fy) * k; out.z = 1; return out; }
+        out.x = t.x; out.y = t.y; out.z = 1 - _dEase((e - mv) / D.landing); return out;
+    }
+    function _drawDrones(ctx, scale, now, visL, visT, visR, visB) {
+        for (let i = 0; i < _turrets.length; i++) {
+            const t = _turrets[i];
+            if (t.kd !== 'support') continue;
+            const pose = _dronePose(t, now, _dPose), x = pose.x, y = pose.y, z = pose.z;
+            if (x < visL - 80 || x > visR + 80 || y < visT - 80 || y > visB + 80) continue;
+            const sp = _turSprite('support_drone', t.t, scale); if (!sp) continue;
+            const d = t.dr, bob = z > 0.95 ? Math.sin(now * 0.0065 + t.id) * 1.8 : 0, dy = y - z * 16 + bob, k = 1 + 0.22 * z;
+            // mending: a beam from the drone down to the thing, welding sparks on it, and the plus signs the repair effect has
+            const tgt = d && d.ph === 2 ? (d.tk === 't' ? _turrets.find(q => q.id === d.tid) : _structs.find(q => q.id === d.tid)) : null;
+            if (z > 0.02) {   // its shadow on the ground: smaller and fainter the higher it is
+                ctx.globalAlpha = 0.3 * (0.4 + 0.6 * z); ctx.fillStyle = '#0B0F1A'; ctx.beginPath(); ctx.ellipse(x + 5 * z, y + 12 * z + 4, 11 * (1 + 0.1 * z), 5.4, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+            }
+            if (tgt && tgt.hp < tgt.maxHp) {
+                const bx = x, by = dy + 5, cx = tgt.x, cy = tgt.y, pulse = 0.65 + 0.35 * Math.sin(now * 0.012);
+                ctx.lineCap = 'round'; ctx.setLineDash([6, 5]); ctx.lineDashOffset = -now * 0.03;
+                ctx.globalAlpha = 0.9; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 5.2; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(cx, cy); ctx.stroke();
+                ctx.globalAlpha = 0.55 + 0.45 * pulse; ctx.strokeStyle = '#7CF08C'; ctx.lineWidth = 2.8; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(cx, cy); ctx.stroke();
+                ctx.setLineDash([]); ctx.lineDashOffset = 0;
+                ctx.globalAlpha = 0.16 + 0.14 * pulse; ctx.fillStyle = '#46D46A'; ctx.beginPath(); ctx.arc(cx, cy, 20 + 6 * pulse, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 1; ctx.fillStyle = '#E8FFE8';
+                for (let q = 0; q < 3; q++) { const a = now * 0.011 + q * 2.1 + t.id; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * 12, cy + Math.sin(a * 1.3) * 9, 1.9, 0, TAU); ctx.fill(); }
+                if (now - (d.fxT || 0) > 520) { d.fxT = now; _fxSpawn('repair', tgt, now); }
+            }
+            ctx.save(); ctx.translate(x, dy); if (k !== 1) ctx.scale(k, k);
+            ctx.drawImage(sp.c, -sp.w / 2, -sp.h / 2, sp.w, sp.h);
+            if (z > 0.02) {   // the rotors spin: blades over the four rotor discs
+                const arm = [7.8, 8.5, 8.8][t.t] || 7.8, rr = [5.2, 5.8, 6.2][t.t] || 5.2;
+                ctx.lineCap = 'round';
+                for (let q = 0; q < 4; q++) {
+                    const rx = (q & 1 ? -1 : 1) * arm, ry = (q & 2 ? -1 : 1) * arm, a = now * 0.07 + q * 0.9;
+                    ctx.globalAlpha = 0.34 * z; ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(rx, ry, rr, 0, TAU); ctx.fill();
+                    ctx.globalAlpha = 0.8 * z; ctx.strokeStyle = '#1D2531'; ctx.lineWidth = 1.5; ctx.beginPath();
+                    ctx.moveTo(rx + Math.cos(a) * rr, ry + Math.sin(a) * rr); ctx.lineTo(rx - Math.cos(a) * rr, ry - Math.sin(a) * rr); ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
+            ctx.restore();
+        }
+    }
+    const _ring = { id: -1, a: 0, t: 0 };   // the one range ring on show (see _drawTurrets)
+    function _drawTurrets(ctx, scale, zoom, visL, visT, visR, visB, now) {
+        const R = ARStructs.TURRET.r;
+        // The reach of a turret shows only for the one E would work on (the highlighted one, so you are right by it), never two at once;
+        // it fades in and out over a fifth of a second
+        const hi = _bar.use && _bar.use.k === 't' && _bar.use.kd !== 'heal' ? _bar.use : null, rdt = Math.min(0.1, Math.max(0, (now - (_ring.t || now)) / 1000)); _ring.t = now;
+        if (hi && _ring.id !== hi.id) { _ring.id = hi.id; _ring.a = 0; }
+        _ring.a = hi ? Math.min(1, _ring.a + rdt / 0.2) : Math.max(0, _ring.a - rdt / 0.2);
+        if (_ring.a > 0 && !_bar.place) {
+            const t = _turrets.find(q => q.id === _ring.id);
+            if (t) {
+                ctx.save();
+                ctx.globalAlpha = _ring.a; ctx.lineWidth = 2 / zoom; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.setLineDash([10 / zoom, 8 / zoom]);
+                ctx.beginPath(); ctx.arc(t.x, t.y, ARStructs.turretTiers(t)[t.t].range, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                ctx.restore();
+            }
+        }
+        // the reach of a Health Station is on show for everybody, always: a soft green disc that breathes
+        for (let i = 0; i < _turrets.length; i++) {
+            const t = _turrets[i];
+            if (t.kd !== 'heal') continue;
+            const rr = ARStructs.turretTiers(t)[t.t].range;
+            if (t.x + rr < visL || t.x - rr > visR || t.y + rr < visT || t.y - rr > visB) continue;
+            const br = 0.5 + 0.5 * Math.sin(now / 700);
+            ctx.save();
+            ctx.fillStyle = 'rgba(70,212,106,' + (0.07 + 0.04 * br).toFixed(3) + ')'; ctx.strokeStyle = 'rgba(70,212,106,' + (0.4 + 0.2 * br).toFixed(3) + ')'; ctx.lineWidth = 2.4 / zoom; ctx.setLineDash([12 / zoom, 9 / zoom]);
+            ctx.beginPath(); ctx.arc(t.x, t.y, rr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.restore();
+        }
+        for (let i = 0; i < _turrets.length; i++) {
+            const t = _turrets[i];
+            if (t.x + R + 24 < visL || t.x - R - 24 > visR || t.y + R + 24 < visT || t.y - R - 24 > visB) continue;
+            // the head turns towards what it was last fired at (at most 12 rad/s), it does not jump
+            const dt = Math.min(0.1, Math.max(0, (now - (t._ft || now)) / 1000)); t._ft = now;
+            let da = t.tang - t.ang; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+            const step = 12 * dt; t.ang += Math.abs(da) <= step ? da : Math.sign(da) * step;
+            const pop = t.pop ? Math.max(0, 1 - (now - t.pop) / 380) : 0;
+            _drawTurret(ctx, t, scale, 1, t.ang, 1 + 0.2 * pop * pop);
+            if (t.stunUntil > now) {   // stunned by a screamer: dimmed, with stars going round it
+                ctx.globalAlpha = 0.42; ctx.fillStyle = '#141B2B'; ctx.beginPath(); ctx.arc(t.x, t.y, R + 1, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 1; ctx.fillStyle = '#FFE27A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
+                for (let k = 0; k < 3; k++) { const a = now * 0.007 + k * 2.094; _star(ctx, t.x + Math.cos(a) * R * 0.62, t.y - R * 0.55 + Math.sin(a) * R * 0.2, 7.5); ctx.fill(); ctx.stroke(); }
+            }
+            if ((t.kd === 'tesla' || t.kd === 'bomb') && now - t.flash < 160) {   // the coil flares as it fires, the mortar flashes
+                const a = 1 - (now - t.flash) / 160;
+                ctx.globalAlpha = 0.55 * a; ctx.fillStyle = t.kd === 'bomb' ? '#FFB54D' : t.t === 2 ? '#E9DBFF' : '#7FF6FF'; ctx.beginPath(); ctx.arc(t.x, t.y, 16 + 8 * a, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+            }
+        }
+    }
+    function _drawStructs(ctx, scale, zoom, visL, visT, visR, visB, now) {
+        for (let i = 0; i < _structs.length; i++) {
+            const s = _structs[i];
+            const hw = ARStructs.halfW(s), hh = ARStructs.halfH(s);
+            if (s.x + hw + 14 < visL || s.x - hw - 14 > visR || s.y + hh + 14 < visT || s.y - hh - 24 > visB) continue;
+            const sp = _barSprite(s.t, ARStructs.state(s), s.o, scale);
+            const pop = s.pop ? Math.max(0, 1 - (now - s.pop) / 380) : 0;   // an upgraded one swells and settles
+            if (sp && pop > 0) {
+                const k = 1 + 0.2 * pop * pop;
+                ctx.save(); ctx.translate(s.x, s.y); ctx.scale(k, k); ctx.drawImage(sp.c, -sp.w / 2, -sp.h / 2, sp.w, sp.h); ctx.restore();
+            } else if (sp) ctx.drawImage(sp.c, s.x - sp.w / 2, s.y - sp.h / 2, sp.w, sp.h);
+        }
+        _drawTurrets(ctx, scale, zoom, visL, visT, visR, visB, now);   // over the barricades (a turret stands behind a wall and looks over it)
+        // the pieces of a broken one, fading out over a second
+        for (let i = _structDying.length - 1; i >= 0; i--) {
+            const d = _structDying[i], age = now - d.t0;
+            if (age >= 1000) { _structDying.splice(i, 1); continue; }
+            if (d.s.k === 't') { _drawTurret(ctx, d.s, scale, 1 - age / 1000, d.s.ang, 1); continue; }
+            const sp = _barSprite(d.s.t, 2, d.s.o, scale);
+            if (!sp) continue;
+            ctx.globalAlpha = 1 - age / 1000;
+            ctx.drawImage(sp.c, d.s.x - sp.w / 2, d.s.y - sp.h / 2, sp.w, sp.h);
+            ctx.globalAlpha = 1;
+        }
+        _drawDrones(ctx, scale, now, visL, visT, visR, visB);   // over the turrets (it flies)
+        // The health bars of everything that is built, last of all the walls and the turrets: a bar is never under a turret or a barricade next to it
+        for (let i = 0; i < _structs.length; i++) {
+            const s = _structs[i];
+            if (s.hp >= s.maxHp) continue;
+            const hh = ARStructs.halfH(s);
+            if (s.x + 60 < visL || s.x - 60 > visR || s.y + hh + 14 < visT || s.y - hh - 24 > visB) continue;
+            _drawHpBar(ctx, s.x - 24, s.y - hh - 15, 48, 7, Math.max(0, s.hp / s.maxHp), 1.6);
+        }
+        for (let i = 0; i < _turrets.length; i++) {
+            const t = _turrets[i], R = ARStructs.TURRET.r;
+            if (t.hp >= t.maxHp) continue;
+            if (t.x + R + 24 < visL || t.x - R - 24 > visR || t.y + R + 24 < visT || t.y - R - 24 > visB) continue;
+            _drawHpBar(ctx, t.x - 24, t.y - R - 17, 48, 7, Math.max(0, t.hp / t.maxHp), 1.6);
+        }
+        _drawStructFx(ctx, now);
+        _drawWorkRings(ctx, now, visL, visT, visR, visB);
+        // what E would work on is outlined, in the colour of the job (green repair, gold upgrade, red when the coins are short, white when
+        // there is nothing to do), so two things side by side are told apart
+        if (_bar.use && !_bar.place && predX !== null) {
+            const u = _bar.use, col = !_bar.act ? '#FFFFFF' : !_bar.can ? '#FF4B5C' : _bar.act === 'repair' ? '#46D46A' : '#FFC72E';
+            const pulse = 0.65 + 0.35 * Math.sin(now / 160);
+            ctx.save();
+            ctx.strokeStyle = col; ctx.lineJoin = 'round';
+            for (let pass = 0; pass < 2; pass++) {
+                ctx.globalAlpha = pass ? 0.95 : 0.3 * pulse; ctx.lineWidth = (pass ? 3 : 9) ;
+                ctx.beginPath();
+                if (u.k === 't') ctx.arc(u.x, u.y, ARStructs.TURRET.r + 5, 0, Math.PI * 2);
+                else { const hw = ARStructs.halfW(u), hh = ARStructs.halfH(u); ctx.roundRect(u.x - hw - 4, u.y - hh - 4, hw * 2 + 8, hh * 2 + 8, 9); }
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+        // the ghost
+        if (_bar.place && predX !== null && _bar.kind !== 'b') {
+            const g = _bar.g, ok = !_bar.why, R = ARStructs.TURRET.r;
+            ctx.save();
+            ctx.lineWidth = 2 / zoom; ctx.strokeStyle = ok ? 'rgba(70,212,106,.55)' : 'rgba(255,75,92,.45)'; ctx.fillStyle = ok ? 'rgba(70,212,106,.07)' : 'rgba(255,75,92,.06)';
+            ctx.setLineDash([10 / zoom, 8 / zoom]);
+            ctx.beginPath(); ctx.arc(g.x, g.y, ARStructs.turretKind(g).tiers[0].range, 0, Math.PI * 2); ctx.fill(); ctx.stroke();   // how far it will reach
+            ctx.restore();
+            _drawTurret(ctx, { x: g.x, y: g.y, t: 0, kd: g.kd }, scale, 0.65, Math.atan2(g.y - _PVE_BASE.y, g.x - _PVE_BASE.x), 1);
+            if (g.kd === 'support') { const ds = _turSprite('support_drone', 0, scale); if (ds) { ctx.globalAlpha = 0.65; ctx.drawImage(ds.c, g.x - ds.w / 2, g.y - ds.h / 2, ds.w, ds.h); ctx.globalAlpha = 1; } }   // the drone waits on the pad
+            ctx.save();
+            ctx.lineWidth = 3 / zoom; ctx.strokeStyle = ok ? '#46D46A' : '#FF4B5C'; ctx.setLineDash([8 / zoom, 6 / zoom]);
+            ctx.beginPath(); ctx.arc(g.x, g.y, R + 3, 0, Math.PI * 2); ctx.stroke();
+            ctx.restore();
+            if (!ok) { ctx.fillStyle = 'rgba(255,75,92,.28)'; ctx.beginPath(); ctx.arc(g.x, g.y, R, 0, Math.PI * 2); ctx.fill(); }
+        } else if (_bar.place && predX !== null) {
+            const g = _bar.g, ok = !_bar.why;
+            const sp = _barSprite(0, 0, g.o, scale);
+            ctx.globalAlpha = 0.6;
+            if (sp) ctx.drawImage(sp.c, g.x - sp.w / 2, g.y - sp.h / 2, sp.w, sp.h);
+            ctx.globalAlpha = 1;
+            const hw = ARStructs.halfW(g), hh = ARStructs.halfH(g);
+            ctx.save();
+            ctx.lineWidth = 3 / zoom; ctx.strokeStyle = ok ? '#46D46A' : '#FF4B5C'; ctx.setLineDash([8 / zoom, 6 / zoom]);
+            ctx.beginPath(); ctx.roundRect(g.x - hw - 2, g.y - hh - 2, hw * 2 + 4, hh * 2 + 4, 8); ctx.stroke();
+            ctx.restore();
+            if (!ok) { ctx.fillStyle = 'rgba(255,75,92,.28)'; ctx.beginPath(); ctx.roundRect(g.x - hw, g.y - hh, hw * 2, hh * 2, 6); ctx.fill(); }
+        }
+    }
     // Same slide-out the server applies to a player after moving (obstacles, then the PvE base)
     function _pushOutOfSolids(x, y) {
+        for (let i = 0; i < _turrets.length; i++) {              // a turret is a wall as well (server.js: before the rocks)
+            const t = _turrets[i], ox = x - t.x, oy = y - t.y, m = ARStructs.TURRET.r + PLAYER_HIT_R, dSq = ox * ox + oy * oy;
+            if (dSq >= m * m) continue;
+            const d = Math.sqrt(dSq);
+            if (d > 0) { x = t.x + ox / d * m; y = t.y + oy / d * m; } else x = t.x + m;
+        }
+        for (let i = 0; i < _tanks.length; i += 3) {            // a tank first, as on the server: the rocks and barricades have the last word
+            const ox = x - _tanks[i], oy = y - _tanks[i + 1], m = _tanks[i + 2] + PLAYER_HIT_R, dSq = ox * ox + oy * oy;
+            if (dSq >= m * m) continue;
+            const d = Math.sqrt(dSq);
+            if (d > 0) { x = _tanks[i] + ox / d * m; y = _tanks[i + 1] + oy / d * m; } else x = _tanks[i] + m;
+        }
         for (let i = 0; i < _obstacles.length; i++) {
             const o = _obstacles[i];
             const ox = x - o.x, oy = y - o.y, m = o.r + PLAYER_HIT_R, dSq = ox * ox + oy * oy;
@@ -3490,6 +4498,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (dSq < m * m && dSq > 0) { const d = Math.sqrt(dSq); x = bx + ox / d * m; y = by + oy / d * m; }
         }
         _solidOut.x = x; _solidOut.y = y;
+        if (_structs.length) ARStructs.pushOutAll(_solidOut, PLAYER_HIT_R, _structs);   // PvE barricades, like the server
         return _solidOut;
     }
     // Earliest t in [0,1] where segment (x0,y0)->(x1,y1) touches circle (cx,cy,R); -1 if never.
@@ -3549,9 +4558,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     try {
         if (localStorage.getItem('ar_diag') === '1') {
             _bDiag.lagSum = 0; _bDiag.lagMax = 0; _bDiag.lagList = []; _bDiag.spawnLog = []; _bDiag.srvLog = []; _bDiag.csp = []; _bDiag.track = []; _bDiag.phantomLog = []; _bDiag.ammoLog = []; _bDiag.ghostLog = []; _bDiag.frames = []; _bDiag.spawnPos = [];
-            window.__arDiag = () => ({ ..._bDiag, interp: _interpShow, buf: stateBuffer.length, active: _clientBullets.length, linkedNow: _ownLinked.size, rtt: _pingRtt, pktPs: _dbgPktPs, fps: _dbgFps, st: { isShooting, mustRelease: _shootMustRelease, ammo: ammoState.ammo, reloading: ammoState.reloading, aim: aimStartTime, cd: gameControl.countdownActive, dead: _selfDead, predX, next: _clientNextShotAt, now: performance.now(), ended: gameEnded } });
+            window.__arDiag = () => ({ ..._bDiag, interp: _clock.delay, extrapFrames: _dbgExtrapFrames, frozenFrames: _dbgFrozenFrames, buf: stateBuffer.length, active: _clientBullets.length, linkedNow: _ownLinked.size, rtt: _pingRtt, pktPs: _dbgPktPs, fps: _dbgFps, st: { isShooting, mustRelease: _shootMustRelease, ammo: ammoState.ammo, reloading: ammoState.reloading, aim: aimStartTime, cd: gameControl.countdownActive, dead: _selfDead, predX, next: _clientNextShotAt, now: performance.now(), ended: gameEnded } });
             window.__arZombies = () => _zombies.filter(z => z && z.hp > 0).map(z => [z.x, z.y]);
             window.__arMe = () => [predX, predY];
+            window.__arStructs = () => _structs.map(s => ({ ...s }));   // PvE barricades as the client has them
+            window.__arTurrets = () => _turrets.map(s => ({ ...s }));   // and the turrets
+            window.__arBar = () => ({ inv: _bar.inv, invT: _bar.invT, invE: _bar.invE, invH: _bar.invH, invO: _bar.invO, invF: _bar.invF, invS: _bar.invS, kind: _bar.kind, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins, work: [..._bar.work.keys()], fx: _structFx.length });
             window.__arObs = () => _obstacles; // the obstacles as the client has them (map sprites tests)
             window.__arIS = () => _IS; // the other players as last rendered (interpolation)
             window.__arBullets = () => { const o = [], bl = _IS.bullets, age = _IS.bulletAge || 0; if (bl) for (const b of bl) { if (b.ownerId !== socket.id) o.push(b.id, b.x + b.dx * age, b.y + b.dy * age); } return o; }; // enemy bullets as drawn (id, x, y)
@@ -3581,9 +4593,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     window.addEventListener('keydown', _onDbgKey);
 
     // Lag black box (blackbox.js): F8 starts it in a match. The hooks below cost one check while it is off.
-    const _BB = window.ARBlackBox || { on: false, attach() {}, detach() {}, frame() {}, packet() {}, csp() {}, ping() {}, event() {} };
-    _BB.attach({
+    const _BB = window.ARBlackBox || { on: false, attach() {}, detach() {}, gameplayEnded() {}, frame() {}, packet() {}, csp() {}, ping() {}, event() {} };
+    try { _BB.attach({
         socket,
+        isGameplayActive: () => !gameEnded || isSpectating,
         meta: () => ({ mode: _gameMode, weapon: selectedWeapon, resolutionStep: _RS.idx, resolutionScale: _rsScale(), canvas: [canvas.width, canvas.height] }),
         counts: () => {
             let z = 0;
@@ -3591,67 +4604,29 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const e = stateBuffer[stateBuffer.length - 1];
             return [z, e ? e.bullets.length : 0, e ? Object.keys(e.players).length : 0];
         },
-    });
+    }); } catch (_) { _BB.on = false; _BB.netActive = false; }
 
     // Ping RTT measurement — trimis la fiecare 2s, server echoueaza timestamp
-    socket.on('c-pong', (t, srvNow, srvStalls) => { _pingRtt = Math.round(performance.now() - t); if (_BB.on) _BB.ping(performance.now(), _pingRtt, srvNow, srvStalls); });
+    socket.on('c-pong', (t, srvNow, srvStalls) => { _pingRtt = Math.round(performance.now() - t); _hudPing(_pingRtt); if (_BB.on) _BB.ping(performance.now(), _pingRtt, srvNow, srvStalls); });
     const _pingInterval = setInterval(() => { if (!gameEnded) socket.emit('c-ping', performance.now()); }, 2000);
 
     let mouseActive = false;
+    let _mouseOff = 0;   // css px from the centre of the screen (the player) to the mouse
     let _lineDashZoom = -1;
     let _lineDashArr  = [0, 0];
 
     // Input send rate matches server tick (60Hz = 17ms).
     // All input (move + rotate + shoot) goes through one unified packet from rAF.
     const EMIT_MS         = ARShared.TICK_S * 1000; // one server tick (16.7 ms)
-    // ── Interpolation clock ──────────────────────────────────────────────────
-    // Snapshots sit on the server's simulation timeline (tick number x tick length, entry.st), so neither
-    // network jitter nor a server tick that runs a little late bunches them up. The render delay covers
-    // how late packets arrive: the 95th percentile over the last ~3 s plus one tick and a small margin,
-    // between 26 and 70 ms (~28 on a clean line). A delivery pause shows up as one late packet followed
-    // by the queued ones arriving soon after; only the first counts (the rest are late only because they
-    // waited behind it), so a pause now and then does not move the delay at all. The delay moves at
-    // most 1.5 ms per packet in either direction (about 9 % slow-motion or fast-forward), so whatever it
-    // climbs on a bad line it gives back just as fast. During a pause the other players are
-    // extrapolated for a short while (getInterpolatedState) instead of freezing.
-    const INTERP_MIN_MS = 26, INTERP_MAX_MS = 70, CLOCK_WIN = 180;
-    const CLOCK_STEP_MS = 1.5;  // per packet, both ways
-    const EXTRAP_MS     = 100;  // how far past the newest snapshot other players keep moving in a pause
+    // ── Interpolation clock (the logic and its comment: ARInterp.createClock in interp.js) ───────────
+    // The render delay is held between 26 and 80 ms (~28 on a clean line; `?imax=70` sets another ceiling). The others are extrapolated
+    // for EXTRAP_MS when a packet is late, then they stand until the data comes (a stall longer than that: see the clock).
+    const _imaxQ = +new URLSearchParams(location.search).get('imax');
+    const _clock = ARInterp.createClock({ tickMs: EMIT_MS, minMs: 26, maxMs: _imaxQ >= 26 && _imaxQ <= 400 ? _imaxQ : 80, win: 180, stepMs: 1.5,
+                                          pauseLateMs: 30, pauseWinMs: 300, stallWinMs: 12000, stallHold: 0.3, stallN: 8 });
+    const EXTRAP_MS     = 200;  // how far past the newest snapshot other players keep moving in a pause
     const CORRECT_MS    = 60;   // time constant for blending out the guess once real data is back
-    const PAUSE_LATE_MS = 30;   // a packet this late starts a delivery pause...
-    const PAUSE_WIN_MS  = 300;  // ...and the less late ones within this time are its queue draining
-    const _offWin   = new Float64Array(CLOCK_WIN);  // arrival time - server time, per packet
-    const _lateSort = new Float64Array(CLOCK_WIN);
-    let _offN = 0, _offI = 0, _pauseEnd = -1, _pauseLate = 0;
-    let _clockLag   = null; // render server-time = performance.now() - _clockLag (a large negative number: clocks differ)
-    let _interpShow = 34;   // current delay, for the debug overlay
-    function _noteSnapshotClock(now, st) {
-        // A delivery pause: the first late packet counts, the ones draining the queue behind it do not
-        let count = true;
-        if (_offN > 0) {
-            let m = Infinity;
-            for (let i = 0; i < _offN; i++) if (_offWin[i] < m) m = _offWin[i];
-            const lateNow = now - st - m;
-            if (now < _pauseEnd && lateNow < _pauseLate) count = false;
-            else if (lateNow > PAUSE_LATE_MS) { _pauseEnd = now + PAUSE_WIN_MS; _pauseLate = lateNow; }
-        }
-        if (count) {
-            _offWin[_offI] = now - st;
-            _offI = (_offI + 1) % CLOCK_WIN;
-            if (_offN < CLOCK_WIN) _offN++;
-        }
-        let offMin = Infinity;
-        for (let i = 0; i < _offN; i++) if (_offWin[i] < offMin) offMin = _offWin[i];
-        for (let i = 0; i < _offN; i++) _lateSort[i] = _offWin[i] - offMin;
-        const late = _lateSort.subarray(0, _offN).sort();
-        const p95 = late[Math.min(_offN - 1, Math.floor(_offN * 0.95))];
-        const delay = Math.max(INTERP_MIN_MS, Math.min(INTERP_MAX_MS, p95 + EMIT_MS + 6));
-        const target = offMin + delay;
-        if (_clockLag === null || Math.abs(target - _clockLag) > 250) _clockLag = target;  // first packet / tab resumed
-        else _clockLag += Math.max(-CLOCK_STEP_MS, Math.min(CLOCK_STEP_MS, target - _clockLag));
-        _interpShow = _clockLag - offMin;
-    }
-    function _resetSnapshotClock() { _offN = 0; _offI = 0; _pauseEnd = -1; _clockLag = null; }
+    let _dbgExtrapFrames = 0, _dbgFrozenFrames = 0;   // (frames drawn past the newest snapshot, and past the extrapolation too: for __arDiag)
 
     let _inputSeq        = 0;
     let _lastInputSend   = 0;
@@ -3673,14 +4648,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (gameEnded || gameControl.countdownActive || _selfDead || _pveState.waveBreak) return;
         _lastInputSend = now;
         const seq = ++_inputSeq;
-        socket.emit('input', {
+        const _inp = {
             seq,
             dx: moveDir.x,  dy: moveDir.y,
             angle: myAngle,
             shooting: isShooting,
             sdx: (isShooting || _aimActive) ? -Math.sin(myAngle) : 0,
             sdy: (isShooting || _aimActive) ?  Math.cos(myAngle) : 0,
-        });
+        };
+        if (_reloadWanted) { _inp.reload = true; _reloadWanted = false; }   // R: once, with this input
+        socket.emit('input', _inp);
         _dbgPktSent++;
         // Record for CSP replay (limit buffer to ~3s worth of inputs)
         if (predX !== null) {
@@ -3743,7 +4720,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const now = performance.now();
             const len = Math.sqrt(data.vector.x ** 2 + data.vector.y ** 2);
             if (len > 0) { shootDir.x = data.vector.x / len; shootDir.y = -data.vector.y / len; }
-            if (!isShooting) {
+            if (!isShooting && !_bar.place) {   // with the barricade ghost out the stick only aims it
                 if (_shootMustRelease && _clientHasReleased && ammoState.ammo > 0) {
                     _shootMustRelease = false;
                     _clientHasReleased = false;
@@ -3790,9 +4767,31 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
 
     // Handleri numiti — necesari pentru removeEventListener la cleanup
+    // R (or the touch button): reload now. Nothing happens with a full magazine, an empty reserve or a reload already running.
+    function _onReloadBtn(e) { e.preventDefault(); e.stopPropagation(); _tryReload(); }
+    function _tryReload() {
+        if (_selfDead || gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
+        // in the middle of a burst the server waits for the burst to end: ask, and let its answer show the reload
+        if (_pendingBurstShots.length > 0) { if (ARAmmo.canReload(ammoState)) _reloadWanted = true; return; }
+        if (!ARAmmo.startReload(ammoState)) return;
+        _reloadHoldUntil = performance.now() + Math.max(300, _rttMs() + 150);
+        _reloadWanted = true;
+    }
     const onKeyDown = (e) => {
         if (gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
         const k = e.key.toLowerCase();
+        if (k === 'r' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { _tryReload(); return; }
+        if (_gameMode === 'pve' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (k === '1') { _barPlaceMode(undefined, 'b'); return; }
+            if (k === '2') { _barPlaceMode(undefined, 't'); return; }
+            if (k === '3') { _barPlaceMode(undefined, 'e'); return; }
+            if (k === '4') { _barPlaceMode(undefined, 'h'); return; }
+            if (k === '5') { _barPlaceMode(undefined, 'o'); return; }
+            if (k === '6') { _barPlaceMode(undefined, 'f'); return; }
+            if (k === '7') { _barPlaceMode(undefined, 'd'); return; }
+            if (k === 'escape' && _bar.place) { _barPlaceMode(false); return; }
+            if (k === 'e') { _barUse(); return; }
+        }
         if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) {
             e.preventDefault();
             keysHeld.add(k);
@@ -3811,6 +4810,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const H  = canvas.height / _rsDpr();
         const dx = (e.clientX - rect.left) - W / 2;
         const dy = (e.clientY - rect.top)  - H / 2;
+        _mouseOff = Math.hypot(dx, dy);   // how far the mouse is from the player on the screen (css px): the placement ghost follows it
         myAngle = Math.atan2(-dx, dy);
         // Angle is sent via unified input at 30Hz from rAF — no separate rotate emit needed.
         // Sending 'rotate' here too doubled mouse packet rate and caused server-side angle
@@ -3827,6 +4827,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     };
     const onPointerDown = (e) => {
         if (e.pointerType !== 'mouse' || e.button !== 0 || gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
+        if (_bar.place) { _barPlace(); return; }   // the ghost is out: the click places it, nothing is fired
         _aimActive = true;
         _clientHasReleased = ammoState.ammo > 0 ? false : _clientHasReleased;
         if (ammoState.ammo > 0) _shootMustRelease = false;
@@ -3864,13 +4865,20 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('keyup',   onKeyUp);
         window.removeEventListener('keydown', _onDbgKey);
-        _BB.detach();   // saves the report if it was running
         canvas.removeEventListener('pointermove',  onPointerMove);
         canvas.removeEventListener('pointerleave', onPointerLeave);
         canvas.removeEventListener('pointerdown',  onPointerDown);
         canvas.removeEventListener('pointerup',    onPointerUp);
         if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        try { _BB.gameplayEnded(); _BB.detach(); } catch (_) { _BB.on = false; _BB.netActive = false; }
         clearInterval(_pingInterval);
+        if (_hb.btn) _hb.btn.removeEventListener('pointerdown', _onReloadBtn);
+        _hudHide();
+        window.removeEventListener('resize', _hudScale);
+        document.documentElement.style.removeProperty('--hk');
+        document.documentElement.style.removeProperty('--hk-btn');
+        document.documentElement.style.removeProperty('--hk-top');
+        document.documentElement.style.removeProperty('--hk-mm');
         moveDir.x = 0; moveDir.y = 0;
         isShooting = false;
         aimStartTime = null;
@@ -3910,8 +4918,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (overlay && overlay.style.display !== 'none') renderLeaderboardOverlay(data);
     });
 
-    socket.on('kit-pickup', ({ amount, x, y }) => {
-        _kitPickupFx.push({ x, y, amount: Math.round(amount), startTime: performance.now() });
+    socket.on('kit-pickup', ({ amount, x, y, kind }) => {
+        _kitPickupFx.push({ x, y, amount: Math.round(amount), startTime: performance.now(), ammo: kind === ARNet.KIT_AMMO });
     });
 
     socket.on('hit', ({ amount, x, y, bid }) => {
@@ -3926,8 +4934,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _dbgSrvPickups = pickups || 0;
     });
 
-    const _own = { ammo: 0, max: 0, reloading: false, reloadProgress: 1, ack: 0, coins: 0 };
+    const _own = { ammo: 0, max: 0, reloading: false, reloadProgress: 1, ack: 0, coins: 0, reserve: 0 };
     socket.on(ARNet.EVENT, (pk) => {
+        const _handlerStart = _BB.netActive ? performance.now() : 0;
         // [tick, players, bullets, zombies, kits, zone, pve, own]: see public/netproto.js
         const tickNo = pk[0], pFlat = pk[1], bFlat = pk[2], zArr = pk[3], kArr = pk[4], zone2 = pk[5], pve2 = pk[6], ownRow = pk[7];
 
@@ -3935,43 +4944,32 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const now = performance.now();
         if (_BB.on) _BB.packet(now, tickNo, pFlat.length / 6, bFlat.length / 6, zArr ? zArr.length / 6 : 0);
         _sendInputForTick(now); // one input per server tick (see _sendInputForTick)
-        // This client's own row (ammo, reload, ack, coins) comes last in the packet; the rest is shared by the room
+        // This client's own row (ammo, reload, ack, coins, reserve) comes last in the packet; the rest is shared by the room
         let ammoArr = null, _myCoins = 0;
         if (ownRow) {
             ARNet.own(ownRow, _own);
             _ammoRow[0] = _own.ammo; _ammoRow[1] = _own.max; _ammoRow[2] = _own.reloading ? 1 : 0;
-            _ammoRow[3] = _own.reloadProgress; _ammoRow[4] = _own.ack;
+            _ammoRow[3] = _own.reloadProgress; _ammoRow[4] = _own.ack; _ammoRow[5] = _own.reserve;
             ammoArr = _ammoRow; _myCoins = _own.coins;
         }
         const pveArr = pve2 ? [pve2[0], pve2[1], pve2[2], pve2[3], pve2[4] / ARNet.TQ, _myCoins] : null;
         if (ammoArr) {
-            const _prevAmmo = ammoState.ammo;
-            // Locally predicted shots spend ammo instantly; the server catches up ~RTT later.
-            // Until then an older (higher) server value must not undo the prediction.
+            // Locally predicted shots spend rounds instantly; the server catches up ~RTT later. Until then an older (higher)
+            // server value must not undo the prediction.
             const _srvAmmo = Math.max(0, ammoArr[0] || 0);
             if (_bDiag.ammoLog && _bDiag.ammoLog.length < 400 && _bDiag._lastSrvAmmo !== _srvAmmo) { _bDiag._lastSrvAmmo = _srvAmmo; _bDiag.ammoLog.push(Math.round(now) + ":" + _srvAmmo + ":" + (ammoArr[2] ? 1 : 0)); }
-            const _holdPrediction = now < _ammoHoldUntil && _srvAmmo > ammoState.ammo && !ammoArr[2];
+            const _srvReloading = !!ammoArr[2];
+            const _holdPrediction = now < _ammoHoldUntil && _srvAmmo > ammoState.ammo && !_srvReloading;
             if (!_holdPrediction) ammoState.ammo = _srvAmmo;
-            ammoState.max  = Math.max(1, ammoArr[1] || 10);
-            ammoState.reloading      = !!ammoArr[2];
-            ammoState.reloadProgress = Math.max(0, Math.min(1, ammoArr[3] ?? 1));
-            if (_prevAmmo > 0 && ammoState.ammo === 0) {
-                _shootMustRelease = true;
-                _clientHasReleased = false;
-            }
-            if (_prevAmmo === 0 && ammoState.ammo > 0 && !ammoState.reloading) {
-                _shootMustRelease = false;
-                _clientHasReleased = true;
-            }
-            // Magazine refilled while the trigger is still held: the server clears its
-            // "release to shoot" lock on a full reload and starts firing again after a fresh
-            // AIM_DELAY (server.js reload branch + input handler). Mirror it, or those shots are
-            // never predicted and only show up late, from server data.
-            if (_shootMustRelease && isShooting && _prevAmmo < ammoState.max && ammoState.ammo >= ammoState.max &&
-                !ammoState.reloading && (_WEAPON_DATA[selectedWeapon] || {}).fireMode !== 'semi') {
-                _shootMustRelease = false;
-                _clientHasReleased = true;
-                aimStartTime = now;
+            ammoState.ammoMax = Math.max(1, ammoArr[1] || 1);
+            ammoState.reserve = Math.max(0, ammoArr[5] || 0);
+            if (_srvReloading) {
+                ammoState.reloading = true;
+                ammoState.reloadProgress = Math.max(0, Math.min(1, ammoArr[3] ?? 0));
+                _reloadHoldUntil = 0;
+            } else if (!(ammoState.reloading && now < _reloadHoldUntil)) {
+                // not reloading on the server, and no reload of ours waiting for its answer
+                ammoState.reloading = false; ammoState.reloadProgress = 0;
             }
         }
         if (zone2) {   // the centre never moves (the middle of the arena)
@@ -3990,6 +4988,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Live zombies only, 6 values each: id, x, y, angle x100, hp, type. One that is no longer
             // listed has died (its last position is kept for the death effect; hp -1 = not drawn).
             const _zGen = ++_zSeenGen;
+            _tanks.length = 0;
             for (let _zi = 0; _zi < zArr.length; _zi += 6) {
                 const _zid = zArr[_zi];
                 const _zb = _zombies[_zid] || (_zombies[_zid] = { hp: -1 });
@@ -4000,6 +4999,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 if (_zPrevHp < 0) { _zb.x = _zb.sx; _zb.y = _zb.sy; _zb.angle = _zb.sa; }
                 _zb.hp = zArr[_zi + 4];
                 _zb.type = zArr[_zi + 5] || 0;
+                const _zHeavy = _gameMode === 'pve' && _ZB_DEFS[_zb.type] && _ZB_DEFS[_zb.type].heavy;   // the ones a player cannot push (tank, brute, summoner)
+                if (_zHeavy && _zb.hp > 0) _tanks.push(_zb.sx, _zb.sy, _ZB_DEFS[_zb.type].r);
+                if (_zHeavy && _zPrevHp < 0) _pveWarnFirst(_zb.type);   // one has come into the packet
                 _zb.seen = _zGen;
                 if (_zPrevHp > 0 && _zPrevHp - _zb.hp > 0.5) {
                     hitEffects.push({ x: _zb.sx, y: _zb.sy, life: 2.0 });
@@ -4021,11 +5023,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
         if (kArr) {
             const _kSeen = new Set();
-            for (let _ki = 0; _ki < kArr.length; _ki += 4) {
+            for (let _ki = 0; _ki < kArr.length; _ki += 5) {   // id, x, y, seconds left, kind (medkit / box of ammo)
                 const _kid = kArr[_ki];
                 _kSeen.add(_kid);
                 if (!_healthKits.has(_kid)) _kitDropAnim.set(_kid, performance.now());
-                _healthKits.set(_kid, { x: kArr[_ki+1], y: kArr[_ki+2], timeLeft: kArr[_ki+3] });
+                _healthKits.set(_kid, { x: kArr[_ki+1], y: kArr[_ki+2], timeLeft: kArr[_ki+3], ammo: kArr[_ki+4] === ARNet.KIT_AMMO });
             }
             for (const [_kid] of _healthKits) {
                 if (!_kSeen.has(_kid)) { _healthKits.delete(_kid); _kitDropAnim.delete(_kid); }
@@ -4073,7 +5075,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         });
 
 
-        _noteSnapshotClock(now, entry.st);
+        _clock.note(now, entry.st);
         stateBuffer.push(entry);
         while (stateBuffer.length > 20) stateBuffer.shift();
         lastGameStateTime = now;
@@ -4139,7 +5141,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
             const newKills = me.kills || 0;
             // _myLastKills == -1 inseamna primul pachet dupa reset; nu notifica (ar putea fi stale)
-            if (_myLastKills >= 0 && newKills > _myLastKills && !gameControl.countdownActive) showKillNotif(newKills);
+            if (_myLastKills >= 0 && newKills > _myLastKills && !gameControl.countdownActive && _gameMode !== 'pve') showKillNotif(newKills);   // in PvE the team counter says it
             if (myKillsEl.textContent !== String(newKills)) myKillsEl.textContent = newKills;
             _myLastKills = newKills;
         }
@@ -4163,6 +5165,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             latestHp[pid]  = p.hp;
         }
 
+        if (_BB.netActive) _BB.handler(performance.now(), tickNo, _handlerStart, stateBuffer.length, _pendingInputs.length, _clock.delay);
+
     });
 
     socket.on('kill-event', ({ killerName, victimName, byZone, victimId }) => {
@@ -4173,6 +5177,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ? `${victimName} was eliminated by the zone`
             : `${killerName} eliminated ${victimName}`;
         killFeedEl.appendChild(entry);
+        if (_gameMode === 'pve') _pveFeed(`${victimName} a cazut`, true);
         setTimeout(() => { if (entry.parentNode) entry.parentNode.removeChild(entry); }, 4000);
         while (killFeedEl.children.length > 5) killFeedEl.removeChild(killFeedEl.firstChild);
     });
@@ -4275,6 +5280,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         currentProfile.coins        = data.coins        ?? 1000;
         currentProfile.diamonds     = data.diamonds     || 0;
         if (data.missions) currentProfile.missions = data.missions;
+        if (data.missionNote !== undefined && _peData) { _peNote = data.missionNote; if (document.getElementById('pve-end').style.display === 'flex') _peMission(_peNote); }   // the mission box of the PvE end board
         // totals per weapon after this match (server.js WEAPON STATS); no UI yet, see ?dev=weapons
         if (data.weaponStats) currentProfile.weapon_stats = data.weaponStats;
     });
@@ -4305,7 +5311,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         shootDir.x = 0; shootDir.y = 0;
         myAngle = 0; moveAngle = 0; lastTime = 0;
         stateBuffer.length = 0;
-        _resetSnapshotClock();
+        _clock.reset();
         _inputSeq = 0; _lastInputSend = 0;
         _pendingInputs.length = 0;
         _clientBullets.length = 0;
@@ -4320,10 +5326,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         hitEffects.length = 0;
         damageNumbers.length = 0;
         for (const k in flashTimers) delete flashTimers[k];
-        ammoState.ammo = 10;
-        ammoState.max = 10;
-        ammoState.reloading = false;
-        ammoState.reloadProgress = 1;
+        _AMMO_FULL(); _reloadWanted = false; _reloadHoldUntil = 0;
         killFeedEl.innerHTML = '';
         myKillsEl.textContent = '0';
         document.getElementById('kill-notif').classList.remove('active');
@@ -4335,20 +5338,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (specBtn) specBtn.style.display = 'none';
         exitSpectating();
         myElimData = null;
-        _ammoBarCache.key = '';
         if (gameControl.pendingObstacles) { _obstacles = gameControl.pendingObstacles; delete gameControl.pendingObstacles; }
         if (gameControl.pendingSeason) { ARArena.setMapSeason(gameControl.pendingSeason); ARGround.setTheme(gameControl.pendingSeason); delete gameControl.pendingSeason; }
         _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
         _zoneTimerAlpha = 0;
-        _zombies.length = 0;
+        _zombies.length = 0; _tanks.length = 0;
         _zombieDeathFx.length = 0;
         const _pp = document.getElementById('pve-upgrade-panel');
         _pp.style.transition = ''; _pp.style.opacity = '1'; _pp.style.display = 'none';
         document.getElementById('pve-top-hud').style.display = 'none';
         _pveState.baseHp = 1000; _pveState.wave = 0; _pveState.waveBreak = false; _pveState.myCoins = 0;
         Object.keys(_pveUpgCounts).forEach(k => _pveUpgCounts[k] = 0);
-        const skipBtn = document.getElementById('pve-skip-btn');
-        if (skipBtn) { skipBtn.disabled = false; skipBtn.textContent = 'SKIP'; }
+        _pbkGoReset(); _pbk.res = null;
         _playerDeathFx.length = 0;
         for (const k in _prevPlayerAlive) delete _prevPlayerAlive[k];
         _healthKits.clear();
@@ -4358,6 +5359,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _coinDrops.clear(); _coinFx.length = 0;
         for (const k in _obsShake) delete _obsShake[k];
         gameControl.countdownEndTime = null;
+        _pveHudReset();
+        _zFx.length = 0; _zHpMul = 1; _structs.length = 0; _turrets.length = 0; _turretFx.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.invT = 0; _bar.invE = 0; _bar.invH = 0; _bar.invO = 0; _bar.invF = 0; _bar.invS = 0; _zapFx.length = 0; _bombFx.length = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
         _footsteps.length = 0;
         for (const k in _footTimers) delete _footTimers[k];
         for (const k in _footSide)   delete _footSide[k];
@@ -4368,7 +5371,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     socket.on('rematch-vote', ({ count, total }) => {
         const btn = document.getElementById('btn-rematch');
-        btn.textContent = `JOACA DIN NOU (${count}/${total})`;
+        btn.textContent = `PLAY AGAIN (${count}/${total})`;
+        const peSub = document.getElementById('pe-again-sub'); if (peSub) peSub.textContent = `Survival PvE \u00B7 ${count} / ${total} ready`;
     });
 
     // ---- PvE events ----
@@ -4393,6 +5397,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _setHudText('pve-upgrade-coins', _pveState.myCoins);
     }
 
+    // ---------- PvE between-waves panel (#pve-upgrade-panel): results + team | shop | next wave ----------
+    // Prices and maxima mirror server.js (PVE_UPGRADE_DEFS, PVE_RESERVE_COST, ARStructs.BUY_COST / TURRET_BUY_COST); the server decides every purchase.
     const _PVE_UPG_CLIENT = {
         dmg:  { baseCost: 6,  costInc: 4, maxUses: 5 },
         spd:  { baseCost: 5,  costInc: 3, maxUses: 4 },
@@ -4400,40 +5406,189 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ammo: { baseCost: 4,  costInc: 2, maxUses: 4 },
     };
     const _pveUpgCounts = { dmg: 0, spd: 0, hp: 0, ammo: 0 };
-
+    const _PVE_RESERVE_COST = 3;   // server.js PVE_RESERVE_COST
+    const _myReservePack = () => (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {}).reserveStart || 0;
     function _pveUpgCost(type, count) {
         const d = _PVE_UPG_CLIENT[type];
         return d ? d.baseCost + count * d.costInc : 999;
     }
 
-    function updateUpgradeButtons() {
-        Object.keys(_PVE_UPG_CLIENT).forEach(type => {
-            const btn = document.querySelector(`.pve-upg-btn[data-type="${type}"]`);
-            if (!btn) return;
-            const d = _PVE_UPG_CLIENT[type];
-            const count = _pveUpgCounts[type] || 0;
-            const maxed = count >= d.maxUses;
-            const cost  = maxed ? null : _pveUpgCost(type, count);
-            btn.querySelector('.pve-upg-cost').textContent = maxed ? 'MAX' : String(cost);
-            btn.disabled = maxed;
-            btn.classList.toggle('pve-upg-maxed', maxed);
-            // Segmente progres
-            const segsEl = btn.querySelector('.pve-upg-segs');
-            if (segsEl) {
-                segsEl.innerHTML = '';
-                for (let i = 0; i < d.maxUses; i++) {
-                    const seg = document.createElement('span');
-                    seg.className = 'pve-upg-seg' + (i < count ? ' active' : '');
-                    segsEl.appendChild(seg);
-                }
-            }
+    // The cards, in the order of the ALL tab. tab: build | support | weapon (the colour of the block too). locked: not in the game yet ("COMING SOON").
+    // lvl(n): what the n levels bought so far give; tag(): the small pill in the corner of the picture. No texts about what a thing does: the picture says it.
+    const _COIN_IMG = '/images/pickups/moneda_pve.svg';
+    const _PBK_CARDS = [
+        { id: 'barricade', tab: 'build', name: 'Barricade', img: '/images/pve/icon_barricade_wood.svg', kd: 'b', held: () => _bar.inv, cost: () => ARStructs.BUY_COST, tag: () => 'x' + _bar.inv },
+        { id: 'turret', tab: 'build', name: 'Turret', img: '/images/pve/icon_turret_mg.svg', kd: 'mg', held: () => _bar.invT, cost: () => ARStructs.TURRET_BUY_COST, tag: () => 'x' + _bar.invT },
+        { id: 'tesla', tab: 'build', name: 'Tesla', img: '/images/pve/icon_tesla.svg', kd: 'tesla', held: () => _bar.invE, cost: () => ARStructs.turretBuyCost('tesla'), tag: () => 'x' + _bar.invE },
+        { id: 'bomb', tab: 'build', name: 'Bomb Tower', img: '/images/pve/icon_bomb.svg', kd: 'bomb', held: () => _bar.invO, cost: () => ARStructs.turretBuyCost('bomb'), tag: () => 'x' + _bar.invO },
+        { id: 'flame', tab: 'build', name: 'Flamethrower', img: '/images/pve/icon_flame.svg', kd: 'flame', held: () => _bar.invF, cost: () => ARStructs.turretBuyCost('flame'), tag: () => 'x' + _bar.invF },
+        { id: 'heal', tab: 'build', name: 'Health Station', img: '/images/pve/icon_station.svg', kd: 'heal', held: () => _bar.invH, cost: () => ARStructs.turretBuyCost('heal'), tag: () => 'x' + _bar.invH },
+        { id: 'support', tab: 'build', name: 'Support Tower', img: '/images/pve/icon_support.svg', kd: 'support', held: () => _bar.invS, cost: () => ARStructs.turretBuyCost('support'), tag: () => 'x' + _bar.invS },
+        { id: 'dmg', tab: 'weapon', name: 'Damage', img: '/images/pve/upg_damage.svg', lvl: n => '+' + n * 5 + '%' },
+        { id: 'ammo', tab: 'weapon', name: 'Magazine', img: '/images/pve/upg_magazine.svg', lvl: n => '+' + n * 12 + '%' },
+        { id: 'reserve', tab: 'weapon', name: 'Ammo', img: '/images/pickups/ammo_box.svg', cost: () => _PVE_RESERVE_COST, tag: () => '+' + _myReservePack() },
+        { id: 'hp', tab: 'support', name: 'HP Max', img: '/images/pve/upg_hp.svg', lvl: n => '+' + n * 15 },
+        { id: 'spd', tab: 'support', name: 'Speed', img: '/images/pve/upg_speed.svg', lvl: n => '+' + n * 4 + '%' },
+    ];
+    const _pbk = { tab: 'all', cards: null, iv: 0, res: null, ready: new Set(), votes: 0, total: 1, voted: false, nextWave: 2, shownTeam: '' };
+    const _$ = id => document.getElementById(id);
+
+    function _pbkBuild() {
+        const host = _$('pbk-cards');
+        host.textContent = '';
+        _pbk.cards = new Map();
+        for (const c of _PBK_CARDS) {
+            const el = document.createElement('div');
+            el.className = 'pbk-c is-' + c.tab + (c.locked ? ' is-locked' : '') + (_PVE_UPG_CLIENT[c.id] ? '' : ' is-big');
+            const pic = c.img ? `<img src="${c.img}" alt="" aria-hidden="true" draggable="false">` : ico(c.ic);
+            el.innerHTML = `<div class="pbk-c-ic">${pic}<span class="pbk-c-tag"></span></div><div class="pbk-c-name">${c.name}</div>` +
+                (c.locked ? `<div class="pbk-lock">${ico('lock')}COMING SOON</div>`
+                    : (_PVE_UPG_CLIENT[c.id] ? '<div class="pbk-lvl"><span class="pbk-lvl-n"></span><span class="pbk-lvl-v"></span></div><div class="pbk-segs"></div>' : '') +
+                      `<button class="pbk-buy" type="button"><img class="pic" src="${_COIN_IMG}" alt="" aria-hidden="true" draggable="false"><b></b></button>`);
+            const buy = el.querySelector('.pbk-buy');
+            if (buy) buy.addEventListener('click', () => window.buyUpgrade(c.id));
+            host.appendChild(el);
+            _pbk.cards.set(c.id, { c, el, buy, cost: buy && buy.querySelector('b'), tag: el.querySelector('.pbk-c-tag'), segs: el.querySelector('.pbk-segs'),
+                lvlN: el.querySelector('.pbk-lvl-n'), lvlV: el.querySelector('.pbk-lvl-v'), buyKey: '', segKey: -1, txt: '' });
+        }
+        _$('pbk-tabs').addEventListener('click', e => {
+            const b = e.target.closest('.pbk-tab');
+            if (!b) return;
+            _pbk.tab = b.dataset.tab; _pbkTabs();
         });
     }
+    // On a phone (the same test as the compact CSS) there are two tabs, CONSTRUCTII (6 cards) and UPGRADE (the weapon and support ones, 5 cards),
+    // so each fills the screen with big cards and nothing scrolls; the other tabs only exist on a bigger screen.
+    const _pbkCompactMq = window.matchMedia('(max-height: 520px), (max-width: 760px)');
+    _pbkCompactMq.addEventListener('change', () => { if (_pbk.cards) _pbkTabs(); });
+    function _pbkTabs() {
+        const compact = _pbkCompactMq.matches;
+        if (compact && (_pbk.tab === 'all' || _pbk.tab === 'support')) _pbk.tab = _pbk.tab === 'support' ? 'weapon' : 'build';
+        for (const b of _$('pbk-tabs').children) { b.classList.toggle('is-on', b.dataset.tab === _pbk.tab); if (b.dataset.tab === 'weapon') b.textContent = compact ? 'UPGRADES' : 'WEAPONS'; }
+        for (const { c, el } of _pbk.cards.values()) el.style.display = (_pbk.tab === 'all' || c.tab === _pbk.tab || (compact && _pbk.tab === 'weapon' && c.tab === 'support')) ? '' : 'none';
+        let shown = 0; for (const { el } of _pbk.cards.values()) if (el.style.display !== 'none') shown++;
+        _$('pbk-cards').dataset.dense = shown > 6 ? '1' : '';   // more than six cards (the builds, with the Support Tower): four columns on a phone, so two rows still hold them
+    }
+
+    // Cheap and idempotent: only what changed is written (called at every purchase, coin and inventory change while the panel is up)
+    function updateUpgradeButtons() {
+        if (!_pbk.cards) _pbkBuild();
+        const coins = _pveState.myCoins | 0;
+        for (const k of _pbk.cards.values()) {
+            const c = k.c;
+            const tag = c.tag ? c.tag() : '';
+            if (k.txt !== tag) { k.txt = tag; k.tag.textContent = tag; }
+            if (c.locked) continue;
+            const stat = _PVE_UPG_CLIENT[c.id];
+            let label, cost = 0, maxed = false;
+            if (stat) {
+                const n = _pveUpgCounts[c.id] | 0;
+                maxed = n >= stat.maxUses;
+                cost = maxed ? 0 : _pveUpgCost(c.id, n);
+                label = maxed ? 'MAX' : String(cost);
+                if (k.segKey !== n) {
+                    k.segKey = n;
+                    k.segs.textContent = '';
+                    for (let i = 0; i < stat.maxUses; i++) { const s = document.createElement('span'); s.className = 'pbk-seg' + (i < n ? ' on' : ''); k.segs.appendChild(s); }
+                    k.lvlN.textContent = 'LV ' + n + '/' + stat.maxUses;
+                    k.lvlV.textContent = n ? c.lvl(n) : '';
+                }
+            } else {
+                cost = c.cost();
+                // a building at its limit in the room (what stands plus what you hold): MAX, nothing to buy (the server says no as well). If some are
+                // destroyed in a wave it opens again.
+                maxed = !!c.kd && ARStructs.buyBlocked(c.kd, c.kd === 'b' ? _structs.length : ARStructs.turretCountOf(_turrets, c.kd), c.held(), Math.max(1, (_ph.ids || []).length));
+                label = maxed ? 'MAX' : String(cost);
+                if (maxed) cost = 0;
+            }
+            const poor = !maxed && coins < cost, done = _pbk.voted;   // after GATA nothing is bought
+            const key = label + (maxed ? 'm' : poor ? 'p' : 'o') + (done ? 'd' : '');
+            if (k.buyKey !== key) {
+                k.buyKey = key;
+                k.cost.textContent = label;
+                k.buy.disabled = maxed || poor || done;
+                k.el.classList.toggle('is-done', done);
+                k.buy.classList.toggle('is-max', maxed);
+                k.buy.classList.toggle('is-poor', poor);
+            }
+        }
+        _setHudText('pbk-earned', '+' + (_pbkMine() ? _pbkMine()[3] : 0) + ' this wave');
+        _pbkInv();
+    }
+    function _pbkInv() {
+        const el = _$('pbk-inv');
+        const s = `${_bar.inv}|${_bar.invT}|${_bar.invE}|${_bar.invO}|${_bar.invF}|${_bar.invH}|${_bar.invS}|${ammoState.reserve | 0}`;
+        if (el.__k === s) return;
+        el.__k = s;
+        el.innerHTML = `<span class="pbk-inv-h">INVENTORY</span><span class="pbk-pill"><img src="/images/pve/icon_barricade_wood.svg" alt="" draggable="false">x${_bar.inv}</span>` +
+            `<span class="pbk-pill"><img src="/images/pve/icon_turret_mg.svg" alt="" draggable="false">x${_bar.invT}</span><span class="pbk-pill"><img src="/images/pve/icon_tesla.svg" alt="" draggable="false">x${_bar.invE}</span><span class="pbk-pill"><img src="/images/pve/icon_bomb.svg" alt="" draggable="false">x${_bar.invO}</span><span class="pbk-pill"><img src="/images/pve/icon_flame.svg" alt="" draggable="false">x${_bar.invF}</span><span class="pbk-pill"><img src="/images/pve/icon_station.svg" alt="" draggable="false">x${_bar.invH}</span><span class="pbk-pill"><img src="/images/pve/icon_support.svg" alt="" draggable="false">x${_bar.invS}</span><span class="pbk-pill"><img src="/images/pickups/ammo_box.svg" alt="" draggable="false">${ammoState.reserve | 0}</span>`;
+    }
+    const _pbkMine = () => { const r = _pbk.res; if (!r) return null; for (const row of r.rows) if (row[0] === socket.id) return row; return null; };
 
     window.buyUpgrade = function(type) { socket.emit('buy-upgrade', { type }); };
 
+    function _pbkTeam() {
+        const host = _$('pbk-team-rows');
+        const ids = _ph.ids || [];
+        const sig = ids.join('|') + '#' + ids.map(id => _pbk.ready.has(id) ? 1 : 0).join('');
+        if (sig === _pbk.shownTeam) return;
+        _pbk.shownTeam = sig;
+        host.textContent = '';
+        ids.forEach((id, i) => {
+            const row = document.createElement('div'); row.className = 'pbk-trow';
+            const dot = document.createElement('span'); dot.className = 'pbk-tdot'; dot.style.background = _pveColor(id, i);
+            const nm = document.createElement('span'); nm.className = 'pbk-tname';
+            const meta = playerMeta[id] || {};
+            nm.textContent = (meta.name || '') + (id === socket.id ? ' (you)' : '');
+            const st = document.createElement('span'); st.className = 'pbk-tstat' + (_pbk.ready.has(id) ? ' is-rdy' : '');
+            st.textContent = _pbk.ready.has(id) ? 'READY' : 'BUYING...';
+            row.append(dot, nm, st); host.appendChild(row);
+        });
+        _setHudText('pbk-ready-n', `${_pbk.ready.size} / ${Math.max(1, ids.length)}`);
+    }
+    function _pbkResults() {
+        const r = _pbk.res, mine = _pbkMine();
+        let team = 0;
+        if (r) for (const row of r.rows) team += row[1];
+        _setHudText('pbk-st-kills', mine ? mine[1] : 0);
+        _setHudText('pbk-st-team', team);
+        _setHudText('pbk-st-dmg', mine ? mine[2] : 0);
+        _setHudText('pbk-st-coins', mine ? mine[3] : 0);
+        const mv = _$('pbk-mvp');
+        if (r && r.mvp) { mv.style.display = ''; _$('pbk-mvp-txt').textContent = 'MVP  ' + ((playerMeta[r.mvp] && playerMeta[r.mvp].name) || '') + (r.mvp === socket.id ? ' (you)' : ''); }
+        else mv.style.display = 'none';
+        _setHudText('pbk-earned', '+' + (mine ? mine[3] : 0) + ' this wave');
+    }
+    const _PBK_ZOMBIES = [['Normal', '#7DBB45', '/images/zombies/zombi.svg'], ['Runners', '#B4D84A', '/images/zombies/zombi_rapid.svg'], ['Tank', '#8B97A1', '/images/zombies/zombi_tanc.svg'],
+        ['Spitters', '#9DFF2E', '/images/zombies/zombi_toxic.svg'], ['Exploders', '#E2773A', '/images/zombies/zombi_exploder.svg'], ['Brute', '#A5AEBD', '/images/zombies/zombi_brute.svg'], ['Summoner', '#B591DC', '/images/zombies/zombi_summoner.svg'], ['Shielded', '#A7C4A2', '/images/zombies/zombi_shielded.svg'],
+        ['Screamer', '#D9A0A0', '/images/zombies/zombi_screamer.svg'], ['Ghouls', '#4B6A45', '/images/zombies/zombi_ghoul.svg'], ['Stalkers', '#7A6B2A', '/images/zombies/zombi_stalker.svg']];
+    function _pbkNext(next, nextWave) {
+        _setHudText('pbk-next-n', nextWave);
+        const host = _$('pbk-next-rows');
+        host.textContent = '';
+        const arr = next || [], total = arr.reduce((a, b) => a + b, 0);
+        _setHudText('pbk-next-total', total);
+        for (let i = 0; i < _PBK_ZOMBIES.length; i++) {
+            if (!arr[i]) continue;
+            const [lbl, col, img] = _PBK_ZOMBIES[i];
+            const row = document.createElement('div'); row.className = 'pbk-nrow';
+            row.innerHTML = `<img src="${img}" alt="" aria-hidden="true" draggable="false"><span class="pbk-nlbl"></span><span class="pbk-nbar"><i></i></span><span class="pbk-ncnt"></span>`;
+            row.querySelector('.pbk-nlbl').textContent = lbl;
+            const fill = row.querySelector('i'); fill.style.background = col; fill.style.width = Math.round(arr[i] / total * 100) + '%';
+            row.querySelector('.pbk-ncnt').textContent = arr[i];
+            host.appendChild(row);
+        }
+    }
+    function _pbkClock() {
+        const left = Math.max(0, Math.ceil(_pveState.breakTimerMax - (performance.now() - _pveState.breakAt) / 1000));
+        _setHudText('pbk-time', Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0'));
+        _pbkTeam();
+    }
+
     function showPvePanel() {
-        const panel = document.getElementById('pve-upgrade-panel');
+        const panel = _$('pve-upgrade-panel');
+        updateUpgradeButtons(); _pbkTabs(); _pbkResults(); _pbkClock();
+        clearInterval(_pbk.iv); _pbk.iv = setInterval(_pbkClock, 250);
         panel.style.transition = 'none';
         panel.style.opacity    = '0';
         panel.style.display    = 'flex';
@@ -4443,7 +5598,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }));
     }
     function hidePvePanel(cb) {
-        const panel = document.getElementById('pve-upgrade-panel');
+        const panel = _$('pve-upgrade-panel');
+        clearInterval(_pbk.iv);
         if (panel.style.display === 'none') { if (cb) cb(); return; }
         panel.style.transition = 'opacity 0.35s ease';
         panel.style.opacity    = '0';
@@ -4454,15 +5610,24 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (cb) cb();
         }, 360);
     }
+    function _pbkGoReset() {
+        _pbk.voted = false; _pbk.ready.clear(); _pbk.shownTeam = '';
+        const b = _$('pve-skip-btn'); if (b) b.disabled = false;
+        _setHudText('pbk-go-txt', 'READY');
+    }
     window.skipWaveBreak = function() {
+        if (_pbk.voted) return;
+        _pbk.voted = true;
         socket.emit('pve-skip');
-        const btn = document.getElementById('pve-skip-btn');
-        if (btn) { btn.disabled = true; btn.textContent = 'Vote recorded'; }
+        _$('pve-skip-btn').disabled = true;
+        _setHudText('pbk-go-txt', 'VOTE CAST');
+        updateUpgradeButtons();   // after GATA nothing more is bought (the server refuses it too)
     };
 
     socket.on('pve-coins', ({ coins, earned, x, y }) => {
         _pveState.myCoins = coins;
         updatePveHud();
+        if (_pveState.waveBreak && _pbk.cards) updateUpgradeButtons();
         if (earned && x !== undefined && y !== undefined) {
             // coins picked up one after another over a pile add up in one popup
             const _now = performance.now(), _last = _coinFloats[_coinFloats.length - 1];
@@ -4472,6 +5637,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
     // PvE coins lie on the ground until somebody touches them (server: pve-coins.js; these two events are not part of gs2).
     // coin-drops: a zombie died at (ox, oy) and these landed around it. coin-taken: gone (gone: true = they timed out).
+    // the magnet moves coins on the server: the new places of the ones that moved ([id, x, y, ...]); a coin in its first hop is left alone
+    socket.on('coin-mv', (flat) => {
+        const _t = performance.now();
+        for (let i = 0; i + 2 < flat.length; i += 3) {
+            const d = _coinDrops.get(flat[i]);
+            if (!d) continue;
+            if (d.rx === undefined) { const q = Math.min(1, (_t - d.t0) / COIN_LAND_MS), e = 1 - (1 - q) * (1 - q); d.rx = d.ox + (d.x - d.ox) * e; d.ry = d.oy + (d.y - d.oy) * e; }
+            d.x = flat[i + 1]; d.y = flat[i + 2];
+        }
+    });
     socket.on('coin-drops', ({ ox, oy, c }) => {
         const _now = performance.now();
         for (let i = 0; i < c.length; i++) _coinDrops.set(c[i][0], { x: c[i][1], y: c[i][2], ox, oy, t0: _now });
@@ -4481,23 +5656,38 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let i = 0; i < ids.length; i++) {
             const d = _coinDrops.get(ids[i]);
             if (!d) continue;
-            if (!gone) _coinFx.push({ x: d.x, y: d.y, t0: _now });
+            if (!gone) _coinFx.push({ x: d.rx !== undefined ? d.rx : d.x, y: d.ry !== undefined ? d.ry : d.y, t0: _now });
             _coinDrops.delete(ids[i]);
         }
     });
 
     socket.on('upgrade-result', ({ ok, type, coins, upgCounts, reason, newMaxHp }) => {
-        if (!ok) { if (reason === 'max') showToast('Maximum upgrade level reached!'); return; }
+        if (!ok) return;
         _pveState.myCoins = coins;
         if (upgCounts) Object.assign(_pveUpgCounts, upgCounts);
         if (newMaxHp && playerMeta[socket.id]) playerMeta[socket.id].maxHp = newMaxHp;
         updatePveHud();
         updateUpgradeButtons();
-        const labels = { dmg: 'Damage +5%', spd: 'Speed +4%', hp: 'Max HP +15', ammo: 'Ammo +12%' };
-        showToast(labels[type] || 'Upgrade applied!');
+        const k = _pbk.cards && _pbk.cards.get(type);
+        if (k) { k.el.classList.remove('is-pop'); void k.el.offsetWidth; k.el.classList.add('is-pop'); }
     });
 
-    socket.on('pve-wave-start', ({ wave, total, batches }) => {
+    socket.on('acid', ({ a }) => { _zFxPush(_acidFx(a)); });
+    socket.on('boom', ({ x, y, r }) => { _zFxPush(_boomFx(x, y, r)); });
+    socket.on('shield-block', (a) => { _zFxPush(_clangFx(a[0], a[1], a[2] / 100)); });
+    socket.on('summon', ({ x, y }) => { _zFxPush({ k: 'summon', x0: x, y0: y, t0: performance.now() }); });
+    // A screamer has screamed (x, y, r its range, ms how long the turrets are stunned, ids the turrets it got): rings of sound go out from it, and the turrets look dazed
+    socket.on('scream', ({ x, y, r, ms, ids }) => {
+        const now = performance.now();
+        _zFxPush({ k: 'scream', x0: x, y0: y, r, t0: now });
+        for (let i = 0; i < ids.length; i++) { const t = _turrets.find(q => q.id === ids[i]); if (t) t.stunUntil = now + ms; }
+    });
+    // The zombies the Flamethrowers hit (ids, every 250 ms): they stay red while they burn
+    socket.on('flame-burn', (ids) => { const now = performance.now(); for (let i = 0; i < ids.length; i++) { const z = _zombies[ids[i]]; if (z) z.burnT = now; } });
+    socket.on('pve-wave-start', ({ wave, total, batches, zombies, queued, hpMul, grace }) => {
+        _ph.total = zombies || 0; _ph.queued = queued || 0; _ph.slow = 0; _zHpMul = hpMul || 1;
+        _ph.graceUntil = grace ? performance.now() + grace * 1000 : 0; _ph.graceN = -1;
+        const _of = document.getElementById('pve-wave-of'); if (_of && total) _of.textContent = total;
         if (_BB.on) ARBlackBox.event('wave-start', wave);   // the server puts everyone back by the base here: a jump, by design
         _waveStartAt = performance.now();
         _pveState.waveBreak = false;
@@ -4516,24 +5706,163 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _clientNextShotAt = 0; _ammoHoldUntil = 0; _pendingBurstShots.length = 0;
         moveDir.x = 0; moveDir.y = 0;
         _pendingInputs.length = 0;
-        showToast(`WAVE ${wave} / ${total}`);
     });
 
-    socket.on('pve-subwave', ({ remaining }) => {
+    socket.on('pve-subwave', ({ remaining, queued }) => {
+        _ph.queued = queued || 0; _ph.slow = 0;
         if (_BB.on) ARBlackBox.event('pve-subwave', remaining);
-        showToast(remaining > 0 ? 'Reinforcements!' : '');
     });
 
-    socket.on('pve-skip-status', ({ votes, total }) => {
-        const btn = document.getElementById('pve-skip-btn');
-        if (btn) btn.textContent = votes >= total ? 'SKIP' : `SKIP (${votes}/${total})`;
+    // ---- barricades ----
+    socket.on('pve-inv', ({ barricade, turret, tesla, bomb, flame, heal, support }) => {
+        _bar.inv = barricade | 0; _bar.invT = turret | 0; _bar.invE = tesla | 0; _bar.invO = bomb | 0; _bar.invF = flame | 0; _bar.invH = heal | 0; _bar.invS = support | 0;
+        if (_pveState.waveBreak && _pbk.cards) updateUpgradeButtons();
+        if (_bar[_BAR_KINDS[_bar.kind].inv] <= 0 && _bar.place) _bar.place = false;   // that was the last one
+        _barUi();
     });
+    // ---- turrets (events turret-add / -hp / -upd / -del, turret-shots: [turret id, angle x100, zombie id] a shot) ----
+    socket.on('turret-add', (s) => {
+        const a = (s.a | 0) / 100;
+        const _now = performance.now(), _t = { id: s.id, k: 't', kd: s.kd || 'mg', x: s.x, y: s.y, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, ang: a, tang: a, flash: 0, flameT: -1e9, flameS: 0, pop: _now };
+        if (_t.kd === 'support') _t.dr = { ph: 4, t0: _now, ms: ARStructs.TURRET.kinds.support.drone.takeoff + 350 + ARStructs.TURRET.kinds.support.drone.landing, fx: _t.x, fy: _t.y, tx: _t.x, ty: _t.y, tk: 's', tid: -1, dock: true, fxT: 0 };
+        _turrets.push(_t); _fxSpawn('place', _t, _now);
+        _pveFeed(`${s.by} placed ${s.kd === 'tesla' ? 'a Tesla Tower' : s.kd === 'bomb' ? 'a Bomb Tower' : s.kd === 'flame' ? 'a Flamethrower' : s.kd === 'heal' ? 'a Health Station' : s.kd === 'support' ? 'a Support Tower' : 'a turret'}`);
+    });
+    // The Support Tower's drone: off to mend something (tk 't' a turret / 's' a barricade, tid its id, ms how long the flight takes) and back home
+    socket.on('drone-go', ({ id, tk, tid, ms }) => {
+        const t = _turrets.find(q => q.id === id); if (!t) return;
+        const now = performance.now(), pose = _dronePose(t, now, _dPose), tg = tk === 't' ? _turrets.find(q => q.id === tid) : _structs.find(q => q.id === tid);
+        const sp = tg ? ARStructs.droneSpot(tg, _dSpotP) : pose;
+        t.dr = { ph: 1, t0: now, ms, fx: pose.x, fy: pose.y, tx: sp.x, ty: sp.y, tk, tid, dock: pose.z < 0.1, fxT: 0 };
+    });
+    socket.on('drone-home', ({ id, ms }) => {
+        const t = _turrets.find(q => q.id === id); if (!t) return;
+        const now = performance.now(), pose = _dronePose(t, now, _dPose);
+        t.dr = { ph: 3, t0: now, ms, fx: pose.x, fy: pose.y, tx: t.x, ty: t.y, tk: 's', tid: -1, dock: false, fxT: 0 };
+    });
+    socket.on('turret-hp', (rows) => {
+        for (let i = 0; i < rows.length; i++) { const t = _turrets.find(q => q.id === rows[i][0]); if (t) t.hp = rows[i][1]; }
+    });
+    socket.on('turret-upd', (u) => {
+        const t = _turrets.find(q => q.id === u.id);
+        if (t) {
+            const up = u.t > t.t, now = performance.now();
+            t.t = u.t; t.hp = u.hp; t.maxHp = u.mhp;
+            if (up) t.pop = now;
+            _fxSpawn(up ? 'upgrade' : 'repair', t, now);
+        }
+        _bar.useKey = '-';
+    });
+    socket.on('turret-del', ({ id, broke }) => {
+        const i = _turrets.findIndex(q => q.id === id);
+        if (i === -1) return;
+        const now = performance.now();
+        if (broke) { _structDying.push({ s: _turrets[i], t0: now }); _fxSpawn('break', _turrets[i], now); }
+        _bar.work.delete(id);
+        _turrets.splice(i, 1);
+    });
+    socket.on('turret-shots', (rows) => {
+        const now = performance.now();
+        for (let i = 0; i + 2 < rows.length; i += 3) {
+            const t = _turrets.find(q => q.id === rows[i]);
+            if (!t) continue;
+            const a = rows[i + 1] / 100, z = _zombies[rows[i + 2]];
+            t.tang = a; t.flash = now;
+            // the twin turret fires from its two barrels in turn (7 units either side of the axis)
+            let off = 0; if (t.t === 1) { t.alt = !t.alt; off = t.alt ? 7 : -7; }
+            const ca = Math.cos(a), sa = Math.sin(a);
+            const mx = t.x + ca * 42 - sa * off, my = t.y + sa * 42 + ca * off;
+            const x1 = z ? z.x : mx + ca * 200, y1 = z ? z.y : my + sa * 200, dx = x1 - mx, dy = y1 - my, len = Math.hypot(dx, dy) || 1;
+            _turretFx.push({ x0: mx, y0: my, x1, y1, dx: dx / len, dy: dy / len, len, dur: Math.max(35, Math.min(170, len / _TUR_SPEED * 1000)), t0: now, tier: t.t });
+        }
+        if (_turretFx.length > 80) _turretFx.splice(0, _turretFx.length - 80);
+    });
+    socket.on('bomb-shots', (rows) => {   // [tower id, x, y, flight ms] a bomb
+        const now = performance.now();
+        for (let i = 0; i + 3 < rows.length; i += 4) {
+            const t = _turrets.find(q => q.id === rows[i]);
+            if (!t) continue;
+            t.flash = now;
+            const r = ARStructs.turretTiers(t)[t.t].splash;
+            _bombFx.push({ x0: t.x, y0: t.y, x1: rows[i + 1], y1: rows[i + 2], t0: now, dur: rows[i + 3], r });
+            const bf = _boomFx(rows[i + 1], rows[i + 2], r); bf.t0 = now + rows[i + 3];   // the blast is the exploder's, queued for the landing
+            _zFxPush(bf);
+        }
+        if (_bombFx.length > 40) _bombFx.splice(0, _bombFx.length - 40);
+    });
+    socket.on('flame-shots', (rows) => {   // [tower id, angle x100] a burst of the jet (every 250 ms while something is in reach)
+        const now = performance.now();
+        for (let i = 0; i + 1 < rows.length; i += 2) {
+            const t = _turrets.find(q => q.id === rows[i]);
+            if (!t) continue;
+            if (now - t.flameT > 420) t.flameS = now;   // a new run of bursts: the jet grows from nothing
+            t.flameT = now; t.tang = rows[i + 1] / 100;
+        }
+    });
+    socket.on('tesla-zaps', (rows) => {
+        const now = performance.now();
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i], t = _turrets.find(q => q.id === row[0]);
+            if (!t) continue;
+            t.flash = now;
+            const segs = [], col = t.t === 2 ? '#D3B8FF' : '#7FF6FF';
+            let px = t.x, py = t.y;
+            for (let k = 1; k < row.length; k++) {
+                const z = _zombies[row[k]];
+                if (!z || z.hp < 0) break;
+                segs.push({ leg: _zapLeg(px, py, z.x, z.y), t0: now + (k - 1) * _ZAP_STEP });
+                px = z.x; py = z.y;
+            }
+            if (segs.length) _zapFx.push({ col, segs });
+        }
+        if (_zapFx.length > 40) _zapFx.splice(0, _zapFx.length - 40);
+    });
+    socket.on('struct-add', (s) => {
+        const _now = performance.now(), _s = { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, pop: _now };   // pop: it lands with a little swell
+        _structs.push(_s); _fxSpawn('place', _s, _now);
+        _pveFeed(`${s.by} placed a barricade`);
+    });
+    socket.on('struct-hp', (rows) => {
+        for (let i = 0; i < rows.length; i++) { const s = _structs.find(q => q.id === rows[i][0]); if (s) s.hp = rows[i][1]; }
+    });
+    socket.on('struct-upd', (u) => {
+        const s = _structs.find(q => q.id === u.id);
+        if (s) {
+            const up = u.t > s.t, now = performance.now();
+            s.t = u.t; s.hp = u.hp; s.maxHp = u.mhp;
+            if (up) s.pop = now;
+            _fxSpawn(up ? 'upgrade' : 'repair', s, now);
+        }
+        _bar.useKey = '-';   // what E does here has changed
+    });
+    socket.on('struct-work', ({ id, action, dur }) => { _bar.work.set(id, { t0: performance.now(), dur, action }); _bar.useKey = '-'; });
+    socket.on('struct-work-end', ({ id }) => { _bar.work.delete(id); _bar.useKey = '-'; });
+    socket.on('struct-del', ({ id, broke }) => {
+        const i = _structs.findIndex(q => q.id === id);
+        if (i === -1) return;
+        const now = performance.now();
+        if (broke) { _structDying.push({ s: _structs[i], t0: now }); _fxSpawn('break', _structs[i], now); }
+        _bar.work.delete(id);
+        _structs.splice(i, 1);
+    });
+    // No messages for the barricades (the ghost is red when a place is no good, the ring and the sparks say a job is done or lost);
+    // a placed one: the ghost stays out while there are more in the inventory (pve-inv says when there are none)
+    socket.on('struct-result', () => {});
 
-    socket.on('pve-wave-break', ({ wave, nextWave, timer }) => {
+    // who has pressed GATA (ids), for the team list and the "n / total" of the header
+    socket.on('pve-skip-status', ({ ids }) => {
+        _pbk.ready = new Set(ids || []);
+        _pbkTeam();
+    });
+    // The numbers of the wave that just ended: rows [id, kills, damage taken, coins earned] and the MVP
+    socket.on('pve-wave-results', (r) => { _pbk.res = r; _pbkResults(); });
+
+    socket.on('pve-wave-break', ({ wave, nextWave, timer, next }) => {
         if (_BB.on) ARBlackBox.event('pve-wave-break', wave);
         _pveState.waveBreak = true;
         _pveState.breakTimer = timer;
-        _pveState.breakTimerMax = timer;
+        _pveState.breakTimerMax = timer; _pveState.breakAt = performance.now();
+        _pbkGoReset(); _pbk.res = null;
         isShooting = false; moveDir.x = 0; moveDir.y = 0;
         _pendingInputs.length = 0;
         keysHeld.clear();
@@ -4543,10 +5872,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         setTimeout(() => {
             if (!_pveState.waveBreak) return; // wave a inceput deja (skip rapid)
             if (_BB.on) ARBlackBox.event('pve-panel', wave);
-            document.getElementById('pve-upgrade-wave-info').innerHTML = `Wave ${wave}${ico('arrow-right')}${nextWave}`;
-            document.getElementById('pve-upgrade-coins').textContent = _pveState.myCoins;
-            const skipBtn = document.getElementById('pve-skip-btn');
-            if (skipBtn) { skipBtn.disabled = false; skipBtn.textContent = 'SKIP'; }
+            _setHudText('pbk-done-title', 'WAVE ' + wave);
+            _setHudText('pbk-next-lbl', 'WAVE ' + nextWave + ' STARTS IN');
+            _setHudText('pve-upgrade-coins', _pveState.myCoins);
+            _pbkNext(next, nextWave);
             updateUpgradeButtons();
             showPvePanel();
             // Animare timer bar porneaza de la starea curenta a timerului
@@ -4563,24 +5892,109 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }, _panelDelay);
     });
 
-    socket.on('pve-end', ({ result, wavesCleared }) => {
+    // ---------- PvE END BOARD ----------
+    // The board of the end of a PvE match (index.html #pve-end). Everything in it comes from the pve-end event: the team table, the zombies by
+    // family, the base, the time and what THIS player is paid (server.js pveFinish, pve-rewards.js). Only the mission box waits for round-stats.
+    let _peData = null, _peXp0 = 0, _peNote;
+    const _peSet = (id, v) => { const e = document.getElementById(id); if (e && e.textContent !== String(v)) e.textContent = v; };
+    const _peN = n => (Number(n) || 0).toLocaleString();
+    const _PE_COIN = '<img class="pic" src="/images/ui/monede.svg" alt="" draggable="false">', _PE_GEM = '<img class="pic" src="/images/ui/diamante.svg" alt="" draggable="false">';
+    function _peMission(note) {
+        const box = document.getElementById('pe-mission'); if (!box) return;
+        if (!note) { box.hidden = true; return; }
+        box.hidden = false; box.classList.toggle('is-done', !!note.done);
+        document.getElementById('pe-mis-h').innerHTML = note.done ? '<svg class="ic" aria-hidden="true"><use href="#check"/></svg>MISSION COMPLETE' : '';
+        _peSet('pe-mis-title', note.done ? note.title : 'Mission: ' + note.title);
+        const val = document.getElementById('pe-mis-val');
+        val.innerHTML = note.done
+            ? '+' + (note.coins | 0) + ' ' + _PE_COIN + ((note.diamonds | 0) > 0 ? ' <span class="is-gem">+' + (note.diamonds | 0) + ' ' + _PE_GEM + '</span>' : '')
+            : (note.prog | 0) + ' / ' + (note.goal | 0);
+        document.getElementById('pe-mis-fill').style.width = Math.round(Math.min(1, (note.prog || 0) / Math.max(1, note.goal || 1)) * 100) + '%';
+    }
+    function _peRender(d) {
+        const win = d.result === 'victory', r = d.reward, root = document.getElementById('pve-end');
+        root.dataset.result = win ? 'win' : 'lose';
+        _peSet('pe-count', d.team.length === 1 ? '1 PLAYER' : d.team.length + ' PLAYERS');
+        _peSet('pe-title', win ? 'VICTORY!' : 'BASE DESTROYED');
+        _peSet('pe-sub-lbl', win ? 'THE BASE SURVIVED EVERY WAVE' : 'YOU REACHED WAVE');
+        _peSet('pe-sub-num', win ? d.total + ' / ' + d.total : d.wave);
+        _peSet('pe-sub-tail', win ? '' : 'din ' + d.total);
+        // you: level and xp from what the account had when the match ended plus what it paid
+        const xp1 = _peXp0 + r.xp, l0 = getLevelFromXP(_peXp0), l1 = getLevelFromXP(xp1);
+        const from = _LVL_XP[l1], need = (_LVL_XP[l1 + 1] ?? from + 9999) - from, into = xp1 - from, tier = getTier(l1);
+        _peSet('pe-nick', currentNickname || 'PLAYER');
+        const rk = document.getElementById('pe-rank'); rk.textContent = String(_RANK_NAMES[Math.min(49, l1 - 1)]).toUpperCase(); rk.style.color = tier.color;
+        const ch = getSelectedCharacter(), img = document.getElementById('pe-av-img');
+        if (ch) { img.src = skinPreviewSrc(ch.id, SKIN_PREVIEW.avatar); img.style.display = 'block'; document.getElementById('pe-av-ph').style.display = 'none'; img.parentNode.style.borderColor = tier.color; }
+        document.getElementById('pe-lvl').classList.toggle('is-up', l1 > l0);
+        _peSet('pe-lv-a', 'LV ' + (l1 > l0 ? l0 : l1)); _peSet('pe-lv-b', 'LV ' + l1);
+        _peSet('pe-xp-gain', '+' + _peN(r.xp) + ' XP'); _peSet('pe-xp-txt', 'LV ' + l1 + ' \u00B7 ' + _peN(into) + ' / ' + _peN(need));
+        _peSet('pe-xp-more', l1 > l0 ? '' : 'You need ' + _peN(need - into) + ' XP to reach LV ' + (l1 + 1));
+        const fill = document.getElementById('pe-xp-fill'); fill.style.width = '0%';
+        requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = Math.round(Math.min(1, into / need) * 100) + '%'; }));
+        for (const k of ['normal', 'runner', 'heavy', 'special']) _peSet('pe-k-' + k, _peN(d.kinds[k]));
+        // the numbers of the match
+        const w = document.getElementById('pe-st-waves'); w.innerHTML = (win ? d.total : d.wave) + '<small>/ ' + d.total + '</small>'; w.parentNode.className = 'pe-stat ' + (win ? 'is-good' : 'is-bad');
+        _peSet('pe-st-zombies', _peN(d.zombies));
+        const bh = document.getElementById('pe-st-base'); bh.innerHTML = _peN(d.base.hp) + '<small>/ ' + _peN(d.base.max) + '</small>';
+        document.getElementById('pe-st-base-fill').style.width = Math.round(Math.max(0, Math.min(1, d.base.hp / Math.max(1, d.base.max))) * 100) + '%';
+        _peSet('pe-st-time', Math.floor(d.timeSec / 60) + ':' + String(d.timeSec % 60).padStart(2, '0'));
+        // the road through the waves, with the diamond thresholds
+        _peSet('pe-path-note', win ? d.total + ' of ' + d.total + ' waves cleared' : 'the base fell in wave ' + d.wave);
+        const ms = document.getElementById('pe-ms'), pips = document.getElementById('pe-pips'), gm = new Map(r.milestones.map(m => [m.wave, m]));
+        ms.textContent = ''; pips.textContent = '';
+        for (let i = 1; i <= d.total; i++) {
+            const cell = document.createElement('div'), m = gm.get(i);
+            if (m) { const g = document.createElement('span'); g.className = 'pe-gem' + (m.got ? '' : ' is-off'); g.innerHTML = _PE_GEM + '+' + (m.gems | 0); cell.appendChild(g); }
+            ms.appendChild(cell);
+            const pip = document.createElement('div'), fell = !win && i === d.wave;
+            pip.className = 'pe-pip' + (win || i <= r.wavesCleared ? ' is-done' : fell ? ' is-fall' : '');
+            pip.textContent = fell ? '\u00D7' : i; pips.appendChild(pip);
+        }
+        // the team
+        const rows = document.getElementById('pe-rows'); rows.textContent = '';
+        d.team.forEach((t, i) => {
+            const me = t.id === socket.id, row = document.createElement('div'), nm = document.createElement('div'), dot = document.createElement('i'), name = document.createElement('span');
+            row.className = 'pe-trow' + (me ? ' is-me' : ''); nm.className = 'pe-tn'; dot.style.background = _pveColor(t.id, i);
+            name.textContent = t.name + (me ? ' (you)' : ''); nm.append(dot, name);
+            if (t.id === d.mvp) { const mv = document.createElement('span'); mv.className = 'pe-mvp'; mv.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#crown"/></svg>MVP'; nm.appendChild(mv); }
+            const k = document.createElement('span'), dm = document.createElement('span'), c = document.createElement('span');
+            k.className = 'pe-k'; k.textContent = _peN(t.kills); dm.className = 'pe-d'; dm.textContent = _peN(t.dmg); c.className = 'pe-c'; c.textContent = _peN(t.coins);
+            row.append(nm, k, dm, c); rows.appendChild(row);
+        });
+        // what it paid
+        _peSet('pe-p-coins', '+' + _peN(r.coins)); _peSet('pe-p-gems', '+' + _peN(r.gems)); _peSet('pe-p-xp', '+' + _peN(r.xp));
+        const [lw, lk, lv] = r.lines;
+        _peSet('pe-w-waves', lw.n + (lw.n === 1 ? ' wave cleared' : ' waves cleared')); _peSet('pe-w-waves-c', '+' + _peN(lw.coins));
+        _peSet('pe-w-kills-c', '+' + _peN(lk.coins)); _peSet('pe-w-win-c', '+' + _peN(lv.coins));
+        const got = r.milestones.filter(m => m.got).map(m => m.wave);
+        _peSet('pe-w-gem-note', win ? 'Wave milestones: ' + got.join(', ') : got.length ? 'Wave milestones reached: ' + got.join(', ') : 'No wave milestones reached');
+        document.getElementById('pe-w-gems').innerHTML = '+' + (r.gems | 0) + ' ' + _PE_GEM;
+        _peMission(_peNote);
+        _peSet('pe-again-lbl', win ? 'PLAY AGAIN' : 'TRY AGAIN'); _peSet('pe-again-sub', 'Survival PvE');
+        const again = document.getElementById('pe-again'); again.disabled = false;
+        document.getElementById('pve-top-hud').style.display = 'none';   // the match HUD is not needed behind the board (game-start shows it again)
+        document.getElementById('screen-gameover').style.display = 'none';
+        root.style.display = 'flex';
+        try { again.focus({ preventScroll: true }); } catch (_) {}
+    }
+    socket.on('pve-end', (d) => {
         gameEnded = true;
         moveDir.x = 0; moveDir.y = 0; isShooting = false;
         hidePvePanel();
+        _peData = d; _peNote = undefined;
+        _peXp0 = currentProfile ? (currentProfile.xp || 0) : 0;   // before round-stats (sent after this event) overwrites it
         setTimeout(() => {
-            if (result === 'victory') {
-                document.getElementById('gameover-title').textContent = 'VICTORY!';
-                document.getElementById('gameover-msg').textContent   = `You survived all ${wavesCleared} waves!`;
-            } else {
-                document.getElementById('gameover-title').textContent = 'DEFEAT!';
-                document.getElementById('gameover-msg').textContent   = `The base fell after ${wavesCleared} wave${wavesCleared === 1 ? '' : 's'}.`;
-            }
+            if (_peData && _peData.reward && Array.isArray(_peData.team)) { _peRender(_peData); return; }
+            document.getElementById('gameover-title').textContent = d.result === 'victory' ? 'VICTORY!' : 'DEFEAT!';
+            document.getElementById('gameover-msg').textContent   = d.result === 'victory' ? `You survived all ${d.wavesCleared} waves!` : `The base fell after ${d.wavesCleared} completed wave${d.wavesCleared === 1 ? '' : 's'}!`;
             document.getElementById('round-stats-section').style.display = 'none';
             document.getElementById('screen-gameover').style.display = 'flex';
         }, 1500);
     });
 
     socket.on('game-rematch', ({ isHost, playersMeta }) => {
+        try { _BB.gameplayEnded(); if (_BB.on) _BB.stop(true); } catch (_) { _BB.on = false; _BB.netActive = false; }
         resetForNewGame();
         if (playersMeta) {
             Object.assign(playerMeta, playersMeta);
@@ -4591,29 +6005,227 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         btn.disabled    = false;
         btn.textContent = 'PLAY AGAIN';
         document.getElementById('screen-gameover').style.display = 'none';
+        document.getElementById('pve-end').style.display        = 'none';
+        _peData = null;
         document.getElementById('screen-game').style.display     = 'none';
         document.getElementById('screen-waiting').style.display  = 'flex';
         document.getElementById('btn-start-game').style.display  = isHost ? 'block' : 'none';
         document.getElementById('waiting-sub-msg').style.display = isHost ? 'none'  : 'block';
     });
 
-    // Ammo: one ink frame, the rounds as small gold blocks inside it (the gaps show the ink)
-    function drawAmmoBar(ctx, x, y, width, height, state) {
-        const maxAmmo = Math.max(1, state.max || 10);
-        const ol = 1.8, gap = 1.6;
-        ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.roundRect(x - ol, y - ol + 2.5, width + ol * 2, height + ol * 2, 3); ctx.fill();
-        ctx.fillStyle = INK; ctx.beginPath(); ctx.roundRect(x - ol, y - ol, width + ol * 2, height + ol * 2, 3); ctx.fill();
-        const segW = (width - gap * (maxAmmo - 1)) / maxAmmo;
-        ctx.fillStyle = '#1B252C';
-        for (let i = 0; i < maxAmmo; i++) ctx.fillRect(x + i * (segW + gap), y, segW, height);
-        ctx.fillStyle = TOY.gold[1];
-        const full = Math.min(state.ammo, maxAmmo);
-        for (let i = 0; i < full; i++) ctx.fillRect(x + i * (segW + gap), y, segW, height);
-        ctx.fillStyle = TOY.gold[0];
-        for (let i = 0; i < full; i++) ctx.fillRect(x + i * (segW + gap), y, segW, height * 0.62);
-        if (state.ammo < maxAmmo && state.reloadProgress > 0) {
-            const sx = x + state.ammo * (segW + gap);
-            ctx.fillStyle = '#FFE08A'; ctx.fillRect(sx, y, segW * state.reloadProgress, height);
+    // ---------- BOTTOM HUD (DOM): the gun and the health, the ping, the touch reload button ----------
+    // Plain DOM that is touched only when something it shows changes (a number, a bar width, a class), so a frame costs a
+    // few comparisons and no layout work. Rounds ready / reserve come from ammoState (public/ammo.js), the health from the packet.
+    const _hb = { el: null, mag: null, res: null, segs: null, cells: [], hpfill: null, hptxt: null, hpbar: null, ping: null, pingMs: null, btn: null,
+                  last: { vis: null, mag: -1, res: -1, max: -1, lit: -1, cls: '', hp: -1, hpPct: -1, hpBand: -1 } };
+    // HUD scale (--hk, taken by the blocks in style.css as `zoom`): 1 on a laptop, smaller on a phone, in proportion to the screen.
+    // 1180x660 CSS px is the size the blocks were drawn for; below it they shrink with the smaller side, never under 0.5 on a touch
+    // screen (0.8 with a mouse, where a small window is no reason for a tiny HUD).
+    function _hudScale() {
+        const k = Math.max(isDesktop ? 0.8 : 0.5, Math.min(1, window.innerWidth / 1180, window.innerHeight / 660));
+        const st = document.documentElement.style;
+        st.setProperty('--hk', k.toFixed(3));
+        st.setProperty('--hk-btn', Math.max(0.8, k).toFixed(3));   // the reload button you press stays a finger wide: it shrinks less
+        st.setProperty('--hk-top', Math.max(0.68, k).toFixed(3));  // DBG and settings in the corner: in proportion, about 30 px at the smallest
+        st.setProperty('--hk-mm', (Math.max(0.68, k) / k).toFixed(3));   // the PvE minimap sits in an already scaled column: this brings it up to 0.68 (about 100 px)
+    }
+    function _hudInit() {
+        _hudScale();
+        window.addEventListener('resize', _hudScale);
+        const g = id => document.getElementById(id);
+        _hb.el = g('hud-bottom'); _hb.mag = g('hb-mag'); _hb.res = g('hb-reserve'); _hb.segs = g('hb-segs'); _hb.cells = [];
+        _hb.hpfill = g('hb-hpfill'); _hb.hptxt = g('hb-hptxt'); _hb.hpbar = _hb.hpfill && _hb.hpfill.parentNode;
+        _hb.ping = g('hud-ping'); _hb.pingMs = g('hud-ping-ms'); _hb.btn = g('btn-reload');
+        const icon = g('hb-icon');
+        const wd = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON] || {};
+        if (icon) icon.innerHTML = ARIcons.weaponHtml(wd.id || selectedWeapon || DEFAULT_WEAPON, true);
+        // L.cls = null (not ''): the element keeps the class the last match left on it (hb-low when it ended on a few rounds), and
+        // the first frame must write the real class over it. With '' it matched the new one and the number stayed red until the first reload.
+        const L = _hb.last; L.vis = null; L.mag = L.res = L.max = L.lit = L.hp = L.hpPct = L.hpBand = -1; L.cls = null;
+        if (_hb.segs) _hb.segs.textContent = '';
+        if (_hb.ping) { _hb.ping.style.display = ''; _hb.ping.className = ''; }
+        if (_hb.pingMs) _hb.pingMs.textContent = '-- ms';
+        if (_hb.btn) _hb.btn.style.display = isDesktop ? 'none' : '';
+    }
+    function _hudHide() {
+        if (_hb.el) _hb.el.style.display = 'none';
+        if (_hb.ping) _hb.ping.style.display = 'none';
+        if (_hb.btn) _hb.btn.style.display = 'none';
+        _hb.last.vis = null;
+    }
+    function _hudPing(ms) {
+        if (!_hb.ping || !_hb.pingMs) return;
+        _hb.pingMs.textContent = ms + ' ms';
+        _hb.ping.className = ms < 90 ? '' : ms < 160 ? 'ping-mid' : 'ping-bad';
+    }
+    function _hudBottom(vis, hp, hpMax) {
+        const e = _hb, L = e.last;
+        if (!e.el) return;
+        if (vis !== L.vis) { e.el.style.display = vis ? '' : 'none'; L.vis = vis; if (e.btn && !isDesktop) e.btn.style.display = vis ? '' : 'none'; }
+        if (!vis) return;
+        const st = ammoState, mag = Math.max(0, st.ammo), res = Math.max(0, st.reserve), max = Math.max(1, st.ammoMax);
+        const rel = st.reloading, dry = mag <= 0 && res <= 0 && !rel, low = !rel && mag > 0 && mag <= Math.ceil(max * 0.25);
+        const cls = (rel ? 'hb-reloading ' : '') + (dry ? 'hb-dry ' : '') + (low ? 'hb-low' : '');
+        if (cls !== L.cls) { e.el.className = cls; L.cls = cls; if (e.btn) e.btn.classList.toggle('is-busy', rel || res <= 0 || mag >= max); }
+        if (mag !== L.mag) { e.mag.textContent = mag; L.mag = mag; }
+        if (res !== L.res) { e.res.textContent = res; L.res = res; }
+        // The magazine is one lit/unlit cell per round (a size change rebuilds the cells; a round fired only flips one class),
+        // a reload lights them one after the other. No fractional edge to shimmer while you shoot.
+        if (max !== L.max) {
+            const n = Math.min(max, 80);
+            e.segs.textContent = '';
+            e.cells.length = 0;
+            for (let i = 0; i < n; i++) e.cells.push(e.segs.appendChild(document.createElement('i')));
+            e.segs.style.setProperty('--hb-gap', (n <= 12 ? 2 : n <= 36 ? 1 : 0) + 'px');
+            L.max = max; L.lit = -1;
+        }
+        const n = e.cells.length;
+        const lit = Math.min(n, rel ? Math.max(1, Math.ceil(st.reloadProgress * n)) : mag);
+        if (lit !== L.lit) {
+            const from = L.lit < 0 ? 0 : Math.min(L.lit, lit), to = L.lit < 0 ? n : Math.max(L.lit, lit);
+            for (let i = from; i < to; i++) e.cells[i].classList.toggle('on', i < lit);
+            L.lit = lit;
+        }
+        // The health: the number in the bar, the bar's colour by how much is left (green, gold under half, red under a quarter)
+        const h = Math.max(0, Math.ceil(hp)), hm = Math.max(1, Math.round(hpMax));
+        if (h !== L.hp) { e.hptxt.textContent = h; L.hp = h; }
+        const ratio = Math.min(1, h / hm), hpPct = h > 0 ? Math.max(1, Math.round(ratio * 100)) : 0;
+        if (hpPct !== L.hpPct) { e.hpfill.style.width = hpPct + '%'; L.hpPct = hpPct; }
+        const band = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
+        if (band !== L.hpBand) { e.hpbar.classList.toggle('hb-hp-mid', band === 1); e.hpbar.classList.toggle('hb-hp-low', band === 2); L.hpBand = band; }
+    }
+
+    // ---------- PvE HUD (DOM): the team, the wave, a warning, the minimap, a feed ----------
+    // Like the bottom HUD, the DOM is touched only when something it shows changes. The minimap is a small canvas redrawn ten times a second.
+    const _PVE_COLORS = ['#FF8A1F', '#1FD1A5', '#FF5A6A', '#5B9BFF', '#FFC72E', '#B070FF', '#7DE04A', '#FF7AC8'];
+    const _ph = { rows: new Map(), roster: '', kills: -1, left: -1, total: 0, queued: 0, fill: -1, of: 0, slow: 0, mm: null, mmx: null, warned: new Set(), warnTimer: 0, graceUntil: 0, graceN: -1,
+                  els: null, rowsEl: null };
+    const _pveColor = (id, i) => _PVE_COLORS[(((playerMeta[id] && playerMeta[id].slot) ?? i) | 0) % _PVE_COLORS.length];
+    function _pveHudReset() {
+        _ph.rows.clear(); _ph.roster = ''; _ph.kills = _ph.left = _ph.fill = _ph.of = _ph.shownTotal = -1; _ph.total = 0; _ph.queued = 0; _ph.slow = 0;
+        _ph.els = null; _ph.mm = null; _ph.warned.clear(); _ph.graceUntil = 0;
+        const w = document.getElementById('pve-warn'); if (w) w.classList.remove('is-on');
+        const f = document.getElementById('pve-feed'); if (f) f.textContent = '';
+        const r = document.getElementById('pve-team-rows'); if (r) r.textContent = '';
+    }
+    function _pveFeed(text, bad) {
+        const f = document.getElementById('pve-feed');
+        if (!f) return;
+        const it = document.createElement('div');
+        it.className = 'pf-item' + (bad ? ' is-bad' : '');
+        it.textContent = text;
+        f.appendChild(it);
+        setTimeout(() => { if (it.parentNode) it.parentNode.removeChild(it); }, 6000);
+        while (f.children.length > 3) f.removeChild(f.firstChild);
+    }
+    // The first Brute and the first Summoner of the match: one warning each, when the first of the kind comes into the packet (no tank, no direction)
+    function _pveWarnFirst(type) {
+        const kind = _ZB_DEFS[type] && _ZB_DEFS[type].warn;
+        if (!kind || _ph.warned.has(type)) return;
+        _ph.warned.add(type);
+        const w = document.getElementById('pve-warn');
+        if (!w) return;
+        document.getElementById('pve-warn-type').textContent = kind;
+        document.getElementById('pve-warn-dir').textContent = 'se apropie';
+        w.classList.remove('is-on'); void w.offsetWidth; w.classList.add('is-on');
+        clearTimeout(_ph.warnTimer);
+        _ph.warnTimer = setTimeout(() => w.classList.remove('is-on'), 5000);
+    }
+    function _pveHudCache() {
+        const g = id => document.getElementById(id);
+        return _ph.els = { kills: g('pve-team-kills'), left: g('pve-left'), total: g('pve-total'), fill: g('pve-wave-fill'), of: g('pve-wave-of'), rows: g('pve-team-rows') };
+    }
+    // Called every frame from the draw (cheap: comparisons); players = the interpolated state's players
+    function _pveHud(players, now) {
+        const e = _ph.els || _pveHudCache();
+        if (!e.rows) return;
+        if (_ph.graceUntil) {   // the seconds before the first zombie of the wave: a pill with the count (the DOM is touched when the second changes)
+            const left = Math.ceil((_ph.graceUntil - now) / 1000), g = document.getElementById('pve-grace');
+            if (left <= 0 || _pveState.waveBreak) { _ph.graceUntil = 0; _ph.graceN = -1; if (g) g.classList.remove('is-on'); }
+            else if (left !== _ph.graceN) { _ph.graceN = left; const n = document.getElementById('pve-grace-n'); if (n) n.textContent = left; if (g && !g.classList.contains('is-on')) g.classList.add('is-on'); }
+        }
+        // the roster: one row per player, in slot order; rebuilt only when somebody joins or leaves
+        const ids = Object.keys(players).sort((a, b) => ((playerMeta[a] && playerMeta[a].slot) | 0) - ((playerMeta[b] && playerMeta[b].slot) | 0));
+        _ph.ids = ids;
+        const key = ids.join('|');
+        if (key !== _ph.roster) {
+            _ph.roster = key; _ph.rows.clear(); e.rows.textContent = '';
+            ids.forEach((id, i) => {
+                const row = document.createElement('div'); row.className = 'pt-row' + (id === socket.id ? ' is-me' : '');
+                const dot = document.createElement('span'); dot.className = 'pt-dot'; dot.style.background = _pveColor(id, i);
+                const nm = document.createElement('span'); nm.className = 'pt-name'; nm.textContent = players[id].name || '';
+                const bar = document.createElement('span'); bar.className = 'pt-bar';
+                const fill = document.createElement('span'); fill.className = 'pt-fill'; bar.appendChild(fill);
+                const out = document.createElement('span'); out.className = 'pt-out'; out.textContent = 'ELIMINAT'; out.style.display = 'none';
+                row.append(dot, nm, bar, out); e.rows.appendChild(row);
+                _ph.rows.set(id, { row, bar, fill, out, pct: -1, band: -1, out_: null });
+            });
+        }
+        let kills = 0;
+        for (let i = 0; i < ids.length; i++) {
+            const p = players[ids[i]], r = _ph.rows.get(ids[i]);
+            kills += p.kills | 0;
+            if (!r) continue;
+            const hp = latestHp[p.id] ?? p.hp, ratio = Math.max(0, Math.min(1, hp / (p.maxHp || 1)));
+            const out = !p.alive || hp <= 0;
+            if (out !== r.out_) { r.out_ = out; r.row.classList.toggle('is-out', out); r.out.style.display = out ? '' : 'none'; }
+            const pct = hp > 0 ? Math.max(1, Math.round(ratio * 100)) : 0;   // alive: never 0
+            if (pct !== r.pct) { r.pct = pct; r.fill.style.width = pct + '%'; }
+            const band = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
+            if (band !== r.band) { r.band = band; r.bar.classList.toggle('is-mid', band === 1); r.bar.classList.toggle('is-low', band === 2); }
+        }
+        if (kills !== _ph.kills) { _ph.kills = kills; e.kills.textContent = kills; }
+        // the wave and the minimap at ten per second
+        if (now - _ph.slow < 100) return;
+        _ph.slow = now;
+        let alive = 0;
+        for (let i = 0; i < _zombies.length; i++) { const z = _zombies[i]; if (z && z.hp > 0) alive++; }
+        const left = alive + _ph.queued, total = Math.max(_ph.total, left);
+        if (left !== _ph.left) { _ph.left = left; e.left.textContent = left; }
+        if (total !== _ph.shownTotal) { _ph.shownTotal = total; e.total.textContent = total; }
+        const fp = total > 0 ? Math.round((total - left) / total * 100) : 0;
+        if (fp !== _ph.fill) { _ph.fill = fp; e.fill.style.width = fp + '%'; }
+        _pveMinimap(players);
+    }
+    function _pveMinimap(players) {
+        if (!_ph.mm) { _ph.mm = document.getElementById('pve-mm'); _ph.mmx = _ph.mm && _ph.mm.getContext('2d'); }
+        const c = _ph.mm, g = _ph.mmx;
+        if (!g) return;
+        const S = c.width, k = S / ARENA_W;
+        g.clearRect(0, 0, S, S);
+        g.fillStyle = '#2F7A3A'; g.fillRect(0, 0, S, S);
+        g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(0, 0, S, 3); g.fillRect(0, S - 3, S, 3);
+        g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.2)'; g.beginPath(); g.arc(S / 2, S / 2, 160 * k * 2.2, 0, Math.PI * 2); g.stroke();
+        // the base: a small stone hexagon, its core as green as its health
+        const br = Math.max(0, Math.min(1, _pveState.baseHp / (_pveState.baseMaxHp || 1000)));
+        g.fillStyle = '#8B97A1'; g.strokeStyle = '#0F171B'; g.lineWidth = 3; g.beginPath();
+        for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; g.lineTo(S / 2 + Math.cos(a) * 17, S / 2 + Math.sin(a) * 17); }
+        g.closePath(); g.fill(); g.stroke();
+        g.fillStyle = br > 0.5 ? '#46D46A' : br > 0.25 ? '#FFC72E' : '#FF4B5C'; g.beginPath(); g.arc(S / 2, S / 2, 7, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#B98A52'; g.strokeStyle = '#0F171B'; g.lineWidth = 1.5;
+        for (let i = 0; i < _structs.length; i++) {
+            const b = _structs[i], bw = (b.o ? 5 : 12), bh = (b.o ? 12 : 5);
+            g.fillRect(b.x * k - bw / 2, b.y * k - bh / 2, bw, bh); g.strokeRect(b.x * k - bw / 2, b.y * k - bh / 2, bw, bh);
+        }
+        g.fillStyle = '#8FC2FF'; g.strokeStyle = '#0F171B'; g.lineWidth = 1.5;
+        for (let i = 0; i < _turrets.length; i++) { const tk = _turrets[i].kd; g.fillStyle = tk === 'heal' ? '#46D46A' : tk === 'tesla' ? '#B79CF5' : tk === 'bomb' ? '#FF9F43' : tk === 'flame' ? '#FF5A2A' : tk === 'support' ? '#E0B040' : '#8FC2FF'; g.beginPath(); g.arc(_turrets[i].x * k, _turrets[i].y * k, 5, 0, Math.PI * 2); g.fill(); g.stroke(); }
+        // zombies (the tanks bigger), then the team on top
+        g.lineWidth = 2; g.strokeStyle = '#0F171B';
+        for (let i = 0; i < _zombies.length; i++) {
+            const z = _zombies[i];
+            if (!z || z.hp <= 0) continue;
+            const tank = z.type === 2;
+            g.fillStyle = tank ? '#FF8A1F' : '#FF4B5C';
+            g.beginPath(); g.arc(z.x * k, z.y * k, tank ? 6.5 : 4.2, 0, Math.PI * 2); g.fill(); g.stroke();
+        }
+        let n = 0;
+        for (const id in players) {
+            const p = players[id];
+            n++;
+            if (!p.alive || p.hp <= 0) continue;
+            g.fillStyle = _pveColor(id, n - 1);
+            g.beginPath(); g.arc(p.x * k, p.y * k, id === socket.id ? 7 : 6, 0, Math.PI * 2); g.fill();
+            g.lineWidth = id === socket.id ? 3.5 : 2.5; g.strokeStyle = id === socket.id ? '#FFFFFF' : '#0F171B'; g.stroke();
         }
     }
 
@@ -4623,9 +6235,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     function getInterpolatedState() {
         if (stateBuffer.length === 0) return null;
 
-        // On the server's timeline (entry.st), see _noteSnapshotClock
-        if (_clockLag === null) return null;
-        const renderTime = performance.now() - _clockLag;
+        // On the server's timeline (entry.st), see _clock
+        if (_clock.lag === null) return null;
+        const renderTime = performance.now() - _clock.lag;
 
         // The two snapshots that bracket renderTime (interp.js)
         const loc = ARInterp.locate(stateBuffer, renderTime, EXTRAP_MS, _loc);
@@ -4633,6 +6245,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const t = loc.t;
         const extrapolating = t > 1;
         const nowMs = performance.now();
+        if (extrapolating) { _dbgExtrapFrames++; if (renderTime - sNew.st > EXTRAP_MS) _dbgFrozenFrames++; }   // (frozen: past the extrapolation too)
+        if (_BB.netActive) _BB.interp(nowMs, Math.round(sNew.st / EMIT_MS), nowMs - sNew.t, _clock.delay, extrapolating ? 1 : 0, stateBuffer.length);
 
         _ISActiveIds.clear();
         for (const id in sOld.players) {
@@ -4730,7 +6344,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _ZB_DEFS = [
         { r: 20, maxHp: 100, bodyColor: '#5E9253', innerColor: '#7DB26A', armColor: '#4A7A42', armStroke: '#25422A', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },
         { r: 16, maxHp: 50,  bodyColor: '#C27A33', innerColor: '#E39A4D', armColor: '#9D5F26', armStroke: '#4C2D10', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },
-        { r: 28, maxHp: 400, bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
+        { r: 28, maxHp: 500, heavy: true, bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
+        { r: 20, maxHp: 160, bodyColor: '#8BC34A', innerColor: '#B9E36B', armColor: '#6D9A38', armStroke: '#2D4A12', ringColor: '#9DFF2E', ringFill: 'rgba(157,255,46,0.10)' },   // 3 spitter
+        { r: 18, maxHp: 110, bodyColor: '#E2773A', innerColor: '#F7A862', armColor: '#B85A22', armStroke: '#5A2A0E', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 4 exploder
+        { r: 34, maxHp: 900, heavy: true, warn: 'BRUTA', bodyColor: '#7B8493', innerColor: '#A5AEBD', armColor: '#59616E', armStroke: '#262B34', ringColor: '#C0C6D0', ringFill: 'rgba(192,198,208,0.10)' },   // 5 brute
+        { r: 30, maxHp: 500, heavy: true, warn: 'SUMMONER', bodyColor: '#8A5FB8', innerColor: '#B591DC', armColor: '#6B449A', armStroke: '#2F1A4A', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.12)' },   // 6 summoner
+        { r: 15, maxHp: 200, noScale: true, bodyColor: '#9B7BD0', innerColor: '#C2A9EA', armColor: '#7A5CB8', armStroke: '#3A2A60', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.10)' },   // 7 minion
+        { r: 24, maxHp: 520, bigBar: true, bodyColor: '#7C9A78', innerColor: '#A7C4A2', armColor: '#5E7A5A', armStroke: '#25422A', ringColor: '#FF9F1C', ringFill: 'rgba(255,159,28,0.10)' },   // 8 shielded
+        { r: 21, maxHp: 450, bodyColor: '#D9A0A0', innerColor: '#F1C8C4', armColor: '#A8666E', armStroke: '#4A2A2E', ringColor: '#FFD34D', ringFill: 'rgba(255,211,77,0.10)' },   // 9 screamer
+        { r: 23, maxHp: 340, bodyColor: '#3E5A38', innerColor: '#5E8050', armColor: '#2F4A2D', armStroke: '#16240F', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },   // 10 ghoul (the dark normal)
+        { r: 17, maxHp: 160, bodyColor: '#6E5E1E', innerColor: '#8E7B2C', armColor: '#54471A', armStroke: '#2A2308', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 11 stalker (the dark runner)
     ];
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)
@@ -4785,8 +6408,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         // ── Client bullet spawn — uses weapon-specific speed + lifetime ──
         const _shotNow = performance.now();
+        // The trigger held on an empty magazine reloads by itself (the server does the same)
+        if (isShooting && !_selfDead && !gameControl.countdownActive && _pendingBurstShots.length === 0 && ARAmmo.autoReload(ammoState, true)) {
+            _reloadHoldUntil = _shotNow + Math.max(300, _rttMs() + 150);
+        }
         if (isShooting && !_shootMustRelease && !_selfDead && !gameControl.countdownActive &&
-            _shotNow >= _clientNextShotAt && ammoState.ammo > 0 && predX !== null &&
+            _shotNow >= _clientNextShotAt && ARAmmo.canFire(ammoState) && predX !== null &&
             aimStartTime !== null && _shotNow - aimStartTime >= _AIM_MS) {
             const _myWdSpawn = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON];
             const _cbspd  = _myWdSpawn.bulletSpeed;
@@ -4819,17 +6446,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Using only the cooldown (0.6 s instead of 0.8 s for Burst) made the client fire bursts
             // the server never fired, and miss the ones it did: the "invisible bullets".
             _clientNextShotAt = _shotBase + (_myWdSpawn.shootCd + (_burstCount - 1) * _burstDelay) * 1000;
-            // Spend the round locally right away; the server confirms it about one RTT later.
-            ammoState.ammo = Math.max(0, ammoState.ammo - 1);
+            // Spend the round locally right away (a shot is one round whatever its pellets); the server confirms it about one RTT later.
+            ARAmmo.spend(ammoState, 1);
             _ammoHoldUntil = _shotNow + Math.max(160, _rttMs() + 100);
-            if (ammoState.ammo === 0) { _shootMustRelease = true; _clientHasReleased = false; }
             if (_myWdSpawn.fireMode === 'semi') { _shootMustRelease = true; _clientHasReleased = false; isShooting = false; }
         }
         // Spawn pending burst bullets cu delay real
         const _cbNow = performance.now();
         while (_pendingBurstShots.length > 0 && _pendingBurstShots[0].spawnAt <= _cbNow) {
             const _pbs = _pendingBurstShots.shift();
-            if (predX !== null && !_selfDead) {
+            // every bullet of a burst is a round of the magazine; a burst that runs dry stops short, as on the server
+            if (predX !== null && !_selfDead && ARAmmo.spend(ammoState, 1) > 0) {
+                _ammoHoldUntil = _cbNow + Math.max(160, _rttMs() + 100);
                 const _bm = _myGunFire().muzzleDist;
                 _clientBullets.push(_newClientBullet(predX + _pbs.odx * _bm, predY + _pbs.ody * _bm, _pbs.dx, _pbs.dy, _pbs.life, _cbNow, predX, predY));
             }
@@ -4945,7 +6573,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const _gNow = performance.now();
         ARArena.beginFrame(dpr * ZOOM, _gNow);
         if (_warmLeft) _warmLeft = ARArena.warm(_ZB_DEFS, _gameMode === 'pve');   // zombie, base, coin, kit and shard sprites, a few a frame from the start
-        ARGround.beginFrame(gameControl.countdownActive || _spriteBurst0);
+        // a big jump of the camera (a PvE wave putting everybody back by the base): a few frames with six tile builds each instead of two,
+        // so the vector stand-ins do not stay on screen for long
+        if (predX !== null) {
+            if (_gjX !== null && Math.hypot(predX - _gjX, predY - _gjY) > 500) _gjBurst = 10;
+            _gjX = predX; _gjY = predY;
+        }
+        ARGround.beginFrame(gameControl.countdownActive || _spriteBurst0 || (_gjBurst > 0 && _gjBurst-- > 0));
         const _lblScale = dpr * ZOOM;
 
         const visLeft   = -_ox / _sq;
@@ -4958,6 +6592,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // frame needs no clear before it: one full-canvas fill less (~0.2 ms/frame at 1280x720 in a software raster).
         if (!ARGround.paintsAll()) ctx.clearRect(visLeft, visTop, visRight - visLeft, visBottom - visTop);
         ARGround.draw(ctx, visLeft, visTop, visRight, visBottom, _lblScale, ARArena.isScaleStable(), _gNow, _ox, _oy);
+        // In the last seconds of the wave break the ground by the base is built, one tile a frame, so it is there when the wave starts and
+        // everybody is put back: the tiles you are not near go idle after 20 s and would all have to be made in that first frame
+        if (_gameMode === 'pve' && _pveState.waveBreak && _gNow - _pveState.breakAt > Math.max(0, _pveState.breakTimerMax * 1000 - 9000)) {
+            const hw = (visRight - visLeft) / 2 + 260, hh = (visBottom - visTop) / 2 + 260;
+            ARGround.warm(_PVE_BASE.x - hw, _PVE_BASE.y - hh, _PVE_BASE.x + hw, _PVE_BASE.y + hh, _lblScale, ARArena.isScaleStable(), _gNow, _ox, _oy, 1);
+        }
         // (no flowers: the pitch stays clean)
         // Particule ambient (world-space, se misca independent de camera)
         {
@@ -4991,6 +6631,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ARArena.drawProp(ctx, obs, obs.x + _obsShakeX(_oi, _obsNow), obs.y); // cached bitmap
         }
 
+        // --- BARICADE --- (PvE: under the players and the zombies)
+        if (_gameMode === 'pve') { _barGhost(rState.players, _obsNow, ZOOM); _drawStructs(ctx, _lblScale, ZOOM, visLeft, visTop, visRight, visBottom, _obsNow); }
+
         // --- ZONA --- (BR only)
         if (_gameMode !== 'pve') ARArena.drawZone(ctx, visLeft, visTop, visRight, visBottom, _zone, ZOOM, _ox, _oy, _lblScale);
 
@@ -4999,8 +6642,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const dirX       = -Math.sin(myAngle);
             const dirY       =  Math.cos(myAngle);
             const _trajWd   = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON];
-            const TRAJ_START = ARShared.LEGACY_MUZZLE;
-            const TRAJ_END   = ARShared.LEGACY_MUZZLE + _trajWd.bulletSpeed * _trajWd.bulletLife;
+            // The pellets leave from the muzzle (the player's centre + dir * muzzleDist) and fly straight for speed * life, each at its own
+            // angle (the same numbers as the shot spawn below and the server's), so the guide is drawn from the muzzle too: the edge lines of the
+            // spread start there, and the arc at their ends is centred on the muzzle, not on the player.
+            const _trajFire = _myGunFire();
+            const TRAJ_LEN  = _trajWd.bulletSpeed * _trajFire.bulletLife;
+            const _tmx = camX + dirX * _trajFire.muzzleDist, _tmy = camY + dirY * _trajFire.muzzleDist;
             ctx.save();
             ctx.lineWidth = 2.5 / ZOOM;
             if (_lineDashZoom !== ZOOM) { _lineDashZoom = ZOOM; _lineDashArr = [6 / ZOOM, 24 / ZOOM]; }
@@ -5012,24 +6659,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const _pdxL = dirX * _cosL - dirY * _sinL, _pdyL = dirX * _sinL + dirY * _cosL;
                 const _cosR = Math.cos( _tSpread / 2), _sinR = Math.sin( _tSpread / 2);
                 const _pdxR = dirX * _cosR - dirY * _sinR, _pdyR = dirX * _sinR + dirY * _cosR;
-                // Linia stanga
+                // Left edge, right edge
                 ctx.beginPath();
-                ctx.moveTo(camX + _pdxL * TRAJ_START, camY + _pdyL * TRAJ_START);
-                ctx.lineTo(camX + _pdxL * TRAJ_END,   camY + _pdyL * TRAJ_END);
+                ctx.moveTo(_tmx, _tmy);
+                ctx.lineTo(_tmx + _pdxL * TRAJ_LEN, _tmy + _pdyL * TRAJ_LEN);
                 ctx.stroke();
-                // Linia dreapta
                 ctx.beginPath();
-                ctx.moveTo(camX + _pdxR * TRAJ_START, camY + _pdyR * TRAJ_START);
-                ctx.lineTo(camX + _pdxR * TRAJ_END,   camY + _pdyR * TRAJ_END);
+                ctx.moveTo(_tmx, _tmy);
+                ctx.lineTo(_tmx + _pdxR * TRAJ_LEN, _tmy + _pdyR * TRAJ_LEN);
                 ctx.stroke();
-                // Arc la capat
+                // The arc where the pellets run out, centred on the muzzle
                 ctx.beginPath();
-                ctx.arc(camX, camY, TRAJ_END, Math.atan2(_pdyL, _pdxL), Math.atan2(_pdyR, _pdxR), false);
+                ctx.arc(_tmx, _tmy, TRAJ_LEN, Math.atan2(_pdyL, _pdxL), Math.atan2(_pdyR, _pdxR), false);
                 ctx.stroke();
             } else {
                 ctx.beginPath();
-                ctx.moveTo(camX + dirX * TRAJ_START, camY + dirY * TRAJ_START);
-                ctx.lineTo(camX + dirX * TRAJ_END,   camY + dirY * TRAJ_END);
+                ctx.moveTo(_tmx, _tmy);
+                ctx.lineTo(_tmx + dirX * TRAJ_LEN, _tmy + dirY * TRAJ_LEN);
                 ctx.stroke();
             }
             ctx.setLineDash([]);
@@ -5136,7 +6782,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     _kitDropAnim.delete(_kid);
                 }
             }
-            ARArena.drawKit(ctx, _kit.x, _kit.y, _kitYOff, _kitNow + _kid * 377, 1, 1);
+            ARArena.drawKit(ctx, _kit.x, _kit.y, _kitYOff, _kitNow + _kid * 377, 1, 1, _kit.ammo);
         }
 
         // --- KIT PICKUP FX ---
@@ -5148,13 +6794,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // Kit se estompeaza si urca
             // the kit pops up and away, the heal amount rises in toy green
             ctx.globalAlpha = 1 - _kfT;
-            ARArena.drawKit(ctx, _kf.x, _kf.y, -_kfT * 26, 0, 1 + _kfT * 0.5, 0);
+            ARArena.drawKit(ctx, _kf.x, _kf.y, -_kfT * 26, 0, 1 + _kfT * 0.5, 0, _kf.ammo);
             ctx.globalAlpha = _kfT < 0.4 ? 1 : Math.max(0, 1 - (_kfT - 0.4) / 0.6);
             const _kfS = _kfT < 0.15 ? 0.5 + _kfT / 0.15 * 0.75 : _kfT < 0.3 ? 1.25 - (_kfT - 0.15) / 0.15 * 0.25 : 1;
             ctx.save();
             ctx.translate(_kf.x, _kf.y - 30 - _kfT * 42);
             ctx.scale(_kfS, _kfS);
-            _drawLabel(ctx, '+' + _kf.amount, Math.round(24 / ZOOM), '#66E287', INK, 5 / ZOOM, 'alphabetic', 0, 0, _lblScale * 1.25);
+            _drawLabel(ctx, '+' + _kf.amount, Math.round(24 / ZOOM), _kf.ammo ? '#FFD55E' : '#66E287', INK, 5 / ZOOM, 'alphabetic', 0, 0, _lblScale * 1.25);
             ctx.restore();
         }
         ctx.globalAlpha = 1;
@@ -5166,7 +6812,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             for (const [, _cd] of _coinDrops) {
                 if (_cd.x + 24 < visLeft || _cd.x - 24 > visRight || _cd.y + 24 < visTop || _cd.y - 24 > visBottom) continue;
                 const _cq = Math.min(1, (_cNow - _cd.t0) / COIN_LAND_MS), _ce = 1 - (1 - _cq) * (1 - _cq);
-                ARArena.addCoinShadow(ctx, _cd.ox + (_cd.x - _cd.ox) * _ce, _cd.oy + (_cd.y - _cd.oy) * _ce, 0.5 + 0.5 * _cq);
+                let _sx = _cd.ox + (_cd.x - _cd.ox) * _ce, _sy = _cd.oy + (_cd.y - _cd.oy) * _ce;
+                if (_cd.rx !== undefined) {   // the magnet is moving it (server: coin-mv): drawn catching up with the place the server says, a few frames behind
+                    const _k = 1 - Math.exp(-dtSec * 28);
+                    _cd.rx += (_cd.x - _cd.rx) * _k; _cd.ry += (_cd.y - _cd.ry) * _k;
+                    _sx = _cd.rx; _sy = _cd.ry;
+                }
+                ARArena.addCoinShadow(ctx, _sx, _sy, 0.5 + 0.5 * _cq);
             }
             ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fill();
             for (const [_cid, _cd] of _coinDrops) {
@@ -5176,7 +6828,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 // the last seconds: it blinks
                 if (_cAge > COIN_TTL_MS - COIN_BLINK_MS && ((_cAge / 140) | 0) % 2 === 1) continue;
                 const _cq = Math.min(1, _cAge / COIN_LAND_MS), _ce = 1 - (1 - _cq) * (1 - _cq);
-                const _cx = _cd.ox + (_cd.x - _cd.ox) * _ce, _cy = _cd.oy + (_cd.y - _cd.oy) * _ce - 30 * _cq * (1 - _cq) * 2;   // an arc: up and down
+                let _cx = _cd.ox + (_cd.x - _cd.ox) * _ce, _cy = _cd.oy + (_cd.y - _cd.oy) * _ce - 30 * _cq * (1 - _cq) * 2;   // an arc: up and down
+                if (_cd.rx !== undefined) { _cx = _cd.rx; _cy = _cd.ry; }
                 ARArena.drawCoin(ctx, _cx, _cy, _cq < 1 ? 0.55 + 0.45 * _cq : 1);
             }
             for (let _cfi = _coinFx.length - 1; _cfi >= 0; _cfi--) {
@@ -5290,7 +6943,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 ctx.beginPath(); ctx.arc(_zb.x, _zb.y, _zbR, 0, Math.PI*2); ctx.fill();
                 continue;
             }
-            ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow);
+            ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow, _zb.burnT ? Math.max(0, 1 - (_zNow - _zb.burnT) / 600) : 0);
+            if (_zType === 4 && _gameMode === 'pve') { ctx.setTransform(_wm); _drawExploderFuse(ctx, _zb, _zDef, _zNow); }
         }
         // HP bars: only on the zombies that are hurt (see _drawZombieBars)
         ctx.setTransform(_wm);
@@ -5298,10 +6952,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             let _hurt = 0;
             for (let _zi = 0; _zi < _zVisible; _zi++) {
                 const _zb = _zVisibleList[_zi], _zDef = _ZB_DEFS[_zb.type || 0] || _ZB_DEFS[0];
-                if (_zb.hp > 0 && _zb.hp < _zDef.maxHp) _zHurt[_hurt++] = _zb;
+                if (_zb.hp > 0 && _zb.hp < _zMaxHp(_zDef) - 0.5) _zHurt[_hurt++] = _zb;
             }
             if (_hurt > 0) _drawZombieBars(ctx, _zHurt, _hurt, _ZB_DEFS);
         }
+        if (_turretFx.length) _drawTurretFx(ctx, _zNow);
+        if (_zapFx.length) _drawZapFx(ctx, _zNow);
+        if (_bombFx.length) _drawBombFx(ctx, _zNow);
+        _drawFlameFx(ctx, _zNow);
+        if (_zFx.length) _drawZombieFx(ctx, _zNow);
 
         // --- JUCATORI ---
         // The ring sits just outside the default hands and the labels stack on it
@@ -5388,37 +7047,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let _qi = 0; _qi < _plN; _qi++) {
             const player = _plQ[_qi], px = _plQx[_qi], py = _plQy[_qi];
             const isMe = player.id === socket.id;
-            const barH = isMe ? 22 : 13;
-            const ammoH = 6;
-            const barW = isMe ? 108 : 70;
-            // Bara HP (toti jucatorii) — folosim latestHp pentru update instant, fara delay de interpolatie
-            // Yours ends with the ammo bar on the ring; the others' bar sits 6 units above it
-            const hpRatio = Math.min(1, Math.max(0, (latestHp[player.id] ?? player.hp) / player.maxHp));
-            const barX    = px - barW / 2;
-            const barY    = py - _ringR - barH - (isMe ? 4 + ammoH : 6);
-            _drawLabel(ctx, player.name, isMe ? 14 : 12, isMe ? '#66E287' : '#ffffff', INK, 4, 'alphabetic',
-                       px, barY - (isMe ? 12 : 10), _lblScale);
-            _drawHpBar(ctx, barX, barY, barW, barH, hpRatio, isMe ? 2.5 : 2);
-
-            // Text HP pe bara (cached label per value)
-            _drawLabel(ctx, String(Math.ceil(latestHp[player.id] ?? player.hp)), isMe ? 13 : 8, '#ffffff', INK, isMe ? 4 : 3, 'middle',
-                       barX + barW / 2, barY + barH / 2, _lblScale);
-
+            // Your own health and rounds are in the bottom HUD only: over your head there is just the name, so the view stays clear.
+            // The other players keep their bar, 6 units above the ring, with the number on it and the badge of their gun.
             if (isMe) {
-                drawAmmoBar(ctx, barX, barY + barH + 4, barW, ammoH, ammoState);
+                _drawLabel(ctx, player.name, 14, '#66E287', INK, 4, 'alphabetic', px, py - _ringR - 8, _lblScale);
+                continue;
             }
-
-            // Weapon type badge — vizibil pentru toti jucatorii (eu + altii)
-            {
-                const _wid = isMe
-                    ? (selectedWeapon || DEFAULT_WEAPON)
-                    : (_playerWeapons.get(player.id) || DEFAULT_WEAPON);
-                const _wd  = _WEAPON_DATA[_wid] || _WEAPON_DATA[DEFAULT_WEAPON];
-                const _wsz = barH;
-                const _wx  = barX + barW + 4;
-                const _wy  = barY;
-                _drawBadge(ctx, _wd, _wx, _wy, _wsz, _lblScale);
-            }
+            const barH = 13, barW = 70;
+            // latestHp for an instant update, without the interpolation delay
+            const hpNow   = latestHp[player.id] ?? player.hp;
+            const hpRatio = Math.min(1, Math.max(0, hpNow / player.maxHp));
+            const barX    = px - barW / 2;
+            const barY    = py - _ringR - barH - 6;
+            _drawLabel(ctx, player.name, 12, '#ffffff', INK, 4, 'alphabetic', px, barY - 10, _lblScale);
+            _drawHpBar(ctx, barX, barY, barW, barH, hpRatio, 2);
+            _drawLabel(ctx, String(Math.ceil(hpNow)), 8, '#ffffff', INK, 3, 'middle', barX + barW / 2, barY + barH / 2, _lblScale);
+            const _wd = _WEAPON_DATA[_playerWeapons.get(player.id) || DEFAULT_WEAPON] || _WEAPON_DATA[DEFAULT_WEAPON];
+            _drawBadge(ctx, _wd, barX + barW + 4, barY, barH, _lblScale);
         }
         ctx.imageSmoothingQuality = 'low'; // back to the default for the rest of the frame
 
@@ -5525,6 +7170,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.globalAlpha = 1;
         }
 
+        // --- BOTTOM HUD: the gun (rounds / reserve) and the health of yours ---
+        {
+            const _myMeta = playerMeta[socket.id];
+            const _myMaxHp = (_myMeta && _myMeta.maxHp) || 500;
+            _hudBottom(!gameEnded && !_selfDead && !isSpectating, latestHp[socket.id] ?? _myMaxHp, _myMaxHp);
+            if (_gameMode === 'pve') { _pveHud(rState.players, performance.now()); _barUseTick(); }
+        }
+
         // --- TIMER ZONA (screen space, proportional) --- BR only
         if (!gameEnded && _gameMode !== 'pve') {
             if (gameControl.countdownEndTime) {
@@ -5533,7 +7186,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (_zoneTimerAlpha > 0) {
                 // The label is a cached sprite: text, block and outline are painted again only when the text
                 // (whole seconds, or the phase) or the size changes, not 60-240 times a second
-                const _zFontSz = Math.max(13, Math.round(Math.min(W, H) * 0.03));
+                const _zFontSz = Math.max(9, Math.round(Math.min(W, H) * 0.021));   // a small chip: the match canvas stays the hero
                 const _zt = _zone.waitTimer;
                 const _zSec = _zt > 0 ? Math.ceil(_zt) : 0;
                 const _zSt = _zt > 0 ? 0 : (_zone.r > 0 ? 1 : 2);
@@ -5542,8 +7195,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     _zl.text = _zSt === 0 ? `Zona se restrange in ${_zSec}s` : (_zSt === 1 ? 'Zona se restrange!' : 'Zona inchisa!');
                     if (!_labelMeasure) _labelMeasure = document.createElement('canvas').getContext('2d');
                     _labelMeasure.font = `800 ${_zFontSz}px Sen, Arial`;
-                    _zl.w = _labelMeasure.measureText(_zl.text).width + 34;
-                    _zl.h = _zFontSz + 20;
+                    _zl.w = _labelMeasure.measureText(_zl.text).width + 24;
+                    _zl.h = _zFontSz + 14;
                     _zl.key = 'ZT|' + _zl.text + '|' + _zFontSz;
                 }
                 const _zPad = 8, _zw = _zl.w, _zh = _zl.h;
@@ -5559,7 +7212,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 });
                 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
                 ctx.globalAlpha = _zoneTimerAlpha;
-                ctx.drawImage(_zs.c, W / 2 - _zw / 2 - _zPad, Math.round(H * 0.07) - _zPad, _zs.w, _zs.h);
+                ctx.drawImage(_zs.c, W / 2 - _zw / 2 - _zPad, Math.round(H * 0.035) - _zPad, _zs.w, _zs.h);
                 ctx.globalAlpha = 1;
                 ctx.setTransform(1, 0, 0, 1, 0, 0);
             }
@@ -5589,23 +7242,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
         }
 
-        // --- WEAPON BLOCK (jos-centru, screen space) ---
-        if (!gameEnded && !isSpectating) {
-            const _myWid  = _playerWeapons.get(socket.id) || selectedWeapon;
-            const _myWd   = _WEAPON_DATA[_myWid] || _WEAPON_DATA[DEFAULT_WEAPON];
-            ctx.save();
-            ctx.scale(dpr, dpr);
-            const _bSz  = Math.round(H < 520 ? Math.min(44, Math.max(30, H * 0.105)) : Math.min(86, Math.max(40, Math.min(W * 0.056, H * 0.095))));
-            const _wSz  = _bSz;
-            const _wX   = Math.round(W / 2 - _wSz / 2);
-            const _wY   = H - _bSz - 20 - (window.innerHeight < 520 ? 0 : 4);
-            const _sol  = _bSz < 50 ? 2.5 : 3;
-            const _slip = Math.round(_bSz * 0.1);
-            // Weapon block: orange, white pictogram with an ink drop
-            _drawBlock(ctx, _wX, _wY, _wSz, _wSz, Math.round(_wSz * 0.24), TOY.orange[0], TOY.orange[1], _sol, _slip, 5);
-            _drawWeaponIcon(ctx, _myWd.id, _wX + _wSz / 2, _wY + _wSz / 2 - _slip / 2, _wSz * 0.74, _wSz * 0.5, 1.5);
-            ctx.restore();
-        }
+        // (the weapon block that stood here, an orange square with the gun, is now the gun icon and name of the bottom HUD block)
 
         // --- WATCHDOG ---
         if (lastGameStateTime > 0 && (performance.now() - lastGameStateTime) > 10000) {
@@ -5666,7 +7303,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 { text: `PING: ${_pingRtt < 0 ? '--' : _pingRtt + 'ms'}   pkt/s: ${_dbgPktPs}   rx gs/s: ${_dbgGs}`, color: _pingColor },
                 { text: `CSP: pending:${_dbgPending}   err:${_predErr}px   lag:~${_lagMs}ms`, color: _errColor  },
                 { text: `ENT: pl ${aliveCount}/${playerCount}   bul ${bulletCount}`, color: '#ffffff' },
-                { text: `INTERP: buf ${stateBuffer.length}   age ${stateAgeMs}   delay ${_interpShow.toFixed(0)}ms   cbul ${_clientBullets.length}`, color: '#cccccc' },
+                { text: `INTERP: buf ${stateBuffer.length}   age ${stateAgeMs}   delay ${_clock.delay.toFixed(0)}ms   cbul ${_clientBullets.length}`, color: '#cccccc' },
                 { text: `MEM: ${memStr}`,                                                     color: '#aa88ff' },
                 { text: `POS: (${predX !== null ? (predX|0) : '--'}, ${predY !== null ? (predY|0) : '--'})`, color: '#888888' },
             ];
@@ -5717,6 +7354,24 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
     }
 
+    _hudInit();
+    // the build slot and the prompts (onclick: assigned again on every match, never stacked)
+    {
+        const e = _barEls();
+        if (e.slot) e.slot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'b'); };
+        if (e.tslot) e.tslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 't'); };
+        if (e.eslot) e.eslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'e'); };
+        if (e.hslot) e.hslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'h'); };
+        if (e.sslot) e.sslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'd'); };
+        if (e.oslot) e.oslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'o'); };
+        if (e.fslot) e.fslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'f'); };
+        if (e.use) e.use.onclick = _barUse;
+        const ok = document.getElementById('pve-place-ok'), no = document.getElementById('pve-place-x');
+        if (ok) ok.onclick = _barPlace;
+        if (no) no.onclick = () => _barPlaceMode(false);
+        _barUi();
+    }
+    if (_hb.btn) _hb.btn.addEventListener('pointerdown', _onReloadBtn);
     draw();
 }
 

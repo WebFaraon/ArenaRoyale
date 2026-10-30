@@ -213,6 +213,32 @@
         if (bytes > BUDGET || (frame & 63) === 0) evict(now);
     }
 
+    // Builds, ahead of need, the tiles of a rectangle that is not on the screen (where the camera is about to jump: the PvE players are put
+    // back by the base when a wave starts). At most `maxBuild` a call; the tiles already there are kept alive (they do not go idle).
+    // Same arguments as draw(); returns how many tiles of the rectangle are still missing.
+    function warm(l, t, r, b, scale, stable, now, ox, oy, maxBuild) {
+        if (legacy || !deco || !stable || typeof ARArena === 'undefined') return 0;
+        const n = Math.round(scale * TILE);
+        const whole = ox !== undefined && n >= 16 && n <= MAX_K * TILE && Math.abs(scale * TILE - n) < 1e-4 && ox === Math.round(ox) && oy === Math.round(oy);
+        const k = Math.min(MAX_K, scale);
+        const ix0 = Math.max(0, Math.floor((l - ORIGIN - MARGIN) / TILE)), ix1 = Math.min(NT - 1, Math.floor((r - ORIGIN + MARGIN) / TILE));
+        const iy0 = Math.max(0, Math.floor((t - ORIGIN - MARGIN) / TILE)), iy1 = Math.min(NT - 1, Math.floor((b - ORIGIN + MARGIN) / TILE));
+        let missing = 0, built = 0;
+        for (let iy = iy0; iy <= iy1; iy++) {
+            for (let ix = ix0; ix <= ix1; ix++) {
+                const key = iy * 16 + ix, tile = tiles.get(key);
+                if (tile && (whole ? tile.n === n : !(tile.k / k < STALE_LO || tile.k / k > STALE_HI))) { tile.lastMs = now; continue; }
+                missing++;
+                if (built >= maxBuild) continue;
+                const nt = whole ? buildInt(ix, iy, n) : build(ix, iy, k);
+                if (tile) { bytes -= tile.bytes; tile.c.width = 0; tile.c.height = 0; }
+                nt.last = frame - 1; nt.lastMs = now;     // not drawn: evicted first if memory is short, but not idle
+                tiles.set(key, nt); bytes += nt.bytes; built++; missing--;
+            }
+        }
+        return missing;
+    }
+
     // Frees tiles not drawn this frame: the oldest first while over budget, anything idle for IDLE_MS regardless
     function evict(now) {
         let list = null;
@@ -229,7 +255,7 @@
     function drop(key, t) { bytes -= t.bytes; t.c.width = 0; t.c.height = 0; tiles.delete(key); stats.evicted++; }
 
     window.ARGround = {
-        makeDeco, setDeco, setTheme, invalidate, beginFrame, draw, paintRegion,
+        makeDeco, setDeco, setTheme, invalidate, beginFrame, draw, warm, paintRegion,
         paintsAll() { return !legacy && !!deco && typeof ARArena !== 'undefined'; },   // draw() leaves no pixel of the view untouched
         setLegacy(v) { legacy = !!v; },
         setBudgetMb(mb) { BUDGET = mb * 1048576; },

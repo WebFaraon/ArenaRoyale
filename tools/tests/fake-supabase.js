@@ -20,6 +20,11 @@ function fakeSupabase(state) {
         req.on('end', () => {
             const url = new URL(req.url, 'http://x');
             if (req.method === 'GET' && url.pathname === '/rest/v1/players') {
+                if (url.searchParams.get('select') === 'id,nickname') state.diagReads = (state.diagReads || 0) + 1;
+                if (url.searchParams.get('select') === 'id,nickname' && state.failDiagRead) {
+                    res.writeHead(503, { 'content-type': 'application/json' });
+                    return res.end(JSON.stringify({ code: 'PGRST000', message: 'unavailable' }));
+                }
                 if (url.searchParams.get('select') === 'password_hash') state.passwordReads++;
                 res.writeHead(200, { 'content-type': 'application/json' });
                 return res.end(/object/.test(req.headers.accept || '') ? JSON.stringify(state.row) : JSON.stringify([state.row]));

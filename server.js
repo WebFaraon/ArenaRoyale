@@ -9,14 +9,26 @@ const Passwords = require('./auth-hash');            // bcrypt (native when it l
 const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { firstBulletHit } = require('./game-physics');
-const { avoidBase } = require('./zombie-steer.js');
+const { avoidBase, avoidStructs, pickTarget, turretTarget, chainTargets, inCone, shieldBlocks } = require('./zombie-steer.js');
+const ZNav = require('./zombie-nav.js');              // where the PvE zombies walk: a distance field round the solid things, through walls at a price
 const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
+const PveRewards = require('./pve-rewards');   // what a PvE match pays and the zombie families of the end board
 const ARShared = require('./public/combat-shared');
-const ARNet = require('./public/netproto');           // the state packet, protocol 2 (shared with the client)
+const ARNet = require('./public/netproto');           // the state packet, protocol 3 (shared with the client)
+const KIT_HEAL = ARNet.KIT_HEAL, KIT_AMMO = ARNet.KIT_AMMO;   // the two kinds of kit on the ground (netproto.js)
+const ARStructs = require('./public/structures');   // what the PvE players build: barricades (shared with the client)
+const ARAmmo = require('./public/ammo');             // the classic magazine: reload, reserve, ammo boxes (shared with the client)
 const { createGsWriter } = require('./server-gs');
 const notepack = require('notepack.io');             // the encoder socket.io-msgpack-parser uses
 const GS = createGsWriter(notepack, 7);               // 7 shared elements + the client's own row
+const { NetDiagnostic, COL: NET_COL } = require('./tools/net-diagnostic');
+const NET_DIAG = new NetDiagnostic(undefined, { isAuthorized: (socket, userId) => {
+    const proof = diagSocketProof.get(socket);
+    return !!supabase && !!proof && proof.id === userId &&
+        proof.nickname === socket._nickname && sessionTokens.get(proof.nickname) === proof.token &&
+        connectedAccounts.get(proof.nickname) === socket.id;
+} }); // inert unless enabled and the live Supabase identity was verified
 // PERF=1: per-second game loop stats to perf.jsonl (tools/perf-probe.js); nothing runs without it
 const PERF = process.env.PERF === '1' ? require('./tools/perf-probe') : null;
 
@@ -171,6 +183,8 @@ const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)
 // ---------- SESSION TOKENS ----------
 // nickname → token  (in-memory; se goleste la restart server)
 const sessionTokens = new Map();
+const diagVerifiedSessions = new Map(); // nickname -> { token, id }, only after real password verification
+const diagSocketProof = new WeakMap();
 
 // Who is asking: a logged-in client proves it with the session token issued at login/register (an in-memory check, no
 // hashing). The password is still accepted, for pages loaded before this change (the build check reloads them on their
@@ -281,6 +295,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!supabase) {
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(nickname, token);
+        diagVerifiedSessions.delete(nickname);
         if (!ownedSkins.has(nickname)) ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
         const skin = skinFromAvatar(memAvatars.get(nickname), nickname);
         return res.json({ ok: true, token, player: { nickname, avatar: skin, skin, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname), weapon_stats: sanitizeWeaponStats(weaponStatsMem.get(nickname)),
@@ -299,6 +314,10 @@ app.post('/api/auth/login', async (req, res) => {
 
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(existing.nickname, token);
+        if (NET_DIAG.enabled && NET_DIAG.allowedUserId && existing.id !== null &&
+            existing.id !== undefined && String(existing.id) === NET_DIAG.allowedUserId)
+            diagVerifiedSessions.set(existing.nickname, { token, id: String(existing.id) });
+        else diagVerifiedSessions.delete(existing.nickname);
 
         // Misiuni zilnice: sase din pool, alese pe zi (missions.js)
         const missions = await missionsForLogin(existing.nickname);
@@ -374,6 +393,7 @@ app.post('/api/auth/register', async (req, res) => {
         }
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(nickname, token);
+        diagVerifiedSessions.delete(nickname); // registration does not return a verified user ID
         const missions = await missionsForLogin(nickname);
         ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
         weaponSkinMem.delete(nickname);
@@ -607,7 +627,8 @@ function flushWeaponStats(p) {
 }
 // The end of a player's match: round stats, missions and weapon totals, in one write (after the tick)
 function endPlayerRound(p, isWinner, info) {
-    const ws = takeWeaponStats(p), id = p.id, name = p.name, kills = p.kills;
+    // kills_total is player kills: in PvE p.kills counts zombies (for the team counter of the HUD), which are kept in the round stats instead
+    const ws = takeWeaponStats(p), id = p.id, name = p.name, kills = info && info.mode === 'pve' ? 0 : p.kills;
     setImmediate(() => updatePlayerRoundEnd(id, name, kills, isWinner, { ...info, ws }));
 }
 // Weapon missions read the same counts: BR player kills and PvE zombie kills per weapon
@@ -628,21 +649,25 @@ function updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner, info
 async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinner, info = {}) {
     const k = killsThisRound || 0;
     if (info.rs) missionWeaponKills(info.rs, info.ws, info.mode || 'br');
-    let missions;
+    let missions, missionNote = null;
     try {
-        const ms = Missions.applyRound(await loadMissions(nickname), { mode: info.mode || 'br', rs: info.rs, wave: info.wave, isWinner });
+        const before = await loadMissions(nickname);
+        const prog0 = new Map(before.list.map(e => [e.id, e.prog]));
+        const ms = Missions.applyRound(before, { mode: info.mode || 'br', rs: info.rs, wave: info.wave, isWinner });
         await saveMissions(nickname, ms);
         missions = Missions.toClient(ms);
+        if (info.mode === 'pve') missionNote = Missions.roundNote(prog0, ms);   // the mission the PvE end board shows
     } catch (err) { console.error('[Missions] round update error:', err); }
-    const earnedXP       = k * 10 + (isWinner ? 50 : 0);
-    const earnedCoins    = k * 10 + (isWinner ? 50 : 0);
-    const earnedDiamonds = isWinner ? 1 : 0;
+    // PvE pays by waves and zombies (PveRewards, the numbers of the end board); battle royale by kills
+    const earnedXP       = info.reward ? info.reward.xp    : k * 10 + (isWinner ? 50 : 0);
+    const earnedCoins    = info.reward ? info.reward.coins : k * 10 + (isWinner ? 50 : 0);
+    const earnedDiamonds = info.reward ? info.reward.gems  : (isWinner ? 1 : 0);
 
     const basic = {
         killsThisRound: k, killsTotal: k, winsTotal: isWinner ? 1 : 0,
         gamesPlayed: 1, killRate: k.toFixed(1), isWinner,
         earnedXP, earnedCoins, earnedDiamonds,
-        xp: earnedXP, coins: 1000 + earnedCoins, diamonds: earnedDiamonds, missions
+        xp: earnedXP, coins: 1000 + earnedCoins, diamonds: earnedDiamonds, missions, missionNote
     };
     if (!supabase) {
         basic.weaponStats = addWeaponStats(weaponStatsMem.get(nickname), info.ws);
@@ -706,7 +731,7 @@ async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinne
             gamesPlayed: newGames,
             killRate: newGames > 0 ? (newKills / newGames).toFixed(1) : '0.0',
             isWinner, earnedXP, earnedCoins, earnedDiamonds,
-            xp: newXP, coins: newCoins, diamonds: newDiamonds, missions,
+            xp: newXP, coins: newCoins, diamonds: newDiamonds, missions, missionNote,
             weaponStats: weaponTotals
         });
         emitWeaponSkinsUnlocked(socketId, nickname, unlockedNow);
@@ -744,9 +769,9 @@ const WEAPON_DATA = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'd
     const errs = ARShared.checkWeapons(WEAPON_DATA);
     if (errs.length) throw new Error('public/data/weapons.json: ' + errs.join('; '));
 }
-const WEAPON_RULES   = WEAPON_DATA.rules; // aimDelay, reloadDelay, bulletRadius: the same for every gun
+const WEAPON_RULES   = WEAPON_DATA.rules; // aimDelay, bulletRadius: the same for every gun
 const DEFAULT_WEAPON = WEAPON_DATA.defaultWeapon;
-// id -> how the gun fires (fireMode, bulletSpeed, bulletLife, shootCd, ammoMax, reloadRate, pellets, spread, burstCount, burstDelay)
+// id -> how the gun fires (fireMode, bulletSpeed, bulletLife, shootCd, ammoMax, reserveStart (the reserve you begin with), ammoBox, reloadSeconds, pellets, spread, burstCount, burstDelay)
 const WEAPON_STATS   = {};
 // id -> loadout base values and growth per point (HP/DMG/SPD)
 const WEAPON_LOADOUT = {};
@@ -981,11 +1006,12 @@ const ZOMBIE_PATROL_T   = 3.5;
 // ---------- PvE ----------
 const PVE_BASE_X         = Math.round(ARENA_W / 2);
 const PVE_BASE_Y         = Math.round(ARENA_H / 2);
-const PVE_BASE_HP        = 1000;
+const PVE_BASE_HP        = 1500;
 const PVE_BASE_R         = 85;
 const PVE_BASE_ATTACK_R  = 95;
 const _COIN_PICK_SQ      = (PLAYER_R + PveCoins.PICK_EXTRA) ** 2;   // a PvE coin is taken within this distance of a player
 const _coinOut           = { taken: [], gone: [] };                 // scratch for PveCoins.step
+const _coinMoved         = [];                                      // scratch for PveCoins.attract
 // Coins taken (flat [coinId, player, ...] from PveCoins.step or sweep): every client drops them, each player is paid his own and told once.
 function _payCoins(code, taken) {
     const ids = [];
@@ -999,6 +1025,8 @@ function _payCoins(code, taken) {
         const p = taken[ci];
         if (!p._coinGot) continue;
         p.coins += p._coinGot;
+        if (p.wv) p.wv.coins += p._coinGot;   // the break panel: coins earned in this wave
+        p.pveTot.coins += p._coinGot;         // the end board: in the whole match
         io.to(p.id).emit('pve-coins', { coins: p.coins, earned: p._coinGot, x: p.x, y: p.y });
         p._coinGot = 0;
     }
@@ -1012,33 +1040,81 @@ function _sweepCoins(code, room) {
     if (_coinOut.gone.length) io.to(code).emit('coin-taken', { ids: _coinOut.gone.slice(), gone: true });
 }
 const PVE_BREAK_DURATION = 15;
-const PVE_TOTAL_WAVES    = 10;
-// [normal, runner, tank] per wave
+const PVE_TOTAL_WAVES    = 20;
+// [normal, runner, tank, spitter, exploder, brute, summoner, shielded, screamer, ghoul, stalker] per wave (PVE_TYPES, in this order). From wave 13 the
+// ghoul and the stalker (the dark, much tougher normal and runner) take the place of the normal and the runner altogether.
+const PVE_TYPES = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'summoner', 'shielded', 'screamer', 'ghoul', 'stalker'];
 const PVE_WAVES = [
-    [8,  0, 0],
-    [10, 2, 0],
-    [12, 4, 0],
-    [10, 4, 2],
-    [12, 6, 2],
-    [14, 6, 3],
-    [14, 8, 4],
-    [16, 8, 5],
-    [16,10, 5],
-    [20,12, 6],
+    [ 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [11, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [14, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [13, 5, 2, 0, 0, 0, 0, 0, 0, 0, 0],
+    [15, 7, 3, 2, 0, 0, 0, 0, 0, 0, 0],
+    [17, 7, 4, 3, 2, 0, 0, 0, 0, 0, 0],
+    [17, 9, 4, 3, 3, 0, 0, 2, 0, 0, 0],     // wave 7: the first shielded
+    [18,10, 5, 4, 4, 1, 0, 2, 0, 0, 0],     // wave 8: the first brute
+    [20,10, 5, 4, 5, 1, 0, 3, 1, 0, 0],     // wave 9: the first screamer
+    [18,12, 6, 6, 6, 2, 1, 5, 1, 0, 0],     // wave 10: the first summoner
+    [20,12, 6, 6, 7, 3, 1, 6, 2, 0, 0],
+    [22,14, 6, 7, 8, 3, 2, 6, 2, 0, 0],
+    [ 0, 0, 7, 8, 8, 4, 2, 6, 3,13, 8],     // wave 13: the dark ones take over from the normal and the runner
+    [ 0, 0, 8, 8, 9, 4, 2, 8, 3,14, 9],
+    [ 0, 0, 8, 9,10, 4, 3, 8, 4,15,10],
+    [ 0, 0, 9,10,10, 5, 3, 8, 4,17,11],
+    [ 0, 0, 9,10,11, 5, 4,10, 5,18,12],
+    [ 0, 0,10,11,12, 6, 4,10, 5,20,13],
+    [ 0, 0,10,12,12, 6, 5,11, 6,21,14],
+    [ 0, 0,11,13,13, 7, 5,13, 6,23,16],     // wave 20
 ];
+// The health of every zombie (but the minions) grows from wave 7: x1 up to wave 6, then +6% a wave (x1.24 at wave 10, x1.84 at wave 20)
+// More players, more zombies: the counts of a wave grow by 40% for each player after the first (1 / 1.4 / 1.8 / 2.2 for 1 to 4 and more), so the extra
+// turrets and guns of a bigger team do not make the same wave easy; the batches grow along (see prepareAndSpawnWave) so a wave takes about as long.
+const pveCountMul = (players) => 1 + 0.4 * (Math.max(1, Math.min(players | 0, 4)) - 1);
+const pveWaveRow = (waveIndex, players) => { const wc = PVE_WAVES[waveIndex]; if (!wc) return null; const m = pveCountMul(players); return m === 1 ? wc : wc.map(c => Math.round(c * m)); };
+const pveHpMul = (wave) => wave <= 6 ? 1 : Math.round((1 + (wave - 6) * 0.06) * 100) / 100;
 const PVE_ZOMBIE_DEFS = {
-    normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 1, coinsMax: 3, baseDmg: 15, r: 20 },
-    runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 2, coinsMax: 3, baseDmg: 8,  r: 16 },
-    tank:   { hp: 400, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 5, coinsMax: 9, baseDmg: 35, r: 28 },
+    // hunts: goes for a player in range first (then a barricade, then the base); false = never goes for a player or hits one, only barricades and the base
+    // mass: how the zombies shove each other apart (the heavier one gives way less); heavy: a player cannot push it, it pushes the player (it is a wall to them)
+    // large: keeps further from the trees on its way (zombie-nav.js); armor: taken off every hit (never below a fifth of it); noScale: does not grow with the wave
+    normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 2, coinsMax: 4, baseDmg: 15, r: 20, hunts: true, mass: 1 },
+    runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 3, coinsMax: 5, baseDmg: 8,  r: 16, hunts: true, mass: 0.8 },
+    tank:   { hp: 500, armor: 3, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 7, coinsMax: 10, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
+    // the spitter: walks on to the base and stops as soon as something is within range (a turret first, then a player, a barricade, the base) and
+    // spits acid at it, a splash that hurts what is built and the players; its range is longer than the first two turret levels (the third reaches it)
+    spitter: { hp: 160, chaseSpd: 52, patrolSpd: 30, dmg: 0, attackR: 0, attackCd: 2.4, coinsMin: 6, coinsMax: 9, baseDmg: 0, r: 20, hunts: false, mass: 1,
+               ranged: { range: 220, cd: 2.4, speed: 560, splash: 44, sdmg: 24, pdmg: 24, bdmg: 18 } },
+    // the exploder: fast, goes for the nearest thing that is built or a player, and goes off on touch (a blast that hurts structures a lot); killed on the way it does not
+    exploder: { hp: 110, chaseSpd: 120, patrolSpd: 60, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 6, coinsMax: 10, baseDmg: 0, r: 18, hunts: true, mass: 0.9,
+                explode: { r: 85, sdmg: 130, pdmg: 45, bdmg: 70, seek: 520 } },
+    // the brute: slow, armoured, hits hard; goes for players and what is built
+    brute: { hp: 900, armor: 5, chaseSpd: 44, patrolSpd: 25, dmg: 55, attackR: 72, attackCd: 1.3, coinsMin: 12, coinsMax: 20, baseDmg: 65, r: 34, hunts: true, mass: 10, heavy: true, large: true },
+    // the summoner: a big slow one that walks on to the base and brings 2 minions out every 14 s (at most 4 of its own alive; they stay when it dies)
+    summoner: { hp: 500, chaseSpd: 34, patrolSpd: 20, dmg: 0, attackR: 0, attackCd: 1.5, coinsMin: 15, coinsMax: 23, baseDmg: 25, r: 30, hunts: false, mass: 8, heavy: true, large: true,
+                summon: { first: 6, every: 14, count: 2, max: 4 } },
+    // the shielded: walks on to the base like the tank (never goes for a player or hits one, only barricades, turrets and the base) behind a riot shield:
+    // what comes at its front (within `half` radians of where it faces) is stopped, a player's bullet or a machine gun turret's round; from the side or
+    // the back it is hurt as any. The Tesla bolt, the bombs and the flames go over the shield. See shieldBlocks in zombie-steer.js.
+    shielded: { hp: 520, chaseSpd: 48, patrolSpd: 28, dmg: 0, attackR: 62, attackCd: 1.2, coinsMin: 10, coinsMax: 16, baseDmg: 65, r: 24, hunts: false, mass: 3,
+                shield: { half: 1.25 } },
+    // the screamer: fast and hard-hitting. It goes for the nearest player from the moment it spawns (no detection range): when it gets within `near` of one it stops
+    // for a moment and screams, and every turret of any kind within `range` of IT is stunned for `stun` seconds (it does not fire, flame or heal); then it
+    // goes on after the player. Once only. So a player can draw it away from the turrets and nothing is stunned, or stay by them and risk it.
+    screamer: { hp: 450, chaseSpd: 100, patrolSpd: 50, dmg: 45, attackR: 56, attackCd: 0.9, coinsMin: 8, coinsMax: 12, baseDmg: 50, r: 21, hunts: true, mass: 1.2,
+                scream: { near: 230, range: 300, windup: 0.9, fire: 0.45, stun: 2 } },
+    // the dark versions of the normal and the runner for the late waves: much more health and a harder hit, and nothing else new about them
+    ghoul: { hp: 340, chaseSpd: 66, patrolSpd: 34, dmg: 34, attackR: 58, attackCd: 1.0, coinsMin: 5, coinsMax: 8, baseDmg: 26, r: 23, hunts: true, mass: 2 },
+    stalker: { hp: 160, chaseSpd: 138, patrolSpd: 70, dmg: 20, attackR: 52, attackCd: 0.7, coinsMin: 6, coinsMax: 9, baseDmg: 15, r: 17, hunts: true, mass: 1 },
+    minion: { hp: 200, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 2, coinsMax: 4, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
 };
-const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2 };
+const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
 const PVE_UPGRADE_DEFS = {
     dmg:  { baseCost: 6,  costInc: 4, maxUses: 5, apply: (p, n) => { p.damage  = Math.round(p.baseDamage  * (1 + n * 0.05)); } },
     spd:  { baseCost: 5,  costInc: 3, maxUses: 4, apply: (p, n) => { p.speed   = Math.round(p.baseSpeed   * (1 + n * 0.04)); } },
     hp:   { baseCost: 7,  costInc: 4, maxUses: 5, apply: (p, n) => { p.maxHp   = p.baseMaxHp + n * 15; p.hp = Math.min(p.hp + 15, p.maxHp); } },
-    ammo: { baseCost: 4,  costInc: 2, maxUses: 4, apply: (p, n) => { p.ammoMax = Math.round(p.baseAmmoMax * (1 + n * 0.12)); } },
+    ammo: { baseCost: 4,  costInc: 2, maxUses: 4, apply: (p, n) => { ARAmmo.setMagazine(p, Math.round(p.baseAmmoMax * (1 + n * 0.12))); } },   // a bigger magazine
 };
+const PVE_RESERVE_COST = 3;   // the "MUNITIE" button between waves: a pack of rounds (the starting reserve), as many times as you like
 function pveUpgradeCost(type, count) {
     const d = PVE_UPGRADE_DEFS[type];
     return d ? d.baseCost + count * d.costInc : 999;
@@ -1277,16 +1353,17 @@ function generateZombies(obstacles, playerPositions = []) {
 }
 
 // Creeaza un singur zombi la marginea mapei
-function createPveZombie(type, id) {
+function createPveZombie(type, id, hpMul, atX, atY) {
     const def = PVE_ZOMBIE_DEFS[type];
     const angle    = Math.random() * Math.PI * 2;
     const spawnDist = 1050 + Math.random() * 150; // 1050-1200px de centru, langa margine
-    const x = Math.max(def.r + 20, Math.min(ARENA_W - def.r - 20, PVE_BASE_X + Math.cos(angle) * spawnDist));
-    const y = Math.max(def.r + 20, Math.min(ARENA_H - def.r - 20, PVE_BASE_Y + Math.sin(angle) * spawnDist));
+    const x = atX !== undefined ? atX : Math.max(def.r + 20, Math.min(ARENA_W - def.r - 20, PVE_BASE_X + Math.cos(angle) * spawnDist));
+    const y = atY !== undefined ? atY : Math.max(def.r + 20, Math.min(ARENA_H - def.r - 20, PVE_BASE_Y + Math.sin(angle) * spawnDist));
+    const hp = Math.round(def.hp * (def.noScale ? 1 : (hpMul || 1)));
     return {
         id, x, y,
         angle: Math.atan2(PVE_BASE_Y - y, PVE_BASE_X - x),
-        hp: def.hp, maxHp: def.hp,
+        hp, maxHp: hp,
         alive: true, type,
         state: 'chase',
         patrolTargetX: PVE_BASE_X, patrolTargetY: PVE_BASE_Y,
@@ -1297,28 +1374,446 @@ function createPveZombie(type, id) {
 // Returneaza primul batch de zombi si populeaza room.pveSpawnQueue cu restul
 const PVE_BATCH_SIZE   = 10; // zombi per mini-wave
 const PVE_BATCH_DELAY  = 8;  // secunde intre mini-wave-uri
+const PVE_START_GRACE  = 8;  // secunde de la inceputul valului pana apare primul lot: timp sa reparam / upgradam constructiile (la valuri mari nu ajungea)
 
 function prepareAndSpawnWave(room, waveIndex) {
-    const wc = PVE_WAVES[waveIndex] || [8, 0, 0];
-    const types = [
-        ...Array(wc[0]).fill('normal'),
-        ...Array(wc[1]).fill('runner'),
-        ...Array(wc[2]).fill('tank'),
-    ];
+    const wc = pveWaveRow(waveIndex, room._playerArr.length) || [8, 0, 0, 0, 0, 0, 0, 0];
+    const types = [];
+    PVE_TYPES.forEach((t, k) => { for (let n = 0; n < (wc[k] || 0); n++) types.push(t); });
     // Shuffle
     for (let i = types.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [types[i], types[j]] = [types[j], types[i]];
     }
-    // Split in batch-uri de maxim PVE_BATCH_SIZE
-    const batches = [];
-    for (let i = 0; i < types.length; i += PVE_BATCH_SIZE) {
-        batches.push(types.slice(i, i + PVE_BATCH_SIZE));
+    // Split in batch-uri de maxim PVE_BATCH_SIZE (more when the wave is over 100 zombies: never more than 10 batches, so a big wave takes about as long)
+    const batches = [], bsize = Math.max(PVE_BATCH_SIZE, Math.ceil(types.length / 10));
+    for (let i = 0; i < types.length; i += bsize) {
+        batches.push(types.slice(i, i + bsize));
     }
     const firstBatch = batches[0] || [];
     room.pveSpawnQueue = batches.slice(1);
     room.pveSpawnTimer = PVE_BATCH_DELAY;
-    return firstBatch.map((type, i) => createPveZombie(type, i));
+    return firstBatch.map((type, i) => createPveZombie(type, i, room.pveHpMul));
+}
+
+// ---------- PvE: what the players build (barricades; public/structures.js has the numbers) ----------
+// All of it goes by events (struct-add / struct-hp / struct-upd / struct-del, pve-inv), never in gs2: it changes a few times a minute.
+function structPublic(s) { return { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: Math.round(s.hp), mhp: s.maxHp, by: s.by }; }
+// Turrets (k: 't') are round and ride in room.turrets with their own events (turret-add / -hp / -upd / -del, turret-shots); the barricade
+// code above and below does not know them. What E, the work and the zombies share with the barricades goes by these helpers.
+function turretPublic(t) { return { id: t.id, kd: t.kd || 'mg', x: t.x, y: t.y, t: t.t, hp: Math.round(t.hp), mhp: t.maxHp, by: t.by, a: Math.round(t.angle * 100) }; }
+// What a player holds, bought and not placed yet: sent to them whole whenever it changes
+const newInv = () => ({ barricade: 0, turret: 0, tesla: 0, bomb: 0, flame: 0, heal: 0, support: 0 });
+const invPublic = (p) => ({ barricade: p.pveInv.barricade, turret: p.pveInv.turret, tesla: p.pveInv.tesla, bomb: p.pveInv.bomb, flame: p.pveInv.flame, heal: p.pveInv.heal, support: p.pveInv.support });
+function findBuilt(room, id) { return room.structs.find(q => q.id === id) || room.turrets.find(q => q.id === id) || null; }
+function builtDist(x, y, s) { return s.k === 't' ? ARStructs.turretDist(x, y, s) : ARStructs.distToRect(x, y, s); }
+function builtAction(s) { return s.k === 't' ? ARStructs.turretUseAction(s) : ARStructs.useAction(s); }
+function builtCost(s, action) {
+    if (s.k === 't') return action === 'repair' ? ARStructs.turretRepairCost(s) : action === 'upgrade' ? ARStructs.turretUpgradeCost(s) : 0;
+    return action === 'repair' ? ARStructs.repairCost(s) : action === 'upgrade' ? ARStructs.upgradeCost(s) : 0;
+}
+// where a zombie goes to hit it: the nearest point of the rectangle, or the point of the round turret towards the zombie
+function builtNearestPoint(zx, zy, s, out) {
+    if (s.k !== 't') return ARStructs.nearestPoint(zx, zy, s, out);
+    const dx = zx - s.x, dy = zy - s.y, d = Math.hypot(dx, dy) || 1;
+    out.x = s.x + dx / d * ARStructs.TURRET.r; out.y = s.y + dy / d * ARStructs.TURRET.r;
+    return out;
+}
+function builtTiers(s) { return s.k === 't' ? ARStructs.turretTiers(s) : ARStructs.BARRICADE.tiers; }
+function builtUseRange(s) { return s.k === 't' ? ARStructs.TURRET.useRange : ARStructs.BARRICADE.useRange; }
+
+// A repair or an upgrade takes ARStructs.BARRICADE.workMs: the player presses E, a ring fills over the barricade, and when it is full the
+// coins are paid and it happens. One at a time per player and per barricade. The player has to stand still up against it: it is cancelled
+// (nothing is paid) as soon as they move, or are pushed, fall, the wave ends, or the barricade is broken.
+const WORK_SLACK = 4;   // how far a player may be shifted (a shove) before the work is lost
+function cancelWork(code, room, p, reason) {
+    const w = p.work;
+    if (!w) return;
+    p.work = null;
+    const s = findBuilt(room, w.id);
+    if (s) s._busy = null;
+    io.to(code).emit('struct-work-end', { id: w.id, done: false });
+    if (reason) io.to(p.id).emit('struct-result', { ok: false, action: 'use', reason });
+}
+function tickWork(code, room, p, now) {
+    const w = p.work;
+    const s = findBuilt(room, w.id);
+    if (!s || !p.alive || room.pveWaveBreak || room.gameEnded) { cancelWork(code, room, p); return; }
+    if (p.moveDir.x || p.moveDir.y || Math.abs(p.x - w.x) > WORK_SLACK || Math.abs(p.y - w.y) > WORK_SLACK
+        || builtDist(p.x, p.y, s) > PLAYER_R + builtUseRange(s) + WORK_SLACK) { cancelWork(code, room, p, 'moved'); return; }
+    if (now < w.end) return;
+    // the ring is full: is it still what E would do, and are there coins for it?
+    const action = builtAction(s);
+    const cost = builtCost(s, action);
+    if (action !== w.action || p.coins < cost) { cancelWork(code, room, p); io.to(p.id).emit('struct-result', { ok: false, action: 'use', reason: action ? 'coins' : 'max' }); return; }
+    p.coins -= cost;
+    if (action === 'repair') s.hp = s.maxHp;
+    else { s.t++; s.maxHp = builtTiers(s)[s.t].hp; s.hp = s.maxHp; }
+    s._sentHp = Math.round(s.hp);
+    s._busy = null; p.work = null;
+    io.to(code).emit(s.k === 't' ? 'turret-upd' : 'struct-upd', s.k === 't' ? turretPublic(s) : structPublic(s));
+    io.to(code).emit('struct-work-end', { id: s.id, done: true, action });
+    io.to(p.id).emit('struct-result', { ok: true, action });
+}
+
+// A turret is gone (a zombie broke it)
+function destroyTurret(code, room, t) {
+    const i = room.turrets.indexOf(t);
+    if (i === -1) return;
+    for (const q of room._playerArr) if (q.work && q.work.id === t.id) cancelWork(code, room, q);
+    t._gone = true;
+    room.turrets.splice(i, 1);
+    io.to(code).emit('turret-del', { id: t.id, broke: true });
+}
+// The coins of a zombie that a turret killed fall around it like those of a player's kill (the code of the bullet loop, which is not
+// touched): the team counter of the HUD goes to whoever placed the turret; the missions and the weapon counts are not credited.
+function turretKill(code, room, zombie, t, now) {
+    zombie.hp = 0; zombie.alive = false;
+    room.pveKinds[PveRewards.kindOf(zombie.type)]++;
+    const owner = room.players[t.ownerId];
+    if (owner && owner.alive) owner.kills++;
+    const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
+    const earned = def.coinsMin + Math.floor(Math.random() * (def.coinsMax - def.coinsMin + 1));
+    const spots = PveCoins.scatter(zombie.x, zombie.y, earned, _coinBlockers(room), ARENA_W, ARENA_H, Math.random);
+    const dropped = [];
+    for (const [cx, cy] of spots) {
+        const id = room.nextCoinId++;
+        room.coinDrops.push({ id, x: cx, y: cy, t: now });
+        dropped.push([id, cx, cy]);
+    }
+    io.to(code).emit('coin-drops', { ox: Math.round(zombie.x), oy: Math.round(zombie.y), c: dropped });
+    const lost = PveCoins.trim(room.coinDrops, PveCoins.MAX_COINS);
+    if (lost.length) io.to(code).emit('coin-taken', { ids: lost, gone: true });
+}
+// The things coins keep off: the trees, the rocks, the base, the barricades (rectangles) and the turrets (circles)
+function _coinBlockers(room) {
+    const base = _bulletBlockers(room);
+    if (!room.structs.length && !room.turrets.length) return base;
+    const out = base.concat(room.structs.map(ARStructs.asBlocker));
+    for (const t of room.turrets) out.push({ x: t.x, y: t.y, r: ARStructs.TURRET.r });
+    return out;
+}
+// What a turret fires does not land at once: the round of a machine gun flies at TURRET_BULLET_SPEED (what the clients draw: public/game.js
+// _TUR_SPEED, quick but not instant) and the bolt of a Tesla takes TESLA_JUMP_MS to jump from a zombie to the next, so the zombie is hurt
+// when what you see reaches it, not when it is fired. A hit waits in room._hits until its time; a zombie dead by then takes nothing.
+const TURRET_BULLET_SPEED = 1800, TURRET_MUZZLE = 42, TESLA_JUMP_MS = 70;
+const _turretShots = [], _zaps = [], _bombs = [], _flames = [], _burnIds = [], _chain = [], _NO_BLOCKERS = [];   // (_bombs: [tower id, x, y, flight ms] a bomb; the bombs fly over everything; _flames: [tower id, angle x100] a burst of the jet)
+function tickTurretHits(code, room, now) {
+    const h = room._hits;
+    let w = 0;
+    for (let i = 0; i < h.length; i++) {
+        const q = h[i];
+        if (q.at > now) { h[w++] = q; continue; }
+        if (q.r) { blastZombies(code, room, q, now); continue; }   // a bomb lands
+        const z = q.z;
+        if (!z.alive || z.hp <= 0) continue;
+        if (q.sx !== undefined && zombieShielded(code, room, z, q.sx - z.x, q.sy - z.y, now)) continue;   // the round hit a shield
+        z.hp -= armoredHit(z, q.dmg);
+        if (z.hp <= 0) turretKill(code, room, z, q, now);
+    }
+    h.length = w;
+}
+// A bomb of a Bomb Tower lands at (q.x, q.y): every zombie whose body is within q.r of it takes q.dmg (the armour comes off), the same to all of them
+function blastZombies(code, room, q, now) {
+    for (let i = 0; i < room.zombies.length; i++) {
+        const z = room.zombies[i];
+        if (!z.alive || z.hp <= 0) continue;
+        const zr = (PVE_ZOMBIE_DEFS[z.type] || PVE_ZOMBIE_DEFS.normal).r, reach = q.r + zr, dx = z.x - q.x, dy = z.y - q.y;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        z.hp -= armoredHit(z, q.dmg);
+        if (z.hp <= 0) turretKill(code, room, z, q, now);
+    }
+}
+// A Flamethrower burns, at once, every zombie in its jet (the cone round the axis at ang, reach = its range): the same dmg to each, the armour comes off
+// A screamer has stopped near the base and screams: every turret within its range is stunned, and the clients are told (a ring from the zombie, the stunned look)
+function screamZombie(code, room, z, sc, now) {
+    const ids = [];
+    for (const t of room.turrets) if (Math.hypot(t.x - z.x, t.y - z.y) <= sc.range + ARStructs.TURRET.r) { t.stunUntil = now + sc.stun * 1000; ids.push(t.id); }
+    io.to(code).emit('scream', { x: Math.round(z.x), y: Math.round(z.y), r: sc.range, ms: Math.round(sc.stun * 1000), ids });
+}
+
+function flameZombies(code, room, t, tier, now) {
+    for (let i = 0; i < room.zombies.length; i++) {
+        const z = room.zombies[i];
+        if (!z.alive || z.hp <= 0) continue;
+        const zr = (PVE_ZOMBIE_DEFS[z.type] || PVE_ZOMBIE_DEFS.normal).r;
+        if (!inCone(t.x, t.y, t.angle, tier.range, tier.cone, z.x, z.y, zr)) continue;
+        _burnIds.push(z.id);
+        z.hp -= armoredHit(z, tier.dmg);
+        if (z.hp <= 0) turretKill(code, room, z, t, now);
+    }
+}
+// The Health Station mends the living within its range (measured from its centre) a little every tick
+function healAround(room, t, tier, dt) {
+    const rSq = tier.range * tier.range, add = tier.rate * dt;
+    for (let i = 0; i < room._playerArr.length; i++) {
+        const p = room._playerArr[i];
+        if (!p.alive || p.hp >= p.maxHp) continue;
+        const dx = p.x - t.x, dy = p.y - t.y;
+        if (dx * dx + dy * dy <= rSq) p.hp = Math.min(p.maxHp, p.hp + add);
+    }
+}
+// Each turret turns to the nearest zombie in its range that it can see and fires as often as its level says (turret-shots, one event per
+// tick, [turret id, angle x100, zombie id] a shot). A Tesla Tower sends a bolt that jumps on from that zombie (tesla-zaps: [tower id, zombie
+// ids in the order of the chain] a bolt); a Health Station fires at nothing.
+// The Support Tower's drone. Phases: 0 on its pad, 1 flying out to something hurt, 2 mending it, 3 flying home. The flights take the time the client animates
+// (takeoff, the distance at drone.speed, landing), announced in the events drone-go / drone-home; the mending is done here, a little every tick, and the
+// health goes out in the usual batches. It picks the most hurt (the lowest share of its health) of what stands within the tier's range of the tower.
+const _dSpot = { x: 0, y: 0 };
+function droneFind(room, t, tier) {
+    let best = null, bestShare = 1;
+    const r2 = tier.range * tier.range;
+    for (let i = 0; i < room.structs.length; i++) { const q = room.structs[i]; if (q.hp >= q.maxHp) continue; const dx = q.x - t.x, dy = q.y - t.y; if (dx * dx + dy * dy > r2) continue; const sh = q.hp / q.maxHp; if (sh < bestShare) { bestShare = sh; best = q; } }
+    for (let i = 0; i < room.turrets.length; i++) { const q = room.turrets[i]; if (q === t || q.hp >= q.maxHp) continue; const dx = q.x - t.x, dy = q.y - t.y; if (dx * dx + dy * dy > r2) continue; const sh = q.hp / q.maxHp; if (sh < bestShare) { bestShare = sh; best = q; } }
+    return best;
+}
+function droneGo(code, room, t, d, target, now) {
+    const D = ARStructs.TURRET.kinds.support.drone;
+    ARStructs.droneSpot(target, _dSpot);
+    const ms = (d.ph === 0 ? D.takeoff : 0) + Math.round(Math.hypot(_dSpot.x - d.x, _dSpot.y - d.y) / D.speed * 1000);
+    d.ph = 1; d.tk = target.k === 't' ? 't' : 's'; d.tid = target.id; d.x = _dSpot.x; d.y = _dSpot.y; d.at = now + ms;
+    io.to(code).emit('drone-go', { id: t.id, tk: d.tk, tid: target.id, ms });
+}
+function droneHome(code, room, t, d, now) {
+    const D = ARStructs.TURRET.kinds.support.drone;
+    const ms = Math.round(Math.hypot(t.x - d.x, t.y - d.y) / D.speed * 1000) + D.landing;
+    d.ph = 3; d.tid = -1; d.x = t.x; d.y = t.y; d.at = now + ms;
+    io.to(code).emit('drone-home', { id: t.id, ms });
+}
+function droneTick(code, room, t, tier, dt, now) {
+    const d = t.drone || (t.drone = { ph: 0, x: t.x, y: t.y, tk: 's', tid: -1, at: 0 });
+    if (d.ph === 1 && now >= d.at) d.ph = 2;                                   // it has got there
+    else if (d.ph === 3) { if (now >= d.at) d.ph = 0; else return; }            // home: on the pad (it does not turn back in mid-flight)
+    if (d.ph === 0) { const next = droneFind(room, t, tier); if (next) droneGo(code, room, t, d, next, now); return; }
+    if (d.ph === 1) return;
+    // mending
+    const target = d.tk === 't' ? room.turrets.find(q => q.id === d.tid) : room.structs.find(q => q.id === d.tid);
+    if (target && target.hp < target.maxHp) {
+        target.hp = Math.min(target.maxHp, target.hp + tier.rate * dt);
+        if (d.tk === 't') room._turretDirty = true; else room._structDirty = true;
+    }
+    if (!target || target.hp >= target.maxHp) {                                  // done (or gone): the next one, or home
+        const next = droneFind(room, t, tier);
+        if (next) droneGo(code, room, t, d, next, now); else droneHome(code, room, t, d, now);
+    }
+}
+
+function tickTurrets(code, room, dt, now) {
+    _turretShots.length = 0; _zaps.length = 0; _bombs.length = 0; _flames.length = 0; _burnIds.length = 0;
+    const blockers = _bulletBlockers(room);
+    for (let i = 0; i < room.turrets.length; i++) {
+        const t = room.turrets[i], kind = ARStructs.turretKind(t), tier = kind.tiers[t.t];
+        if (t.stunUntil > now) continue;                     // stunned by a screamer: it does not fire, flame, heal or mend
+        if (t.kd === 'support') { droneTick(code, room, t, tier, dt, now); continue; }
+        if (t.kd === 'heal') { healAround(room, t, tier, dt); continue; }
+        t.cd -= dt;
+        if (t.cd > 0) continue;
+        const z = turretTarget(t.x, t.y, tier.range, room.zombies, t.kd === 'bomb' ? _NO_BLOCKERS : blockers);   // a bomb goes over trees and rocks
+        if (!z) { t.cd = 0; continue; }                      // ready for the first that comes
+        t.cd = Math.min(0, t.cd) + tier.cd;
+        t.angle = Math.atan2(z.y - t.y, z.x - t.x);
+        if (t.kd === 'bomb') {
+            const fly = Math.max(250, Math.hypot(z.x - t.x, z.y - t.y) / kind.speed * 1000);
+            room._hits.push({ at: now + fly, x: z.x, y: z.y, r: tier.splash, dmg: tier.dmg, ownerId: t.ownerId });
+            _bombs.push(t.id, Math.round(z.x), Math.round(z.y), Math.round(fly));
+        } else if (t.kd === 'flame') {
+            flameZombies(code, room, t, tier, now);
+            _flames.push(t.id, Math.round(t.angle * 100));
+        } else if (t.kd === 'tesla') {
+            chainTargets(z, room.zombies, kind.chain.reach, kind.chain.jumps, _chain);
+            const row = [t.id];
+            for (let k = 0; k < _chain.length; k++) { row.push(_chain[k].id); room._hits.push({ at: now + k * TESLA_JUMP_MS, z: _chain[k], dmg: tier.dmg, ownerId: t.ownerId }); }
+            _zaps.push(row);
+        } else {
+            const fly = Math.max(35, Math.min(170, (Math.hypot(z.x - t.x, z.y - t.y) - TURRET_MUZZLE) / TURRET_BULLET_SPEED * 1000));   // as long as the client draws it
+            room._hits.push({ at: now + fly, z, dmg: tier.dmg, ownerId: t.ownerId, sx: t.x, sy: t.y });   // (sx, sy: where it came from, for a shield)
+            _turretShots.push(t.id, Math.round(t.angle * 100), z.id);
+        }
+    }
+    if (_turretShots.length) io.to(code).emit('turret-shots', _turretShots.slice());
+    if (_zaps.length) io.to(code).emit('tesla-zaps', _zaps.slice());
+    if (_bombs.length) io.to(code).emit('bomb-shots', _bombs.slice());
+    if (_flames.length) io.to(code).emit('flame-shots', _flames.slice());
+    if (_burnIds.length) io.to(code).emit('flame-burn', _burnIds.slice());   // the zombies the jets hit this tick (they go red)
+}
+function flushTurretHp(code, room, now) {
+    room._turretDirty = false;
+    const rows = [];
+    for (const t of room.turrets) if (t._sentHp !== Math.round(t.hp)) { t._sentHp = Math.round(t.hp); rows.push([t.id, t._sentHp]); }
+    if (rows.length) io.to(code).emit('turret-hp', rows);
+}
+
+// A barricade is gone (a zombie broke it): the clients draw its pieces for a moment
+function destroyStruct(code, room, s) {
+    const i = room.structs.indexOf(s);
+    if (i === -1) return;
+    for (const q of room._playerArr) if (q.work && q.work.id === s.id) cancelWork(code, room, q);
+    s._gone = true;
+    room.structs.splice(i, 1);
+    io.to(code).emit('struct-del', { id: s.id, broke: true });
+}
+
+// The health of the barricades that are being hit, at most ten times a second
+function flushStructHp(code, room, now) {
+    room._structDirty = false;
+    room._structHpAt = now;
+    const rows = [];
+    for (const s of room.structs) if (s._sentHp !== Math.round(s.hp)) { s._sentHp = Math.round(s.hp); rows.push([s.id, s._sentHp]); }
+    if (rows.length) io.to(code).emit('struct-hp', rows);
+}
+
+// ---------- PvE: what the zombies do to what is built, to the players and to the base ----------
+// What a hit takes off a zombie with armour: the armour comes off the hit, but never more than four fifths of it (a weak turret still scratches it)
+// Does the shield of a Shielded zombie stop what comes from the direction (ax, ay) (the vector from the zombie towards where it came from)? It tells
+// the clients (shield-block: x, y, angle to the attacker, at most one every 90 ms for a zombie) so they can show the clang.
+function zombieShielded(code, room, zombie, ax, ay, now) {
+    const sh = (PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal).shield;
+    if (!sh || !shieldBlocks(zombie.angle, sh.half, ax, ay)) return false;
+    if (!(now - (zombie._blkAt || 0) < 90)) {
+        zombie._blkAt = now;
+        io.to(code).emit('shield-block', [Math.round(zombie.x), Math.round(zombie.y), Math.round(Math.atan2(ay, ax) * 100)]);
+    }
+    return true;
+}
+function armoredHit(zombie, dmg) {
+    const a = (PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal).armor;
+    return a ? Math.max(dmg * 0.2, dmg - a) : dmg;
+}
+function hurtBuilt(code, room, s, dmg) {
+    if (s._gone) return;
+    s.hp -= dmg;
+    if (s.k === 't') room._turretDirty = true; else room._structDirty = true;
+    if (s.hp <= 0) { if (s.k === 't') destroyTurret(code, room, s); else destroyStruct(code, room, s); }
+}
+function hurtPlayer(code, room, p, dmg, now) {
+    if (!p.alive) return;
+    if (p.wv) { const d = Math.min(dmg, Math.max(0, p.hp)); p.wv.dmg += d; p.pveTot.dmg += d; }
+    p.hp -= dmg; p.lastDamageTime = now;
+    if (p.hp <= 0) eliminatePlayer(code, room, p, 'zombie');
+}
+function hurtBase(code, room, dmg) {
+    if (!room.base || room.gameEnded) return;
+    room.base.hp = Math.max(0, room.base.hp - dmg);
+    if (room.base.hp <= 0) pveDefeat(code, room);
+}
+
+// A spitter has something in range: a turret first, then a player, a barricade, the base (the point to throw at, null if nothing is within range)
+const _spitT = { x: 0, y: 0 };
+function pickSpitTarget(room, zombie, range, alivePlayers) {
+    let bd = Infinity, found = false;
+    for (let i = 0; i < room.turrets.length; i++) { const t = room.turrets[i], d = ARStructs.turretDist(zombie.x, zombie.y, t); if (d <= range && d < bd) { bd = d; _spitT.x = t.x; _spitT.y = t.y; found = true; } }
+    if (found) return _spitT;
+    for (let i = 0; i < alivePlayers.length; i++) { const p = alivePlayers[i], d = Math.hypot(p.x - zombie.x, p.y - zombie.y); if (d <= range && d < bd) { bd = d; _spitT.x = p.x; _spitT.y = p.y; found = true; } }
+    if (found) return _spitT;
+    for (let i = 0; i < room.structs.length; i++) { const b = room.structs[i], d = ARStructs.distToRect(zombie.x, zombie.y, b); if (d <= range && d < bd) { bd = d; _spitT.x = b.x; _spitT.y = b.y; found = true; } }
+    if (found) return _spitT;
+    if (room.base && Math.hypot(room.base.x - zombie.x, room.base.y - zombie.y) - room.base.r <= range) { _spitT.x = room.base.x; _spitT.y = room.base.y; return _spitT; }
+    return null;
+}
+// The acid is thrown: it lands after a flight (the splash is worked out when it lands: whatever is by then within `splash` of the spot is hurt)
+function spitAt(code, room, zombie, rg, t, now) {
+    const dist = Math.hypot(t.x - zombie.x, t.y - zombie.y), dur = Math.max(260, dist / rg.speed * 1000);
+    zombie.angle = Math.atan2(t.y - zombie.y, t.x - zombie.x);
+    (room._acid || (room._acid = [])).push({ t1: now + dur, x: t.x, y: t.y, r: rg.splash, sdmg: rg.sdmg, pdmg: rg.pdmg, bdmg: rg.bdmg });
+    io.to(code).emit('acid', { a: [Math.round(zombie.x), Math.round(zombie.y), Math.round(t.x), Math.round(t.y), Math.round(dur)] });
+}
+function tickAcid(code, room, now, alivePlayers) {
+    const list = room._acid;
+    if (!list || !list.length) return;
+    for (let i = list.length - 1; i >= 0; i--) {
+        const h = list[i];
+        if (now < h.t1) continue;
+        list.splice(i, 1);
+        for (const b of room.structs.slice()) if (ARStructs.distToRect(h.x, h.y, b) <= h.r) hurtBuilt(code, room, b, h.sdmg);
+        for (const t of room.turrets.slice()) if (ARStructs.turretDist(h.x, h.y, t) <= h.r) hurtBuilt(code, room, t, h.sdmg);
+        for (const p of alivePlayers) if (p.alive && Math.hypot(p.x - h.x, p.y - h.y) <= h.r + PLAYER_R) hurtPlayer(code, room, p, h.pdmg, now);
+        if (room.base && Math.hypot(room.base.x - h.x, room.base.y - h.y) <= room.base.r + h.r) hurtBase(code, room, h.bdmg);
+        if (room.gameEnded) return;
+    }
+}
+// The exploder goes off: it is gone (no coins, no kill), the blast hurts every structure within its radius, the players and the base
+function explodeZombie(code, room, zombie, ex, now, alivePlayers) {
+    zombie.hp = 0; zombie.alive = false;
+    const x = zombie.x, y = zombie.y;
+    io.to(code).emit('boom', { x: Math.round(x), y: Math.round(y), r: ex.r });
+    for (const b of room.structs.slice()) if (ARStructs.distToRect(x, y, b) <= ex.r) hurtBuilt(code, room, b, ex.sdmg);
+    for (const t of room.turrets.slice()) if (ARStructs.turretDist(x, y, t) <= ex.r) hurtBuilt(code, room, t, ex.sdmg);
+    for (const p of alivePlayers) if (p.alive && Math.hypot(p.x - x, p.y - y) <= ex.r + PLAYER_R) hurtPlayer(code, room, p, ex.pdmg, now);
+    if (room.base && Math.hypot(room.base.x - x, room.base.y - y) <= room.base.r + ex.r * 0.5) hurtBase(code, room, ex.bdmg);
+}
+// The summoner brings its minions out in a ring round it (kept off the trees, the rocks and the base)
+function summonTick(code, room, zombie, def, dt) {
+    const sm = def.summon;
+    zombie._sumT = (zombie._sumT === undefined ? sm.first : zombie._sumT) - dt;
+    if (zombie._sumT > 0) return;
+    zombie._sumT = sm.every;
+    let mine = 0;
+    for (const z of room.zombies) if (z.alive && z.owner === zombie.id) mine++;
+    const n = Math.min(sm.count, sm.max - mine);
+    const mdef = PVE_ZOMBIE_DEFS.minion, a0 = Math.random() * Math.PI * 2;
+    for (let k = 0; k < n; k++) {
+        let x = zombie.x, y = zombie.y;
+        for (let tries = 0; tries < 8; tries++) {
+            const a = a0 + (k + tries * 0.37) * (Math.PI * 2 / sm.count), d = def.r + mdef.r + 14 + Math.random() * 22;
+            x = Math.max(mdef.r + 4, Math.min(ARENA_W - mdef.r - 4, zombie.x + Math.cos(a) * d)); y = Math.max(mdef.r + 4, Math.min(ARENA_H - mdef.r - 4, zombie.y + Math.sin(a) * d));
+            let ok = !room.base || Math.hypot(x - room.base.x, y - room.base.y) > room.base.r + mdef.r;
+            for (let o = 0; ok && o < room.obstacles.length; o++) { const ob = room.obstacles[o]; if (Math.hypot(x - ob.x, y - ob.y) < ob.r + mdef.r) ok = false; }
+            if (ok) break;
+        }
+        const m = createPveZombie('minion', room.zombies.length, 1, x, y);
+        m.owner = zombie.id; m.angle = zombie.angle;
+        room.zombies.push(m);
+    }
+    io.to(code).emit('summon', { x: Math.round(zombie.x), y: Math.round(zombie.y) });
+}
+
+// ---------- PvE: the zombies' map (zombie-nav.js) ----------
+// One per room: the solid things (trees, rocks, the base) once, the walls the players built every 250 ms, and four distance fields: to the players
+// (small and large zombies; bounded, so it only covers the neighbourhood of the players) and to the base (the whole arena, made again only when
+// a wall changed). A large field is only made if a large zombie went looking for one lately.
+function navUpdate(room, alivePlayers, now) {
+    let st = room._nav;
+    if (!st || st.obs !== room.obstacles || st.base !== room.base) {
+        const nav = ZNav.create(ARENA_W, ARENA_H);
+        ZNav.setStatics(nav, room.obstacles, room.base);
+        st = room._nav = { nav, obs: room.obstacles, base: room.base, pS: ZNav.newField(nav), pL: ZNav.newField(nav), bS: ZNav.newField(nav), bL: ZNav.newField(nav), t: -1e9, sig: -1, wantL: true, bOk: false };
+    }
+    if (now - st.t < 250) return st;
+    st.t = now;
+    const rects = [], circles = [];
+    let sig = 0;
+    for (const b of room.structs) { rects.push({ x: b.x, y: b.y, hw: ARStructs.halfW(b), hh: ARStructs.halfH(b), hp: b.hp, ref: b }); sig = (sig * 31 + b.id * 7 + Math.round(b.hp / 200)) | 0; }
+    for (const t of room.turrets) { circles.push({ x: t.x, y: t.y, r: ARStructs.TURRET.r, hp: t.hp, ref: t }); sig = (sig * 31 + t.id * 5 + Math.round(t.hp / 200) + 1000) | 0; }
+    ZNav.setWalls(st.nav, rects, circles);
+    const base = room.base ? [{ ring: true, x: room.base.x, y: room.base.y, r0: room.base.r + 14, r1: room.base.r + 64 }] : [];
+    if (sig !== st.sig || !st.bOk) {
+        st.sig = sig; st.bOk = true;
+        ZNav.build(st.nav, false, base, 1e9, st.bS);
+        ZNav.build(st.nav, true, base, 1e9, st.bL);
+    }
+    const src = alivePlayers.map(p => ({ x: p.x, y: p.y }));
+    ZNav.build(st.nav, false, src, 36, st.pS);
+    if (st.wantL) { ZNav.build(st.nav, true, src, 36, st.pL); st.wantL = false; } else st.pL.fill(Infinity);
+    return st;
+}
+const _navOut = { x: 0, y: 0, owner: null, dist: 0 };
+// Is the straight line from (x0, y0) to (x1, y1) clear of the circles (trees, rocks), each taken `pad` bigger?
+function segClear(x0, y0, x1, y1, circles, pad) {
+    const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy;
+    for (let i = 0; i < circles.length; i++) {
+        const c = circles[i], rr = c.r + pad;
+        let t = l2 > 0 ? ((c.x - x0) * dx + (c.y - y0) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const ex = x0 + dx * t - c.x, ey = y0 + dy * t - c.y;
+        if (ex * ex + ey * ey < rr * rr) return false;
+    }
+    return true;
+}
+
+// Zombies of the wave that are still to come (the queued batches)
+function pveQueuedCount(room) {
+    let n = 0;
+    for (const batch of room.pveSpawnQueue) n += batch.length;
+    return n;
 }
 
 function assignPveSpawnPositions(players) {
@@ -1329,47 +1824,112 @@ function assignPveSpawnPositions(players) {
     });
 }
 
+// The numbers of the wave that just ended, for the break panel: one row per player [id, kills, damage taken, coins earned] and the MVP
+// (most kills; nobody if there were none; the first on a tie). Not in gs2.
+function pveWaveResults(room) {
+    const rows = [];
+    let mvp = null, best = 0;
+    for (const p of room._playerArr) {
+        const w = p.wv || { k0: p.kills, dmg: 0, coins: 0 };
+        const k = Math.max(0, p.kills - w.k0);
+        rows.push([p.id, k, Math.round(w.dmg), w.coins]);
+        if (k > best) { best = k; mvp = p.id; }
+    }
+    return { wave: room.pveWave, rows, mvp };
+}
+
+// A free place for a player to come back to by the base: the ring round it (240 out, at `angle`), then other angles and radii, taking the first that is
+// clear of trees, rocks, the base, barricades and turrets by a good margin (a pocket among the walls is not a place); if none is that open, the one with
+// the least margin, and if even that fails the ring itself.
+function pveFreeSpot(room, angle) {
+    const R = PLAYER_R, T = ARStructs.TURRET.r;
+    const clear = (x, y, m) => {
+        if (x < R + 20 || y < R + 20 || x > ARENA_W - R - 20 || y > ARENA_H - R - 20) return false;
+        if (Math.hypot(x - PVE_BASE_X, y - PVE_BASE_Y) < PVE_BASE_R + R + m) return false;
+        for (const o of room.obstacles) if (Math.hypot(x - o.x, y - o.y) < o.r + R + m) return false;
+        for (const b of room.structs) if (ARStructs.distToRect(x, y, b) < R + m) return false;
+        for (const t of room.turrets) if (Math.hypot(x - t.x, y - t.y) < T + R + m) return false;
+        return true;
+    };
+    for (const m of [40, 16, 4]) {
+        for (const rad of [240, 200, 280, 160, 320, 120]) {
+            for (let k = 0; k < 24; k++) {
+                const a = angle + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 12), x = Math.round(PVE_BASE_X + Math.cos(a) * rad), y = Math.round(PVE_BASE_Y + Math.sin(a) * rad);
+                if (clear(x, y, m)) return { x, y };
+            }
+        }
+    }
+    return { x: Math.round(PVE_BASE_X + Math.cos(angle) * 240), y: Math.round(PVE_BASE_Y + Math.sin(angle) * 240) };
+}
+
 function startPveWave(code, room) {
     if (!rooms.has(code) || room.gameEnded || room.pveWaveActive) return;
     room.pveWave++;
+    if (room.pveWave === 1) room.pveT0 = Date.now();
     room.pveWaveActive = true;
     room.pveWaveBreak  = false;
     room.pveBreakTimer = 0;
     room.pveSkipVotes.clear();
-    // Respawn jucatori langa baza cu ammo plin
+    // Players come back next to the base with full health; a revived one also gets a full magazine and reserve
     room._playerArr.forEach((p, i) => {
-        const angle = (i / Math.max(room._playerArr.length, 1)) * Math.PI * 2 + Math.PI / 4;
-        p.x = Math.round(PVE_BASE_X + Math.cos(angle) * 240);
-        p.y = Math.round(PVE_BASE_Y + Math.sin(angle) * 240);
-        p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
+        p.wv = { k0: p.kills, dmg: 0, coins: 0 };   // this wave's numbers for the break panel (kills = the counter now; the rest from zero)
+        // A player who is alive stays where the last wave left them (the break does not move anybody): putting them back by the base used to drop them
+        // inside the barricades and turrets they had built, with no way out. One who fell comes back by the base, on a free spot.
+        if (!p.alive) {
+            const angle = (i / Math.max(room._playerArr.length, 1)) * Math.PI * 2 + Math.PI / 4, spot = pveFreeSpot(room, angle);
+            p.x = spot.x; p.y = spot.y;
+        }
+        // a revived player gets a full magazine and reserve; the ones who lived fill the magazine from the reserve they have (2/34 -> 6/30), nothing for free
+        if (!p.alive) ARAmmo.refill(p, p.reserveStart); else { ARAmmo.cancelReload(p); ARAmmo.finishReload(p); }
+        p.reloadReq = false; p.lastShotTime = 0;
         p.hp = p.maxHp; p.alive = true;
         p.shooting = false; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = true;
         p.shootCooldown = 0; p.aimTimer = 0; p.burstRemaining = 0; p.burstTimer = 0;
         p.moveDir.x = 0; p.moveDir.y = 0;
     });
-    room.zombies = prepareAndSpawnWave(room, room.pveWave - 1);
-    io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, batches: room.pveSpawnQueue.length + 1 });
+    room.pveHpMul = pveHpMul(room.pveWave);
+    room._acid = []; room._hits.length = 0;
+    // Nothing comes out at once: the first batch goes to the front of the queue and waits PVE_START_GRACE s (the same timer the later batches use),
+    // so the players can walk to what they built and repair or upgrade it before the first zombie. The HUD counts the queued ones as "left".
+    const first = prepareAndSpawnWave(room, room.pveWave - 1);
+    room.pveSpawnQueue.unshift(first.map(z => z.type));
+    room.zombies = [];
+    room.pveSpawnTimer = PVE_START_GRACE;
+    // zombies = how many this wave brings in all, queued = the ones that have not come yet (the HUD shows "left / total": the ones on the map + queued)
+    io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, hpMul: room.pveHpMul, batches: room.pveSpawnQueue.length,
+        zombies: pveQueuedCount(room), queued: pveQueuedCount(room), grace: PVE_START_GRACE });
 }
 
-function pveVictory(code, room) {
+// The end of a PvE match: one board for everybody (the team table, the zombies by family, the base, the time) and, for each player, what the
+// match pays him (PveRewards.compute: the same numbers are written to the account by endPlayerRound). Not in gs2.
+function pveEndBoard(room, victory) {
+    const team = room._playerArr.map(p => ({ id: p.id, name: p.name, slot: p.slot, kills: p.kills | 0, dmg: Math.round(p.pveTot.dmg), coins: p.pveTot.coins | 0 }));
+    let mvp = null, best = 0;
+    for (const t of team) if (t.kills > best) { best = t.kills; mvp = t.id; }
+    const kinds = { ...room.pveKinds };
+    return {
+        result: victory ? 'victory' : 'defeat',
+        wavesCleared: victory ? PveRewards.TOTAL_WAVES : Math.max(0, room.pveWave - 1), wave: room.pveWave, total: PveRewards.TOTAL_WAVES,
+        base: { hp: room.base ? Math.round(room.base.hp) : 0, max: room.base ? room.base.maxHp : PVE_BASE_HP },
+        timeSec: room.pveT0 ? Math.max(0, Math.round((Date.now() - room.pveT0) / 1000)) : 0,
+        zombies: PveRewards.KINDS.reduce((n, k) => n + kinds[k], 0), kinds, team, mvp,
+    };
+}
+function pveFinish(code, room, victory) {
     if (room.gameEnded) return;
     room.gameEnded = true;
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
-    io.to(code).emit('pve-end', { result: 'victory', wavesCleared: room.pveWave });
-    room._playerArr.forEach(p => endPlayerRound(p, true, { mode: 'pve', rs: p.rs, wave: room.pveWave }));
+    const board = pveEndBoard(room, victory);
+    room._playerArr.forEach(p => {
+        const reward = PveRewards.compute({ wavesCleared: board.wavesCleared, victory, kills: p.kills });
+        io.to(p.id).emit('pve-end', { ...board, reward });
+        endPlayerRound(p, victory, { mode: 'pve', rs: p.rs, wave: room.pveWave, reward });
+    });
     setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
-    console.log(`[${code}] PvE Victorie!`);
+    console.log(victory ? `[${code}] PvE Victorie!` : `[${code}] PvE Infrangere (baza distrusa la wave ${room.pveWave})`);
 }
-
-function pveDefeat(code, room) {
-    if (room.gameEnded) return;
-    room.gameEnded = true;
-    if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
-    io.to(code).emit('pve-end', { result: 'defeat', wavesCleared: room.pveWave > 0 ? room.pveWave - 1 : 0 });
-    room._playerArr.forEach(p => endPlayerRound(p, false, { mode: 'pve', rs: p.rs, wave: room.pveWave }));
-    setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
-    console.log(`[${code}] PvE Infrangere (baza distrusa la wave ${room.pveWave})`);
-}
+function pveVictory(code, room) { pveFinish(code, room, true); }
+function pveDefeat(code, room) { pveFinish(code, room, false); }
 
 // ---------- MAP SEASON ----------
 // The look of the trees and rocks (public/data/map-objects.json: seasons, sprites in public/images/map/<season>/).
@@ -1411,6 +1971,8 @@ function newRoom(hostId, mode = 'br') {
         base: mode === 'pve' ? { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R } : null,
         pveWave: 0, pveWaveActive: false, pveWaveBreak: false, pveBreakTimer: 0, pveSkipVotes: new Set(),
         pveSpawnQueue: [], pveSpawnTimer: 0,
+        pveKinds: PveRewards.newKinds(), pveT0: 0,   // PvE end board: zombies killed by family, when wave 1 began
+        structs: [], turrets: [], _hits: [], nextStructId: 0, _structDirty: false, _structHpAt: 0,   // PvE: what the players built (barricades, turrets; ids from one counter), sent by events, not in gs2
         nextSlot: 0,   // players are named by a small number in the state packet (netproto.js)
         gameStarted:     false,
         gameEnded:       false,
@@ -1471,15 +2033,17 @@ function addPlayer(code, room, socket, data) {
         shooting: false, shootCooldown: 0, aimTimer: 0, needsReleaseToShoot: false, hasReleasedSinceEmpty: false,
         burstRemaining: 0, burstTimer: 0, burstDx: 0, burstDy: 0, burstWeapon: null, inputQ: [],
         ws: {}, // weapon stats of this match (WEAPON STATS)
-        ammo: _ws.ammoMax, ammoMax: _ws.ammoMax,
-        reloading: false, reloadProgress: 0, lastShotTime: 0,
-        weaponReloadRate: _ws.reloadRate, bulletSpeed: _ws.bulletSpeed,
+        ammo: _ws.ammoMax, ammoMax: _ws.ammoMax, reserve: _ws.reserveStart, reserveStart: _ws.reserveStart,   // magazine / its size, reserve / the reserve you begin with; only the magazine has a size, the reserve grows with boxes and purchases (public/ammo.js)
+        reloading: false, reloadProgress: 0, reloadReq: false, lastShotTime: 0,
+        bulletSpeed: _ws.bulletSpeed,
         alive: true, kills: 0, lastDamageTime: 0, rs: Missions.newRoundStats(),
         lastAckSeq: 0, pendingAckSeq: 0,
         coins: 0,
         lastInputAt: 0, stalled: false, backlogged: false, nextKeepAt: 0,   // slow client detection (STALL_MS)
         baseMaxHp: maxHp, baseDamage: damage, baseSpeed: speed, baseAmmoMax: _ws.ammoMax,
         pveUpgrades: { dmg: 0, spd: 0, hp: 0, ammo: 0 },
+        pveInv: newInv(),   // PvE: what they bought and have not placed yet
+        pveTot: { dmg: 0, coins: 0 },   // PvE end board: damage taken and coins picked up in the whole match (wv is per wave)
     };
     room._playerArr.push(room.players[socket.id]);
 
@@ -1507,6 +2071,10 @@ function broadcastWaiting(code, room) {
 }
 
 const _steerOut = { x: 0, y: 0 };
+const _stPt = { x: 0, y: 0 };
+const _stDist = { d: Infinity };   // scratch point for the barricade checks (public/structures.js)
+const _heavyZ = [];                // the zombies of the room that a player cannot push, rebuilt each tick
+const _noPlayers = [];             // a type that does not hunt has no player to hit
 // The things that stop a bullet in a room: its obstacles, and in PvE the base (players and zombies were already kept
 // out of it; bullets went through). One array per room, made again only if the obstacles or the base are replaced.
 function _bulletBlockers(room) {
@@ -1550,6 +2118,7 @@ function applyInput(p, data) {
             p.shootDir.y = +data.sdy || 0;
         }
     }
+    if (data.reload === true) p.reloadReq = true;   // R: the reload starts in the tick (never in the middle of a burst)
     if (data.seq !== undefined) p.pendingAckSeq = +data.seq;
 }
 
@@ -1579,7 +2148,9 @@ function startRoomLoop(code, room) {
     let tickNo = 0;
     let next = performance.now() + INTERVAL_MS; // when the next tick is due
 
-    function tick(lateMs) {
+    function tick(lateMs, scheduledDue) {
+        const _netState = NET_DIAG.forRoom(code);
+        const _netStart = _netState ? performance.now() : 0;
         const tickStart = Date.now();
         if (PERF) PERF.tickStart(room, lateMs);
         try {
@@ -1589,6 +2160,9 @@ function startRoomLoop(code, room) {
             room.lastTick = now;
 
             const allPlayers = room._playerArr;
+            // the zombies a player cannot push (PvE tanks): to the players they are a wall, like a rock
+            _heavyZ.length = 0;
+            if (room.mode === 'pve') for (let hz = 0; hz < room.zombies.length; hz++) { const q = room.zombies[hz]; if (q.alive && (PVE_ZOMBIE_DEFS[q.type] || PVE_ZOMBIE_DEFS.normal).heavy) _heavyZ.push(q); }
 
             allPlayers.forEach(player => {
                 if (!player.alive || room.gameEnded || room.countdownActive) { player.inputQ.length = 0; return; }
@@ -1604,6 +2178,18 @@ function startRoomLoop(code, room) {
 
                 player.x = Math.max(20, Math.min(ARENA_W - 20, player.x + player.moveDir.x * player.speed * dt));
                 player.y = Math.max(20, Math.min(ARENA_H - 20, player.y + player.moveDir.y * player.speed * dt));
+                // a heavy zombie first (the rocks and barricades below have the last word on where the player can stand)
+                for (let hi = 0; hi < _heavyZ.length; hi++) {
+                    const hz = _heavyZ[hi], hr = PVE_ZOMBIE_DEFS[hz.type].r + PLAYER_R;
+                    const hx = player.x - hz.x, hy = player.y - hz.y, hdSq = hx * hx + hy * hy;
+                    if (hdSq >= hr * hr) continue;
+                    const hd = Math.sqrt(hdSq);
+                    if (hd > 0) { player.x = hz.x + hx / hd * hr; player.y = hz.y + hy / hd * hr; } else { player.x = hz.x + hr; }
+                }
+                if (room.turrets.length) {
+                    _stPt.x = player.x; _stPt.y = player.y;
+                    if (ARStructs.turretPushOutAll(_stPt, PLAYER_R, room.turrets)) { player.x = _stPt.x; player.y = _stPt.y; }
+                }
                 const _obsList = room.obstacles;
                 for (let oi = 0; oi < _obsList.length; oi++) {
                     const obs = _obsList[oi];
@@ -1615,6 +2201,10 @@ function startRoomLoop(code, room) {
                     player.x = obs.x + _ox / _od * _om;
                     player.y = obs.y + _oy / _od * _om;
                 }
+                if (room.structs.length) {
+                    _stPt.x = player.x; _stPt.y = player.y;
+                    if (ARStructs.pushOutAll(_stPt, PLAYER_R, room.structs)) { player.x = _stPt.x; player.y = _stPt.y; }
+                }
                 if (room.base) {
                     const _bd = Math.hypot(player.x - room.base.x, player.y - room.base.y);
                     const _bm = room.base.r + PLAYER_R;
@@ -1624,33 +2214,20 @@ function startRoomLoop(code, room) {
                     }
                 }
 
-                if (player.hp < player.maxHp && (now - (player.lastDamageTime || 0)) > HP_REGEN_DELAY) {
+                if (room.mode !== 'pve' && player.hp < player.maxHp && (now - (player.lastDamageTime || 0)) > HP_REGEN_DELAY) {   // (in PvE only a new wave or a Health Station heals)
                     player.hp = Math.min(player.maxHp, player.hp + HP_REGEN_RATE * dt);
                 }
 
                 if (player.shootCooldown > 0) player.shootCooldown -= dt;
                 if (player.aimTimer > 0) player.aimTimer -= dt;
 
-                // Reload progresiv per-weapon
-                const _pAmmoMax = player.ammoMax;
-                if (player.ammo < _pAmmoMax && (!player.shooting || player.ammo === 0)) {
-                    const idleSec = (now - player.lastShotTime) / 1000;
-                    if (idleSec >= WEAPON_RULES.reloadDelay) {
-                        player.reloading = true;
-                        player.reloadProgress += player.weaponReloadRate * dt;
-                        while (player.reloadProgress >= 1.0 && player.ammo < _pAmmoMax) {
-                            player.reloadProgress -= 1.0;
-                            player.ammo++;
-                        }
-                        if (player.ammo >= _pAmmoMax) {
-                            player.reloadProgress = 0; player.reloading = false;
-                            player.needsReleaseToShoot = false; player.hasReleasedSinceEmpty = true;
-                        }
-                    }
-                } else if (player.ammo >= _pAmmoMax) {
-                    player.reloading = false; player.reloadProgress = 0;
-                } else {
-                    player.reloading = false; // trage activ — pauza reload, progresul se pastreaza
+                // Reload (the classic magazine, public/ammo.js): R, or the trigger held on an empty magazine, starts it. It
+                // runs reloadSeconds, then the missing rounds move from the reserve into the magazine. Nothing is fired meanwhile.
+                if (player.reloadReq && player.burstRemaining === 0) { player.reloadReq = false; ARAmmo.startReload(player); }
+                if (player.shooting) ARAmmo.autoReload(player, true);
+                if (player.reloading) {
+                    ARAmmo.stepReload(player, dt, (WEAPON_STATS[player.weapon] || WEAPON_STATS[DEFAULT_WEAPON]).reloadSeconds);
+                    if (!player.reloading) { player.needsReleaseToShoot = false; player.hasReleasedSinceEmpty = true; }
                 }
 
                 // Burst continuation — glonturile 2+3 dintr-o rafala
@@ -1661,18 +2238,23 @@ function startRoomLoop(code, room) {
                         const _bw     = player.burstWeapon || player.weapon;
                         const _bwsCur = WEAPON_STATS[_bw] || WEAPON_STATS[DEFAULT_WEAPON];
                         const _bfire  = GUN_FIRE[_bw] || GUN_FIRE[DEFAULT_WEAPON];
-                        wsFor(player, _bw).shots++;
-                        // from the muzzle where the player is now; the hit test starts at the centre (sx, sy)
-                        room.bullets.push({
-                            id: room.nextBulletId++, ownerId: player.id, os: player.slot, weapon: _bw,
-                            x: player.x + player.burstDx * _bfire.muzzle, y: player.y + player.burstDy * _bfire.muzzle,
-                            sx: player.x, sy: player.y,
-                            dx: player.burstDx * player.bulletSpeed,
-                            dy: player.burstDy * player.bulletSpeed,
-                            damage: player.damage, radius: WEAPON_RULES.bulletRadius,
-                            lifetime: _bfire.life, speed: player.bulletSpeed
-                        });
-                        player.burstRemaining--;
+                        // every bullet of a burst costs one round of the magazine; a burst that runs dry stops short
+                        if (ARAmmo.spend(player, 1) > 0) {
+                            wsFor(player, _bw).shots++;
+                            // from the muzzle where the player is now; the hit test starts at the centre (sx, sy)
+                            room.bullets.push({
+                                id: room.nextBulletId++, ownerId: player.id, os: player.slot, weapon: _bw,
+                                x: player.x + player.burstDx * _bfire.muzzle, y: player.y + player.burstDy * _bfire.muzzle,
+                                sx: player.x, sy: player.y,
+                                dx: player.burstDx * player.bulletSpeed,
+                                dy: player.burstDy * player.bulletSpeed,
+                                damage: player.damage, radius: WEAPON_RULES.bulletRadius,
+                                lifetime: _bfire.life, speed: player.bulletSpeed
+                            });
+                            player.burstRemaining--;
+                        } else {
+                            player.burstRemaining = 0;
+                        }
                         if (player.burstRemaining > 0) {
                             player.burstTimer += _bwsCur.burstDelay; // keep the sub-tick remainder
                         } else {
@@ -1680,13 +2262,12 @@ function startRoomLoop(code, room) {
                             player.shootCooldown = _bwsCur.shootCd + Math.min(0, player.burstTimer);
                             player.lastShotTime  = now;
                             if (_bwsCur.fireMode === 'semi') { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
-                            if (player.ammo === 0) { player.shooting = false; player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
                         }
                     }
                 }
 
-                // Tragere — intrerupe reload-ul dar pastreaza progresul partial
-                if (player.shooting && player.shootCooldown <= 0 && player.ammo > 0 && player.aimTimer <= 0 && player.burstRemaining === 0) {
+                // Tragere: o tragere costa un glont din incarcator (indiferent de alice); nu se trage in timpul reload-ului
+                if (player.shooting && player.shootCooldown <= 0 && ARAmmo.canFire(player) && player.aimTimer <= 0 && player.burstRemaining === 0) {
                     const dl = Math.hypot(player.shootDir.x || 0, player.shootDir.y || 0);
                     if (dl >= 0.1) {
                         const dx = player.shootDir.x / dl, dy = player.shootDir.y / dl;
@@ -1711,8 +2292,7 @@ function startRoomLoop(code, room) {
                             });
                         }
                         wsFor(player, player.weapon).shots += _pellets; // every pellet is a shot
-                        player.ammo--;
-                        player.reloading = false;
+                        ARAmmo.spend(player, 1);
                         player.lastShotTime = now;
                         if (_wsCur.fireMode === 'burst') {
                             player.burstRemaining = _wsCur.burstCount - 1;
@@ -1724,7 +2304,6 @@ function startRoomLoop(code, room) {
                             // ticks (SMG fired every 136 ms instead of 120 when ticks were 17 ms).
                             player.shootCooldown = Math.min(0, player.shootCooldown) + _wsCur.shootCd;
                             if (_wsCur.fireMode === 'semi') { player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
-                            if (player.ammo === 0) { player.shooting = false; player.needsReleaseToShoot = true; player.hasReleasedSinceEmpty = false; }
                         }
                     }
                 }
@@ -1882,10 +2461,14 @@ function startRoomLoop(code, room) {
 
             // Zombi AI — PvE
             if (room.mode === 'pve' && !room.countdownActive) {
-                for (const zombie of room.zombies) {
+                const nst = navUpdate(room, alivePlayers, now);
+                for (let zi = 0; zi < room.zombies.length; zi++) {   // (not for-of: a summoner adds to the list as it goes)
+                    const zombie = room.zombies[zi];
                     if (!zombie.alive) continue;
                     zombie.attackCooldown = Math.max(0, zombie.attackCooldown - dt);
                     const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
+                    const large = !!def.large;
+                    if (def.summon && alivePlayers.length) summonTick(code, room, zombie, def, dt);
 
                     let nearestPlayer = null, nearestDist = Infinity;
                     for (const p of alivePlayers) {
@@ -1893,31 +2476,113 @@ function startRoomLoop(code, room) {
                         if (d < nearestDist) { nearestDist = d; nearestPlayer = p; }
                     }
 
-                    const chasingPlayer = nearestPlayer && nearestDist < ZOMBIE_DETECT_R;
-                    zombie.targetingBase = !chasingPlayer;
-                    const targetX = chasingPlayer ? nearestPlayer.x : PVE_BASE_X;
-                    const targetY = chasingPlayer ? nearestPlayer.y : PVE_BASE_Y;
-                    const speed   = def.chaseSpd;
+                    // Who it goes for: a player in range (only the types that hunt), else a barricade or a turret within its range (the exploders
+                    // look further), else the base. On the way to a player or the base it follows the map (zombie-nav.js): round the trees and
+                    // the rocks, round a wall if that is short, and through the weakest wall if there is no other way: that wall it hits.
+                    const seek = def.explode ? def.explode.seek : ARStructs.BARRICADE.detectRange;
+                    let tgtStruct = null, tgtDist = Infinity;
+                    if (room.structs.length) {
+                        tgtStruct = ARStructs.nearestInRange(zombie.x, zombie.y, room.structs, seek, _stDist);
+                        tgtDist = _stDist.d;
+                    }
+                    if (room.turrets.length) {   // a turret as near counts the same: it is hit before the base
+                        const tt = ARStructs.nearestTurretInRange(zombie.x, zombie.y, room.turrets, def.explode ? seek : ARStructs.TURRET.detectRange, _stDist);
+                        if (tt && _stDist.d < tgtDist) { tgtStruct = tt; tgtDist = _stDist.d; }
+                    }
+                    const hunts = def.hunts !== false;
+                    let goal = pickTarget(hunts, nearestDist, def.scream ? 1e9 : ZOMBIE_DETECT_R, tgtDist, seek);   // a screamer smells a player from anywhere
+                    if (def.ranged) { goal = 'base'; tgtStruct = null; tgtDist = Infinity; }   // a spitter walks on to the base and throws at what it can reach
+                    const baseD = room.base ? Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) : 1e9;
+                    let navUsed = false, navX = 0, navY = 0;
+                    if (nst && (goal === 'player' || goal === 'base')) {
+                        const f = goal === 'player' ? (large ? nst.pL : nst.pS) : (large ? nst.bL : nst.bS);
+                        if (large && goal === 'player') nst.wantL = true;
+                        if (ZNav.steer(nst.nav, f, large, zombie.x, zombie.y, 3, _navOut)) {
+                            navUsed = true;
+                            const w = _navOut.owner;
+                            if (w && !w._gone && !def.ranged) { tgtStruct = w; tgtDist = builtDist(zombie.x, zombie.y, w); goal = 'struct'; }   // the way is through this wall
+                            else {
+                                // the furthest step of the way that it can walk straight to (nothing solid in between: a waypoint past the corner of a tree would press it into the tree)
+                                navX = _navOut.px[0]; navY = _navOut.py[0];
+                                for (let k = _navOut.n - 1; k > 0; k--) { if (segClear(zombie.x, zombie.y, _navOut.px[k], _navOut.py[k], room.obstacles, def.r + 3)) { navX = _navOut.px[k]; navY = _navOut.py[k]; break; } }
+                            }
+                        }
+                    }
+                    if (goal === 'player' && !navUsed && room.structs.length) {
+                        // No map here (a zombie shut in, or no field yet): after a player it goes round the barricades (avoidStructs below). It is stuck when, for
+                        // a full second, it has been standing pressed against a barricade that is between it and the player: then it breaks that one instead.
+                        zombie._chkT = (zombie._chkT || 0) + dt;
+                        if (nearestDist <= def.attackR + 6) { zombie._stuck = 0; zombie._chkT = 0; }
+                        else if (zombie._chkT >= 0.5) {
+                            const moved = zombie._chkX === undefined ? 1e9 : Math.hypot(zombie.x - zombie._chkX, zombie.y - zombie._chkY);
+                            const block = ARStructs.blockerBetween(zombie.x, zombie.y, nearestPlayer.x, nearestPlayer.y, room.structs, def.r + 8, def.r);
+                            zombie._stuck = block && moved < def.chaseSpd * 0.5 * 0.3 ? (zombie._stuck || 0) + 1 : 0;
+                            if (zombie._stuck === 2) { zombie._stuckPX = nearestPlayer.x; zombie._stuckPY = nearestPlayer.y; }
+                            zombie._chkX = zombie.x; zombie._chkY = zombie.y; zombie._chkT = 0;
+                        }
+                        if (zombie._stuck >= 2) {
+                            const block = nearestDist > def.attackR + 6 && Math.hypot(nearestPlayer.x - zombie._stuckPX, nearestPlayer.y - zombie._stuckPY) < 60
+                                ? ARStructs.blockerBetween(zombie.x, zombie.y, nearestPlayer.x, nearestPlayer.y, room.structs, def.r + 8, def.r) : null;
+                            if (block) { goal = 'struct'; tgtStruct = block; tgtDist = ARStructs.distToRect(zombie.x, zombie.y, block); } else zombie._stuck = 0;
+                        }
+                    } else { zombie._stuck = 0; }
+                    const chasingPlayer = goal === 'player';
+                    if (goal !== 'struct') tgtStruct = null;
+                    zombie.targetingBase = goal === 'base';
+                    let targetX, targetY;
+                    if (chasingPlayer) { if (navUsed && nearestDist > 110) { targetX = navX; targetY = navY; } else { targetX = nearestPlayer.x; targetY = nearestPlayer.y; } }
+                    else if (tgtStruct) { builtNearestPoint(zombie.x, zombie.y, tgtStruct, _stPt); targetX = _stPt.x; targetY = _stPt.y; }
+                    else if (navUsed && room.base && baseD > room.base.r + def.r + 75) { targetX = navX; targetY = navY; }
+                    else { targetX = PVE_BASE_X; targetY = PVE_BASE_Y; }
+                    let speed = tgtStruct && tgtDist <= def.r + 6 ? 0 : def.chaseSpd;   // against the barricade it stands and hits
+                    if (def.scream) {   // a screamer that has got near a player stops, screams (once) and then goes on after them
+                        const sc = def.scream;
+                        if (zombie._scream === undefined && nearestPlayer && nearestDist <= sc.near) { zombie._scream = sc.windup; zombie._sfired = false; }
+                        if (zombie._scream > 0) {
+                            zombie._scream -= dt; speed = 0;
+                            if (!zombie._sfired && zombie._scream <= sc.windup - sc.fire) { zombie._sfired = true; screamZombie(code, room, zombie, sc, now); }
+                            if (zombie._scream <= 0) zombie._scream = -1;
+                        }
+                    }
+                    const spit = def.ranged ? pickSpitTarget(room, zombie, def.ranged.range, alivePlayers) : null;
+                    if (spit) speed = 0;   // something is in range: it stands and throws
 
                     let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
                     const dLen = Math.hypot(ddx, ddy);
                     if (dLen > 0) { ddx /= dLen; ddy /= dLen; }
 
-                    // chasing a player: the base is an obstacle to get round (going for the base itself, it is the goal)
-                    if (chasingPlayer && room.base) { avoidBase(zombie.x, zombie.y, ddx, ddy, room.base, def.r, _steerOut); ddx = _steerOut.x; ddy = _steerOut.y; }
-
-                    for (const obs of room.obstacles) {
-                        const _ox = zombie.x - obs.x, _oy = zombie.y - obs.y;
-                        const influence = obs.r + def.r + 55;
-                        const _oSq = _ox*_ox + _oy*_oy;
-                        if (_oSq >= influence*influence) continue;
-                        const od = Math.sqrt(_oSq);
-                        if (od > 0) {
-                            const str = (influence - od) / influence;
-                            ddx += _ox / od * str * 2.8;
-                            ddy += _oy / od * str * 2.8;
+                    if (!navUsed) {
+                        // chasing a player: the base is an obstacle to get round (going for the base itself, it is the goal)
+                        if (chasingPlayer && room.base) { avoidBase(zombie.x, zombie.y, ddx, ddy, room.base, def.r, _steerOut); ddx = _steerOut.x; ddy = _steerOut.y; }
+                        // ... and so are the barricades (it only breaks one that is in its way when nothing else leads to the target)
+                        if (!chasingPlayer && zombie._ring) { zombie._ring.sense = 0; zombie._ring.sid = 0; zombie._ring.n = 0; }
+                        if (chasingPlayer && room.structs.length) { avoidStructs(zombie.x, zombie.y, ddx, ddy, targetX, targetY, room.structs, def.r, _steerOut, zombie._ring || (zombie._ring = { sense: 0, sid: 0, n: 0 })); ddx = _steerOut.x; ddy = _steerOut.y; }
+                    }
+                    if (!navUsed || goal === 'struct') {   // the map keeps clear of the trees already; without it (or at a wall) a tree pushes a little
+                        for (const obs of room.obstacles) {
+                            const _ox = zombie.x - obs.x, _oy = zombie.y - obs.y;
+                            const influence = obs.r + def.r + 55;
+                            const _oSq = _ox*_ox + _oy*_oy;
+                            if (_oSq >= influence*influence) continue;
+                            const od = Math.sqrt(_oSq);
+                            if (od > 0) {
+                                const str = (influence - od) / influence;
+                                ddx += _ox / od * str * 2.8;
+                                ddy += _oy / od * str * 2.8;
+                            }
                         }
                     }
+                    // A turret is round: a zombie after a player (and with no map) goes round it like a rock. One that is going for the turret (or
+                    // the base, or a barricade) must not be pushed off it: that push cancelled the pull at ~30 from the surface, the sum flipped sign
+                    // every tick (the zombie spun on the spot and hit only now and then) and with a crowd it never got within reach.
+                    for (let ti = 0; !navUsed && chasingPlayer && ti < room.turrets.length; ti++) {
+                        const tu = room.turrets[ti], _tx = zombie.x - tu.x, _ty = zombie.y - tu.y;
+                        const influence = ARStructs.TURRET.r + def.r + 40, _tSq = _tx * _tx + _ty * _ty;
+                        if (_tSq >= influence * influence || _tSq === 0) continue;
+                        const td = Math.sqrt(_tSq), str = (influence - td) / influence;
+                        ddx += _tx / td * str * 2.8; ddy += _ty / td * str * 2.8;
+                    }
+                    if (zombie._jit > 0) { zombie._jit -= dt; ddx = Math.cos(zombie._jA); ddy = Math.sin(zombie._jA); }   // shaken loose (see below)
 
                     const moveLen = Math.hypot(ddx, ddy);
                     if (moveLen > 0) {
@@ -1938,7 +2603,16 @@ function startRoomLoop(code, room) {
                         if (od2 > 0) { zombie.x += _ox2 / od2 * (minD - od2); zombie.y += _oy2 / od2 * (minD - od2); }
                     }
 
-                    for (const p of alivePlayers) {
+                    if (room.structs.length) {
+                        _stPt.x = zombie.x; _stPt.y = zombie.y;
+                        if (ARStructs.pushOutAll(_stPt, def.r, room.structs)) { zombie.x = _stPt.x; zombie.y = _stPt.y; }
+                    }
+                    if (room.turrets.length) {
+                        _stPt.x = zombie.x; _stPt.y = zombie.y;
+                        if (ARStructs.turretPushOutAll(_stPt, def.r, room.turrets)) { zombie.x = _stPt.x; zombie.y = _stPt.y; }
+                    }
+
+                    for (const p of def.heavy ? _noPlayers : alivePlayers) {   // a heavy one does not give way: the player is moved out of it (above)
                         const _px = zombie.x - p.x, _py = zombie.y - p.y;
                         const minPD = def.r + PLAYER_R;
                         const _pSq = _px*_px + _py*_py;
@@ -1966,29 +2640,59 @@ function startRoomLoop(code, room) {
                         if (_sdx*_sdx + _sdy*_sdy >= minSD*minSD) continue;
                         const sd = Math.sqrt(_sdx*_sdx + _sdy*_sdy);
                         if (sd > 0) {
-                            const push = (minSD - sd) * 0.25;
+                            const push = (minSD - sd) * 0.5 * ((def2.mass || 1) / ((def.mass || 1) + (def2.mass || 1)));   // equal masses: 0.25 of the overlap each, as before
                             zombie.x += _sdx / sd * push;
                             zombie.y += _sdy / sd * push;
                         }
                     }
 
-                    if (zombie.attackCooldown <= 0) {
+                    // Stuck: following the map but not getting anywhere for half a second (a crowd, a corner the map does not know): a shove sideways for half a second
+                    zombie._sT = (zombie._sT || 0) + dt;
+                    if (zombie._sT >= 0.5) {
+                        const mv = zombie._sX === undefined ? 1e9 : Math.hypot(zombie.x - zombie._sX, zombie.y - zombie._sY);
+                        zombie._sX = zombie.x; zombie._sY = zombie.y; zombie._sT = 0;
+                        const atGoal = goal === 'player' ? nearestDist <= def.attackR + 14 : goal === 'base' ? !room.base || baseD <= room.base.r + def.r + 28 : true;
+                        if (navUsed && speed > 0 && !atGoal && !(zombie._jit > 0) && mv < def.chaseSpd * 0.5 * 0.2) {
+                            zombie._jit = 0.5; zombie._jA = zombie.angle + (Math.random() < 0.5 ? 1 : -1) * Math.PI * 0.5;
+                        }
+                    }
+
+                    if (def.explode) {
+                        // goes off on touch: a structure it is up against, a player, the base
+                        if ((tgtStruct && builtDist(zombie.x, zombie.y, tgtStruct) <= def.r + 16) || (nearestPlayer && nearestDist <= def.r + PLAYER_R + 8) || baseD <= (room.base ? room.base.r : 0) + def.r + 12) {
+                            explodeZombie(code, room, zombie, def.explode, now, alivePlayers);
+                            if (room.gameEnded) return;
+                        }
+                    } else if (def.ranged) {
+                        if (spit && zombie.attackCooldown <= 0) { spitAt(code, room, zombie, def.ranged, spit, now); zombie.attackCooldown = def.ranged.cd; }
+                    } else if (zombie.attackCooldown <= 0 && !(zombie._scream > 0)) {
                         let attacked = false;
-                        for (const p of alivePlayers) {
+                        for (const p of hunts ? alivePlayers : _noPlayers) {   // a type that does not hunt never hits a player
                             if (Math.hypot(p.x - zombie.x, p.y - zombie.y) < def.attackR) {
+                                if (p.wv) { const d = Math.min(def.dmg, Math.max(0, p.hp)); p.wv.dmg += d; p.pveTot.dmg += d; }
                                 p.hp -= def.dmg; p.lastDamageTime = now;
                                 zombie.attackCooldown = def.attackCd;
                                 if (p.hp <= 0) eliminatePlayer(code, room, p, 'zombie');
                                 attacked = true; break;
                             }
                         }
-                        if (!attacked && zombie.targetingBase && room.base && Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) < room.base.r + def.r + 8) {
+                        if (!attacked && tgtStruct && builtDist(zombie.x, zombie.y, tgtStruct) <= def.r + 14) {
+                            // the barricade in its way: hit it as it would the base
+                            tgtStruct.hp -= def.baseDmg;
+                            if (tgtStruct.k === 't') room._turretDirty = true; else room._structDirty = true;
+                            zombie.attackCooldown = def.attackCd;
+                            attacked = true;
+                            if (tgtStruct.hp <= 0) { if (tgtStruct.k === 't') destroyTurret(code, room, tgtStruct); else destroyStruct(code, room, tgtStruct); }
+                        }
+                        if (!attacked && zombie.targetingBase && room.base && baseD < room.base.r + def.r + 8) {
                             room.base.hp = Math.max(0, room.base.hp - def.baseDmg);
                             zombie.attackCooldown = def.attackCd;
                             if (room.base.hp <= 0) { pveDefeat(code, room); return; }
                         }
                     }
                 }
+                tickAcid(code, room, now, alivePlayers);
+                if (room.gameEnded) return;
 
                 // Wave break countdown
                 if (room.pveWaveBreak) {
@@ -2004,9 +2708,9 @@ function startRoomLoop(code, room) {
                     if (room.pveSpawnTimer <= 0) {
                         const nextBatch = room.pveSpawnQueue.shift();
                         const startId   = room.zombies.length;
-                        nextBatch.forEach((type, i) => room.zombies.push(createPveZombie(type, startId + i)));
+                        nextBatch.forEach((type, i) => room.zombies.push(createPveZombie(type, startId + i, room.pveHpMul)));
                         room.pveSpawnTimer = PVE_BATCH_DELAY;
-                        io.to(code).emit('pve-subwave', { remaining: room.pveSpawnQueue.length });
+                        io.to(code).emit('pve-subwave', { remaining: room.pveSpawnQueue.length, queued: pveQueuedCount(room) });
                     }
                 }
 
@@ -2023,13 +2727,24 @@ function startRoomLoop(code, room) {
                         room.pveBreakTimer = PVE_BREAK_DURATION;
                         room.pveSkipVotes.clear();
                         room._playerArr.forEach(p => { p.moveDir.x = 0; p.moveDir.y = 0; p.shooting = false; });
-                        io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION });
-                        // the panel covers the pitch after 1 s (game.js): the coins still lying around are handed out just before
-                        setTimeout(() => { if (rooms.has(code) && room.pveWaveBreak) _sweepCoins(code, room); }, 900);
+                        // next = what the next wave brings [normal, runner, tank] for the preview (nothing after the last wave)
+                        io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION, next: pveWaveRow(room.pveWave, room._playerArr.length) });
+                        // the panel covers the pitch after 1 s (game.js): the coins still lying around are handed out just before,
+                        // then the numbers of the wave go out (coins included)
+                        setTimeout(() => {
+                            if (!rooms.has(code) || !room.pveWaveBreak) return;
+                            _sweepCoins(code, room);
+                            io.to(code).emit('pve-wave-results', pveWaveResults(room));
+                        }, 900);
                     }
                 }
             }
 
+            if (room._structDirty && now - room._structHpAt >= 100) flushStructHp(code, room, now);
+            if (room._hits.length) tickTurretHits(code, room, now);
+            if (room.turrets.length) tickTurrets(code, room, dt, now);
+            if (room._turretDirty && now - (room._turretHpAt || 0) >= 100) { room._turretHpAt = now; flushTurretHp(code, room, now); }
+            for (let wi = 0; wi < allPlayers.length; wi++) if (allPlayers[wi].work) tickWork(code, room, allPlayers[wi], now);
             if (PERF) PERF.mark(room, 'zombies');
 
             // Gloante: miscare + coliziune continua (swept). Pe segmentul parcurs in acest tick
@@ -2055,10 +2770,12 @@ function startRoomLoop(code, room) {
                 let keep = true;
                 if (hit.kind === 1) {
                     keep = false;
+                } else if (hit.kind === 2 && room.mode === 'pve' && zombieShielded(code, room, hit.target, -b.dx, -b.dy, now)) {
+                    keep = false;   // the shield of a Shielded took it
                 } else if (hit.kind === 2) {
                     const zombie = hit.target;
                     const _zPrevHp = zombie.hp;
-                    zombie.hp -= b.damage;
+                    zombie.hp -= armoredHit(zombie, b.damage);   // armour (the brute) takes some off; the other zombies have none
                     const _zOwner = room.players[b.ownerId];
                     if (_zOwner && _zOwner.rs) _zOwner.rs.dmg += Math.min(b.damage, _zPrevHp);
                     const _zws = _zOwner ? wsFor(_zOwner, b.weapon) : null;
@@ -2069,14 +2786,16 @@ function startRoomLoop(code, room) {
                         if (_zws) _zws.zombieKills++; // weapon missions read this (missionWeaponKills)
                         if (_zOwner && _zOwner.rs) {
                             _zOwner.rs.zKills++;
-                            if (room.mode === 'pve') _zOwner.rs.pveKills++;
+                            if (room.mode === 'pve') { _zOwner.rs.pveKills++; _zOwner.kills++; }   // the team counter of the HUD (kills travels in gs2); not the BR total, see endPlayerRound
                         }
                         if (room.mode === 'pve') {
+                            room.pveKinds[PveRewards.kindOf(zombie.type)]++;
                             // The coins (the same count as before) drop around the zombie and lie there; whoever touches them gets them
                             // (the coin step after the kits, below). One event for the whole drop.
                             const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
                             const earned = def.coinsMin + Math.floor(Math.random() * (def.coinsMax - def.coinsMin + 1));
-                            const spots = PveCoins.scatter(zombie.x, zombie.y, earned, _bulletBlockers(room), ARENA_W, ARENA_H, Math.random);
+                            // the coins keep off the trees, the rocks, the base and the barricades (they could not be picked up from there)
+                            const spots = PveCoins.scatter(zombie.x, zombie.y, earned, _coinBlockers(room), ARENA_W, ARENA_H, Math.random);
                             const dropped = [];
                             for (const [cx, cy] of spots) {
                                 const id = room.nextCoinId++;
@@ -2087,7 +2806,9 @@ function startRoomLoop(code, room) {
                             const _lost = PveCoins.trim(room.coinDrops, PveCoins.MAX_COINS);
                             if (_lost.length) io.to(code).emit('coin-taken', { ids: _lost, gone: true });
                         } else {
-                            room.healthKits.push({ id: room.nextKitId++, x: zombie.x, y: zombie.y, spawnTime: now });
+                            // a zombie of the Battle Royale drops a medkit and, beside it, a box of ammo
+                            room.healthKits.push({ id: room.nextKitId++, x: zombie.x, y: zombie.y, spawnTime: now, type: KIT_HEAL });
+                            room.healthKits.push({ id: room.nextKitId++, x: Math.max(30, Math.min(ARENA_W - 30, zombie.x + 38)), y: Math.max(30, Math.min(ARENA_H - 30, zombie.y - 22)), spawnTime: now, type: KIT_AMMO });
                         }
                     }
                     keep = false;
@@ -2122,7 +2843,7 @@ function startRoomLoop(code, room) {
                 io.to(code).emit('srv-stats', { tps, ents: allPlayers.length + room.bullets.length });
             }
 
-            // Health kits: pickup + expiry (in place, no new array per tick)
+            // Kits on the ground, a medkit or a box of ammo: pickup + expiry (in place, no new array per tick)
             {
                 const kits = room.healthKits;
                 const pickR = PLAYER_R + 22, pickRSq = pickR * pickR;
@@ -2133,11 +2854,20 @@ function startRoomLoop(code, room) {
                     if (!gone) {
                         for (const p of alivePlayers) {
                             const kx = p.x - kit.x, ky = p.y - kit.y;
-                            if (p.hp < p.maxHp && kx * kx + ky * ky < pickRSq) {
+                            if (kx * kx + ky * ky >= pickRSq) continue;
+                            if (kit.type === KIT_AMMO) {
+                                // a box always goes in: the reserve has no ceiling
+                                const added = ARAmmo.addReserve(p, (WEAPON_STATS[p.weapon] || WEAPON_STATS[DEFAULT_WEAPON]).ammoBox);
+                                if (added > 0) {
+                                    io.to(p.id).emit('kit-pickup', { amount: added, x: kit.x, y: kit.y, kind: KIT_AMMO });
+                                    gone = true;
+                                    break;
+                                }
+                            } else if (p.hp < p.maxHp) {
                                 const actualHeal = Math.min(200, p.maxHp - p.hp);
                                 p.hp += actualHeal;
                                 if (p.rs) p.rs.kits++;
-                                io.to(p.id).emit('kit-pickup', { amount: actualHeal, x: kit.x, y: kit.y });
+                                io.to(p.id).emit('kit-pickup', { amount: actualHeal, x: kit.x, y: kit.y, kind: KIT_HEAL });
                                 gone = true;
                                 break;
                             }
@@ -2151,7 +2881,19 @@ function startRoomLoop(code, room) {
 
             // PvE coins on the ground: a living player that reaches one takes it, the ones nobody takes time out
             if (room.coinDrops.length) {
+                // the magnet: the coins near a player drift in (the server moves them: the position it takes them at is the real one); the clients
+                // get the new places of the moving ones 20 times a second ('coin-mv', flat [id, x, y, ...])
+                _coinMoved.length = 0;
+                PveCoins.attract(room.coinDrops, alivePlayers, dt, now, PLAYER_R + PveCoins.PICK_EXTRA, _coinMoved);
+                if (_coinMoved.length) { const mv = room._coinMv || (room._coinMv = new Set()); for (let ci = 0; ci < _coinMoved.length; ci++) mv.add(_coinMoved[ci]); }
                 PveCoins.step(room.coinDrops, alivePlayers, _COIN_PICK_SQ, now, PveCoins.TTL_MS, _coinOut);
+                if (room._coinMv && room._coinMv.size && now - (room._coinMvAt || 0) >= 50) {
+                    room._coinMvAt = now;
+                    const flat = [];
+                    for (const c of room._coinMv) if (room.coinDrops.indexOf(c) !== -1) flat.push(c.id, Math.round(c.x * 10) / 10, Math.round(c.y * 10) / 10);
+                    room._coinMv.clear();
+                    if (flat.length) io.to(code).emit('coin-mv', flat);
+                }
                 if (_coinOut.taken.length) _payCoins(code, _coinOut.taken);
                 if (_coinOut.gone.length) io.to(code).emit('coin-taken', { ids: _coinOut.gone.slice(), gone: true });
             }
@@ -2160,6 +2902,7 @@ function startRoomLoop(code, room) {
             // What every client shares is packed and encoded ONCE per tick; each client then gets its own small row
             // appended (server-gs.js). Positions travel as quarter pixels, players are named by their slot number,
             // only live zombies are listed (one missing from the packet has died: game.js).
+            const _netPackStart = _netState ? performance.now() : 0;
             ARNet.packPlayers(_pScratch, allPlayers);
             ARNet.packBullets(_bScratch, room.bullets, false);
             ARNet.packBullets(_bScratch, _expiredBullets, true);
@@ -2167,7 +2910,22 @@ function startRoomLoop(code, room) {
             ARNet.packKits(_kScratch, room.healthKits, now);
             if (PERF) PERF.mark(room, 'snapshot');
             tickNo++;
-            const _shared = GS.begin([tickNo, _pScratch, _bScratch, _zScratch, _kScratch, ARNet.packZone(zone), ARNet.packPve(room)]);
+            const _zoneRow = ARNet.packZone(zone), _pveRow = ARNet.packPve(room);
+            const _netSlot = _netState ? NET_DIAG.begin(_netState, tickNo, scheduledDue, _netStart, _netStart - scheduledDue) : -1;
+            const _netEncodeStart = _netSlot >= 0 ? performance.now() : 0;
+            if (_netSlot >= 0) {
+                NET_DIAG.mark(_netSlot, NET_COL.simEnd, _netPackStart);
+                NET_DIAG.mark(_netSlot, NET_COL.packStart, _netPackStart);
+                if (_netPackStart - _netStart > 50) NET_DIAG.incident(_netState.socket, tickNo, 'server-simulation');
+                NET_DIAG.mark(_netSlot, NET_COL.encodeStart, _netEncodeStart);
+                if (_netEncodeStart - _netPackStart > 50) NET_DIAG.incident(_netState.socket, tickNo, 'server-snapshot');
+            }
+            const _shared = GS.begin([tickNo, _pScratch, _bScratch, _zScratch, _kScratch, _zoneRow, _pveRow]);
+            if (_netSlot >= 0) {
+                const _netPackEnd = performance.now();
+                NET_DIAG.mark(_netSlot, NET_COL.encodeEnd, _netPackEnd);
+                if (_netPackEnd - _netEncodeStart > 50) NET_DIAG.incident(_netState.socket, tickNo, 'server-encoding');
+            }
             let _sentBytes = 0;
             // Slow clients: the newest state only, never a queue of old ones. A client is skipped this tick when
             //  - its connection has more than BACKLOG_BYTES waiting to be written (it is not reading fast enough), or
@@ -2176,6 +2934,8 @@ function startRoomLoop(code, room) {
             //    every KEEPALIVE_MS, so the first thing it sees on coming back is the latest state.
             // (Dead players, the countdown and PvE breaks send no inputs: those are not counted as silence.)
             for (const p of allPlayers) {
+                const _netTarget = _netSlot >= 0 && p.id === _netState.socketId;
+                const _netAge = _netTarget && p.lastInputAt ? tickStart - p.lastInputAt : -1;
                 let silentSkip = false;
                 if (!p.alive || room.countdownActive || room.pveWaveBreak || room.gameEnded || !p.lastInputAt) {
                     if (p.lastInputAt) p.lastInputAt = tickStart;
@@ -2188,17 +2948,27 @@ function startRoomLoop(code, room) {
                     } else if (p.stalled) { p.stalled = false; console.log('[' + code + '] ' + p.name + ': raspunde din nou'); }
                 }
                 const sock = io.sockets.sockets.get(p.id);
-                if (!sock) continue;
+                if (!sock) {
+                    if (_netTarget) NET_DIAG.decision(_netSlot, 'noSocket', _netAge);
+                    continue;
+                }
                 const ws = sock.conn && sock.conn.transport && sock.conn.transport.socket, raw = ws && ws._socket;
                 if (raw && raw.writableLength > BACKLOG_BYTES) {
+                    if (_netTarget) NET_DIAG.sample(_netSlot, sock.client, false);
+                    if (_netTarget) NET_DIAG.decision(_netSlot, 'rawBacklog', _netAge);
                     if (!p.backlogged) { p.backlogged = true; console.log('[' + code + '] ' + p.name + ': conexiune lenta (' + raw.writableLength + ' B in asteptare), primeste doar ultima stare'); }
                     continue;
                 } else if (p.backlogged) { p.backlogged = false; console.log('[' + code + '] ' + p.name + ': conexiunea s-a eliberat'); }
                 if (silentSkip) {
-                    if (tickStart < p.nextKeepAt) continue;
+                    if (tickStart < p.nextKeepAt) {
+                        if (_netTarget) NET_DIAG.sample(_netSlot, sock.client, false);
+                        if (_netTarget) NET_DIAG.decision(_netSlot, 'silent', _netAge);
+                        continue;
+                    }
                     p.nextKeepAt = tickStart + KEEPALIVE_MS;
                 }
-                const n = GS.send(sock, _shared, ARNet.packOwn(p));
+                if (_netTarget) NET_DIAG.mark(_netSlot, NET_COL.inputAge, _netAge);
+                const n = GS.send(sock, _shared, ARNet.packOwn(p), _netTarget ? NET_DIAG : null, _netSlot);
                 if (n) _sentBytes = n;
             }
             if (PERF) {
@@ -2224,7 +2994,8 @@ function startRoomLoop(code, room) {
         if (!room.gameStarted || !rooms.has(code) || room.gameEnded) return;
         const now = performance.now();
         if (now - next > INTERVAL_MS * MAX_CATCHUP) next = now;   // far behind (a long stall): drop the backlog
-        if (now >= next) { tick(now - next); next += INTERVAL_MS; }
+        const scheduledDue = next;
+        if (now >= next) { tick(now - next, scheduledDue); next += INTERVAL_MS; }
         if (!room.gameStarted || !rooms.has(code) || room.gameEnded) return;
         const remaining = next - performance.now();
         if (SPIN) {
@@ -2301,6 +3072,8 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
 }
 
 function triggerRematch(code, room) {
+    const diagState = NET_DIAG.forRoom(code);
+    if (diagState) { try { diagState.socket.emit('netdiag-ended', { session: diagState.session, reason: 'rematch' }); } catch (_) {} NET_DIAG.release(diagState.socket); }
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
     room.gameStarted  = false;
     room.gameEnded    = false;
@@ -2316,7 +3089,9 @@ function triggerRematch(code, room) {
     room.countdownActive = true;
     room.pveSkipVotes.clear();
     room.pveSpawnQueue = []; room.pveSpawnTimer = 0;
-    room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0;
+    room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
+    room.pveKinds = PveRewards.newKinds(); room.pveT0 = 0;
+    room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;
     setTimeout(() => { if (rooms.has(code)) room.countdownActive = false; }, 3700);
     assignSpawnPositions(room._playerArr, room.obstacles);
     room.zombies = generateZombies(room.obstacles, room._playerArr);
@@ -2327,13 +3102,14 @@ function triggerRematch(code, room) {
         p.maxHp   = p.baseMaxHp   || p.maxHp;
         p.ammoMax = p.baseAmmoMax || p.ammoMax;
         p.pveUpgrades = { dmg: 0, spd: 0, hp: 0, ammo: 0 };
+        p.pveInv = newInv(); p.work = null; p.pveTot = { dmg: 0, coins: 0 };
         p.coins = 0;
         flushWeaponStats(p); // anything not saved yet from the last match
         p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0; p.rs = Missions.newRoundStats();
         p.moveDir = { x: 0, y: 0 }; p.shootDir = { x: 0, y: 0 };
         p.shooting = false; p.shootCooldown = 0; p.aimTimer = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
         p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
-        p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
+        ARAmmo.refill(p, p.reserveStart); p.reloadReq = false; p.lastShotTime = 0;
         p.lastDamageTime = 0; p.lastAckSeq = 0; p.pendingAckSeq = 0;
     });
     const rematchMeta = {};
@@ -2349,6 +3125,8 @@ function triggerRematch(code, room) {
 }
 
 function closeRoom(code, room) {
+    const diagState = NET_DIAG.forRoom(code);
+    if (diagState) { try { diagState.socket.emit('netdiag-ended', { session: diagState.session, reason: 'room-closed' }); } catch (_) {} NET_DIAG.release(diagState.socket); }
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); }
     io.to(code).emit('game-reset');
     rooms.delete(code);
@@ -2383,6 +3161,9 @@ io.on('connection', (socket) => {
         }
         connectedAccounts.set(nickname, socket.id);
         socket._nickname = nickname;
+        const verified = diagVerifiedSessions.get(nickname);
+        if (verified && verified.token === token) diagSocketProof.set(socket, { ...verified, nickname });
+        else diagSocketProof.delete(socket);
         // Notify friends this player is online + send back which friends are online
         notifyFriendsPresence(nickname, 'friend-online');
         getFriendNicknames(nickname).then(friends => {
@@ -2466,16 +3247,19 @@ io.on('connection', (socket) => {
             assignPveSpawnPositions(room._playerArr);
             room.zombies = [];
             room.base = { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R };
-            room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0;
+            room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
+            room.pveKinds = PveRewards.newKinds(); room.pveT0 = 0;
+            room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;
         } else {
             assignSpawnPositions(room._playerArr, room.obstacles);
             room.zombies = generateZombies(room.obstacles, room._playerArr);
         }
         room._playerArr.forEach(p => {
-            p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; p.lastShotTime = 0;
+            ARAmmo.refill(p, p.reserveStart); p.reloadReq = false; p.lastShotTime = 0;
             p.shooting = false; p.shootCooldown = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
             p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
             p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0; p.lastInputAt = 0; p.stalled = false;
+            p.pveInv = newInv(); p.work = null; p.pveTot = { dmg: 0, coins: 0 };
         });
 
         const playersMeta = {};
@@ -2523,6 +3307,36 @@ io.on('connection', (socket) => {
     // the echo, plus the server's clock and its recent event-loop stalls (the client's black box uses them; the game ignores them)
     socket.on('c-ping', (t) => { const now = Date.now(); socket.emit('c-pong', t, now, _srvStalls.filter(x => now - x[0] < 6000)); });
 
+    // Explicitly opt in from Blackbox. One selected socket globally, no snapshots changed.
+    const diagRate = { start: -Infinity, incident: -Infinity, ping: -Infinity };
+    function diagAllow(kind, gap) {
+        const now = performance.now();
+        if (now - diagRate[kind] < gap) return false;
+        diagRate[kind] = now; return true;
+    }
+    socket.on('netdiag-start', async () => { try {
+        if (!NET_DIAG.enabled || !supabase || !NET_DIAG.allowedUserId || !diagAllow('start', 10000)) return;
+        const proof = diagSocketProof.get(socket);
+        if (!proof || proof.id !== NET_DIAG.allowedUserId || !NET_DIAG.isAuthorized(socket, proof.id)) return;
+        const { data, error } = await supabase.from('players').select('id,nickname').eq('id', proof.id).maybeSingle();
+        if (error || !data || String(data.id) !== proof.id || data.nickname !== proof.nickname ||
+            !socket.connected || !NET_DIAG.isAuthorized(socket, proof.id)) return;
+        const r = fastGetRoom(socket);
+        if (!r || !r.room.gameStarted) return;
+        const session = NET_DIAG.claim(socket, r.code);
+        if (session) socket.emit('netdiag-ready', { session });
+    } catch (error) { NET_DIAG.fail(error); } });
+    socket.on('netdiag-incident', data => { try {
+        if (!NET_DIAG.active || NET_DIAG.active.socket !== socket || !data || !Number.isSafeInteger(data.tick) || data.tick < 0 || !diagAllow('incident', 30000)) return;
+        NET_DIAG.incident(socket, data.tick, 'client-gap');
+    } catch (error) { NET_DIAG.fail(error); } });
+    socket.on('netdiag-ping', sent => { try {
+        if (!NET_DIAG.active || NET_DIAG.active.socket !== socket || !Number.isFinite(sent) || !diagAllow('ping', 1500)) return;
+        const received = performance.now();
+        socket.emit('netdiag-pong', sent, received, performance.now());
+    } catch (error) { NET_DIAG.fail(error); } });
+    socket.on('netdiag-stop', () => NET_DIAG.release(socket));
+
     socket.on('pve-skip', () => {
         const r = fastGetRoom(socket);
         if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
@@ -2530,15 +3344,40 @@ io.on('connection', (socket) => {
         room.pveSkipVotes.add(socket.id);
         const total = room._playerArr.length;
         const votes = room.pveSkipVotes.size;
-        io.to(code).emit('pve-skip-status', { votes, total });
+        io.to(code).emit('pve-skip-status', { votes, total, ids: [...room.pveSkipVotes] });
         if (votes >= total) startPveWave(code, room);
     });
 
+    const BUILD_BUY = new Map([['barricade', 'b'], ['turret', 'mg'], ['tesla', 'tesla'], ['bomb', 'bomb'], ['flame', 'flame'], ['heal', 'heal'], ['support', 'support']]);   // what the shop sells that is built: the card -> the kind
     socket.on('buy-upgrade', ({ type } = {}) => {
         const r = fastGetRoom(socket);
         if (!r || r.room.mode !== 'pve' || !r.room.pveWaveBreak) return;
         const p = r.room.players[socket.id];
         if (!p) return;
+        if (r.room.pveSkipVotes.has(socket.id)) { socket.emit('upgrade-result', { ok: false, reason: 'ready' }); return; }   // after GATA nothing is bought
+        if (type === 'reserve') {
+            // the MUNITIE button: a pack of rounds (the gun's starting reserve) for a flat price, as often as the coins allow
+            if (p.coins < PVE_RESERVE_COST) { socket.emit('upgrade-result', { ok: false }); return; }
+            p.coins -= PVE_RESERVE_COST;
+            ARAmmo.addReserve(p, p.reserveStart);
+            socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
+            return;
+        }
+        const buyKind = BUILD_BUY.get(type);
+        if (buyKind) {
+            // a new barricade / turret / Tesla Tower / Health Station (level 1) goes to the inventory; it is placed later with 1 / 2 / 3 / 4.
+            // Not when the room is at the limit of the kind already (what stands plus what this player holds): that would be coins for nothing.
+            const room = r.room;
+            const cost = buyKind === 'b' ? ARStructs.BUY_COST : ARStructs.turretBuyCost(buyKind);
+            const placed = buyKind === 'b' ? room.structs.length : ARStructs.turretCountOf(room.turrets, buyKind);
+            if (ARStructs.buyBlocked(buyKind, placed, p.pveInv[type], room._playerArr.length)) { socket.emit('upgrade-result', { ok: false, reason: 'full' }); return; }
+            if (p.coins < cost) { socket.emit('upgrade-result', { ok: false }); return; }
+            p.coins -= cost;
+            p.pveInv[type]++;
+            socket.emit('pve-inv', invPublic(p));
+            socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
+            return;
+        }
         const def = PVE_UPGRADE_DEFS[type];
         if (!def) { socket.emit('upgrade-result', { ok: false }); return; }
         const count = p.pveUpgrades[type] || 0;
@@ -2551,7 +3390,93 @@ io.on('connection', (socket) => {
         socket.emit('upgrade-result', { ok: true, type, coins: p.coins, upgCounts: { ...p.pveUpgrades }, newMaxHp: p.maxHp });
     });
 
+    // ---------- PvE: place, repair and upgrade a barricade ----------
+    // The client says where (x, y, o); the server decides: it must have one in its inventory, be close enough, and the spot must be free.
+    socket.on('place-struct', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !data || typeof data !== 'object') return;
+        const { code, room } = r;
+        const p = room.players[socket.id];
+        if (!p || room.mode !== 'pve' || !room.gameStarted || room.gameEnded || room.countdownActive || !p.alive) return;
+        const x = +data.x, y = +data.y, o = data.o === 1 ? 1 : 0;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const now = Date.now();
+        if (now - (p._structAt || 0) < 150) return;   // not faster than the hand can
+        p._structAt = now;
+        const fail = (reason) => socket.emit('struct-result', { ok: false, action: 'place', reason });
+        if (!p.pveInv || p.pveInv.barricade <= 0) return fail('none');
+        const s = { id: room.nextStructId, x: Math.round(x), y: Math.round(y), o, t: 0, hp: ARStructs.BARRICADE.tiers[0].hp, maxHp: ARStructs.BARRICADE.tiers[0].hp, by: p.name, _sentHp: ARStructs.BARRICADE.tiers[0].hp };
+        if (ARStructs.distToRect(p.x, p.y, s) > ARStructs.BARRICADE.placeRange) return fail('far');
+        const alive = room._playerArr.filter(q => q.alive);
+        const why = ARStructs.checkPlace(s, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, turrets: room.turrets, players: alive, playerR: PLAYER_R, count: room.structs.length });
+        if (why) return fail(why);
+        room.nextStructId++;
+        room.structs.push(s);
+        p.pveInv.barricade--;
+        io.to(code).emit('struct-add', structPublic(s));
+        socket.emit('pve-inv', invPublic(p));
+        socket.emit('struct-result', { ok: true, action: 'place' });
+    });
+
+    // ---------- PvE: place a turret (level 1 from the inventory) ----------
+    socket.on('place-turret', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !data || typeof data !== 'object') return;
+        const { code, room } = r;
+        const p = room.players[socket.id];
+        if (!p || room.mode !== 'pve' || !room.gameStarted || room.gameEnded || room.countdownActive || !p.alive) return;
+        const x = +data.x, y = +data.y;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const T = ARStructs.TURRET, kd = typeof data.kd === 'string' && Object.hasOwn(T.kinds, data.kd) ? data.kd : 'mg', kind = T.kinds[kd];
+        const now = Date.now();
+        if (now - (p._structAt || 0) < 150) return;   // not faster than the hand can
+        p._structAt = now;
+        const fail = (reason) => socket.emit('struct-result', { ok: false, action: 'place', reason });
+        if (!p.pveInv || p.pveInv[kind.inv] <= 0) return fail('none');
+        const t = { id: room.nextStructId, k: 't', kd, x: Math.round(x), y: Math.round(y), t: 0, hp: kind.tiers[0].hp, maxHp: kind.tiers[0].hp, by: p.name, ownerId: p.id,
+                    angle: Math.atan2(y - PVE_BASE_Y, x - PVE_BASE_X), cd: 0.4, _sentHp: kind.tiers[0].hp };   // it looks away from the base until it has a target
+        if (Math.hypot(p.x - t.x, p.y - t.y) > T.placeRange) return fail('far');
+        const alive = room._playerArr.filter(q => q.alive);
+        const why = ARStructs.checkPlaceTurret(t, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, turrets: room.turrets, players: alive, playerR: PLAYER_R, roomPlayers: room._playerArr.length });
+        if (why) return fail(why);
+        room.nextStructId++;
+        room.turrets.push(t);
+        p.pveInv[kind.inv]--;
+        io.to(code).emit('turret-add', turretPublic(t));
+        socket.emit('pve-inv', invPublic(p));
+        socket.emit('struct-result', { ok: true, action: 'place' });
+    });
+
+    // E next to a barricade: repair it when it is hurt, else upgrade it to the next tier
+    socket.on('use-struct', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !data || typeof data !== 'object') return;
+        const { code, room } = r;
+        const p = room.players[socket.id];
+        if (!p || room.mode !== 'pve' || !room.gameStarted || room.gameEnded || room.countdownActive || !p.alive) return;
+        const now = Date.now();
+        if (now - (p._structAt || 0) < 150) return;
+        p._structAt = now;
+        const s = findBuilt(room, data.id);
+        const fail = (reason) => socket.emit('struct-result', { ok: false, action: 'use', reason });
+        if (!s) return fail('gone');
+        if (builtDist(p.x, p.y, s) > PLAYER_R + builtUseRange(s)) return fail('far');
+        if (p.moveDir.x || p.moveDir.y) return fail('moving');   // it takes standing still
+        const action = builtAction(s);
+        if (!action) return fail('max');
+        const cost = builtCost(s, action);
+        if (p.coins < cost) return fail('coins');
+        if (p.work) return;                                   // already at work on one
+        if (s._busy && s._busy !== p.id) return fail('busy'); // somebody else is at this one
+        // it starts: everybody sees the ring; the coins are paid when it is full (tickWork)
+        s._busy = p.id;
+        const workMs = ARStructs.workTime(s, action);   // a repair 1 s, an upgrade by the tier it goes into
+        p.work = { id: s.id, action, end: now + workMs, x: p.x, y: p.y };
+        io.to(code).emit('struct-work', { id: s.id, action, dur: workMs, by: p.name });
+    });
+
     socket.on('disconnect', () => {
+        NET_DIAG.release(socket);
         if (socket._nickname && connectedAccounts.get(socket._nickname) === socket.id) {
             connectedAccounts.delete(socket._nickname);
             notifyFriendsPresence(socket._nickname, 'friend-offline');
@@ -2565,6 +3490,7 @@ io.on('connection', (socket) => {
         const { code, room } = result;
         room.rematchVotes.delete(socket.id);
         const _leavingP = room.players[socket.id];
+        if (_leavingP && _leavingP.work) cancelWork(code, room, _leavingP);
         if (_leavingP) flushWeaponStats(_leavingP); // left early: the weapon counts so far still count
         if (_leavingP) {
             const _pidx = room._playerArr.indexOf(_leavingP);

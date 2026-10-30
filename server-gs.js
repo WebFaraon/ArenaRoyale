@@ -13,6 +13,10 @@
 const ARNet = require('./public/netproto');
 
 function createGsWriter(msgpack, sharedCount) {
+    // A probe is observational: even a faulty implementation cannot prevent gs2.
+    function probe(diag, method, ...args) {
+        if (diag) try { diag[method](...args); } catch (_) { try { diag.fail(_); } catch (_) {} }
+    }
     const event = ARNet.EVENT, total = sharedCount + 1;
     let prefix = null, suffix = null, header = null;
     try {
@@ -27,7 +31,7 @@ function createGsWriter(msgpack, sharedCount) {
         header = Buffer.from([0x90 | total]);
         // self check against the parser's own encoding of a packet with real content
         const shared = [7, [1, 2, 3, 4, 5, 6], [], [9, 400, 500, 12, 100, 1], [], [1650, 300], null];
-        const ownRow = [10, 10, 0, 12345, 3];
+        const ownRow = [10, 10, 0, 12345, 3, 96];
         const want = msgpack.encode({ type: 2, data: [event, shared.concat([ownRow])], nsp: '/' });
         const got = Buffer.concat([prefix, header, msgpack.encode(shared).subarray(1), msgpack.encode(ownRow), suffix]);
         if (!want.equals(got) || shared.length !== sharedCount) throw new Error('assembled packet differs from the parser\'s');
@@ -42,12 +46,24 @@ function createGsWriter(msgpack, sharedCount) {
         // sharedArr: the shared payload elements (sharedCount of them). Returns what send() needs.
         begin(sharedArr) { return fast ? msgpack.encode(sharedArr).subarray(1) : sharedArr; },
         // socket: a socket.io server Socket; ownRow: its own row. Bytes written for the PERF probe.
-        send(socket, shared, ownRow) {
-            if (!fast) { socket.emit(event, shared.concat([ownRow])); return 0; }
+        send(socket, shared, ownRow, diag, slot) {
+            if (!fast) {
+                probe(diag, 'decision', slot, 'fallback');
+                socket.emit(event, shared.concat([ownRow])); return 0;
+            }
             const conn = socket.client;
-            if (conn.conn.readyState !== 'open') return 0;
-            const buf = Buffer.concat([prefix, header, shared, msgpack.encode(ownRow), suffix]);
+            if (conn.conn.readyState !== 'open') {
+                probe(diag, 'decision', slot, 'closed');
+                return 0;
+            }
+            const ownStart = diag ? performance.now() : 0;
+            const ownBytes = msgpack.encode(ownRow);
+            const ownEncodeEnd = diag ? performance.now() : 0;
+            const buf = Buffer.concat([prefix, header, shared, ownBytes, suffix]);
+            const ownEnd = diag ? performance.now() : 0;
+            probe(diag, 'beforeWrite', slot, buf, ownStart, ownEncodeEnd, ownEnd, conn);
             conn.writeToEngine(buf, {});
+            probe(diag, 'afterWrite', slot, conn);
             return buf.length;
         },
     };
