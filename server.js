@@ -52,6 +52,7 @@ const io     = new Server(server, {
 // Recent event-loop stalls (wall time they ended, ms), in a small ring. c-pong hands them to the client's black box, which can then tell
 // a server stall from the network when packets arrive late. Filled by the lag monitor below, so LAG_LOG=0 leaves it empty.
 const _srvStalls = [];
+const OPS = require('./ops-telemetry').createOpsTelemetry({ io, rooms: () => globalThis.__arRooms, build: () => BUILD });
 
 // ---------- EVENT LOOP LAG LOG ----------
 // Always on, almost free: a 25 ms timer (it measures how late it fires, so any block longer than LAG_LOG_MS shows) notices when the event loop was blocked (a GC pause, a slow handler, the
@@ -61,7 +62,7 @@ const _srvStalls = [];
 // players, zombies) and whether a GC pause overlapped it, which tells a GC from a stall of the machine.
 {
     const LAG_MS = +process.env.LAG_LOG_MS || 25, EVERY_MS = (+process.env.LAG_LOG_EVERY_S || 5) * 1000, STEP = 25;
-    if (process.env.LAG_LOG !== '0') {
+    if (process.env.LAG_LOG !== '0' || OPS.enabled) {
         const gcs = [];   // [start, end] of recent GC pauses (performance.now clock)
         try {
             new PerformanceObserver(list => { for (const e of list.getEntries()) gcs.push([e.startTime, e.startTime + e.duration]); while (gcs.length > 40) gcs.shift(); }).observe({ entryTypes: ['gc'] });
@@ -86,7 +87,7 @@ const _srvStalls = [];
         const iv = setInterval(() => {
             const now = performance.now(), lag = now - last - STEP;
             last = now;
-            if (lag >= 15) { _srvStalls.push([Date.now(), Math.round(lag)]); if (_srvStalls.length > 20) _srvStalls.shift(); }
+            if (lag >= 15) { OPS.stall(lag); _srvStalls.push([Date.now(), Math.round(lag)]); if (_srvStalls.length > 20) _srvStalls.shift(); }
             if (lag < LAG_MS) return;
             if (now - lastLog < EVERY_MS) { held++; if (lag > heldWorst) heldWorst = lag; return; }
             lastLog = now;
@@ -1918,6 +1919,7 @@ function pveEndBoard(room, victory) {
 function pveFinish(code, room, victory) {
     if (room.gameEnded) return;
     room.gameEnded = true;
+    OPS.endRoom(room);
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
     const board = pveEndBoard(room, victory);
     room._playerArr.forEach(p => {
@@ -2123,6 +2125,7 @@ function applyInput(p, data) {
 }
 
 function startRoomLoop(code, room) {
+    OPS.startRoom(code, room);
     // Ticks are due every 1000/60 ms on a monotonic clock; each one advances the world by exactly
     // SERVER_DT. A late tick runs as soon as possible and the ones after it catch up (one per event loop
     // turn, so inputs still get in between); more than MAX_CATCHUP behind, the backlog is dropped.
@@ -2152,6 +2155,7 @@ function startRoomLoop(code, room) {
         const _netState = NET_DIAG.forRoom(code);
         const _netStart = _netState ? performance.now() : 0;
         const tickStart = Date.now();
+        const opsStarted = OPS.enabled ? performance.now() : 0;
         if (PERF) PERF.tickStart(room, lateMs);
         try {
             if (!room.gameStarted || !rooms.has(code)) return;
@@ -2969,7 +2973,7 @@ function startRoomLoop(code, room) {
                 }
                 if (_netTarget) NET_DIAG.mark(_netSlot, NET_COL.inputAge, _netAge);
                 const n = GS.send(sock, _shared, ARNet.packOwn(p), _netTarget ? NET_DIAG : null, _netSlot);
-                if (n) _sentBytes = n;
+                if (n) { _sentBytes = n; if (OPS.enabled) OPS.sent(room, n); }
             }
             if (PERF) {
                 PERF.mark(room, 'emit');
@@ -2986,7 +2990,10 @@ function startRoomLoop(code, room) {
             }
 
         } catch (err) {
+            OPS.error(room);
             console.error(`[${code}] Game loop error:`, err.stack || err);
+        } finally {
+            if (opsStarted) OPS.tick(room, performance.now() - opsStarted, lateMs);
         }
     }
 
@@ -3053,6 +3060,7 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
         io.to(winner.id).emit('winner', { kills: winner.kills });
         io.to(code).emit('game-ended', { winnerName: winner.name });
         room.gameEnded = true;
+        OPS.endRoom(room);
         if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
 
         endPlayerRound(player, false, { mode: 'br', rs: player.rs });
@@ -3065,6 +3073,7 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
     if (_aliveN === 0) {
         io.to(code).emit('game-ended', { winnerName: null });
         room.gameEnded = true;
+        OPS.endRoom(room);
         for (const p of room._playerArr) flushWeaponStats(p);
         if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
         setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
@@ -3125,6 +3134,7 @@ function triggerRematch(code, room) {
 }
 
 function closeRoom(code, room) {
+    OPS.endRoom(room, 'closed');
     const diagState = NET_DIAG.forRoom(code);
     if (diagState) { try { diagState.socket.emit('netdiag-ended', { session: diagState.session, reason: 'room-closed' }); } catch (_) {} NET_DIAG.release(diagState.socket); }
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); }
@@ -3135,6 +3145,7 @@ function closeRoom(code, room) {
 
 // ---------- CONEXIUNI ----------
 io.on('connection', (socket) => {
+    OPS.attach(socket);
     // every handler registered below is timed: one that holds the loop for more than SLOW_LOG_MS is logged as [SLOW] socket <event>
     const _sockOn = socket.on.bind(socket);
     socket.on = (ev, fn) => _sockOn(ev, function (...a) {
