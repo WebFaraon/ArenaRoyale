@@ -1,0 +1,2 @@
+ops/*.sh text eol=lf
+ops/*.conf text eol=lf

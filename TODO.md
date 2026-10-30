@@ -1,7 +1,7 @@
 # TODO — Blastridge
 
 Convenție: **Fapt** = verificat în repo sau în producție în această sesiune. **De verificat** = nu pot confirma din repo; nu e dat ca fapt.
-Production = Kamatera, branch **`skinuri-noi`**. **Verified on VPS 2026-10-30:** active code `4481d12`, build `9c968e93ef`; PM2 runs `/root/ArenaRoyale/server.js` with no restart loop. The served page contains Blastridge branding and the PvE build HUD with Barricade and Turret; manifest and icon return HTTP 200. Previous runtime for rollback: `/root/releases/arena-ammo-diag-cb5add2`.
+Production = Kamatera, branch **`skinuri-noi`**. **Verified on VPS 2026-10-30:** active code `4481d12`, build `9c968e93ef`; PM2 runs `/root/ArenaRoyale/server.js` on port 3000 behind nginx. `https://79.108.166.122/` has a trusted Let's Encrypt IP certificate; HTTP redirects to HTTPS. Chrome reports a secure context, a valid manifest, and no installability errors. The served page retains Blastridge branding and the PvE build HUD. Certbot renewal dry-run passed. Previous runtime for rollback: `/root/releases/arena-ammo-diag-cb5add2`.
 
 | Grup | Commit | În producție? |
 |---|---|---|
