@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - pve-coins.js
+// Blastridge - pve-coins.js
 // PvE coins on the ground. A zombie that dies drops its coins (the same 1-3 / 2-3 / 5-9 as before, one small coin each) around where
 // it fell; they lie there until a living player touches them, and whoever touches one gets it. Not in the gs2 packet: the server
 // sends 'coin-drops' when a zombie dies and 'coin-taken' when coins are taken or time out (server.js), the client keeps the list

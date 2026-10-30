@@ -1,5 +1,5 @@
 {
-  "name": "arenaroyale-perf-harness",
+  "name": "blastridge-perf-harness",
   "private": true,
   "description": "Measurement harness (browser + bots). Not part of the game; not deployed.",
   "dependencies": {

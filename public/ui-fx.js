@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - ui-fx.js
+// Blastridge - ui-fx.js
 // Presentation helpers only: icon markup, canvas icon strokes and
 // micro-interactions (number flap, press haptics, state hooks for CSS).
 // Nothing in here touches game state, networking or rendering logic.
@@ -207,7 +207,7 @@
         if (goTitle && goScreen) {
             const syncResult = function () {
                 const t = goTitle.textContent.toUpperCase();
-                const win = /CASTIG|VICTORIE|LOC 1\b/.test(t) && !/INFRANGERE|ELIMINAT/.test(t);
+                const win = /WIN|VICTORY|1ST PLACE\b/.test(t) && !/DEFEAT|ELIMINATED/.test(t);
                 goScreen.dataset.result = win ? 'win' : 'lose';
             };
             new MutationObserver(syncResult).observe(goTitle, { childList: true, characterData: true, subtree: true });
@@ -260,13 +260,13 @@
             if (!fsBtn) return;
             if (!canFs) {
                 fsBtn.disabled = true;
-                fsBtn.textContent = 'INDISPONIBIL';
-                if (fsHint) fsHint.textContent = 'Pe iPhone: Share, apoi Adauga pe ecranul de pornire';
+                fsBtn.textContent = 'UNAVAILABLE';
+                if (fsHint) fsHint.textContent = 'On iPhone: tap Share, then Add to Home Screen';
                 return;
             }
-            fsBtn.textContent = inFs() ? 'IESI' : 'INTRA';
+            fsBtn.textContent = inFs() ? 'EXIT' : 'ENTER';
             fsBtn.classList.toggle('is-on', inFs());
-            if (fsHint) fsHint.textContent = inFs() ? 'Esti in ecran complet' : 'Ascunde bara browserului';
+            if (fsHint) fsHint.textContent = inFs() ? 'Fullscreen is active' : 'Hide the browser bar';
         }
         if (fsBtn) {
             fsBtn.addEventListener('click', function () {

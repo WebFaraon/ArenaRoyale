@@ -1,4 +1,4 @@
-Arena Royale - skin MITIC pentru Vanguard (assault): as_storm ("Furtuna")
+Blastridge - skin MITIC pentru Vanguard (assault): as_storm ("Furtuna")
 
 sprites/as_storm.png     320x576, acelasi cadru ca restul skin-urilor (viewBox -40 0 80 144, teava in jos, 4 px/unitate).
                          Imaginea statica completa (cu inelele intr-o pozitie fixa): pentru lista, lobby si rezerva.

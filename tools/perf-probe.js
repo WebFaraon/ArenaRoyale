@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - tools/perf-probe.js
+// Blastridge - tools/perf-probe.js
 // Game loop diagnostics, loaded by server.js only with PERF=1. Per room, one JSON line per second to
 // PERF_OUT (default perf.jsonl in the project folder): tick time split by section, the real interval
 // between ticks (= between 'gs' emits), how late each tick started, event loop delay, GC pauses,

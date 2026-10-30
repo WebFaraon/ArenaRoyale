@@ -1,4 +1,4 @@
-Arena Royale - skin-uri de arme (24)
+Blastridge - skin-uri de arme (24)
 
 sprites/<skinId>.png  - pentru meci, 320x576, ACELASI cadru ca sprite-urile armelor de baza
                         (viewBox -40 0 80 144, coltul stanga-sus la (-40, 6) fata de centrul corpului,

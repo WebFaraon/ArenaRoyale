@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - combat-shared.js
+// Blastridge - combat-shared.js
 // Values and formulas the server (require) and the browser (<script>, window.ARShared) must agree on
 // exactly: the player's visual scale, where a bullet starts and how long it lives, and how a gun fires
 // (its numbers live in public/data/weapons.json).

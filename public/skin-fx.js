@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - skin-fx.js
+// Blastridge - skin-fx.js
 // The effects of the mythic weapon skins (weapon-skin-sprites.json "fx"): a glow under the player, a light that runs
 // down the gun at each shot, hexagon pollen drifting off the player and off the bullets, a star at the muzzle, needle
 // bullets with a glow. This file is the pure part: reading and checking the "fx" block, and the particles (one fixed pool

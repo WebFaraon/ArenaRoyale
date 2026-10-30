@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - game-physics.js
+// Blastridge - game-physics.js
 // Pure collision helpers shared by the server game loop (and unit tests).
 // No game state lives here.
 // ============================================

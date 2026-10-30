@@ -8,49 +8,49 @@
  ],
  "objects": {
   "copac_mare": {
-   "name": "Copac mare",
+   "name": "Large tree",
    "visualRadius": 84,
    "frameRadius": 98,
    "pngSize": 588
   },
   "copac_mediu": {
-   "name": "Copac mediu",
+   "name": "Medium tree",
    "visualRadius": 66,
    "frameRadius": 80,
    "pngSize": 480
   },
   "copac_mic": {
-   "name": "Copac mic",
+   "name": "Small tree",
    "visualRadius": 48,
    "frameRadius": 62,
    "pngSize": 372
   },
   "brad": {
-   "name": "Brad",
+   "name": "Fir tree",
    "visualRadius": 62,
    "frameRadius": 76,
    "pngSize": 456
   },
   "tufis": {
-   "name": "Tufiș",
+   "name": "Bush",
    "visualRadius": 40,
    "frameRadius": 54,
    "pngSize": 324
   },
   "piatra_mare": {
-   "name": "Piatră mare",
+   "name": "Large rock",
    "visualRadius": 52,
    "frameRadius": 66,
    "pngSize": 396
   },
   "piatra_medie": {
-   "name": "Piatră medie",
+   "name": "Medium rock",
    "visualRadius": 38,
    "frameRadius": 52,
    "pngSize": 312
   },
   "pietre_mici": {
-   "name": "Pietre mici",
+   "name": "Small rocks",
    "visualRadius": 38,
    "frameRadius": 52,
    "pngSize": 312

@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - auth-hash.js
+// Blastridge - auth-hash.js
 // Password hashing for server.js. Prefers the native `bcrypt` (it hashes on the libuv thread pool and does not block
 // the event loop); if that cannot be loaded (no prebuilt binary for the platform, a broken install) it falls back to
 // `bcryptjs`, which is pure JavaScript and blocks the whole event loop for ~70 ms per call on the VPS. Both read and

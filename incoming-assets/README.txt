@@ -1,4 +1,4 @@
-Arena Royale - asseturi noi, inca neintegrate in joc
+Blastridge - asseturi noi, inca neintegrate in joc
 Totul e deja dezarhivat. Formatul fiecarui pachet e descris in README.txt / JSON-ul din folderul lui.
 
 skinuri-arme-noi/arena_skinuri_grizzly_falcon_titan.zip

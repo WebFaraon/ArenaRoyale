@@ -1,4 +1,4 @@
-ARENA ROYALE - skin mitic SMG "Viespe" (smg_hornet)
+Blastridge - skin mitic SMG "Viespe" (smg_hornet)
 Strict cosmetic: o singura gura de foc la varful acului [0,109]; mecanica armei nu se schimba.
 sprites/smg_hornet.png   - sprite complet 320x576, acelasi cadru ca restul skin-urilor (4 px/unitate, stanga-sus la (-40,6) fata de centrul corpului)
 svg/, icons/             - sursa vectoriala; icoana orizontala (rotate -90) pentru Arsenal

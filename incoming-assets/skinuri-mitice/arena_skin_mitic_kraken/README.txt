@@ -1,4 +1,4 @@
-Arena Royale - skin MITIC pentru Boomer (shotgun): sg_kraken ("Kraken")
+Blastridge - skin MITIC pentru Boomer (shotgun): sg_kraken ("Kraken")
 
 SKINUL E STRICT COSMETIC: gura de foc e una singura (muzzle), alicele raman cele ale armei (numar, dispersie, viteza, raza).
 Bulele sunt doar aspectul vizual al alicelor.

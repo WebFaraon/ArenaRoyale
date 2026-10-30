@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - blackbox.js
+// Blastridge - blackbox.js
 // The lag "black box" of the client. In a match F8 starts it; while it runs it keeps the last 90 seconds of what
 // the frames, the packets and the main thread did, in memory (a few typed rings, nothing is sent anywhere), marks
 // every spike it sees and says what most likely caused it. F9 saves the last 90 s now and goes on; F8 again saves

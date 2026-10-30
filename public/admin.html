@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ro">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arena Royale — Admin</title>
+    <title>Blastridge — Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Sen:wght@400..800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
@@ -364,12 +364,12 @@
     <!-- HEADER -->
     <div class="header">
         <div class="header-left">
-            <h1>ARENA ROYALE — ADMIN</h1>
-            <p>Panou de control profesor</p>
+            <h1>BLASTRIDGE — ADMIN</h1>
+            <p>Game control panel</p>
         </div>
         <div class="server-status">
             <div class="status-dot"></div>
-            <span>Server activ</span>
+                <span>Server online</span>
         </div>
     </div>
 
@@ -381,69 +381,69 @@
 
             <!-- QR CODE -->
             <div class="card">
-                <div class="card-title">QR CODE ELEVI</div>
+                <div class="card-title">PLAYER QR CODE</div>
                 <div class="qr-container">
                     <div id="qrcode"></div>
-                    <div class="qr-url" id="game-url">Se genereaza...</div>
-                    <div class="qr-hint">Elevii scaneaza cu camera iPad-ului</div>
+                    <div class="qr-url" id="game-url">Generating...</div>
+                    <div class="qr-hint">Players can scan this with an iPad camera</div>
                 </div>
             </div>
 
             <!-- STATISTICI -->
             <div class="card">
-                <div class="card-title">STATISTICI</div>
+                <div class="card-title">STATS</div>
                 <div class="stats-grid">
                     <div class="stat-box">
                         <div class="val green" id="stat-connected">0</div>
-                        <div class="lbl">CONECTATI</div>
+                        <div class="lbl">CONNECTED</div>
                     </div>
                     <div class="stat-box">
                         <div class="val blue" id="stat-alive">0</div>
-                        <div class="lbl">IN VIATA</div>
+                        <div class="lbl">ALIVE</div>
                     </div>
                     <div class="stat-box">
                         <div class="val red" id="stat-eliminated">0</div>
-                        <div class="lbl">ELIMINATI</div>
+                        <div class="lbl">ELIMINATED</div>
                     </div>
                     <div class="stat-box">
                         <div class="val orange" id="stat-bullets">0</div>
-                        <div class="lbl">GLOANTE</div>
+                        <div class="lbl">BULLETS</div>
                     </div>
                 </div>
             </div>
 
             <!-- CONTROL JOC -->
             <div class="card">
-                <div class="card-title">CONTROL JOC</div>
+                <div class="card-title">GAME CONTROL</div>
 
                 <!-- Badge status -->
                 <div class="game-status-badge badge-waiting" id="game-status-badge">
-                    ASTEPTARE
+                    WAITING
                 </div>
 
                 <div class="controls">
                     <!-- Buton START — principal -->
                     <button class="btn btn-start" id="btn-start" onclick="startGame()">
-                        PORNESTE JOCUL
+                        START GAME
                     </button>
 
                     <!-- Buton zona manuala -->
                     <button class="btn btn-zone" id="btn-zone" onclick="triggerZone()">
-                        PORNESTE ZONA ACUM
+                        START ZONE NOW
                     </button>
 
                     <!-- Buton reset -->
                     <button class="btn btn-reset" onclick="resetGame()">
-                        RESETEAZA JOCUL
+                        RESET GAME
                     </button>
                 </div>
             </div>
 
             <!-- LOG EVENIMENTE -->
             <div class="card">
-                <div class="card-title">EVENIMENTE</div>
+                <div class="card-title">EVENTS</div>
                 <div class="event-log" id="event-log">
-                    <div class="log-entry system">Admin conectat la server</div>
+                    <div class="log-entry system">Admin connected to server</div>
                 </div>
             </div>
 
@@ -452,11 +452,11 @@
         <!-- COLOANA DREAPTA -->
         <div class="right-col">
             <div class="players-header">
-                <span class="players-title">JUCATORI</span>
+                <span class="players-title">PLAYERS</span>
             </div>
             <div class="players-grid" id="players-grid">
                 <div class="no-players">
-                    <p>NICIUN JUCATOR CONECTAT</p>
+                    <p>NO PLAYERS CONNECTED</p>
                 </div>
             </div>
         </div>
@@ -487,7 +487,7 @@
             const log   = document.getElementById('event-log');
             const entry = document.createElement('div');
             entry.className = `log-entry ${type}`;
-            const time  = new Date().toLocaleTimeString('ro-RO', {
+            const time  = new Date().toLocaleTimeString('en-US', {
                 hour: '2-digit', minute: '2-digit', second: '2-digit'
             });
             entry.textContent = `[${time}] ${message}`;
@@ -528,16 +528,16 @@
     const btnStart = document.getElementById('btn-start');
 
     if (started) {
-        badge.textContent = 'JOC IN DESFASURARE';
+        badge.textContent = 'GAME IN PROGRESS';
         badge.className   = 'game-status-badge badge-running';
-        btnStart.textContent = 'JOC PORNIT';
+        btnStart.textContent = 'GAME STARTED';
         btnStart.className   = 'btn btn-disabled';
         btnStart.disabled    = true;
     } else {
         // Reset — reactivam butonul
-        badge.textContent = 'ASTEPTARE';
+        badge.textContent = 'WAITING';
         badge.className   = 'game-status-badge badge-waiting';
-        btnStart.textContent = 'PORNESTE JOCUL';
+        btnStart.textContent = 'START GAME';
         btnStart.className   = 'btn btn-start';
         btnStart.disabled    = false;
     }
@@ -549,13 +549,13 @@
 
             players.forEach(p => {
                 if (!prevPlayerIds.has(p.id)) {
-                    addLog(`${p.name} a intrat in arena`, 'join');
+                    addLog(`${p.name} joined the arena`, 'join');
                 }
             });
 
             prevPlayerIds.forEach(id => {
                 if (!currentIds.has(id)) {
-                    addLog(`Un jucator a parasit jocul`, 'leave');
+                    addLog(`A player left the game`, 'leave');
                 }
             });
 
@@ -569,7 +569,7 @@
             if (players.length === 0) {
                 grid.innerHTML = `
                     <div class="no-players">
-                        <p>NICIUN JUCATOR CONECTAT</p>
+                        <p>NO PLAYERS CONNECTED</p>
                     </div>`;
                 return;
             }
@@ -592,13 +592,13 @@
                 let statusClass, statusText;
                 if (!gameHasStarted) {
                     statusClass = 'status-waiting';
-                    statusText  = 'ASTEAPTA';
+                    statusText  = 'WAITING';
                 } else if (player.alive) {
                     statusClass = 'status-alive';
-                    statusText  = 'VIU';
+                    statusText  = 'ALIVE';
                 } else {
                     statusClass = 'status-dead';
-                    statusText  = 'ELIMINAT';
+                    statusText  = 'ELIMINATED';
                 }
 
                 card.className = `player-card ${!player.alive && gameHasStarted ? 'dead' : ''}`;
@@ -671,10 +671,10 @@
             if (gameHasStarted) return;
             const count = parseInt(document.getElementById('stat-connected').textContent);
             if (count === 0) {
-                alert('Nu exista jucatori conectati!');
+                alert('No players are connected!');
                 return;
             }
-            if (confirm(`Pornesti jocul cu ${count} jucatori?`)) {
+            if (confirm(`Start the game with ${count} players?`)) {
                 socket.emit('admin-start');
                 addLog('Jocul a fost pornit!', 'system');
                 updateGameStatusUI(true);
@@ -685,10 +685,10 @@
         // Porneste zona manual
         function triggerZone() {
             if (!gameHasStarted) {
-                alert('Porneste mai intai jocul!');
+                alert('Start the game first!');
                 return;
             }
-            if (confirm('Pornesti zona acum?')) {
+            if (confirm('Start the zone now?')) {
                 socket.emit('admin-trigger-zone');
                 addLog('Zona pornita manual', 'zone');
             }
@@ -696,7 +696,7 @@
 
         // Reseteaza jocul
         function resetGame() {
-            if (confirm('Resetezi jocul? Toti jucatorii vor fi dati afara.')) {
+            if (confirm('Reset the game? All players will be removed.')) {
                 socket.emit('admin-reset');
                 addLog('Joc resetat', 'system');
                 gameHasStarted = false;

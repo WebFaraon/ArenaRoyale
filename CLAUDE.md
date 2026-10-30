@@ -1,4 +1,4 @@
-# Arena Royale — ghid pentru Claude
+# Blastridge — ghid pentru Claude
 
 ## 1. Scop
 Joc web multiplayer top-down, jucat în browser (desktop cu mouse/tastatură, telefon/iPad cu joystick-uri). Două moduri:

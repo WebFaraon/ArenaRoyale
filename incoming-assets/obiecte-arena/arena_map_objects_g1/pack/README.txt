@@ -1,4 +1,4 @@
-Arena Royale - obiecte de harta, grupul 1 (copaci, brad, tufis, pietre), 3 sezoane
+Blastridge - obiecte de harta, grupul 1 (copaci, brad, tufis, pietre), 3 sezoane
 
 png/<sezon>/<id>.png  - pentru meci, 3 px pe unitate-lume. Centrul imaginii = pozitia obiectului.
 svg/<sezon>/<id>.svg  - aceeasi imagine vectoriala (lobby / editor de harta / alte rezolutii).

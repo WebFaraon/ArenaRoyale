@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - frame-cap.js
+// Blastridge - frame-cap.js
 // Draws at most ~120 frames a second on a display faster than that, by skipping frames. The server sends 60 states a
 // second and the game interpolates between them, so beyond ~120 the extra frames show next to nothing, but each one is
 // a full redraw: at 244 fps (emulated) the main thread was so busy drawing that packets and timers waited (stalls 70/min,

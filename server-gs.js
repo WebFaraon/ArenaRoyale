@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - server-gs.js
+// Blastridge - server-gs.js
 // Sends the state packet (public/netproto.js) so that the part every client shares is encoded ONCE per tick and
 // each client only gets its own small row appended: no per-client encode of the whole packet, and no private rows
 // of the other players on the wire.

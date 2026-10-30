@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - zombie-steer.js
+// Blastridge - zombie-steer.js
 // Steering helper for the PvE zombies (server only, and unit tests). No game state lives here.
 // ============================================
 'use strict';
