@@ -214,6 +214,37 @@
     const frames = new Ring(3, 30000), packets = new Ring(7, 9000), cspR = new Ring(2, 9000), heapR = new Ring(2, 600), pingR = new Ring(2, 200), countsR = new Ring(4, 200);
     let decodeR = null, handlerR = null, interpR = null, clockR = null; // allocated only after F8
     let events = [];
+    // OPS captures use a worker: no analyze(), JSON.stringify(), or full net report on the game thread.
+    let opsContext = null, opsTimer = 0, opsLast = 0, opsWorker = null, opsTaskId = 0;
+    const opsTargets = new Map();
+    function onOpsContext(c) { if (c && c.enabled && typeof c.matchId === 'string') opsContext = c; }
+    function sendOps(socket, json, attempt) {
+        const done = function (err, result) { if ((err || !result || !result.ok) && attempt < 2) setTimeout(function () { sendOps(socket, json, attempt + 1); }, 6500); };
+        if (socket.timeout) socket.timeout(12000).emit('ops-blackbox', json, done);
+        else socket.emit('ops-blackbox', json, function (result) { done(null, result); });
+    }
+    function uploadOps() {
+        if (!api.on || !hooks || !hooks.socket || !opsContext) return;
+        const now = performance.now(), from = Math.max(startedAt, opsLast, now - WINDOW_MS);
+        if (now - from < 1000) return;
+        try {
+            if (!opsWorker) {
+                const meta = document.querySelector('meta[name="ar-build"]');
+                opsWorker = new Worker('ops-blackbox-worker.js' + (meta ? '?v=' + encodeURIComponent(meta.content) : ''));
+                opsWorker.onmessage = function (event) {
+                    const target = opsTargets.get(event.data.id); opsTargets.delete(event.data.id);
+                    if (target && event.data.json) sendOps(target, event.data.json, 0);
+                    if (!api.on && !opsTargets.size && opsWorker) { opsWorker.terminate(); opsWorker = null; }
+                };
+                opsWorker.onerror = function () { if (opsWorker) opsWorker.terminate(); opsWorker = null; opsTargets.clear(); };
+            }
+            const id = ++opsTaskId, wallEnd = Date.now();
+            const task = { id: id, header: { matchId: opsContext.matchId, serverId: opsContext.serverId, region: opsContext.region }, wallStart: wallEnd - (now - from), wallEnd: wallEnd,
+                rec: { frames: frames.rows(from, from), packets: packets.rows(from, from), csp: cspR.rows(from, from), heap: heapR.rows(from, from), pings: pingR.rows(from, from), counts: countsR.rows(from, from),
+                    events: events.filter(function (e) { return e.t >= from; }).map(function (e) { return { t: r1(e.t - from), type: e.type, dur: r1(e.dur), info: e.info }; }) } };
+            opsTargets.set(id, hooks.socket); opsWorker.postMessage(task); opsLast = now;
+        } catch (_) { /* the full local report remains available if worker/network telemetry is unavailable */ }
+    }
     let hooks = null, startedAt = 0, startedWall = 0, lastFrame = 0, lastPacket = 0, lastTick = -1, lastBeat = 0;
     let netSession = null, serverReport = null, lastIncidentAsk = -Infinity, pendingSave = null, saveTimer = null;
     let gameplayFinished = false;
@@ -315,7 +346,7 @@
         return {
             format: 'arena-blackbox', version: 1, reason: reason, savedAt: new Date(wallNow).toISOString(),
             window: { seconds: r1((now - t0) / 1000), wallStart: new Date(wallStart).toISOString(), wallEnd: new Date(wallNow).toISOString() },
-            header: header(), summary: analysis.summary, thresholds: analysis.thresholds, incidents: analysis.incidents,
+            header: Object.assign(header(), opsContext ? { matchId: opsContext.matchId, serverId: opsContext.serverId, region: opsContext.region } : {}), summary: analysis.summary, thresholds: analysis.thresholds, incidents: analysis.incidents,
             series: { frames: rec.frames, packets: rec.packets, predictionError: rec.csp, heapBytes: rec.heap, pingMs: rec.pings, sceneCounts: rec.counts, events: rec.events },
             netDiagnostic: {
                 session: netSession, server: serverReport,
@@ -392,7 +423,7 @@
         netSession = null; serverReport = null; netCaptures = []; lastIncidentAsk = -Infinity;
         api.netActive = false;
         lastFrame = 0; lastPacket = 0; lastTick = -1;
-        startedAt = performance.now(); startedWall = Date.now(); lastBeat = startedAt;
+        startedAt = performance.now(); opsLast = startedAt; startedWall = Date.now(); lastBeat = startedAt;
         api.on = true;
         if (hooks.socket) try { hooks.socket.emit('netdiag-start'); } catch (_) {}
         beatTimer = setInterval(function () { try { beat(); } catch (_) { endNet(); } }, BEAT_MS);
@@ -401,11 +432,13 @@
         try { observer = new PerformanceObserver(function (list) { try { list.getEntries().forEach(function (e) { pushEvent(e.startTime, 'longtask', e.duration); }); } catch (_) { endNet(); } }); observer.observe({ entryTypes: ['longtask'] }); } catch (e) { observer = null; }
         document.addEventListener('visibilitychange', onVis); window.addEventListener('resize', onResize);
         showIndicator();
+        opsTimer = setInterval(uploadOps, 30000);
         toast('Black box pornit. F9 salvează acum, F8 oprește și salvează.');
         return true;
     };
     api.stop = function (saveReport) {
         if (!api.on) return null;
+        uploadOps(); clearInterval(opsTimer);
         let rep = null;
         try { if (saveReport) rep = save('stop'); } catch (_) {}
         if (hooks && hooks.socket && netSession) try { hooks.socket.emit('netdiag-stop'); } catch (_) {}
@@ -491,6 +524,7 @@
         gameplayFinished = false;
         window.addEventListener('keydown', safeKey);
         if (h.socket) {
+            h.socket.on('ops-context', onOpsContext); h.socket.emit('ops-context-request');
             h.socket.on('disconnect', onDisc);
             h.socket.on('netdiag-ready', safeReady);
             h.socket.on('netdiag-pong', safePong);
@@ -506,6 +540,7 @@
         window.removeEventListener('keydown', safeKey);
         if (api.on) api.stop(true);
         if (hooks && hooks.socket) { try {
+            hooks.socket.off('ops-context', onOpsContext);
             hooks.socket.off('disconnect', onDisc);
             hooks.socket.off('netdiag-ready', safeReady);
             hooks.socket.off('netdiag-pong', safePong);
@@ -515,7 +550,7 @@
             hooks.socket.off('netdiag-ended', safeEnded);
             if (hooks.socket.io) hooks.socket.io.off('reconnect', safeReconn);
         } catch (e) { /* socket gone */ } }
-        hooks = null;
+        hooks = null; opsContext = null;
         scheduleSave();
     };
     for (const name of ['frame', 'packet', 'decode', 'handler', 'interp', 'csp', 'ping', 'event']) {
