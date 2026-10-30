@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ro">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0B1417">
-    <title>Arena Royale — Leaderboard</title>
+    <title>Blastridge — Leaderboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sen:wght@400..800&display=swap" rel="stylesheet">
@@ -149,10 +149,10 @@
 
 
     <header class="lbp-header">
-        <a href="/" class="lbp-back" onclick="history.back(); return false;"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg>INAPOI</a>
+            <a href="/" class="lbp-back" onclick="history.back(); return false;"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg>BACK</a>
         <div class="lbp-title-wrap">
             <h1 class="lbp-title"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg>Leaderboard</h1>
-            <p class="lbp-sub">Top jucatori Arena Royale</p>
+            <p class="lbp-sub">Top Blastridge players</p>
         </div>
         <div class="lbp-live"><i></i>LIVE</div>
     </header>
@@ -163,17 +163,17 @@
                 <tr>
                     <th class="center">#</th>
                     <th>NICKNAME</th>
-                    <th class="center">VICTORII</th>
+                    <th class="center">WINS</th>
                     <th class="center">KILLS</th>
-                    <th class="center">JOCURI</th>
-                    <th class="center">K/JOC</th>
+                    <th class="center">MATCHES</th>
+                    <th class="center">K/MATCH</th>
                 </tr>
             </thead>
             <tbody id="lb-body"></tbody>
         </table>
         <div class="lbp-status" id="lb-status">
             <svg class="ic" aria-hidden="true"><use href="#loader"/></svg>
-            <div>Se incarca...</div>
+            <div>Loading...</div>
         </div>
     </main>
 
@@ -186,7 +186,7 @@
         function renderLeaderboard(data) {
             if (!data || data.length === 0) {
                 tbody.innerHTML = '';
-                status.innerHTML = icon('gamepad-2') + '<div>Niciun jucator inregistrat inca.<br>Fii primul!</div>';
+                status.innerHTML = icon('gamepad-2') + '<div>No players yet.<br>Be the first!</div>';
                 status.style.display = 'flex';
                 return;
             }
@@ -220,7 +220,7 @@
                 const data = await res.json();
                 renderLeaderboard(data);
             } catch {
-                status.innerHTML = icon('triangle-alert') + '<div>Eroare la incarcare. Reincarca pagina.</div>';
+                status.innerHTML = icon('triangle-alert') + '<div>Could not load the leaderboard. Reload the page.</div>';
                 status.style.display = 'flex';
             }
         }
@@ -230,7 +230,7 @@
         socket.on('leaderboard-update', renderLeaderboard);
 
         loadLeaderboard();
-        // Fallback refresh daca Socket.IO pica
+        // Fallback refresh if Socket.IO disconnects
         setInterval(loadLeaderboard, 30000);
     </script>
 </body>

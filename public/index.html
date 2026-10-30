@@ -1,16 +1,17 @@
 <!DOCTYPE html>
-<html lang="ro" translate="no">
+<html lang="en" translate="no">
 <head>
     <link rel="manifest" href="/manifest.json">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M1 1h17l5 5v17H1z' fill='%23FF6A1A'/%3E%3Cpath d='M5.5 19 12 5.5 18.5 19M8.2 14.6h7.6' fill='none' stroke='%230B1417' stroke-width='2.6' stroke-linecap='square'/%3E%3C/svg%3E">
+    <link rel="icon" type="image/png" sizes="192x192" href="/images/blastridge-icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/blastridge-icon-180.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
-    <meta name="apple-mobile-web-app-title" content="Arena Royale">
+    <meta name="apple-mobile-web-app-title" content="Blastridge">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#0B1417">
     <meta name="google" content="notranslate">
-    <title>Arena Royale</title>
+    <title>Blastridge</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sen:wght@400..800&display=swap" rel="stylesheet">
@@ -105,25 +106,25 @@
 <!-- ========== OVERLAY FULLSCREEN ========== -->
 <div id="fs-overlay">
     <div class="fs-content">
-        <svg class="ic fs-mark" aria-hidden="true"><use href="#mark"/></svg>
-        <h2 class="wordmark wm-lg"><span>ARENA</span><span class="wm-r">ROYALE</span></h2>
+        <img class="fs-brand-icon" src="/images/blastridge-logo.png" alt="">
+        <h2 class="wordmark wm-lg brand-wordmark"><span>BLAST</span><span class="wm-r">RIDGE</span></h2>
         <div id="fs-ios-hint">
-            <p class="fs-hint-lead">Bara browserului ocupa spatiu din joc. Ruleaza ca aplicatie pentru fullscreen:</p>
+            <p class="fs-hint-lead">The browser bar takes up space. Install the game as an app for fullscreen play:</p>
             <ol class="fs-steps">
-                <li>Apasa <strong><svg class="ic" aria-hidden="true"><use href="#share-2"/></svg> Share</strong> <span class="fs-steps-note">(butonul din bara de jos)</span></li>
-                <li>Deruleaza in jos in meniu</li>
-                <li>Apasa <strong>Adauga pe ecranul de pornire</strong></li>
-                <li>Deschide jocul de pe ecranul principal</li>
+                <li>Tap <strong><svg class="ic" aria-hidden="true"><use href="#share-2"/></svg> Share</strong> <span class="fs-steps-note">(in the bottom toolbar)</span></li>
+                <li>Scroll down in the menu</li>
+                <li>Tap <strong>Add to Home Screen</strong></li>
+                <li>Open the game from your Home Screen</li>
             </ol>
-            <button id="fs-btn">CONTINUA IN BROWSER</button>
+            <button id="fs-btn">CONTINUE IN BROWSER</button>
         </div>
-        <button id="fs-btn-android"><svg class="ic" aria-hidden="true"><use href="#fullscreen"/></svg><span>INTRA IN FULLSCREEN</span></button>
+        <button id="fs-btn-android"><svg class="ic" aria-hidden="true"><use href="#fullscreen"/></svg><span>ENTER FULLSCREEN</span></button>
     </div>
 </div>
 
 <!-- ========== ECRANUL DE AUTENTIFICARE ========== -->
 <div id="screen-auth">
-    <button class="lb-btn lb-btn-icon auth-settings" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
+    <button class="lb-btn lb-btn-icon auth-settings" onclick="openSettings()" title="Settings" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
     <div class="auth-wrap">
 
         <div class="auth-logo">
@@ -131,66 +132,66 @@
                 <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span>
                 <span style="--i:3"></span><span style="--i:4"></span><span style="--i:5"></span>
             </div>
-            <svg class="ic auth-logo-icon" aria-hidden="true"><use href="#mark"/></svg>
-            <h1 class="auth-logo-title wordmark wm-xl"><span>ARENA</span><span class="wm-r">ROYALE</span></h1>
+            <img class="auth-logo-icon" src="/images/blastridge-logo.png" alt="">
+            <h1 class="auth-logo-title wordmark wm-xl"><span>BLAST</span><span class="wm-r">RIDGE</span></h1>
         </div>
 
         <div class="auth-card">
             <div class="auth-tabs" role="tablist">
-                <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">INTRU IN JOC</button>
-                <button class="auth-tab"         id="tab-register" onclick="switchTab('register')">CONT NOU</button>
+                <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">SIGN IN</button>
+                <button class="auth-tab"         id="tab-register" onclick="switchTab('register')">CREATE ACCOUNT</button>
             </div>
 
             <!-- LOGIN -->
             <div id="form-login" class="auth-form">
                 <div class="input-group">
-                    <label class="input-label" for="login-nickname">NICKNAME</label>
-                    <input type="text" id="login-nickname" placeholder="Nickname-ul tau"
+                    <label class="input-label" for="login-nickname">USERNAME</label>
+                    <input type="text" id="login-nickname" placeholder="Your username"
                         maxlength="15" autocomplete="username" autocapitalize="none"
                         oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
                     <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label" for="login-password">PAROLA</label>
-                    <input type="password" id="login-password" placeholder="Parola ta"
+                    <label class="input-label" for="login-password">PASSWORD</label>
+                    <input type="password" id="login-password" placeholder="Your password"
                         maxlength="32" autocomplete="off">
                     <div class="input-line"></div>
                 </div>
                 <div class="auth-error" id="login-error"></div>
                 <button class="auth-btn" id="login-btn" onclick="doLogin()">
-                    <span class="btn-text">INTRU IN JOC</span>
+                    <span class="btn-text">SIGN IN</span>
                     <svg class="ic btn-arrow" aria-hidden="true"><use href="#arrow-right"/></svg>
                 </button>
-                <p class="auth-note">Nu ai cont? Apasa <strong>CONT NOU</strong> sus.</p>
+                <p class="auth-note">New here? Tap <strong>CREATE ACCOUNT</strong> above.</p>
             </div>
 
             <!-- REGISTER -->
             <div id="form-register" class="auth-form" style="display:none">
                 <div class="input-group">
-                    <label class="input-label" for="reg-nickname">NICKNAME</label>
-                    <input type="text" id="reg-nickname" placeholder="Alege un nickname"
+                    <label class="input-label" for="reg-nickname">USERNAME</label>
+                    <input type="text" id="reg-nickname" placeholder="Choose a username"
                         maxlength="15" autocomplete="username" autocapitalize="none"
                         oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
                     <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label" for="reg-password">PAROLA <span class="auth-hint">(min. 6 car., litere + cifre)</span></label>
-                    <input type="password" id="reg-password" placeholder="Alege o parola"
+                    <label class="input-label" for="reg-password">PASSWORD <span class="auth-hint">(at least 6 characters, letters + numbers)</span></label>
+                    <input type="password" id="reg-password" placeholder="Choose a password"
                         maxlength="32" autocomplete="new-password">
                     <div class="input-line"></div>
                 </div>
                 <div class="input-group">
-                    <label class="input-label" for="reg-confirm">CONFIRMA PAROLA</label>
-                    <input type="password" id="reg-confirm" placeholder="Repeta parola"
+                    <label class="input-label" for="reg-confirm">CONFIRM PASSWORD</label>
+                    <input type="password" id="reg-confirm" placeholder="Repeat your password"
                         maxlength="32" autocomplete="new-password">
                     <div class="input-line"></div>
                 </div>
                 <div class="auth-error" id="reg-error"></div>
                 <button class="auth-btn" id="reg-btn" onclick="doRegister()">
-                    <span class="btn-text">CREEAZA CONT</span>
+                    <span class="btn-text">CREATE ACCOUNT</span>
                     <svg class="ic btn-arrow" aria-hidden="true"><use href="#arrow-right"/></svg>
                 </button>
-                <p class="auth-note">Ai deja cont? Apasa <strong>INTRU IN JOC</strong> sus.</p>
+                <p class="auth-note">Already have an account? Tap <strong>SIGN IN</strong> above.</p>
             </div>
         </div>
 
@@ -202,25 +203,25 @@
     <!-- Top bar: logo, season, (tabs on phones), social + settings -->
     <header class="lb-topbar">
         <div class="lb-topbar-left">
-            <span class="lb-topbar-title wordmark"><svg class="ic tb-mark" aria-hidden="true"><use href="#mark"/></svg><span>ARENA</span><span class="wm-r">ROYALE</span></span>
+            <span class="lb-topbar-title wordmark brand-lockup" aria-label="Blastridge"><img class="brand-emblem" src="/images/blastridge-logo.png" alt=""><span>BLAST</span><span class="wm-r">RIDGE</span></span>
         </div>
-        <div class="season-pill" aria-label="Sezonul curent: Stadium Showdown">
+        <div class="season-pill" aria-label="Current season: Stadium Showdown">
             <span class="sp-ball" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#ball"/></svg></span>
-            <span class="sp-text"><span class="sp-kick">SEZONUL 1</span><span class="sp-name">STADIUM SHOWDOWN</span></span>
+            <span class="sp-text"><span class="sp-kick">SEASON 1</span><span class="sp-name">STADIUM SHOWDOWN</span></span>
         </div>
         <!-- Tabs (phones and narrow screens) -->
-        <nav class="lobby-tabs-inline" aria-label="Sectiuni lobby">
-            <button class="lti-btn" id="tab-left" onclick="switchLobbyTab('left')"><svg class="ic" aria-hidden="true"><use href="#id-card"/></svg><span>Profil</span></button>
-            <button class="lti-btn active" id="tab-center" onclick="switchLobbyTab('center')"><svg class="ic" aria-hidden="true"><use href="#swords"/></svg><span>Joc</span></button>
-            <button class="lti-btn" id="tab-right" onclick="switchLobbyTab('right')"><svg class="ic" aria-hidden="true"><use href="#target"/></svg><span>Misiuni</span></button>
+        <nav class="lobby-tabs-inline" aria-label="Lobby sections">
+            <button class="lti-btn" id="tab-left" onclick="switchLobbyTab('left')"><svg class="ic" aria-hidden="true"><use href="#id-card"/></svg><span>Profile</span></button>
+            <button class="lti-btn active" id="tab-center" onclick="switchLobbyTab('center')"><svg class="ic" aria-hidden="true"><use href="#swords"/></svg><span>Play</span></button>
+            <button class="lti-btn" id="tab-right" onclick="switchLobbyTab('right')"><svg class="ic" aria-hidden="true"><use href="#target"/></svg><span>Missions</span></button>
         </nav>
         <div class="lb-topbar-right">
             <button class="lb-btn friends-nav-btn" onclick="openFriendsPanel()" id="friends-nav-btn">
-                <svg class="ic" aria-hidden="true"><use href="#users"/></svg><span class="lb-btn-text">PRIETENI</span>
+                <svg class="ic" aria-hidden="true"><use href="#users"/></svg><span class="lb-btn-text">FRIENDS</span>
                 <span id="friends-nav-badge" class="friends-nav-badge" style="display:none"></span>
             </button>
             <a href="#" class="lb-btn lb-gold" onclick="openLeaderboard(); return false;"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg><span class="lb-btn-text">LEADERBOARD</span></a>
-            <button class="lb-btn lb-btn-icon" id="btn-settings-lobby" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
+            <button class="lb-btn lb-btn-icon" id="btn-settings-lobby" onclick="openSettings()" title="Settings" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
         </div>
     </header>
 
@@ -236,8 +237,8 @@
                     <div class="lp-av-placeholder" id="lp-avatar-ph"><svg class="ic" aria-hidden="true"><use href="#user"/></svg></div>
                 </div>
                 <div class="lp-id">
-                    <div class="lp-nick" id="lp-nick">JUCATOR</div>
-                    <div class="lp-rank" id="lp-rank">RECRUT</div>
+                    <div class="lp-nick" id="lp-nick">PLAYER</div>
+                    <div class="lp-rank" id="lp-rank">RECRUIT</div>
                 </div>
                 <div class="lp-level-badge" id="lp-level">LV 1</div>
             </div>
@@ -252,19 +253,19 @@
         </section>
 
         <section class="lp-card lp-results">
-            <h2 class="lp-card-title">STATISTICI</h2>
+            <h2 class="lp-card-title">STATS</h2>
             <div class="lp-stats-grid">
-                <div class="lp-stat-box lp-stat-wins"><span class="lp-stat-val" id="lp-wins">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#trophy"/></svg>VICTORII</span></div>
-                <div class="lp-stat-box lp-stat-kills"><span class="lp-stat-val" id="lp-kills">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#skull"/></svg>ELIMINARI</span></div>
-                <div class="lp-stat-box lp-stat-games"><span class="lp-stat-val" id="lp-games">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#gamepad-2"/></svg>MECIURI</span></div>
+                <div class="lp-stat-box lp-stat-wins"><span class="lp-stat-val" id="lp-wins">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#trophy"/></svg>WINS</span></div>
+                <div class="lp-stat-box lp-stat-kills"><span class="lp-stat-val" id="lp-kills">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#skull"/></svg>ELIMINATIONS</span></div>
+                <div class="lp-stat-box lp-stat-games"><span class="lp-stat-val" id="lp-games">0</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#gamepad-2"/></svg>MATCHES</span></div>
                 <div class="lp-stat-box lp-stat-winrate"><span class="lp-stat-val" id="lp-winrate">0%</span><span class="lp-stat-lbl"><svg class="ic lp-stat-icon" aria-hidden="true"><use href="#trending-up"/></svg>WIN RATE</span></div>
             </div>
         </section>
 
         <section class="lp-card chest-row">
             <div class="chest-row-header">
-                <h2 class="lp-card-title chest-row-title">CHEST-URI</h2>
-                <span class="chest-row-sub">0 / 4 sloturi</span>
+                <h2 class="lp-card-title chest-row-title">CHESTS</h2>
+                <span class="chest-row-sub">0 / 4 slots</span>
             </div>
             <div class="chest-slots">
                 <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
@@ -272,7 +273,7 @@
                 <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
                 <div class="chest-slot"><svg class="ic chest-slot-icon" aria-hidden="true"><use href="#package"/></svg></div>
             </div>
-            <p class="chest-hint">Castiga meciuri ca sa primesti chest-uri.</p>
+            <p class="chest-hint">Win matches to earn chests.</p>
         </section>
     </aside>
 
@@ -280,22 +281,22 @@
     <main class="lobby-center lb-col">
         <section class="hero-card" id="char-rarity-ring">
             <div class="hero-head">
-                <span class="hero-kick">PERSONAJ</span>
+                <span class="hero-kick">CHARACTER</span>
                 <h2 class="hero-name" id="char-name-display">NINJA</h2>
             </div>
-            <button type="button" class="hero-arrow hero-prev" onclick="cycleCharacter(-1)" aria-label="Personajul anterior"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+            <button type="button" class="hero-arrow hero-prev" onclick="cycleCharacter(-1)" aria-label="Previous character"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
             <div class="hero-stage" id="hero-stage">
                 <span class="hero-spot" aria-hidden="true"></span>
                 <img id="preview" src="/images/skins/svg/rookie.svg" alt="" class="char-preview-img hero-img">
-                <span class="hero-lock" id="hero-lock" hidden><svg class="ic" aria-hidden="true"><use href="#lock"/></svg><span id="hero-lock-txt">BLOCAT</span></span>
+                <span class="hero-lock" id="hero-lock" hidden><svg class="ic" aria-hidden="true"><use href="#lock"/></svg><span id="hero-lock-txt">LOCKED</span></span>
             </div>
-            <button type="button" class="hero-arrow hero-next" onclick="cycleCharacter(1)" aria-label="Personajul urmator"><svg class="ic" aria-hidden="true"><use href="#chevron-right"/></svg></button>
+            <button type="button" class="hero-arrow hero-next" onclick="cycleCharacter(1)" aria-label="Next character"><svg class="ic" aria-hidden="true"><use href="#chevron-right"/></svg></button>
             <div class="hero-foot">
-                <button type="button" class="hero-weapon hero-chars" onclick="openCharacterShop()" aria-label="Toate personajele">
+                <button type="button" class="hero-weapon hero-chars" onclick="openCharacterShop()" aria-label="All characters">
                     <span class="weapon-preview-icon hc-icon"><svg class="ic" aria-hidden="true"><use href="#users"/></svg></span>
-                    <span class="hw-text"><span class="hw-kick">SKIN <b id="hero-skin-idx">1</b> / <span id="hero-skin-total">30</span></span><span class="hw-name">PERSONAJE</span></span>
+                    <span class="hw-text"><span class="hw-kick">SKIN <b id="hero-skin-idx">1</b> / <span id="hero-skin-total">30</span></span><span class="hw-name">CHARACTERS</span></span>
                 </button>
-                <button type="button" class="hero-weapon hero-arms" id="weapon-ring" onclick="openArsenal()" aria-label="Arsenal: armele si skin-urile lor">
+                <button type="button" class="hero-weapon hero-arms" id="weapon-ring" onclick="openArsenal()" aria-label="Arsenal: weapons and skins">
                     <span class="weapon-preview-icon" id="weapon-preview-icon"><img class="wicon" src="/images/weapon-icons/pistol.png" alt="" draggable="false"></span>
                     <span class="hw-text"><span class="hw-kick">ARSENAL</span><span class="hw-name" id="weapon-name-display">SCOUT</span></span>
                 </button>
@@ -305,30 +306,30 @@
         <section class="build-card">
             <div class="bc-header">
                 <h2 class="bc-title" id="loadout-title">LOADOUT</h2>
-                <span class="bc-points"><span id="points-display" data-flap>10</span><span class="bc-points-max"> puncte ramase</span></span>
+                <span class="bc-points"><span id="points-display" data-flap>10</span><span class="bc-points-max"> points remaining</span></span>
             </div>
 
             <div class="stat-row stat-hp">
                 <span class="stat-name">HP</span>
-                <button class="stat-btn minus" onclick="changeStat('hp',-1)" aria-label="Scade HP"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
+                <button class="stat-btn minus" onclick="changeStat('hp',-1)" aria-label="Decrease HP"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
                 <div class="stat-bar"><div class="stat-fill red" id="bar-hp" style="width:10%"></div></div>
-                <button class="stat-btn plus"  onclick="changeStat('hp', 1)" aria-label="Creste HP"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
+                <button class="stat-btn plus"  onclick="changeStat('hp', 1)" aria-label="Increase HP"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
                 <span class="stat-value" id="val-hp" data-flap>500 HP</span>
             </div>
 
             <div class="stat-row stat-dmg">
                 <span class="stat-name">DMG</span>
-                <button class="stat-btn minus" onclick="changeStat('dmg',-1)" aria-label="Scade DMG"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
+                <button class="stat-btn minus" onclick="changeStat('dmg',-1)" aria-label="Decrease damage"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
                 <div class="stat-bar"><div class="stat-fill orange" id="bar-dmg" style="width:10%"></div></div>
-                <button class="stat-btn plus"  onclick="changeStat('dmg', 1)" aria-label="Creste DMG"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
+                <button class="stat-btn plus"  onclick="changeStat('dmg', 1)" aria-label="Increase damage"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
                 <span class="stat-value" id="val-dmg" data-flap>10 DMG</span>
             </div>
 
             <div class="stat-row stat-spd">
                 <span class="stat-name">SPD</span>
-                <button class="stat-btn minus" onclick="changeStat('spd',-1)" aria-label="Scade SPD"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
+                <button class="stat-btn minus" onclick="changeStat('spd',-1)" aria-label="Decrease speed"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
                 <div class="stat-bar"><div class="stat-fill blue" id="bar-spd" style="width:10%"></div></div>
-                <button class="stat-btn plus"  onclick="changeStat('spd', 1)" aria-label="Creste SPD"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
+                <button class="stat-btn plus"  onclick="changeStat('spd', 1)" aria-label="Increase speed"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
                 <span class="stat-value" id="val-spd" data-flap>2.5 SPD</span>
             </div>
         </section>
@@ -338,7 +339,7 @@
     <aside class="lobby-panel-right lb-col">
         <div class="season-pill season-pill-m" aria-hidden="true">
             <span class="sp-ball"><svg class="ic" aria-hidden="true"><use href="#ball"/></svg></span>
-            <span class="sp-text"><span class="sp-kick">SEZONUL 1</span><span class="sp-name">STADIUM SHOWDOWN</span></span>
+            <span class="sp-text"><span class="sp-kick">SEASON 1</span><span class="sp-name">STADIUM SHOWDOWN</span></span>
         </div>
         <section class="gamemode-panel play-card" id="room-section">
             <h2 class="gm-label">GAMEMODE</h2>
@@ -347,7 +348,7 @@
                 <svg class="ic gm-icon" aria-hidden="true"><use href="#swords"/></svg>
                 <span class="gm-info">
                     <span class="gm-name">BATTLE ROYALE</span>
-                    <span class="gm-desc">Ultimul supravietuitor castiga</span>
+                    <span class="gm-desc">Be the last player standing</span>
                 </span>
                 <svg class="ic gm-check" aria-hidden="true"><use href="#check"/></svg>
             </button>
@@ -356,20 +357,20 @@
                 <svg class="ic gm-icon" aria-hidden="true"><use href="#biohazard"/></svg>
                 <span class="gm-info">
                     <span class="gm-name">SURVIVAL PvE</span>
-                    <span class="gm-desc">Cooperare contra hoardelor</span>
+                    <span class="gm-desc">Team up against the zombie horde</span>
                 </span>
                 <svg class="ic gm-check" aria-hidden="true"><use href="#check"/></svg>
             </button>
             <button class="btn-play" id="btn-play" onclick="startCreate()">
                 <svg class="ic" aria-hidden="true"><use href="#play"/></svg><span>PLAY</span>
             </button>
-            <label class="gm-label join-label" for="room-code-input">COD CAMERA</label>
+            <label class="gm-label join-label" for="room-code-input">ROOM CODE</label>
             <div class="join-row">
                 <input type="text" id="room-code-input" class="join-input"
-                    placeholder="ex: KBNJM" aria-label="Cod camera"
+                    placeholder="e.g. KBNJM" aria-label="Room code"
                     maxlength="5" autocomplete="off" autocapitalize="characters"
                     oninput="this.value=this.value.toUpperCase()">
-                <button class="btn-join" onclick="startJoin()" aria-label="Intra in camera"><svg class="ic" aria-hidden="true"><use href="#arrow-right"/></svg></button>
+                <button class="btn-join" onclick="startJoin()" aria-label="Join room"><svg class="ic" aria-hidden="true"><use href="#arrow-right"/></svg></button>
             </div>
             <p class="room-err" id="room-error-msg"></p>
             <p class="lobby-err" id="error-msg"></p>
@@ -377,8 +378,8 @@
 
         <section class="lp-card missions-card">
             <div class="mc-head">
-                <h2 class="lp-card-title"><svg class="ic" aria-hidden="true"><use href="#target"/></svg>MISIUNI ZILNICE</h2>
-                <button type="button" class="mc-all" onclick="openMissions()">Toate <b id="mc-count">6</b></button>
+                <h2 class="lp-card-title"><svg class="ic" aria-hidden="true"><use href="#target"/></svg>DAILY MISSIONS</h2>
+                <button type="button" class="mc-all" onclick="openMissions()">All <b id="mc-count">6</b></button>
             </div>
             <div id="lp-missions"></div>
         </section>
@@ -387,7 +388,7 @@
             <div class="lp-event-name"><svg class="ic" aria-hidden="true"><use href="#radio"/></svg>Weekend Tournament</div>
             <div class="lp-event-row">
                 <span class="lp-event-timer" id="lp-event-timer">--:--:--</span>
-                <button type="button" class="lp-event-join" onclick="tournamentSignup()">INSCRIE-TE</button>
+                <button type="button" class="lp-event-join" onclick="tournamentSignup()">JOIN</button>
             </div>
         </section>
     </aside>
@@ -397,10 +398,10 @@
     <!-- ── Missions Modal (all six of today's missions) ── -->
     <div id="missions-overlay" style="display:none">
         <div class="missions-backdrop" onclick="closeMissions()"></div>
-        <div class="missions-modal" role="dialog" aria-label="Misiuni zilnice">
+        <div class="missions-modal" role="dialog" aria-label="Daily missions">
             <div class="missions-header">
-                <span class="missions-title"><svg class="ic" aria-hidden="true"><use href="#target"/></svg>MISIUNI ZILNICE</span>
-                <button class="missions-close" onclick="closeMissions()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+                <span class="missions-title"><svg class="ic" aria-hidden="true"><use href="#target"/></svg>DAILY MISSIONS</span>
+                <button class="missions-close" onclick="closeMissions()" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
             </div>
             <div class="missions-body" id="missions-modal-list"></div>
         </div>
@@ -410,27 +411,27 @@
     <div id="friends-overlay" style="display:none">
         <div class="friends-modal">
             <div class="friends-header">
-                <span class="friends-title"><svg class="ic" aria-hidden="true"><use href="#users"/></svg>PRIETENI</span>
-                <button class="friends-close" onclick="closeFriendsPanel()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+                <span class="friends-title"><svg class="ic" aria-hidden="true"><use href="#users"/></svg>FRIENDS</span>
+                <button class="friends-close" onclick="closeFriendsPanel()" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
             </div>
             <div class="friends-scroll">
                 <!-- Search -->
                 <div class="friends-search-wrap">
                     <input type="text" id="friends-search-input" class="friends-search-input"
-                        placeholder="Cauta dupa nickname" autocomplete="off" maxlength="20"
+                        placeholder="Search by username" autocomplete="off" maxlength="20"
                         onkeydown="if(event.key==='Enter')searchFriend()">
-                    <button class="friends-search-btn" onclick="searchFriend()"><svg class="ic" aria-hidden="true"><use href="#search"/></svg><span>CAUTA</span></button>
+                    <button class="friends-search-btn" onclick="searchFriend()"><svg class="ic" aria-hidden="true"><use href="#search"/></svg><span>SEARCH</span></button>
                 </div>
                 <div id="friends-search-results" class="friends-search-results"></div>
                 <!-- Pending incoming -->
                 <div id="friends-pending-section" style="display:none">
-                    <div class="friends-section-title">CERERI PRIMITE <span id="friends-pending-count" class="fpcount"></span></div>
+                    <div class="friends-section-title">INCOMING REQUESTS <span id="friends-pending-count" class="fpcount"></span></div>
                     <div id="friends-pending-list"></div>
                 </div>
                 <!-- Friends list -->
-                <div class="friends-section-title">PRIETENI <span id="friends-count" class="fpcount"></span></div>
+                <div class="friends-section-title">FRIENDS <span id="friends-count" class="fpcount"></span></div>
                 <div id="friends-list" class="friends-list">
-                    <div class="friends-empty">Niciun prieten inca. Cauta jucatori de mai sus.</div>
+                    <div class="friends-empty">No friends yet. Search for players above.</div>
                 </div>
             </div>
         </div>
@@ -440,12 +441,12 @@
     <div id="char-shop-overlay" style="display:none">
         <div class="char-shop-modal">
             <div class="char-shop-header">
-                <span class="char-shop-title"><svg class="ic" aria-hidden="true"><use href="#id-card"/></svg>PERSONAJE</span>
+                <span class="char-shop-title"><svg class="ic" aria-hidden="true"><use href="#id-card"/></svg>CHARACTERS</span>
                 <div class="char-shop-currency">
                     <span class="csc-box csc-gold"><svg class="ic" aria-hidden="true"><use href="#coins"/></svg><span id="shop-coins">0</span></span>
                     <span class="csc-box csc-gem"><svg class="ic" aria-hidden="true"><use href="#gem"/></svg><span id="shop-diamonds">0</span></span>
                 </div>
-                <button class="char-shop-close" onclick="closeCharacterShop()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+                <button class="char-shop-close" onclick="closeCharacterShop()" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
             </div>
             <div class="char-shop-filters">
                 <button class="csf-btn active" data-filter="all"       onclick="filterCharShop('all',this)">TOATE</button>
@@ -453,7 +454,7 @@
                 <button class="csf-btn"         data-filter="rare"      onclick="filterCharShop('rare',this)">RARE</button>
                 <button class="csf-btn"         data-filter="epic"      onclick="filterCharShop('epic',this)">EPIC</button>
                 <button class="csf-btn"         data-filter="legendary" onclick="filterCharShop('legendary',this)">LEGENDARY</button>
-                <button class="csf-btn"         data-filter="season"    onclick="filterCharShop('season',this)">SEZON</button>
+                <button class="csf-btn"         data-filter="season"    onclick="filterCharShop('season',this)">SEASON</button>
             </div>
             <div class="char-shop-grid" id="char-shop-grid"></div>
         </div>
@@ -461,10 +462,10 @@
 
 </div>
 
-<!-- ========== ARSENAL: armele, skin-urile si statisticile pe arma (game.js ARSENAL) ========== -->
+<!-- ========== ARSENAL: weapons, skins, and weapon stats ========== -->
 <div id="screen-arsenal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="ars-title">
     <header class="ars-top">
-        <button type="button" class="ars-blk ars-back" onclick="closeArsenal()" aria-label="Inapoi in lobby"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+        <button type="button" class="ars-blk ars-back" onclick="closeArsenal()" aria-label="Back to lobby"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
         <h1 class="ars-title" id="ars-title"><svg class="ic" aria-hidden="true"><use href="#crosshair"/></svg><span>ARSENAL</span></h1>
         <div class="ars-wallet">
             <span class="ars-cur ars-cur-gold"><svg class="ic" aria-hidden="true"><use href="#coins"/></svg><span id="ars-coins">0</span></span>
@@ -473,8 +474,8 @@
     </header>
     <div class="ars-body">
         <!-- left: the guns, in weapons.json class order -->
-        <section class="ars-col ars-list" aria-label="Armele tale">
-            <div class="ars-head"><span class="ars-head-title">ARMELE TALE</span><span class="ars-head-note">kill-uri</span></div>
+        <section class="ars-col ars-list" aria-label="Your weapons">
+            <div class="ars-head"><span class="ars-head-title">YOUR WEAPONS</span><span class="ars-head-note">KILLS</span></div>
             <div class="ars-weapons" id="ars-weapons"></div>
         </section>
         <!-- center: the chosen gun -->
@@ -489,33 +490,33 @@
     <div class="ars-confirm" id="ars-confirm" hidden>
         <div class="ars-confirm-card ars-tray" role="alertdialog" aria-modal="true" aria-labelledby="ars-confirm-title">
             <div class="ars-confirm-icon" id="ars-confirm-icon"></div>
-            <h2 class="ars-confirm-title" id="ars-confirm-title">CUMPERI SKINUL?</h2>
+            <h2 class="ars-confirm-title" id="ars-confirm-title">BUY THIS SKIN?</h2>
             <p class="ars-confirm-text" id="ars-confirm-text"></p>
             <div class="ars-confirm-actions">
-                <button type="button" class="ars-blk ars-btn-slate" onclick="closeArsConfirm()">ANULEAZA</button>
-                <button type="button" class="ars-blk ars-btn-gold" id="ars-confirm-buy" onclick="confirmArsBuy()">CUMPARA</button>
+                <button type="button" class="ars-blk ars-btn-slate" onclick="closeArsConfirm()">CANCEL</button>
+                <button type="button" class="ars-blk ars-btn-gold" id="ars-confirm-buy" onclick="confirmArsBuy()">BUY</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- ========== SKIN DEBLOCAT: notificarea din lobby, duce la Arsenal ========== -->
+<!-- ========== WEAPON SKIN UNLOCKED: lobby notification linking to Arsenal ========== -->
 <div id="wskin-notice" class="wskin-notice" hidden role="status">
     <span class="wskin-notice-icon" id="wskin-notice-icon"></span>
-    <span class="wskin-notice-text"><span class="wskin-notice-kick">SKIN DEBLOCAT</span><span class="wskin-notice-name" id="wskin-notice-name"></span></span>
-    <button type="button" class="ars-blk ars-btn-gold wskin-notice-go" onclick="openWeaponSkinNotice()">VEZI IN ARSENAL</button>
-    <button type="button" class="wskin-notice-x" onclick="dismissWeaponSkinNotice()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+    <span class="wskin-notice-text"><span class="wskin-notice-kick">SKIN UNLOCKED</span><span class="wskin-notice-name" id="wskin-notice-name"></span></span>
+    <button type="button" class="ars-blk ars-btn-gold wskin-notice-go" onclick="openWeaponSkinNotice()">VIEW IN ARSENAL</button>
+    <button type="button" class="wskin-notice-x" onclick="dismissWeaponSkinNotice()" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
 </div>
 
 <!-- ========== ECRANUL DE ASTEPTARE ========== -->
 <div id="screen-waiting" style="display:none">
 
     <header class="waiting-topbar">
-        <button class="lb-topbar-back" onclick="leaveWaiting()" title="Iesi din camera" aria-label="Iesi din camera"><svg class="ic" aria-hidden="true"><use href="#log-out"/></svg></button>
-        <span class="lb-topbar-title wordmark"><svg class="ic tb-mark" aria-hidden="true"><use href="#mark"/></svg><span>ARENA</span><span class="wm-r">ROYALE</span></span>
+        <button class="lb-topbar-back" onclick="leaveWaiting()" title="Leave room" aria-label="Leave room"><svg class="ic" aria-hidden="true"><use href="#log-out"/></svg></button>
+        <span class="lb-topbar-title wordmark brand-lockup" aria-label="Blastridge"><img class="brand-emblem" src="/images/blastridge-logo.png" alt=""><span>BLAST</span><span class="wm-r">RIDGE</span></span>
         <div class="lb-topbar-right">
             <a href="#" class="lb-btn lb-btn-icon" onclick="openLeaderboard(); return false;" aria-label="Leaderboard"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg></a>
-            <button class="lb-btn lb-btn-icon" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
+            <button class="lb-btn lb-btn-icon" onclick="openSettings()" title="Settings" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
         </div>
     </header>
 
@@ -523,14 +524,14 @@
     <div class="waiting-content">
         <div class="waiting-head">
             <div class="waiting-title-block">
-                <h2 class="waiting-title">SALA DE ASTEPTARE</h2>
+                <h2 class="waiting-title">WAITING ROOM</h2>
                 <div class="waiting-stats">
                     <div class="online-dot"></div>
-                    <span class="waiting-count-num" id="waiting-count" data-flap>0</span><span>jucatori conectati</span>
+                    <span class="waiting-count-num" id="waiting-count" data-flap>0</span><span>players connected</span>
                 </div>
             </div>
             <div class="waiting-code-box">
-                <span class="waiting-code-label">COD CAMERA</span>
+                <span class="waiting-code-label">ROOM CODE</span>
                 <span class="waiting-code-value" id="waiting-code-display">—</span>
             </div>
         </div>
@@ -538,30 +539,30 @@
         <div class="waiting-players-area">
             <div class="waiting-players-grid" id="waiting-players"></div>
             <button id="btn-invite-friends" class="waiting-invite-btn"
-                    onclick="openWaitingInvitePanel()" title="Invita prieteni" aria-label="Invita prieteni"
-                    style="display:none"><svg class="ic" aria-hidden="true"><use href="#user-plus"/></svg><span>INVITA</span></button>
+                    onclick="openWaitingInvitePanel()" title="Invite friends" aria-label="Invite friends"
+                    style="display:none"><svg class="ic" aria-hidden="true"><use href="#user-plus"/></svg><span>INVITE</span></button>
         </div>
 
         <div class="waiting-foot">
             <button id="btn-start-game" class="btn-start-game" onclick="startGame()" style="display:none">
-                <svg class="ic" aria-hidden="true"><use href="#play"/></svg><span>PORNESTE JOCUL</span>
+                <svg class="ic" aria-hidden="true"><use href="#play"/></svg><span>START GAME</span>
             </button>
-            <p class="waiting-sub" id="waiting-sub-msg">Asteapta ca hostul sa porneasca jocul...</p>
+            <p class="waiting-sub" id="waiting-sub-msg">Waiting for the host to start the game...</p>
         </div>
     </div>
     </div>
 </div>
 
-<!-- ========== PANOU INVITA PRIETENI (waiting room) ========== -->
+<!-- ========== WAITING ROOM FRIEND INVITE PANEL ========== -->
 <div id="waiting-invite-panel" style="display:none">
     <div class="wip-overlay" onclick="closeWaitingInvitePanel()"></div>
     <div class="wip-modal">
         <div class="wip-header">
-            <span class="wip-title"><svg class="ic" aria-hidden="true"><use href="#user-plus"/></svg>Invita prieteni</span>
-            <button class="wip-close" onclick="closeWaitingInvitePanel()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+            <span class="wip-title"><svg class="ic" aria-hidden="true"><use href="#user-plus"/></svg>Invite friends</span>
+            <button class="wip-close" onclick="closeWaitingInvitePanel()" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
         </div>
         <div class="wip-body" id="waiting-invite-list">
-            <div class="wip-empty">Niciun prieten online momentan.</div>
+            <div class="wip-empty">No friends online right now.</div>
         </div>
     </div>
 </div>
@@ -569,14 +570,14 @@
 <!-- ========== POPUP INVITATIE PRIMITA ========== -->
 <div id="room-invite-popup" style="display:none">
     <div class="rip-card">
-        <div class="rip-badge"><svg class="ic" aria-hidden="true"><use href="#swords"/></svg>INVITATIE</div>
+        <div class="rip-badge"><svg class="ic" aria-hidden="true"><use href="#swords"/></svg>INVITATION</div>
         <div class="rip-body">
-            <strong id="invite-from">—</strong> te invita sa joci impreuna!
+            <strong id="invite-from">—</strong> invited you to play!
         </div>
-        <div class="rip-code">Cod camera <span id="invite-room-code">—</span></div>
+        <div class="rip-code">Room code <span id="invite-room-code">—</span></div>
         <div class="rip-actions">
-            <button class="rip-decline" onclick="declineRoomInvite()">REFUZA</button>
-            <button class="rip-accept"  onclick="acceptRoomInvite()">ACCEPTA</button>
+            <button class="rip-decline" onclick="declineRoomInvite()">DECLINE</button>
+            <button class="rip-accept"  onclick="acceptRoomInvite()">ACCEPT</button>
         </div>
         <div class="rip-timer"><div class="rip-timer-bar" id="rip-timer-bar"></div></div>
     </div>
@@ -606,7 +607,7 @@
             <div id="pve-wave-badge">WAVE <span id="pve-wave-num">0</span><span class="pve-wave-tot">/10</span></div>
             <div class="pve-hud-sep"></div>
             <div id="pve-base-section">
-                <span class="pve-base-label">BAZA</span>
+                <span class="pve-base-label">BASE</span>
                 <div class="pve-base-bar-outer"><div class="pve-base-bar-inner" id="pve-base-bar-inner"></div></div>
                 <span id="pve-base-hp-text">1000</span>
             </div>
@@ -623,7 +624,7 @@
             <span class="pve-upg-title"><svg class="ic" aria-hidden="true"><use href="#chevrons-up"/></svg>UPGRADE</span>
             <span id="pve-upgrade-wave-info" class="pve-upg-wave">Wave 1<svg class="ic" aria-hidden="true"><use href="#arrow-right"/></svg>2</span>
         </div>
-        <div class="pve-upg-coins"><svg class="ic" aria-hidden="true"><use href="#coins"/></svg><span id="pve-upgrade-coins">0</span><span class="pve-upg-coins-lbl">monede</span></div>
+        <div class="pve-upg-coins"><svg class="ic" aria-hidden="true"><use href="#coins"/></svg><span id="pve-upgrade-coins">0</span><span class="pve-upg-coins-lbl">coins</span></div>
         <div class="pve-upg-grid">
             <button class="pve-upg-btn" data-type="dmg" onclick="buyUpgrade('dmg')">
                 <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#crosshair"/></svg>
@@ -634,7 +635,7 @@
             </button>
             <button class="pve-upg-btn" data-type="spd" onclick="buyUpgrade('spd')">
                 <svg class="ic pve-upg-icon" aria-hidden="true"><use href="#gauge"/></svg>
-                <span class="pve-upg-name">VITEZA</span>
+                <span class="pve-upg-name">SPEED</span>
                 <span class="pve-upg-val">+4%</span>
                 <span class="pve-upg-cost">5</span>
                 <div class="pve-upg-segs"></div>
@@ -660,31 +661,31 @@
 
     <!-- Spectator HUD -->
     <div id="spectator-hud" style="display:none">
-        <button class="spec-nav-btn" onclick="window._specCycle && window._specCycle(-1)" aria-label="Jucator anterior"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+        <button class="spec-nav-btn" onclick="window._specCycle && window._specCycle(-1)" aria-label="Previous player"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
         <div class="spec-info">
             <span class="spec-label"><svg class="ic" aria-hidden="true"><use href="#eye"/></svg>SPECTATING</span>
             <span id="spec-target-name">—</span>
             <span id="spec-target-hp"></span>
         </div>
-        <button class="spec-nav-btn" onclick="window._specCycle && window._specCycle(1)" aria-label="Jucator urmator"><svg class="ic" aria-hidden="true"><use href="#chevron-right"/></svg></button>
+        <button class="spec-nav-btn" onclick="window._specCycle && window._specCycle(1)" aria-label="Next player"><svg class="ic" aria-hidden="true"><use href="#chevron-right"/></svg></button>
     </div>
 
     <!-- Exit button -->
     <!-- Top-right controls -->
     <div class="hud-actions">
     <button id="btn-debug-toggle" onclick="window._toggleDbg && window._toggleDbg()" title="Debug overlay">DBG</button>
-    <button id="btn-settings-game" onclick="openSettings()" title="Setari" aria-label="Setari"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
-    <button id="btn-leave-game" onclick="showLeaveConfirm()" title="Iesi din joc"><svg class="ic" aria-hidden="true"><use href="#x"/></svg><span>IESI</span></button>
+    <button id="btn-settings-game" onclick="openSettings()" title="Settings" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg></button>
+    <button id="btn-leave-game" onclick="showLeaveConfirm()" title="Leave game"><svg class="ic" aria-hidden="true"><use href="#x"/></svg><span>LEAVE</span></button>
     </div>
 
     <div id="leave-confirm">
         <div class="leave-confirm-card">
             <svg class="ic leave-confirm-icon" aria-hidden="true"><use href="#door-open"/></svg>
-            <div class="leave-confirm-title">IESI DIN MECI?</div>
-            <div class="leave-confirm-text">Vei parasi runda curenta si te vei intoarce in lobby.</div>
+            <div class="leave-confirm-title">LEAVE MATCH?</div>
+            <div class="leave-confirm-text">You will leave this round and return to the lobby.</div>
             <div class="leave-confirm-actions">
-                <button class="leave-confirm-cancel" onclick="hideLeaveConfirm()">ANULEAZA</button>
-                <button class="leave-confirm-exit" onclick="confirmLeaveGame()">IESI</button>
+                <button class="leave-confirm-cancel" onclick="hideLeaveConfirm()">CANCEL</button>
+                <button class="leave-confirm-exit" onclick="confirmLeaveGame()">LEAVE</button>
             </div>
         </div>
     </div>
@@ -703,21 +704,21 @@
     <!-- Game Over -->
     <div id="screen-gameover">
         <div class="gameover-content">
-            <h2 id="gameover-title">ELIMINAT!</h2>
-            <p id="gameover-msg">Ai fost eliminat din arena</p>
+            <h2 id="gameover-title">ELIMINATED!</h2>
+            <p id="gameover-msg">You were eliminated</p>
 
             <div id="round-stats-section" class="round-stats" style="display:none">
                 <div class="stats-kills-big">
                     <span class="stats-kills-num" id="stat-round-kills">0</span>
-                    <span class="stats-kills-lbl"><svg class="ic" aria-hidden="true"><use href="#skull"/></svg>KILLS IN RUNDA</span>
+                    <span class="stats-kills-lbl"><svg class="ic" aria-hidden="true"><use href="#skull"/></svg>KILLS THIS ROUND</span>
                 </div>
             </div>
 
             <button id="btn-spectate" style="display:none" onclick="window._startSpectating && window._startSpectating()">SPECTATE</button>
 
             <div class="gameover-actions">
-                <button id="btn-rematch">JOACA DIN NOU</button>
-                <button class="btn-leave" onclick="returnToLobby()">IESI</button>
+                <button id="btn-rematch">PLAY AGAIN</button>
+                <button class="btn-leave" onclick="returnToLobby()">LEAVE</button>
             </div>
             <a href="#" class="lb-btn gameover-lb" onclick="openLeaderboard(); return false;"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg>LEADERBOARD</a>
         </div>
@@ -727,32 +728,32 @@
 <!-- ========== SETARI ========== -->
 <div id="settings-overlay" style="display:none">
     <div class="settings-backdrop" onclick="closeSettings()"></div>
-    <div class="settings-modal" role="dialog" aria-label="Setari">
+    <div class="settings-modal" role="dialog" aria-label="Settings">
         <div class="settings-header">
-            <span class="settings-title"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg>SETARI</span>
-            <button class="settings-close" onclick="closeSettings()" aria-label="Inchide"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+            <span class="settings-title"><svg class="ic" aria-hidden="true"><use href="#settings"/></svg>SETTINGS</span>
+            <button class="settings-close" onclick="closeSettings()" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
         </div>
         <div class="settings-body">
             <div class="settings-row">
                 <div class="settings-label">
                     <svg class="ic" id="set-sound-ic" aria-hidden="true"><use href="#volume-2"/></svg>
-                    <div><div class="settings-name">Sunet</div><div class="settings-hint">Efecte la butoane, alegeri si start de meci</div></div>
+                    <div><div class="settings-name">Sound</div><div class="settings-hint">Button, selection, and match start effects</div></div>
                 </div>
-                <button class="switch" id="set-sound" role="switch" aria-checked="true" aria-label="Sunet"><span class="switch-knob"></span><span class="switch-text">ON</span></button>
+                <button class="switch" id="set-sound" role="switch" aria-checked="true" aria-label="Sound"><span class="switch-knob"></span><span class="switch-text">ON</span></button>
             </div>
             <div class="settings-row" id="set-row-fs">
                 <div class="settings-label">
                     <svg class="ic" aria-hidden="true"><use href="#maximize"/></svg>
-                    <div><div class="settings-name">Ecran complet</div><div class="settings-hint" id="set-fs-hint">Ascunde bara browserului</div></div>
+                    <div><div class="settings-name">Fullscreen</div><div class="settings-hint" id="set-fs-hint">Hide the browser bar</div></div>
                 </div>
-                <button class="settings-btn" id="set-fs">INTRA</button>
+                <button class="settings-btn" id="set-fs">ENTER</button>
             </div>
             <div class="settings-row" id="set-row-logout">
                 <div class="settings-label">
                     <svg class="ic" aria-hidden="true"><use href="#log-out"/></svg>
-                    <div><div class="settings-name">Cont</div><div class="settings-hint" id="set-account-hint">Iesi din contul curent</div></div>
+                    <div><div class="settings-name">Account</div><div class="settings-hint" id="set-account-hint">Sign out of the current account</div></div>
                 </div>
-                <button class="settings-btn settings-logout" onclick="closeSettings(); logoutToAuth()">DECONECTARE</button>
+                <button class="settings-btn settings-logout" onclick="closeSettings(); logoutToAuth()">SIGN OUT</button>
             </div>
         </div>
     </div>
@@ -761,8 +762,8 @@
 <!-- ========== OVERLAY ROTIRE ========== -->
 <div id="rotate-overlay">
     <svg class="ic rotate-phone" aria-hidden="true"><use href="#smartphone"/></svg>
-    <div class="rotate-title">ROTESTE DISPOZITIVUL</div>
-    <div class="rotate-sub">Jocul functioneaza doar in modul landscape</div>
+    <div class="rotate-title">ROTATE YOUR DEVICE</div>
+    <div class="rotate-sub">The game only runs in landscape mode</div>
 </div>
 
 <!-- ========== LEADERBOARD OVERLAY ========== -->
@@ -771,7 +772,7 @@
     <div class="lbo-card">
         <div class="lbo-header">
             <span class="lbo-title"><svg class="ic" aria-hidden="true"><use href="#trophy"/></svg>LEADERBOARD</span>
-            <button class="lbo-close" onclick="closeLeaderboard()"><svg class="ic" aria-hidden="true"><use href="#x"/></svg><span>INCHIDE</span></button>
+            <button class="lbo-close" onclick="closeLeaderboard()"><svg class="ic" aria-hidden="true"><use href="#x"/></svg><span>CLOSE</span></button>
         </div>
         <div class="lbo-table-wrap">
             <table>
@@ -779,16 +780,16 @@
                     <tr>
                         <th class="center">#</th>
                         <th>NICKNAME</th>
-                        <th class="center">VICTORII</th>
+                        <th class="center">WINS</th>
                         <th class="center">KILLS</th>
-                        <th class="center">JOCURI</th>
-                        <th class="center">K/JOC</th>
+                        <th class="center">MATCHES</th>
+                        <th class="center">K/MATCH</th>
                     </tr>
                 </thead>
                 <tbody id="lbo-body"></tbody>
             </table>
         </div>
-        <div id="lbo-status" class="lbo-status">Se incarca...</div>
+        <div id="lbo-status" class="lbo-status">Loading...</div>
     </div>
 </div>
 

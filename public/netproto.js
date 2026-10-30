@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - netproto.js
+// Blastridge - netproto.js
 // The per-tick state packet, protocol 2 ('gs2'). One file for both ends: the server (require) packs, the browser
 // (window.ARNet) and the tests unpack, so the two can never drift apart.
 //

@@ -267,9 +267,9 @@ async function missionsForLogin(nickname) {
 app.post('/api/auth/login', async (req, res) => {
     const { nickname, password } = req.body || {};
     if (!nickname || !password)
-        return res.json({ ok: false, error: 'Completeaza toate campurile' });
+        return res.json({ ok: false, error: 'Please fill in all fields' });
     if (!/^[a-zA-Z0-9_]{3,15}$/.test(nickname))
-        return res.json({ ok: false, error: 'Nickname: 3-15 caractere (litere, cifre, _)' });
+        return res.json({ ok: false, error: 'Username: 3?15 characters (letters, numbers, _)' });
 
     if (!supabase) {
         const token = crypto.randomBytes(32).toString('hex');
@@ -285,10 +285,10 @@ app.post('/api/auth/login', async (req, res) => {
             .from('players').select('*').eq('nickname', nickname).maybeSingle();
 
         if (!existing)
-            return res.json({ ok: false, error: 'Nickname inexistent. Creeaza un cont mai intai.' });
+            return res.json({ ok: false, error: 'Username not found. Create an account first.' });
 
         const valid = await hashOp('POST /api/auth/login', 'compare', password, existing.password_hash);
-        if (!valid) return res.json({ ok: false, error: 'Parola incorecta' });
+        if (!valid) return res.json({ ok: false, error: 'Incorrect password' });
 
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(existing.nickname, token);
@@ -329,20 +329,20 @@ app.post('/api/auth/login', async (req, res) => {
         }});
     } catch (err) {
         console.error('[Auth/Login] Error:', err);
-        return res.json({ ok: false, error: 'Eroare server. Incearca din nou.' });
+        return res.json({ ok: false, error: 'Server error. Please try again.' });
     }
 });
 
 app.post('/api/auth/register', async (req, res) => {
     const { nickname, password } = req.body || {};
     if (!nickname || !password)
-        return res.json({ ok: false, error: 'Completeaza toate campurile' });
+        return res.json({ ok: false, error: 'Please fill in all fields' });
     if (!/^[a-zA-Z0-9_]{3,15}$/.test(nickname))
-        return res.json({ ok: false, error: 'Nickname: 3-15 caractere (litere, cifre, _)' });
+        return res.json({ ok: false, error: 'Username: 3?15 characters (letters, numbers, _)' });
     if (password.length < 6)
-        return res.json({ ok: false, error: 'Parola: minim 6 caractere' });
+        return res.json({ ok: false, error: 'Password: at least 6 characters' });
     if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password))
-        return res.json({ ok: false, error: 'Parola trebuie sa contina litere si cifre' });
+        return res.json({ ok: false, error: 'Password must contain letters and numbers' });
 
     if (!supabase) {
         ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
@@ -355,7 +355,7 @@ app.post('/api/auth/register', async (req, res) => {
             .from('players').select('id').eq('nickname', nickname).maybeSingle();
 
         if (existing)
-            return res.json({ ok: false, error: 'Nickname deja folosit. Alege altul sau logheaza-te.' });
+            return res.json({ ok: false, error: 'Username is already taken. Choose another or sign in.' });
 
         const hash = await hashOp('POST /api/auth/register', 'hash', password);
         const { error } = await supabase
@@ -363,7 +363,7 @@ app.post('/api/auth/register', async (req, res) => {
             .insert({ nickname, password_hash: hash, kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, avatar: DEFAULT_SKIN, unlocked_characters: JSON.stringify([DEFAULT_SKIN]) });
         if (error) {
             console.error('[Auth/Register] Insert error:', error);
-            return res.json({ ok: false, error: 'Eroare la creare cont. Incearca din nou.' });
+            return res.json({ ok: false, error: 'Could not create account. Please try again.' });
         }
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(nickname, token);
@@ -373,7 +373,7 @@ app.post('/api/auth/register', async (req, res) => {
         return res.json({ ok: true, token, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, missions, owned_weapon_skins: ownedWeaponSkinList(nickname), equipped_weapon_skins: {} } });
     } catch (err) {
         console.error('[Auth/Register] Error:', err);
-        return res.json({ ok: false, error: 'Eroare server. Incearca din nou.' });
+        return res.json({ ok: false, error: 'Server error. Please try again.' });
     }
 });
 
@@ -383,26 +383,26 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/characters/unlock', async (req, res) => {
     const { nickname, token, characterId } = req.body || {};
     if (!nickname || !token || !characterId) return res.json({ ok: false });
-    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Sesiune invalida' });
+    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Invalid session' });
     const skin = SKINS.get(characterId);
-    if (!skin) return res.json({ ok: false, error: 'Skin invalid' });
-    if (!skin.shop) return res.json({ ok: false, error: 'Skinul nu se poate cumpara din magazin' });
-    if (!supabase) return res.json({ ok: false, error: 'Cumpararea are nevoie de baza de date' });
+    if (!skin) return res.json({ ok: false, error: 'Invalid skin' });
+    if (!skin.shop) return res.json({ ok: false, error: 'This skin cannot be purchased in the shop' });
+    if (!supabase) return res.json({ ok: false, error: 'Purchases require a database connection' });
     try {
         const { data } = await supabase.from('players')
             .select('xp, coins, diamonds, unlocked_characters')
             .eq('nickname', nickname).single();
         if (!data) return res.json({ ok: false });
         let list = parseUnlocked(data.unlocked_characters);
-        if (ownedFromList(list).has(characterId)) return res.json({ ok: false, error: 'Deja deblocat' });
+        if (ownedFromList(list).has(characterId)) return res.json({ ok: false, error: 'Already unlocked' });
         const xp = data.xp || 0;
         let lvl = 1, inc = 100, thresh = 0;
         for (let n = 2; n <= 50; n++) { thresh += inc; if (xp >= thresh) lvl = n; else break; if (n >= 3) inc += 50; }
-        if (lvl < skin.level) return res.json({ ok: false, error: `Nivel insuficient (necesar LV ${skin.level})` });
+        if (lvl < skin.level) return res.json({ ok: false, error: `Level too low (LV ${skin.level} required)` });
         const coins    = data.coins    ?? 1000;
         const diamonds = data.diamonds || 0;
-        if (skin.coins    > 0 && coins    < skin.coins)    return res.json({ ok: false, error: 'Monede insuficiente' });
-        if (skin.diamonds > 0 && diamonds < skin.diamonds) return res.json({ ok: false, error: 'Diamante insuficiente' });
+        if (skin.coins    > 0 && coins    < skin.coins)    return res.json({ ok: false, error: 'Not enough coins' });
+        if (skin.diamonds > 0 && diamonds < skin.diamonds) return res.json({ ok: false, error: 'Not enough gems' });
         // A legacy list becomes a new-set list here (it gains DEFAULT_SKIN). Keep its old ids for the refund
         // script and the ids that carry over; drop new-set ids it never really owned (the old free ninja).
         if (isLegacyList(list)) list = [DEFAULT_SKIN, ...list.filter(id => !SKINS.has(id) || LEGACY_CARRY.has(id))];
@@ -418,7 +418,7 @@ app.post('/api/characters/unlock', async (req, res) => {
         res.json({ ok: true, coins: newCoins, diamonds: newDiamonds, unlocked_characters: ownedSkinList(nickname) });
     } catch (err) {
         console.error('[Characters/Unlock]', err);
-        res.json({ ok: false, error: 'Eroare server' });
+        res.json({ ok: false, error: 'Server error' });
     }
 });
 
@@ -426,7 +426,7 @@ app.post('/api/characters/unlock', async (req, res) => {
 app.post('/api/profile/avatar', async (req, res) => {
     const { nickname, token, password, avatar } = req.body || {};
     if (!nickname || !(token || password) || !avatar) return res.json({ ok: false });
-    if (!ownsSkin(nickname, avatar)) return res.json({ ok: false, error: 'Skin indisponibil' });
+    if (!ownsSkin(nickname, avatar)) return res.json({ ok: false, error: 'Skin unavailable' });
     if (!supabase) { memAvatars.set(nickname, avatar); return res.json({ ok: true }); }
     try {
         if (!(await authenticated('POST /api/profile/avatar', nickname, token, password))) return res.json({ ok: false });
@@ -454,7 +454,7 @@ app.post('/api/profile/stats', async (req, res) => {
     const hp  = Math.max(0, Math.min(10, Math.floor(+stat_hp  || 0)));
     const dmg = Math.max(0, Math.min(10, Math.floor(+stat_dmg || 0)));
     const spd = Math.max(0, Math.min(10, Math.floor(+stat_spd || 0)));
-    if (hp + dmg + spd > 10) return res.json({ ok: false, error: 'Total depasit' });
+    if (hp + dmg + spd > 10) return res.json({ ok: false, error: 'Maximum total exceeded' });
     try {
         if (!(await authenticated('POST /api/profile/stats', nickname, token, password))) return res.json({ ok: false });
         const { error } = await supabase.from('players').update({ stat_hp: hp, stat_dmg: dmg, stat_spd: spd, updated_at: new Date().toISOString() }).eq('nickname', nickname);
@@ -471,8 +471,8 @@ app.post('/api/profile/stats', async (req, res) => {
 
 app.post('/api/missions/claim', async (req, res) => {
     const { nickname, token, missionId } = req.body || {};
-    if (!nickname || !token || !missionId) return res.json({ ok: false, error: 'Date invalide' });
-    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Sesiune invalida' });
+    if (!nickname || !token || !missionId) return res.json({ ok: false, error: 'Invalid data' });
+    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Invalid session' });
     try {
         const state = await loadMissions(nickname);
         const r = Missions.claim(state, missionId);
@@ -482,7 +482,7 @@ app.post('/api/missions/claim', async (req, res) => {
             return res.json({ ok: true, coins: null, diamonds: null, rewardCoins: r.coins, rewardDiamonds: r.diamonds, missions: Missions.toClient(state) });
         }
         const { data } = await supabase.from('players').select('coins, diamonds').eq('nickname', nickname).single();
-        if (!data) return res.json({ ok: false, error: 'Cont negasit' });
+        if (!data) return res.json({ ok: false, error: 'Account not found' });
         const newCoins    = (data.coins    ?? 1000) + r.coins;
         const newDiamonds = (data.diamonds || 0)    + r.diamonds;
         await supabase.from('players').update({ coins: newCoins, diamonds: newDiamonds }).eq('nickname', nickname);
@@ -490,7 +490,7 @@ app.post('/api/missions/claim', async (req, res) => {
         res.json({ ok: true, coins: newCoins, diamonds: newDiamonds, rewardCoins: r.coins, rewardDiamonds: r.diamonds, missions: Missions.toClient(state) });
     } catch (err) {
         console.error('[Missions/Claim] Error:', err);
-        res.json({ ok: false, error: 'Eroare server' });
+        res.json({ ok: false, error: 'Server error' });
     }
 });
 
@@ -853,7 +853,7 @@ function emitWeaponSkinsUnlocked(socketId, nickname, ids) {
 }
 // q filtered on col being v (null-safe: a column that was never set is NULL)
 const whereSame = (q, col, v) => (v === null || v === undefined) ? q.is(col, null) : q.eq(col, v);
-const WEAPON_SKIN_NEEDS_MIGRATION = 'Skin-urile de arme nu se pot cumpara inca (lipseste migrarea bazei de date)';
+const WEAPON_SKIN_NEEDS_MIGRATION = 'Weapon skins cannot be purchased yet (database migration required)';
 // One purchase, run in the account's write queue (serialStatWrite): a second click waits for the first and
 // then finds the skin owned. The money and the skin go in one update, and only if the money is still what
 // was read (a reward or another purchase in between makes it read again), so it is never spent twice.
@@ -865,15 +865,15 @@ async function _buyWeaponSkin(nickname, skin) {
             if (_weaponSkinsMissing(error)) { _noWeaponSkinsColumn(); return { ok: false, error: WEAPON_SKIN_NEEDS_MIGRATION }; }
             throw error;
         }
-        if (!data) return { ok: false, error: 'Cont negasit' };
+        if (!data) return { ok: false, error: 'Account not found' };
         const owned = sanitizeOwnedWeaponSkins(data.owned_weapon_skins);
         weaponSkinState(nickname).owned = new Set(owned);
-        if (owned.includes(skin.id)) return { ok: false, error: 'Deja detinut', owned: ownedWeaponSkinList(nickname) };
+        if (owned.includes(skin.id)) return { ok: false, error: 'Already owned', owned: ownedWeaponSkinList(nickname) };
         const coins    = data.coins    ?? 1000;
         const diamonds = data.diamonds || 0;
         const cCost = skin.price.coins || 0, dCost = skin.price.diamonds || 0;
-        if (coins    < cCost) return { ok: false, error: 'Monede insuficiente' };
-        if (diamonds < dCost) return { ok: false, error: 'Diamante insuficiente' };
+        if (coins    < cCost) return { ok: false, error: 'Not enough coins' };
+        if (diamonds < dCost) return { ok: false, error: 'Not enough gems' };
         const list = owned.concat(skin.id);
         let q = supabase.from('players').update({
             coins: coins - cCost, diamonds: diamonds - dCost,
@@ -892,23 +892,23 @@ async function _buyWeaponSkin(nickname, skin) {
         }
         // the money changed after it was read: read it again
     }
-    return { ok: false, error: 'Incearca din nou' };
+    return { ok: false, error: 'Please try again' };
 }
 
 app.post('/api/weapon-skins/buy', async (req, res) => {
     const { nickname, token, skinId } = req.body || {};
     if (!nickname || !token || !skinId) return res.json({ ok: false });
-    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Sesiune invalida' });
+    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Invalid session' });
     const skin = typeof skinId === 'string' && WEAPON_SKINS.get(skinId);
-    if (!skin) return res.json({ ok: false, error: 'Skin invalid' });
-    if (skin.unlock) return res.json({ ok: false, error: `Skinul nu se cumpara: se deblocheaza la ${skin.unlock.kills} de killuri cu ${WEAPON_DATA.weapons[skin.weapon].name}` });
-    if (ownsWeaponSkin(nickname, skin.id)) return res.json({ ok: false, error: 'Deja detinut', owned: ownedWeaponSkinList(nickname) });
-    if (!supabase) return res.json({ ok: false, error: 'Cumpararea are nevoie de baza de date' });
+    if (!skin) return res.json({ ok: false, error: 'Invalid skin' });
+    if (skin.unlock) return res.json({ ok: false, error: `Skin cannot be purchased: unlock it by getting ${skin.unlock.kills} kills with the ${WEAPON_DATA.weapons[skin.weapon].name}` });
+    if (ownsWeaponSkin(nickname, skin.id)) return res.json({ ok: false, error: 'Already owned', owned: ownedWeaponSkinList(nickname) });
+    if (!supabase) return res.json({ ok: false, error: 'Purchases require a database connection' });
     if (!weaponSkinsColumn) return res.json({ ok: false, error: WEAPON_SKIN_NEEDS_MIGRATION });
     try { res.json(await serialStatWrite(nickname, () => _buyWeaponSkin(nickname, skin))); }
     catch (err) {
         console.error('[WeaponSkins/Buy]', err.message || err);
-        res.json({ ok: false, error: 'Eroare server' });
+        res.json({ ok: false, error: 'Server error' });
     }
 });
 
@@ -916,13 +916,13 @@ app.post('/api/weapon-skins/buy', async (req, res) => {
 app.post('/api/weapon-skins/equip', async (req, res) => {
     const { nickname, token, weapon, skinId } = req.body || {};
     if (!nickname || !token || !weapon || !skinId) return res.json({ ok: false });
-    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Sesiune invalida' });
-    if (typeof weapon !== 'string' || !Object.hasOwn(WEAPON_STATS, weapon)) return res.json({ ok: false, error: 'Arma invalida' });
+    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Invalid session' });
+    if (typeof weapon !== 'string' || !Object.hasOwn(WEAPON_STATS, weapon)) return res.json({ ok: false, error: 'Invalid weapon' });
     if (skinId !== NO_WEAPON_SKIN) {
         const skin = typeof skinId === 'string' && WEAPON_SKINS.get(skinId);
-        if (!skin) return res.json({ ok: false, error: 'Skin invalid' });
-        if (skin.weapon !== weapon) return res.json({ ok: false, error: 'Skinul nu e pentru arma asta' });
-        if (!ownsWeaponSkin(nickname, skin.id)) return res.json({ ok: false, error: 'Nu detii skinul' });
+        if (!skin) return res.json({ ok: false, error: 'Invalid skin' });
+        if (skin.weapon !== weapon) return res.json({ ok: false, error: 'This skin does not belong to this weapon' });
+        if (!ownsWeaponSkin(nickname, skin.id)) return res.json({ ok: false, error: 'You do not own this skin' });
     }
     try {
         const equipped = await serialStatWrite(nickname, async () => {
@@ -938,7 +938,7 @@ app.post('/api/weapon-skins/equip', async (req, res) => {
         res.json({ ok: true, equipped });
     } catch (err) {
         console.error('[WeaponSkins/Equip]', err.message || err);
-        res.json({ ok: false, error: 'Eroare server' });
+        res.json({ ok: false, error: 'Server error' });
     }
 });
 
@@ -1051,23 +1051,23 @@ app.post('/api/friends/search', async (req, res) => {
 app.post('/api/friends/request', async (req, res) => {
     const { nickname, token, target } = req.body || {};
     if (!nickname || !token || !target || !supabase) return res.json({ ok: false });
-    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Sesiune invalida' });
-    if (nickname === target) return res.json({ ok: false, error: 'Nu poti adauga propriul cont' });
+    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Invalid session' });
+    if (nickname === target) return res.json({ ok: false, error: 'You cannot add your own account' });
     try {
         const { data: targetPlayer } = await supabase.from('players').select('nickname').eq('nickname', target).maybeSingle();
-        if (!targetPlayer) return res.json({ ok: false, error: 'Jucatorul nu exista' });
+        if (!targetPlayer) return res.json({ ok: false, error: 'Player not found' });
         const { data: existing } = await supabase.from('friendships').select('id,status')
             .or(`and(requester.eq.${nickname},target.eq.${target}),and(requester.eq.${target},target.eq.${nickname})`)
             .maybeSingle();
         if (existing) {
-            const msg = existing.status === 'accepted' ? 'Deja prieteni' : 'Cerere deja trimisa';
+            const msg = existing.status === 'accepted' ? 'Already friends' : 'Friend request already sent';
             return res.json({ ok: false, error: msg });
         }
         await supabase.from('friendships').insert({ requester: nickname, target, status: 'pending' });
         const sid = connectedAccounts.get(target);
         if (sid) io.to(sid).emit('friend-request-incoming', { from: nickname });
         res.json({ ok: true });
-    } catch (err) { console.error('[Friends/Request]', err); res.json({ ok: false, error: 'Eroare server' }); }
+    } catch (err) { console.error('[Friends/Request]', err); res.json({ ok: false, error: 'Server error' }); }
 });
 
 app.post('/api/friends/respond', async (req, res) => {
@@ -2302,14 +2302,14 @@ io.on('connection', (socket) => {
     socket.on('authenticate', ({ nickname, token } = {}) => {
         if (!nickname || !token) return;
         if (sessionTokens.get(nickname) !== token) {
-            socket.emit('force-logout', 'Sesiune invalida. Te rugam sa te reconectezi.');
+            socket.emit('force-logout', 'Invalid session. Please reconnect.');
             return;
         }
         const prev = connectedAccounts.get(nickname);
         if (prev && prev !== socket.id) {
             const prevSocket = io.sockets.sockets.get(prev);
             if (prevSocket) {
-                prevSocket.emit('force-logout', 'Un alt dispozitiv s-a conectat la acest cont.');
+                prevSocket.emit('force-logout', 'Another device signed in to this account.');
                 prevSocket.disconnect(true);
             }
         }
@@ -2326,14 +2326,14 @@ io.on('connection', (socket) => {
     socket.on('invite-friend', ({ targetNickname, roomCode } = {}) => {
         if (!socket._nickname || !targetNickname || !roomCode) return;
         const room = rooms.get(roomCode);
-        if (!room) { socket.emit('invite-result', { ok: false, msg: 'Camera nu mai exista.' }); return; }
-        if (room.gameStarted) { socket.emit('invite-result', { ok: false, msg: 'Jocul a inceput deja.' }); return; }
+        if (!room) { socket.emit('invite-result', { ok: false, msg: 'Room no longer exists.' }); return; }
+        if (room.gameStarted) { socket.emit('invite-result', { ok: false, msg: 'The game has already started.' }); return; }
         const targetSid = connectedAccounts.get(targetNickname);
-        if (!targetSid) { socket.emit('invite-result', { ok: false, msg: `${targetNickname} nu este online.` }); return; }
+        if (!targetSid) { socket.emit('invite-result', { ok: false, msg: `${targetNickname} is offline.` }); return; }
         const targetSocket = io.sockets.sockets.get(targetSid);
-        if (!targetSocket) { socket.emit('invite-result', { ok: false, msg: `${targetNickname} nu este disponibil.` }); return; }
+        if (!targetSocket) { socket.emit('invite-result', { ok: false, msg: `${targetNickname} is unavailable.` }); return; }
         targetSocket.emit('room-invite', { from: socket._nickname, roomCode });
-        socket.emit('invite-result', { ok: true, msg: `Invitatie trimisa lui ${targetNickname}!` });
+        socket.emit('invite-result', { ok: true, msg: `Invitation sent to ${targetNickname}!` });
     });
 
     socket.on('decline-invite', ({ from } = {}) => {
@@ -2345,8 +2345,8 @@ io.on('connection', (socket) => {
     });
 
     socket.on('create-room', (data) => {
-        if (!socket._nickname) { socket.emit('room-error', 'Neautentificat.'); return; }
-        if (data && data.proto !== ARNet.PROTO) { socket.emit('proto-mismatch', ARNet.PROTO); socket.emit('room-error', 'Versiune veche a jocului. Pagina se reincarca.'); return; }
+        if (!socket._nickname) { socket.emit('room-error', 'Not authenticated.'); return; }
+        if (data && data.proto !== ARNet.PROTO) { socket.emit('proto-mismatch', ARNet.PROTO); socket.emit('room-error', 'Your game version is outdated. The page will reload.'); return; }
         data = { ...data, name: socket._nickname };
         const mode = data.mode === 'pve' ? 'pve' : 'br';
         const code = generateCode();
@@ -2361,18 +2361,18 @@ io.on('connection', (socket) => {
     });
 
     socket.on('join-room', (payload) => {
-        if (!socket._nickname) { socket.emit('room-error', 'Neautentificat.'); return; }
+        if (!socket._nickname) { socket.emit('room-error', 'Not authenticated.'); return; }
         const { code: rawCode, ...data } = payload;
-        if (data.proto !== ARNet.PROTO) { socket.emit('proto-mismatch', ARNet.PROTO); socket.emit('room-error', 'Versiune veche a jocului. Pagina se reincarca.'); return; }
+        if (data.proto !== ARNet.PROTO) { socket.emit('proto-mismatch', ARNet.PROTO); socket.emit('room-error', 'Your game version is outdated. The page will reload.'); return; }
         data.name = socket._nickname;
         const code = (rawCode || '').toUpperCase();
         const room = rooms.get(code);
         if (!room) {
-            socket.emit('room-error', 'Cod invalid. Verifica si incearca din nou.');
+            socket.emit('room-error', 'Invalid code. Check it and try again.');
             return;
         }
         if (room.gameStarted) {
-            socket.emit('room-error', 'Jocul a inceput deja in aceasta camera.');
+            socket.emit('room-error', 'The game has already started in this room.');
             return;
         }
         socket.join(code);

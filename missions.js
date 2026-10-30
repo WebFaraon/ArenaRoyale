@@ -11,25 +11,25 @@
 const WEAPON_DATA = require('./public/data/weapons.json').weapons;
 const WEAPONS = Object.keys(WEAPON_DATA);
 const WNAME = Object.fromEntries(WEAPONS.map(id => [id, WEAPON_DATA[id].name.toUpperCase()]));
-// e.g. wtitle(3, 'burst') -> 'Fa 3 killuri cu FALCON'
-const wtitle = (n, id, where = '') => 'Fa ' + n + ' killuri cu ' + WNAME[id] + where;
+// e.g. wtitle(3, 'burst') -> 'Get 3 kills with FALCON'
+const wtitle = (n, id, where = '') => 'Get ' + n + ' kills with ' + WNAME[id] + where;
 
 // stat: which round value counts. tag: what the lobby shows next to it (mode or weapon).
 const POOL = [
     // general
-    { id: 'games3',    slot: 'general', title: 'Joaca 3 meciuri',                    stat: 'games',    kind: 'sum', goal: 3,    coins: 30,  diamonds: 0 },
-    { id: 'kills8',    slot: 'general', title: 'Elimina 8 inamici',                  stat: 'anyKills', kind: 'sum', goal: 8,    coins: 45,  diamonds: 0 },
-    { id: 'dmg2500',   slot: 'general', title: 'Provoaca 2500 de damage',            stat: 'dmg',      kind: 'sum', goal: 2500, coins: 40,  diamonds: 0 },
+    { id: 'games3',    slot: 'general', title: 'Play 3 matches',                      stat: 'games',    kind: 'sum', goal: 3,    coins: 30,  diamonds: 0 },
+    { id: 'kills8',    slot: 'general', title: 'Eliminate 8 enemies',                 stat: 'anyKills', kind: 'sum', goal: 8,    coins: 45,  diamonds: 0 },
+    { id: 'dmg2500',   slot: 'general', title: 'Deal 2,500 damage',                   stat: 'dmg',      kind: 'sum', goal: 2500, coins: 40,  diamonds: 0 },
     // battle royale
-    { id: 'brwin',     slot: 'br',      title: 'Castiga un meci Battle Royale',      stat: 'brWins',   kind: 'sum', goal: 1,    coins: 100, diamonds: 1, tag: 'br' },
-    { id: 'brkills3',  slot: 'br',      title: 'Elimina 3 jucatori in Battle Royale', stat: 'brKills', kind: 'sum', goal: 3,    coins: 50,  diamonds: 0, tag: 'br' },
-    { id: 'brgames2',  slot: 'br',      title: 'Joaca 2 meciuri Battle Royale',      stat: 'brGames',  kind: 'sum', goal: 2,    coins: 25,  diamonds: 0, tag: 'br' },
-    { id: 'brkits3',   slot: 'br',      title: 'Culege 3 truse medicale',            stat: 'kits',     kind: 'sum', goal: 3,    coins: 30,  diamonds: 0, tag: 'br' },
-    { id: 'brmulti2',  slot: 'br',      title: 'Elimina 2 jucatori intr-un singur meci', stat: 'brKills', kind: 'max', goal: 2, coins: 60, diamonds: 0, tag: 'br' },
+    { id: 'brwin',     slot: 'br',      title: 'Win a Battle Royale match',           stat: 'brWins',   kind: 'sum', goal: 1,    coins: 100, diamonds: 1, tag: 'br' },
+    { id: 'brkills3',  slot: 'br',      title: 'Eliminate 3 players in Battle Royale', stat: 'brKills', kind: 'sum', goal: 3,    coins: 50,  diamonds: 0, tag: 'br' },
+    { id: 'brgames2',  slot: 'br',      title: 'Play 2 Battle Royale matches',        stat: 'brGames',  kind: 'sum', goal: 2,    coins: 25,  diamonds: 0, tag: 'br' },
+    { id: 'brkits3',   slot: 'br',      title: 'Collect 3 medkits',                   stat: 'kits',     kind: 'sum', goal: 3,    coins: 30,  diamonds: 0, tag: 'br' },
+    { id: 'brmulti2',  slot: 'br',      title: 'Eliminate 2 players in a single match', stat: 'brKills', kind: 'max', goal: 2, coins: 60, diamonds: 0, tag: 'br' },
     // PvE
-    { id: 'pvewave5',  slot: 'pve',     title: 'Ajungi la runda 5 in PvE',           stat: 'pveWave',  kind: 'max', goal: 5,    coins: 60,  diamonds: 0, tag: 'pve' },
-    { id: 'pvekills20', slot: 'pve',    title: 'Elimina 20 de zombi in PvE',         stat: 'pveKills', kind: 'sum', goal: 20,   coins: 50,  diamonds: 0, tag: 'pve' },
-    { id: 'pvegames2', slot: 'pve',     title: 'Joaca 2 meciuri PvE',                stat: 'pveGames', kind: 'sum', goal: 2,    coins: 25,  diamonds: 0, tag: 'pve' },
+    { id: 'pvewave5',  slot: 'pve',     title: 'Reach wave 5 in PvE',                 stat: 'pveWave',  kind: 'max', goal: 5,    coins: 60,  diamonds: 0, tag: 'pve' },
+    { id: 'pvekills20', slot: 'pve',    title: 'Eliminate 20 zombies in PvE',         stat: 'pveKills', kind: 'sum', goal: 20,   coins: 50,  diamonds: 0, tag: 'pve' },
+    { id: 'pvegames2', slot: 'pve',     title: 'Play 2 PvE matches',                  stat: 'pveGames', kind: 'sum', goal: 2,    coins: 25,  diamonds: 0, tag: 'pve' },
     // weapon, any mode
     { id: 'w_burst3',   slot: 'weapon', title: wtitle(3, 'burst'),   stat: 'wk_burst',   kind: 'sum', goal: 3, coins: 40, diamonds: 0, weapon: 'burst' },
     { id: 'w_smg5',     slot: 'weapon', title: wtitle(5, 'smg'),     stat: 'wk_smg',     kind: 'sum', goal: 5, coins: 40, diamonds: 0, weapon: 'smg' },
@@ -45,10 +45,10 @@ const POOL = [
     { id: 'bw_shotgun2',  slot: 'modeweapon', title: wtitle(2, 'shotgun', ' in Battle Royale'), stat: 'bwk_shotgun', kind: 'sum', goal: 2, coins: 60, diamonds: 0, weapon: 'shotgun', tag: 'br' },
     { id: 'bw_sniper2',   slot: 'modeweapon', title: wtitle(2, 'sniper', ' in Battle Royale'),  stat: 'bwk_sniper',  kind: 'sum', goal: 2, coins: 60, diamonds: 0, weapon: 'sniper',  tag: 'br' },
     // hard
-    { id: 'pvewave10',  slot: 'hard', title: 'Ajungi la runda 10 in PvE',    stat: 'pveWave',  kind: 'max', goal: 10, coins: 150, diamonds: 2, tag: 'pve' },
-    { id: 'pvekills50', slot: 'hard', title: 'Elimina 50 de zombi in PvE',   stat: 'pveKills', kind: 'sum', goal: 50, coins: 120, diamonds: 1, tag: 'pve' },
-    { id: 'brwins2',    slot: 'hard', title: 'Castiga 2 meciuri Battle Royale', stat: 'brWins', kind: 'sum', goal: 2, coins: 180, diamonds: 2, tag: 'br' },
-    { id: 'kills25',    slot: 'hard', title: 'Elimina 25 de inamici',        stat: 'anyKills', kind: 'sum', goal: 25, coins: 110, diamonds: 1 },
+    { id: 'pvewave10',  slot: 'hard', title: 'Reach wave 10 in PvE',          stat: 'pveWave',  kind: 'max', goal: 10, coins: 150, diamonds: 2, tag: 'pve' },
+    { id: 'pvekills50', slot: 'hard', title: 'Eliminate 50 zombies in PvE',  stat: 'pveKills', kind: 'sum', goal: 50, coins: 120, diamonds: 1, tag: 'pve' },
+    { id: 'brwins2',    slot: 'hard', title: 'Win 2 Battle Royale matches',  stat: 'brWins', kind: 'sum', goal: 2, coins: 180, diamonds: 2, tag: 'br' },
+    { id: 'kills25',    slot: 'hard', title: 'Eliminate 25 enemies',          stat: 'anyKills', kind: 'sum', goal: 25, coins: 110, diamonds: 1 },
 ];
 const BY_ID = Object.fromEntries(POOL.map(m => [m.id, m]));
 const SLOTS = ['general', 'br', 'pve', 'weapon', 'modeweapon', 'hard'];
@@ -134,9 +134,9 @@ function toClient(state) {
 function claim(state, missionId) {
     const e = state.list.find(x => x.id === missionId);
     const d = BY_ID[missionId];
-    if (!e || !d) return { ok: false, error: 'Misiune inexistenta' };
-    if (e.claimed) return { ok: false, error: 'Deja revendicat' };
-    if (e.prog < d.goal) return { ok: false, error: 'Misiune nefinalizata' };
+    if (!e || !d) return { ok: false, error: 'Mission not found' };
+    if (e.claimed) return { ok: false, error: 'Already claimed' };
+    if (e.prog < d.goal) return { ok: false, error: 'Mission not complete' };
     e.claimed = true;
     return { ok: true, coins: d.coins, diamonds: d.diamonds };
 }

@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - interp.js
+// Blastridge - interp.js
 // How other players, zombies and enemy bullets are placed between server snapshots. Pure functions (no DOM,
 // no game state): the browser loads this file as window.ARInterp, tools/tests/interp.test.js requires it.
 //

@@ -1,4 +1,4 @@
-ARENA ROYALE - skin mitic de PERSONAJ "Phoenix" (phoenix_mythic) + bundle cu sniperul Phoenix (sn_phoenix)
+Blastridge - skin mitic de PERSONAJ "Phoenix" (phoenix_mythic) + bundle cu sniperul Phoenix (sn_phoenix)
 Strict cosmetic: cercul de coliziune ramane r=36; aripile, coada si creasta sunt doar imagine. Mainile si arma raman ca acum (culori: base #FF6B1A, dark #B0200F).
 Stil: corpul foloseste exact constructia celorlalte skinuri de personaj (cerc r=36 din grup 100x100 scara 0.8182, lumina stanga-sus, inel auriu interior, contur negru #0B0F1A latime 6.2 in grup); accesoriile au contur negru 3, culori plate, fara degradeuri.
 sprites/phoenix_mythic.png   - sprite complet 400x400 (cadru extins: aripi, coada, creasta). Centrul corpului la (199.7, 179.2) px, raza corpului 92.3 px (=36 unitati, aceeasi scara ca la celelalte skinuri: 256 px = 100 unitati)

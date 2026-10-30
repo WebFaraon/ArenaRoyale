@@ -1,5 +1,5 @@
 {
-  "units": "un skin schimba doar aspectul armei (weapon = id din weapons.json). price lipsa = pretul raritatii (prices); unlock = se primeste automat la N killuri cu arma lui, nu se cumpara",
+  "units": "A skin only changes the weapon appearance (weapon = ID from weapons.json). Missing price uses the rarity price (prices); unlock = automatically earned after N kills with its weapon, not purchased",
   "rarities": ["rare", "epic", "legendary"],
   "prices": {
     "rare":      { "coins": 1200 },
@@ -12,29 +12,29 @@
     { "id": "sn_railgun",   "weapon": "sniper",  "name": "Railgun",     "rarity": "epic" },
     { "id": "sn_dragon",    "weapon": "sniper",  "name": "Dragon",      "rarity": "legendary" },
 
-    { "id": "as_desert",    "weapon": "assault", "name": "Deșert",      "rarity": "rare",      "unlock": { "kills": 50 } },
-    { "id": "as_toy",       "weapon": "assault", "name": "Jucărie",     "rarity": "rare" },
+    { "id": "as_desert",    "weapon": "assault", "name": "Desert",      "rarity": "rare",      "unlock": { "kills": 50 } },
+    { "id": "as_toy",       "weapon": "assault", "name": "Toy",         "rarity": "rare" },
     { "id": "as_pixel",     "weapon": "assault", "name": "Pixel",       "rarity": "epic" },
     { "id": "as_imperial",  "weapon": "assault", "name": "Imperial",    "rarity": "legendary" },
 
     { "id": "sg_western",   "weapon": "shotgun", "name": "Western",     "rarity": "rare",      "unlock": { "kills": 50 } },
-    { "id": "sg_scrap",     "weapon": "shotgun", "name": "Fiare Vechi", "rarity": "rare" },
-    { "id": "sg_pumpkin",   "weapon": "shotgun", "name": "Dovleac",     "rarity": "epic" },
-    { "id": "sg_pirate",    "weapon": "shotgun", "name": "Pirat",       "rarity": "legendary" },
+    { "id": "sg_scrap",     "weapon": "shotgun", "name": "Scrap",       "rarity": "rare" },
+    { "id": "sg_pumpkin",   "weapon": "shotgun", "name": "Pumpkin",     "rarity": "epic" },
+    { "id": "sg_pirate",    "weapon": "shotgun", "name": "Pirate",      "rarity": "legendary" },
 
     { "id": "smg_graffiti", "weapon": "smg",     "name": "Graffiti",    "rarity": "rare",      "unlock": { "kills": 50 } },
-    { "id": "smg_candy",    "weapon": "smg",     "name": "Bomboană",    "rarity": "rare" },
+    { "id": "smg_candy",    "weapon": "smg",     "name": "Candy",       "rarity": "rare" },
     { "id": "smg_toxic",    "weapon": "smg",     "name": "Toxic",       "rarity": "epic" },
     { "id": "smg_samurai",  "weapon": "smg",     "name": "Samurai",     "rarity": "legendary" },
 
     { "id": "bu_carbon",    "weapon": "burst",   "name": "Carbon",      "rarity": "rare",      "unlock": { "kills": 50 } },
-    { "id": "bu_reef",      "weapon": "burst",   "name": "Recif",       "rarity": "rare" },
+    { "id": "bu_reef",      "weapon": "burst",   "name": "Reef",        "rarity": "rare" },
     { "id": "bu_steampunk", "weapon": "burst",   "name": "Steampunk",   "rarity": "epic" },
-    { "id": "bu_celestial", "weapon": "burst",   "name": "Celest",      "rarity": "legendary" },
+    { "id": "bu_celestial", "weapon": "burst",   "name": "Celestial",   "rarity": "legendary" },
 
-    { "id": "pi_tiger",     "weapon": "pistol",  "name": "Tigru",       "rarity": "rare",      "unlock": { "kills": 50 } },
-    { "id": "pi_lava",      "weapon": "pistol",  "name": "Lavă",        "rarity": "rare" },
-    { "id": "pi_galaxy",    "weapon": "pistol",  "name": "Galaxie",     "rarity": "epic" },
+    { "id": "pi_tiger",     "weapon": "pistol",  "name": "Tiger",       "rarity": "rare",      "unlock": { "kills": 50 } },
+    { "id": "pi_lava",      "weapon": "pistol",  "name": "Lava",        "rarity": "rare" },
+    { "id": "pi_galaxy",    "weapon": "pistol",  "name": "Galaxy",      "rarity": "epic" },
     { "id": "pi_raygun",    "weapon": "pistol",  "name": "Raygun",      "rarity": "legendary" }
   ]
 }

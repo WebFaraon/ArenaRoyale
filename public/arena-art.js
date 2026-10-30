@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - arena-art.js
+// Blastridge - arena-art.js
 // Look of the match: the pitch, trees, rocks, zombies and the closing zone.
 // Drawing only. Hitboxes, positions and game state are never read or changed here.
 // ============================================

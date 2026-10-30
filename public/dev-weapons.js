@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - dev-weapons.js
+// Blastridge - dev-weapons.js
 // Developer view: a player holding each gun, drawn by the same _drawPlayerFigure the match uses.
 // Loaded by game.js only when the page is opened with ?dev=weapons; nothing here runs otherwise.
 // ============================================
@@ -68,33 +68,33 @@
             + 'background:rgba(10,16,19,.86);border:3px solid #0A1013;border-radius:14px;display:flex;flex-direction:column;gap:10px';
         const skinOpts = CHARACTERS.map(c => '<option value="' + c.id + '">' + c.name + ' (' + c.rarity + ')</option>').join('');
         const gunBtns = ['none'].concat(GUNS).map(id => '<label style="display:inline-flex;gap:4px;margin:0 8px 4px 0"><input type="radio" name="dw-w" value="' + id + '"'
-            + (id === st.weapon ? ' checked' : '') + '>' + (id === 'none' ? 'fara arma' : WEAPON_ART.byId[id].name) + '</label>').join('');
+            + (id === st.weapon ? ' checked' : '') + '>' + (id === 'none' ? 'No weapon' : WEAPON_ART.byId[id].name) + '</label>').join('');
         const box = (k, label) => '<label style="display:flex;gap:6px"><input type="checkbox" data-k="' + k + '"' + (st[k] ? ' checked' : '') + '>' + label + '</label>';
-        panel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">ARME (dev)</b>'
+        panel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">WEAPONS (dev)</b>'
             + '<button id="dw-close" style="padding:2px 8px">X</button></div>'
             + '<label>Skin<br><select id="dw-skin" style="width:100%;color:#0A1013;background:#F2EFE6;opacity:1;font:600 13px Sen,Arial">' + skinOpts + '</select></label>'
-            + '<div>Arma<br>' + gunBtns + '</div>'
-            + '<div>Skin arma <span id="dw-wsk-cur" style="color:#9FB0B8;font-weight:500"></span><div id="dw-wsk-list" style="margin-top:4px">' + skinListHtml() + '</div></div>'
-            + '<label>Unghi <b id="dw-ang-v">0</b>&deg; (0 = jos, 90 = stanga)<br><input id="dw-ang" type="range" min="0" max="359" value="0" style="width:100%"></label>'
-            + box('auto', 'rotire automata')
-            + '<label>Zoom <b id="dw-zoom-v">3</b> px/unitate<br><input id="dw-zoom" type="range" min="1" max="8" step="0.25" value="3" style="width:100%"></label>'
-            + '<div>Vedere<br><label style="margin-right:10px"><input type="radio" name="dw-v" value="one" checked> una</label>'
-            + '<label style="margin-right:10px"><input type="radio" name="dw-v" value="all"> toate 6</label>'
-            + '<label><input type="radio" name="dw-v" value="skins"> toate 24 skin-urile</label></div>'
-            + box('hitbox', 'hitbox (raza 30)') + box('muzzle', 'punct muzzle') + box('hands', 'punctele mainilor')
-            + box('frame', 'cadrul sprite-ului (80 x 144)') + box('labels', 'nume + bara HP')
-            + '<div style="display:flex;gap:8px;align-items:center"><button id="dw-fire" style="padding:6px 14px;font-weight:800">Trage</button>'
-            + '<label style="display:flex;gap:6px"><input type="checkbox" data-k="autoFire">trage continuu</label></div>'
+            + '<div>Weapon<br>' + gunBtns + '</div>'
+            + '<div>Weapon skin <span id="dw-wsk-cur" style="color:#9FB0B8;font-weight:500"></span><div id="dw-wsk-list" style="margin-top:4px">' + skinListHtml() + '</div></div>'
+            + '<label>Angle <b id="dw-ang-v">0</b>&deg; (0 = down, 90 = left)<br><input id="dw-ang" type="range" min="0" max="359" value="0" style="width:100%"></label>'
+            + box('auto', 'auto-rotate')
+            + '<label>Zoom <b id="dw-zoom-v">3</b> px/unit<br><input id="dw-zoom" type="range" min="1" max="8" step="0.25" value="3" style="width:100%"></label>'
+            + '<div>View<br><label style="margin-right:10px"><input type="radio" name="dw-v" value="one" checked> one</label>'
+            + '<label style="margin-right:10px"><input type="radio" name="dw-v" value="all"> all 6</label>'
+            + '<label><input type="radio" name="dw-v" value="skins"> all 24 skins</label></div>'
+            + box('hitbox', 'hitbox (radius 30)') + box('muzzle', 'muzzle point') + box('hands', 'hand points')
+            + box('frame', 'sprite frame (80 x 144)') + box('labels', 'name + HP bar')
+            + '<div style="display:flex;gap:8px;align-items:center"><button id="dw-fire" style="padding:6px 14px;font-weight:800">Fire</button>'
+            + '<label style="display:flex;gap:6px"><input type="checkbox" data-k="autoFire">continuous fire</label></div>'
             + '<div id="dw-read" style="font:500 12px/1.4 monospace;color:#C9D4DA;white-space:pre"></div>'
-            + '<div style="border-top:1px solid #2A3A45;padding-top:8px"><b>Statistici pe arme</b><br>'
+            + '<div style="border-top:1px solid #2A3A45;padding-top:8px"><b>Weapon statistics</b><br>'
             + '<div style="display:flex;gap:6px;margin-top:4px"><input id="dw-ws-nick" placeholder="nickname" style="flex:1;min-width:0;color:#0A1013;background:#F2EFE6;font:600 12px Sen,Arial">'
-            + '<button id="dw-ws-load" style="padding:2px 8px">Incarca</button></div>'
+            + '<button id="dw-ws-load" style="padding:2px 8px">Load</button></div>'
             + '<div id="dw-ws" style="font:500 9.5px/1.45 monospace;color:#C9D4DA;white-space:pre;margin-top:6px;overflow-x:auto"></div>'
-            + '<b style="display:block;margin-top:8px">Skin-uri arme</b>'
+            + '<b style="display:block;margin-top:8px">Weapon skins</b>'
             + '<div id="dw-wskin" style="font:500 9.5px/1.45 monospace;color:#C9D4DA;white-space:pre;margin-top:4px;overflow-x:auto"></div>'
-            + '<b style="display:block;margin-top:8px">Skin-uri arme in meci</b>'
+            + '<b style="display:block;margin-top:8px">Weapon skins in match</b>'
             + '<div id="dw-wskin-match" style="font:500 9.5px/1.45 monospace;color:#C9D4DA;white-space:pre;margin-top:4px;overflow-x:auto"></div></div>'
-            + '<div style="font-weight:500;color:#9FB0B8">Sageti stanga/dreapta: unghi. Esc: inchide.</div>';
+            + '<div style="font-weight:500;color:#9FB0B8">Left/right arrows: angle. Esc: close.</div>';
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
         readout = panel.querySelector('#dw-read');
@@ -133,11 +133,11 @@
     // totals per weapon of an account (server.js WEAPON STATS): one row per gun plus the fists
     async function loadWeaponStats(nick) {
         const box = overlay.querySelector('#dw-ws');
-        if (!nick) { box.textContent = 'scrie un nickname'; return; }
+        if (!nick) { box.textContent = 'Enter a username'; return; }
         box.textContent = '...';
         try {
             const r = await fetch('/api/weapon-stats?nickname=' + encodeURIComponent(nick), { cache: 'no-store' }).then(x => x.json());
-            if (!r.ok) { box.textContent = 'eroare'; return; }
+            if (!r.ok) { box.textContent = 'error'; return; }
             const pad = (v, n) => String(v).padStart(n);
             const row = c => c[0].padEnd(8) + pad(c[1], 4) + pad(c[2], 4) + pad(c[3], 7) + pad(c[4], 5) + pad(c[5], 5) + pad(c[6], 5);
             const rows = GUNS.concat(['fists']).map(id => {
@@ -145,20 +145,20 @@
                 const acc = e.shots ? Math.round(e.hits / e.shots * 100) + '%' : '-';
                 return row([(WEAPON_ART.byId[id] && WEAPON_ART.byId[id].name) || id, e.kills, e.zombieKills, e.damage, e.shots, e.hits, acc]);
             });
-            box.textContent = [row(['arma', 'kil', 'zom', 'damage', 'shot', 'hit', 'prec'])].concat(rows).join('\n');
-        } catch (err) { box.textContent = 'eroare: ' + err.message; }
+            box.textContent = [row(['weapon', 'kills', 'zombies', 'damage', 'shots', 'hits', 'accuracy'])].concat(rows).join('\n');
+        } catch (err) { box.textContent = 'error: ' + err.message; }
     }
 
     const wskinName = id => (WSKINS[id] ? WSKINS[id].name + ' (' + WSKINS[id].rarity + ')' : id);
     // an account's weapon skins (server.js WEAPON SKINS): per gun the equipped one and how many it owns
     async function loadWeaponSkins(nick) {
         const box = overlay.querySelector('#dw-wskin');
-        if (!nick) { box.textContent = 'scrie un nickname'; return; }
+        if (!nick) { box.textContent = 'Enter a username'; return; }
         box.textContent = '...';
         try {
             await WSKINS_READY;
             const r = await fetch('/api/weapon-skins?nickname=' + encodeURIComponent(nick), { cache: 'no-store' }).then(x => x.json());
-            if (!r.ok) { box.textContent = 'eroare'; return; }
+            if (!r.ok) { box.textContent = 'error'; return; }
             const owned = new Set(r.owned);
             const rows = GUNS.map(id => {
                 const all = Object.values(WSKINS).filter(s => s.weapon === id);
@@ -166,10 +166,10 @@
                 return WEAPON_ART.byId[id].name.padEnd(9) + (eq ? wskinName(eq) : '-').padEnd(22)
                     + all.filter(s => owned.has(s.id)).length + '/' + all.length;
             });
-            box.textContent = ['arma'.padEnd(9) + 'echipat'.padEnd(22) + 'detinute'].concat(rows).join('\n')
-                + (r.owned.length ? '\ndetinute: ' + r.owned.map(id => (WSKINS[id] ? WSKINS[id].name : id)).join(', ') : '')
-                + (r.unlockAll ? '\n(UNLOCK_ALL: toate sunt deblocate)' : '');
-        } catch (err) { box.textContent = 'eroare: ' + err.message; }
+            box.textContent = ['weapon'.padEnd(9) + 'equipped'.padEnd(22) + 'owned'].concat(rows).join('\n')
+                + (r.owned.length ? '\nowned: ' + r.owned.map(id => (WSKINS[id] ? WSKINS[id].name : id)).join(', ') : '')
+                + (r.unlockAll ? '\n(UNLOCK_ALL: all are unlocked)' : '');
+        } catch (err) { box.textContent = 'error: ' + err.message; }
     }
     // what the server sent for each player of the current / last match (player-image, playersMeta)
     function showMatchWeaponSkins() {
@@ -182,14 +182,14 @@
             return String(name).padEnd(12) + ((WEAPON_ART.byId[wid] && WEAPON_ART.byId[wid].name) || wid || '?').padEnd(9)
                 + (skinId === 'default' ? '-' : wskinName(skinId));
         });
-        box.textContent = rows.length ? rows.join('\n') : 'niciun meci inca';
+        box.textContent = rows.length ? rows.join('\n') : 'no matches yet';
     }
 
     // the weapon skin list: per gun "fara" and its skins (weapon-skins.json order)
     function skinListHtml() {
         const btn = (wid, id, label, title) => '<button data-wid="' + wid + '" data-wsk="' + id + '" title="' + title + '" style="margin:0 4px 4px 0;padding:2px 6px;font:600 11px Sen,Arial;border-radius:6px;border:2px solid #0A1013;background:#F2EFE6;color:#0A1013">' + label + '</button>';
         return GUNS.map(w => '<div style="margin-bottom:2px"><span style="display:inline-block;width:64px;color:#9FB0B8">' + WEAPON_ART.byId[w].name + '</span>'
-            + btn(w, '', 'fara', 'fara skin')
+            + btn(w, '', 'No skin', 'No skin')
             + Object.values(WSKINS).filter(s => s.weapon === w).map(s => btn(w, s.id, s.name, s.id + ' (' + s.rarity + ')')).join('') + '</div>').join('');
     }
     // a click on a skin: its gun in hand, the view on one player
@@ -283,7 +283,7 @@
         const ringR = _playerRingR(), barH = 22, barW = 108;
         const barY = y - ringR - barH - (4 + 6);
         _drawHpBar(ctx, x - barW / 2, barY, barW, barH, 0.8, 2.5);
-        _drawLabel(ctx, 'Jucator', 14, '#66E287', INK, 4, 'alphabetic', x, barY - 12, px);
+        _drawLabel(ctx, 'Player', 14, '#66E287', INK, 4, 'alphabetic', x, barY - 12, px);
     }
 
     let _lastMatchSkins = 0;
@@ -316,7 +316,7 @@
         ARArena.drawGround(ctx, l, t, r, b, 2600, 2600);
         const angNow = st.angle * Math.PI / 180;
         const figs = figures(), guns = figs.filter(f => f.wid);
-        // trigger: the button, or the gun's cadence while "trage continuu" is on
+        // trigger: the button, or the gun's cadence while "continuous fire" is on
         const autoCd = guns.length ? Math.max(...guns.map(f => pullCycleMs(_WEAPON_DATA[f.wid]))) : 0;
         if (st.fireReq || (st.autoFire && now >= nextAuto && guns.length)) {
             guns.forEach(f => pull(f, angNow, now));
@@ -353,14 +353,14 @@
         const one = !grid && figs[0].wid ? figs[0] : null;
         const g = one ? _gunLook(one.wid, one.skin) : null, base = one ? WEAPON_ART.byId[one.wid] : null;
         const sk = one && one.skin ? WEAPON_ART.skins[one.skin] : null;
-        const skinState = !one || !one.skin ? '' : !sk ? 'skin: fara date in weapon-skin-sprites.json, arma de baza\n'
-            : sk.failed ? 'skin: sprite lipsa, arma de baza\n' : g === sk ? 'skin: ' + WSKINS[one.skin].name + ' (' + one.skin + ')\n' : 'skin: se incarca...\n';
-        readout.textContent = 'scara vizuala ' + PLAYER_VISUAL_SCALE + '\n' + skinState
-            + (g ? 'maini   ' + JSON.stringify(g.hands0) + '\nmuzzle  ' + JSON.stringify(g.muzzle0)
-                + (g !== base ? '  (arma: ' + JSON.stringify(base.muzzle0) + ')' : '')
-                + '\n(x scara: muzzle la ' + (g.muzzle0[1] * PLAYER_VISUAL_SCALE).toFixed(1) + ' unitati)'
-                + (g !== base ? '\nglontul pleaca tot de la ' + (base.muzzleDist).toFixed(1) + ' (arma de baza)' : '')
-                : (st.view === 'all' ? 'toate armele' : st.view === 'skins' ? 'toate skin-urile' : 'fara arma: maini sub corp'));
+        const skinState = !one || !one.skin ? '' : !sk ? 'skin: no data in weapon-skin-sprites.json, using base weapon\n'
+            : sk.failed ? 'skin: sprite missing, using base weapon\n' : g === sk ? 'skin: ' + WSKINS[one.skin].name + ' (' + one.skin + ')\n' : 'skin: loading...\n';
+        readout.textContent = 'visual scale ' + PLAYER_VISUAL_SCALE + '\n' + skinState
+            + (g ? 'hands   ' + JSON.stringify(g.hands0) + '\nmuzzle  ' + JSON.stringify(g.muzzle0)
+                + (g !== base ? '  (weapon: ' + JSON.stringify(base.muzzle0) + ')' : '')
+                + '\n(x scale: muzzle at ' + (g.muzzle0[1] * PLAYER_VISUAL_SCALE).toFixed(1) + ' units)'
+                + (g !== base ? '\nbullet still starts at ' + (base.muzzleDist).toFixed(1) + ' (base weapon)' : '')
+                : (st.view === 'all' ? 'all weapons' : st.view === 'skins' ? 'all skins' : 'no weapon: hands by body'));
     }
 
     Promise.all([SKINS_READY, WEAPONS_ART_READY, WSKINS_READY, WEAPON_SKIN_ART_READY]).then(() => {

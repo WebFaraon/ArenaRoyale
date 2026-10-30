@@ -1,4 +1,4 @@
-Arena Royale - skin MITIC pentru Falcon (burst): bu_cerber ("Cerber")  [v2: subtire, o singura gura]
+Blastridge - skin MITIC pentru Falcon (burst): bu_cerber ("Cerber")  [v2: subtire, o singura gura]
 
 SKINUL E STRICT COSMETIC. Rafala de 3 pleaca din ACELASI punct ca la arma normala (campul "muzzle" = gura capului din mijloc).
 Capetele din lateral sunt doar decor: nu trag si nu schimba nimic in mecanica.

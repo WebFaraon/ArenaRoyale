@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - game.js
+// Blastridge - game.js
 // ============================================
 
 // ─── Lobby background animation ───────────────────────────────────────────────
@@ -298,7 +298,7 @@ function skinPreviewSrc(skinId, opts) {
     return (_skinPreviewCache[key] = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg));
 }
 const RARITY_COLOR = { common: '#7C8F9A', rare: '#52B6F0', epic: '#FF6A1A', legendary: '#FFC52E', season: '#FFD02A' };
-const RARITY_LABEL = { common: 'COMMON', rare: 'RARE', epic: 'EPIC', legendary: 'LEGENDARY', season: 'SEZON' };
+const RARITY_LABEL = { common: 'COMMON', rare: 'RARE', epic: 'EPIC', legendary: 'LEGENDARY', season: 'SEASON' };
 
 // Tier colors by level bracket
 const TIER_COLORS = [
@@ -341,7 +341,7 @@ function _heroRender(char) {
     if (lock) {
         lock.hidden = unlocked;
         const txt = document.getElementById('hero-lock-txt');
-        if (txt && !unlocked) txt.innerHTML = !char.shop ? 'SEZON' : char.diamonds > 0 ? ico('gem') + ' ' + char.diamonds : ico('coins') + ' ' + char.coins.toLocaleString();
+        if (txt && !unlocked) txt.innerHTML = !char.shop ? 'SEASON' : char.diamonds > 0 ? ico('gem') + ' ' + char.diamonds : ico('coins') + ' ' + char.coins.toLocaleString();
     }
 }
 function cycleCharacter(dir) {
@@ -433,9 +433,9 @@ document.addEventListener('DOMContentLoaded', () => WEAPONS_ART_READY.then(_appl
 // server (/api/weapon-skins/buy, /equip); the screen changes after its answer, never before.
 // "Vezi in mana" draws the player the way the match does (_drawPlayerFigure: same hands, same muzzle).
 const ARS_RARITY = {
-    rare:      { label: 'RAR',      title: 'Rar',      color: 'var(--c-sky)' },
+    rare:      { label: 'RARE',     title: 'Rare',     color: 'var(--c-sky)' },
     epic:      { label: 'EPIC',     title: 'Epic',     color: 'var(--c-purple)' },
-    legendary: { label: 'LEGENDAR', title: 'Legendar', color: 'var(--c-gold)' },
+    legendary: { label: 'LEGENDARY', title: 'Legendary', color: 'var(--c-gold)' },
 };
 const NO_WSKIN = 'default';
 // weapon: the gun shown; skin: the skin previewed on it (NO_WSKIN = the gun as it is); inHand: the figure
@@ -479,17 +479,17 @@ function _arsColorName(hex) {
     const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
     let h = 0;
     if (d) { h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
-    if (s < 0.2) return l > 0.7 ? 'Alb' : l < 0.25 ? 'Negru' : 'Gri';
-    if (l > 0.72) return h >= 235 && h < 300 ? 'Lila' : h >= 160 && h < 235 ? 'Bleu' : h >= 40 && h < 160 ? 'Verde deschis' : 'Roz';
-    if (h < 12 || h >= 345) return 'Rosu';
-    if (h < 40) return l < 0.55 && s < 0.65 ? 'Bronz' : 'Portocaliu';
-    if (h < 52) return 'Auriu';
-    if (h < 70) return 'Galben';
-    if (h < 160) return 'Verde';
-    if (h < 195) return 'Turcoaz';
-    if (h < 250) return 'Albastru';
-    if (h < 290) return 'Mov';
-    return 'Roz';
+    if (s < 0.2) return l > 0.7 ? 'White' : l < 0.25 ? 'Black' : 'Gray';
+    if (l > 0.72) return h >= 235 && h < 300 ? 'Lilac' : h >= 160 && h < 235 ? 'Light blue' : h >= 40 && h < 160 ? 'Light green' : 'Pink';
+    if (h < 12 || h >= 345) return 'Red';
+    if (h < 40) return l < 0.55 && s < 0.65 ? 'Bronze' : 'Orange';
+    if (h < 52) return 'Gold';
+    if (h < 70) return 'Yellow';
+    if (h < 160) return 'Green';
+    if (h < 195) return 'Teal';
+    if (h < 250) return 'Blue';
+    if (h < 290) return 'Purple';
+    return 'Pink';
 }
 // The bars: each gun's raw value, shown relative to the best gun (0..1). Damage is one shot (every pellet),
 // fire rate is bullets per second (a burst counts all its bullets), range is speed x lifetime, accuracy
@@ -505,17 +505,17 @@ function _arsBars(wid) {
     }
     const all = Object.values(raw), me = raw[wid];
     const rel = k => me[k] / Math.max(...all.map(v => v[k]));
-    const level = v => v >= 0.8 ? 'Foarte mare' : v >= 0.6 ? 'Mare' : v >= 0.4 ? 'Medie' : v >= 0.2 ? 'Mica' : 'Foarte mica';
-    const speed = v => v >= 0.8 ? 'Foarte rapida' : v >= 0.6 ? 'Rapida' : v >= 0.4 ? 'Medie' : v >= 0.2 ? 'Lenta' : 'Foarte lenta';
+    const level = v => v >= 0.8 ? 'Very high' : v >= 0.6 ? 'High' : v >= 0.4 ? 'Medium' : v >= 0.2 ? 'Low' : 'Very low';
+    const speed = v => v >= 0.8 ? 'Very fast' : v >= 0.6 ? 'Fast' : v >= 0.4 ? 'Medium' : v >= 0.2 ? 'Slow' : 'Very slow';
     const w = _WEAPON_DATA[wid];
     const reload = Math.min(...all.map(v => v.reload)) / me.reload;
     return [
         ['DAMAGE', rel('dmg'), level(rel('dmg'))],
-        ['CADENTA', rel('rate'), level(rel('rate'))],
-        ['BATAIE', rel('range'), level(rel('range'))],
-        ['PRECIZIE', rel('acc'), level(rel('acc'))],
-        ['INCARCATOR', rel('ammo'), me.ammo + (w.fireMode === 'burst' ? ' rafale' : ' gloante')],
-        ['REINCARCARE', reload, speed(reload)],
+        ['FIRE RATE', rel('rate'), level(rel('rate'))],
+        ['RANGE', rel('range'), level(rel('range'))],
+        ['ACCURACY', rel('acc'), level(rel('acc'))],
+        ['MAGAZINE', rel('ammo'), me.ammo + (w.fireMode === 'burst' ? ' bursts' : ' rounds')],
+        ['RELOAD', reload, speed(reload)],
     ];
 }
 
@@ -540,8 +540,8 @@ function _arsRenderList() {
                 <span class="ars-wrow-sub">${cls ? cls.name : ''} · ${w.fireModeLabel}</span>
             </span>
             <span class="ars-wrow-end">
-                <span class="ars-wrow-kills" title="kill-uri">${ico('skull')}${_arsStats(w.id).kills.toLocaleString()}</span>
-                ${w.id === selectedWeapon ? '<span class="ars-wrow-tag">IN MECI</span>' : ''}
+                <span class="ars-wrow-kills" title="Kills">${ico('skull')}${_arsStats(w.id).kills.toLocaleString()}</span>
+                ${w.id === selectedWeapon ? '<span class="ars-wrow-tag">IN MATCH</span>' : ''}
             </span>
         </button>`;
     }).join('');
@@ -551,7 +551,7 @@ function _arsRenderMain() {
     const wid = _ars.weapon, w = _WEAPON_DATA[wid], cls = WEAPON_CLASSES.find(c => c.id === w.class);
     const sk = _arsSkin(_ars.skin), eq = _arsEquippedSkin(wid), accent = _arsAccent(wid, _ars.skin);
     const shown = sk ? `${sk.name} · ${ARS_RARITY[sk.rarity].title}` : 'Standard';
-    const skinLine = _ars.skin === eq ? `Skin: <b>${shown}</b>` : `Previzualizare: <b>${shown}</b>`;
+    const skinLine = _ars.skin === eq ? `Skin: <b>${shown}</b>` : `Preview: <b>${shown}</b>`;
     const inMatch = selectedWeapon === wid;
     document.getElementById('ars-main').innerHTML = `
         <div class="ars-main-head">
@@ -561,12 +561,12 @@ function _arsRenderMain() {
                 <span class="ars-main-skin">${skinLine}</span>
             </div>
             <div class="ars-bullet">
-                <span class="ars-bullet-kick">CULOAREA GLONTULUI</span>
+                <span class="ars-bullet-kick">BULLET COLOR</span>
                 <span class="ars-bullet-val"><i class="ars-bullet-chip" style="--ac:${accent}"></i>${_arsColorName(accent)}</span>
             </div>
         </div>
-        <div class="ars-stage${_ars.inHand ? ' is-hand' : ''}" ${_ars.inHand ? 'title="Click: trage"' : ''}>
-            ${_ars.inHand ? '<canvas id="ars-hand" aria-label="Personajul tau tinand arma"></canvas>' : _arsGunPreview(wid, _ars.skin)}
+        <div class="ars-stage${_ars.inHand ? ' is-hand' : ''}" ${_ars.inHand ? 'title="Click to fire"' : ''}>
+            ${_ars.inHand ? '<canvas id="ars-hand" aria-label="Your character holding the weapon"></canvas>' : _arsGunPreview(wid, _ars.skin)}
         </div>
         <div class="ars-bars">${_arsBars(wid).map(([label, v, txt]) => `
             <div class="ars-bar-row">
@@ -577,9 +577,9 @@ function _arsRenderMain() {
         </div>
         <div class="ars-actions">
             <button type="button" class="ars-blk ars-btn-green ars-use" id="ars-use" onclick="arsUseInMatch()" ${inMatch ? 'aria-pressed="true"' : ''}>
-                ${inMatch ? ico('check') + 'ARMA TA IN MECI' : 'FOLOSESTE IN MECI'}</button>
+                ${inMatch ? ico('check') + 'EQUIPPED IN MATCH' : 'USE IN MATCH'}</button>
             <button type="button" class="ars-blk ars-btn-slate ars-hand-btn" id="ars-hand-btn" onclick="arsToggleHand()" aria-pressed="${_ars.inHand}">
-                ${_ars.inHand ? 'VEZI ARMA' : 'VEZI IN MANA'}</button>
+                ${_ars.inHand ? 'VIEW WEAPON' : 'HOLD WEAPON'}</button>
         </div>`;
     if (_ars.inHand) {
         const c = document.getElementById('ars-hand');
@@ -599,20 +599,20 @@ function _arsRenderSide() {
             <span class="ars-unlock-icon">${_arsIcon(wid, unlock.id)}</span>
             <div class="ars-unlock-body">
                 <div class="ars-unlock-line"><span>${have >= need
-                    ? `<b>${unlock.name}</b> e al tau la finalul urmatorului meci`   // granted at the next round-end save
-                    : `Deblochezi <b>${unlock.name}</b> la ${need} de kill-uri`}</span><span class="ars-unlock-n">${have} / ${need}</span></div>
+                    ? `<b>${unlock.name}</b> unlocks after your next match`
+                    : `Unlock <b>${unlock.name}</b> at ${need} kills`}</span><span class="ars-unlock-n">${have} / ${need}</span></div>
                 <div class="ars-bar"><span class="ars-bar-fill ars-fill-gold" style="width:${Math.max(3, Math.round(have / need * 100))}%"></span></div>
             </div>
         </div>`;
     } else if (unlock) {
-        progress = `<div class="ars-unlock ars-unlock-done">${ico('badge-check')}<span>Toate skin-urile cu deblocare obtinute</span></div>`;
+        progress = `<div class="ars-unlock ars-unlock-done">${ico('badge-check')}<span>All unlockable skins earned</span></div>`;
     }
     const box = (label, val, cls = '') => `<div class="ars-stat${cls}"><span class="ars-stat-label">${label}</span><span class="ars-stat-val">${val}</span></div>`;
     document.getElementById('ars-stats').innerHTML = `
-        <h3 class="ars-tray-title">STATISTICILE TALE CU ${w.name.toUpperCase()}</h3>
+        <h3 class="ars-tray-title">YOUR ${w.name.toUpperCase()} STATS</h3>
         <div class="ars-stat-grid">
-            ${box('KILL-URI', st.kills.toLocaleString(), ' ars-stat-kills')}${box('ZOMBI UCISI', st.zombieKills.toLocaleString())}
-            ${box('PRECIZIE', acc)}${box('DAMAGE TOTAL', st.damage.toLocaleString())}
+            ${box('KILLS', st.kills.toLocaleString(), ' ars-stat-kills')}${box('ZOMBIE KILLS', st.zombieKills.toLocaleString())}
+            ${box('ACCURACY', acc)}${box('TOTAL DAMAGE', st.damage.toLocaleString())}
         </div>
         ${progress}`;
 
@@ -621,16 +621,16 @@ function _arsRenderSide() {
         const isStd = s.id === NO_WSKIN, has = isStd || owned.has(s.id), isEq = s.id === eq;
         const rar = isStd ? { label: 'STANDARD', color: '#C9D4DA' } : ARS_RARITY[s.rarity];
         let foot;
-        if (isEq) foot = `<span class="ars-badge ars-badge-gold">${ico('check')}ECHIPAT</span>`;
-        else if (has) foot = `<button type="button" class="ars-blk ars-btn-green ars-mini" onclick="arsEquip('${s.id}')">ECHIPEAZA</button>`;
-        else if (s.unlock) foot = `<span class="ars-badge ars-badge-lock">${ico('lock')}${s.unlock.kills} kill-uri</span>`;
+        if (isEq) foot = `<span class="ars-badge ars-badge-gold">${ico('check')}EQUIPPED</span>`;
+        else if (has) foot = `<button type="button" class="ars-blk ars-btn-green ars-mini" onclick="arsEquip('${s.id}')">EQUIP</button>`;
+        else if (s.unlock) foot = `<span class="ars-badge ars-badge-lock">${ico('lock')}${s.unlock.kills} kills</span>`;
         else {
             const gem = !!s.price.diamonds, cost = gem ? s.price.diamonds : s.price.coins;
             const short = (gem ? (p.diamonds || 0) : (p.coins ?? 1000)) < cost;
-            foot = `<button type="button" class="ars-blk ars-btn-gold ars-mini${short ? ' is-short' : ''}" onclick="arsAskBuy('${s.id}')" aria-label="Cumpara ${s.name} cu ${cost} ${gem ? 'diamante' : 'monede'}">${ico('lock')}${ico(gem ? 'gem' : 'coins')}${cost.toLocaleString()}</button>`;
+            foot = `<button type="button" class="ars-blk ars-btn-gold ars-mini${short ? ' is-short' : ''}" onclick="arsAskBuy('${s.id}')" aria-label="Buy ${s.name} for ${cost} ${gem ? 'diamonds' : 'coins'}">${ico('lock')}${ico(gem ? 'gem' : 'coins')}${cost.toLocaleString()}</button>`;
         }
         return `<div class="ars-skin${s.id === _ars.skin ? ' is-sel' : ''}${isEq ? ' is-eq' : ''}${has ? '' : ' is-locked'}" data-skin="${s.id}" style="--rc:${rar.color}">
-            <button type="button" class="ars-skin-face" onclick="arsPreviewSkin('${s.id}')" aria-label="Previzualizeaza ${s.name}" aria-pressed="${s.id === _ars.skin}">
+            <button type="button" class="ars-skin-face" onclick="arsPreviewSkin('${s.id}')" aria-label="Preview ${s.name}" aria-pressed="${s.id === _ars.skin}">
                 <span class="ars-skin-rar">${rar.label}</span>
                 <span class="ars-skin-icon">${_arsIcon(wid, s.id)}</span>
                 <span class="ars-skin-name">${s.name}</span>
@@ -640,7 +640,7 @@ function _arsRenderSide() {
     });
     const nOwned = 1 + _arsSkinsOf(wid).filter(s => owned.has(s.id)).length;
     document.getElementById('ars-skins').innerHTML = `
-        <div class="ars-tray-head"><h3 class="ars-tray-title">SKINURI ${w.name.toUpperCase()}</h3><span class="ars-tray-note">${nOwned} / ${cards.length} detinute</span></div>
+        <div class="ars-tray-head"><h3 class="ars-tray-title">${w.name.toUpperCase()} SKINS</h3><span class="ars-tray-note">${nOwned} / ${cards.length} owned</span></div>
         <div class="ars-skin-grid">${cards.join('')}</div>`;
 }
 
@@ -732,11 +732,11 @@ async function arsEquip(skinId) {
     const wid = _ars.weapon;
     try {
         const r = await _arsPost('/api/weapon-skins/equip', { weapon: wid, skinId });
-        if (!r.ok) { showToast(r.error || 'Nu s-a putut echipa skinul'); return; }
+        if (!r.ok) { showToast(r.error || 'Could not equip skin'); return; }
         if (currentProfile) currentProfile.equipped_weapon_skins = r.equipped || {};
         if (_ars.weapon === wid) _ars.skin = skinId;
         _arsRender();
-    } catch { showToast('Eroare de retea. Incearca din nou.'); }
+    } catch { showToast('Network error. Please try again.'); }
     finally { _ars.busy = false; }
 }
 // Buying asks first. Not enough money: a short note, no request.
@@ -745,15 +745,15 @@ function arsAskBuy(skinId) {
     if (!s || !s.price || _ars.busy) return;
     const p = currentProfile || {}, gem = !!s.price.diamonds, cost = gem ? s.price.diamonds : s.price.coins;
     const have = gem ? (p.diamonds || 0) : (p.coins ?? 1000);
-    if (have < cost) { showToast(`Iti mai trebuie ${(cost - have).toLocaleString()} ${gem ? 'diamante' : 'monede'} pentru ${s.name}`); return; }
+    if (have < cost) { showToast(`You need ${(cost - have).toLocaleString()} more ${gem ? 'diamonds' : 'coins'} for ${s.name}`); return; }
     _ars.buy = skinId;
     _ars.skin = skinId; _arsRenderMain(); _arsRenderSide();
     document.getElementById('ars-confirm-icon').innerHTML = _arsIcon(s.weapon, skinId);
-    document.getElementById('ars-confirm-title').textContent = `CUMPERI ${s.name.toUpperCase()}?`;
+    document.getElementById('ars-confirm-title').textContent = `BUY ${s.name.toUpperCase()}?`;
     document.getElementById('ars-confirm-text').innerHTML =
-        `Skin ${ARS_RARITY[s.rarity].title.toLowerCase()} pentru ${WEAPON_ART.byId[s.weapon].name}. Costa <b>${ico(gem ? 'gem' : 'coins')}${cost.toLocaleString()}</b> ${gem ? 'diamante' : 'monede'}; iti raman ${(have - cost).toLocaleString()}.`;
+        `${ARS_RARITY[s.rarity].title} skin for ${WEAPON_ART.byId[s.weapon].name}. Costs <b>${ico(gem ? 'gem' : 'coins')}${cost.toLocaleString()}</b> ${gem ? 'diamonds' : 'coins'}; you will have ${(have - cost).toLocaleString()} left.`;
     const btn = document.getElementById('ars-confirm-buy');
-    btn.disabled = false; btn.textContent = 'CUMPARA';
+    btn.disabled = false; btn.textContent = 'BUY';
     document.getElementById('ars-confirm').hidden = false;
     btn.focus({ preventScroll: true });
 }
@@ -771,7 +771,7 @@ async function confirmArsBuy() {
     try {
         const r = await _arsPost('/api/weapon-skins/buy', { skinId });
         closeArsConfirm();
-        if (!r.ok) { showToast(r.error || 'Nu s-a putut cumpara skinul'); return; }
+        if (!r.ok) { showToast(r.error || 'Could not buy skin'); return; }
         if (currentProfile) {
             currentProfile.coins = r.coins; currentProfile.diamonds = r.diamonds;
             if (Array.isArray(r.owned)) currentProfile.owned_weapon_skins = r.owned;
@@ -779,8 +779,8 @@ async function confirmArsBuy() {
         _arsSetMoney();
         if (_ars.weapon === s.weapon) _ars.skin = skinId;
         _arsRender();
-        showToast(`Ai cumparat ${s.name}. Apasa ECHIPEAZA ca sa-l folosesti.`);
-    } catch { closeArsConfirm(); showToast('Eroare de retea. Incearca din nou.'); }
+        showToast(`You bought ${s.name}. Tap EQUIP to use it.`);
+    } catch { closeArsConfirm(); showToast('Network error. Please try again.'); }
     finally { _ars.busy = false; }
 }
 
@@ -797,7 +797,7 @@ function showWeaponSkinNotice() {
     if (!el || !lobby || lobby.style.display === 'none' || !_wskinNotices.length) { if (el && !_wskinNotices.length) el.hidden = true; return; }
     const s = _wskinNotices[0], gun = WEAPON_ART.byId[s.weapon];
     document.getElementById('wskin-notice-icon').innerHTML = _arsIcon(s.weapon, s.id);
-    document.getElementById('wskin-notice-name').textContent = `${s.name}${gun ? ' pentru ' + gun.name : ''}`;
+    document.getElementById('wskin-notice-name').textContent = `${s.name}${gun ? ' for ' + gun.name : ''}`;
     el.hidden = false;
 }
 function openWeaponSkinNotice() {
@@ -866,11 +866,11 @@ function renderCharShopGrid(filter) {
         let actionBtn;
         if (isUnlocked) {
             actionBtn = isSelected
-                ? `<button class="cs-action-btn cs-selected-btn">${ico('check')} SELECTAT</button>`
-                : `<button class="cs-action-btn cs-select-btn" onclick="selectCharacter('${char.id}');closeCharacterShop()">SELECTEAZA</button>`;
+            ? `<button class="cs-action-btn cs-selected-btn">${ico('check')} SELECTED</button>`
+                : `<button class="cs-action-btn cs-select-btn" onclick="selectCharacter('${char.id}');closeCharacterShop()">SELECT</button>`;
         } else if (!char.shop) {
             // TODO: season skins are granted through admin or code, never sold here
-            actionBtn = `<button class="cs-action-btn cs-locked-btn" disabled>SEZON</button>`;
+            actionBtn = `<button class="cs-action-btn cs-locked-btn" disabled>SEASON</button>`;
         } else if (canAfford) {
             actionBtn = `<button class="cs-action-btn cs-unlock-btn" onclick="unlockCharacter('${char.id}',this)">${costStr}${lvlStr}</button>`;
         } else {
@@ -1012,12 +1012,12 @@ function renderFriendsPanel() {
 
     if (friendsList) {
         if (friendsData.friends.length === 0) {
-            friendsList.innerHTML = '<div class="friends-empty">Nu ai prieteni inca. Cauta dupa nickname!</div>';
+            friendsList.innerHTML = '<div class="friends-empty">No friends yet. Search by username!</div>';
         } else {
             friendsList.innerHTML = friendsData.friends.map(f => {
                 const lvl   = getLevelFromXP(f.xp || 0);
                 const tier  = getTier(lvl);
-                const rankName = ['Recrut','Novice','Cercetaș','Supraviețuitor','Vânător','Duelist','Raider','Mercenar','Asaltor','Veteran','Eliminator','Striker','Gladiator','Dominator','Executor','Predator','Berserker','Shadow','Phantom','Ravager','Titan','Conqueror','Warlord','Bloodhound','Reaper','Destroyer','Overkiller','Nemesis','Juggernaut','Annihilator','Apex Hunter','Void Walker','Deathbringer','Skullcrusher','Iron Legend','Chaos Knight','Doom Slayer','Inferno Lord','Storm Bringer','War Titan','Eternal Fang','Dark Sovereign','Oblivion','Cataclysm','Supreme Predator','Immortal','Ascendant','Mythic','Legendary','Battle Royale God'][lvl - 1] || 'Recrut';
+                const rankName = ['Recruit','Novice','Scout','Survivor','Hunter','Duelist','Raider','Mercenary','Assaulter','Veteran','Eliminator','Striker','Gladiator','Dominator','Executor','Predator','Berserker','Shadow','Phantom','Ravager','Titan','Conqueror','Warlord','Bloodhound','Reaper','Destroyer','Overkiller','Nemesis','Juggernaut','Annihilator','Apex Hunter','Void Walker','Deathbringer','Skullcrusher','Iron Legend','Chaos Knight','Doom Slayer','Inferno Lord','Storm Bringer','War Titan','Eternal Fang','Dark Sovereign','Oblivion','Cataclysm','Supreme Predator','Immortal','Ascendant','Mythic','Legendary','Battle Royale God'][lvl - 1] || 'Recruit';
                 return `
                 <div class="friend-row">
                     <span class="friend-online-dot ${f.online ? 'online' : ''}"></span>
@@ -1029,7 +1029,7 @@ function renderFriendsPanel() {
                         <span class="friend-lv-badge" style="border-color:${tier.color};color:${tier.color}">LV ${lvl}</span>
                         <span class="friend-status">${f.online ? 'Online' : 'Offline'}</span>
                     </div>
-                    <button class="friend-remove-btn" onclick="removeFriend('${escapeHtml(f.nickname)}')" title="Sterge prieten">${ico('x')}</button>
+                    <button class="friend-remove-btn" onclick="removeFriend('${escapeHtml(f.nickname)}')" title="Remove friend">${ico('x')}</button>
                 </div>`;
             }).join('');
         }
@@ -1052,7 +1052,7 @@ async function searchFriend() {
         // server returns { players: [{nickname, xp}] }
         const players = data.players || [];
         if (players.length === 0) {
-            resultsEl.innerHTML = '<div class="friends-empty">Niciun jucator gasit.</div>';
+            resultsEl.innerHTML = '<div class="friends-empty">No players found.</div>';
             return;
         }
         resultsEl.innerHTML = players.map(p => {
@@ -1060,13 +1060,13 @@ async function searchFriend() {
             const isFriend  = friendsData.friends.some(f => f.nickname === nick);
             const isPending = friendsData.pendingOutgoing.includes(nick) || friendsData.pendingIncoming.includes(nick);
             let btn = '';
-            if (isFriend)        btn = '<span class="search-already-friend">Prieten</span>';
-            else if (isPending)  btn = '<span class="search-already-friend">Cerere trimisa</span>';
-            else                 btn = `<button class="pending-accept" onclick="sendFriendRequest('${escapeHtml(nick)}')">Adauga</button>`;
+            if (isFriend)        btn = '<span class="search-already-friend">Friend</span>';
+            else if (isPending)  btn = '<span class="search-already-friend">Request sent</span>';
+            else                 btn = `<button class="pending-accept" onclick="sendFriendRequest('${escapeHtml(nick)}')">Add</button>`;
             return `<div class="friend-row">${escapeHtml(nick)}<span style="flex:1"></span>${btn}</div>`;
         }).join('');
     } catch {
-        resultsEl.innerHTML = '<div class="friends-empty">Eroare retea.</div>';
+        resultsEl.innerHTML = '<div class="friends-empty">Network error.</div>';
     }
 }
 
@@ -1082,10 +1082,10 @@ async function sendFriendRequest(target) {
             if (!friendsData.pendingOutgoing.includes(target)) friendsData.pendingOutgoing.push(target);
             searchFriend();
         } else {
-            alert(data.error || 'Eroare la trimitere cerere.');
+            alert(data.error || 'Could not send friend request.');
         }
     } catch {
-        alert('Eroare retea.');
+        alert('Network error.');
     }
 }
 
@@ -1107,10 +1107,10 @@ async function respondFriendRequest(requester, action) {
             updateFriendNotificationBadge(friendsData.pendingIncoming.length);
             renderFriendsPanel();
         } else {
-            alert(data.error || 'Eroare.');
+            alert(data.error || 'Something went wrong.');
         }
     } catch {
-        alert('Eroare retea.');
+        alert('Network error.');
     }
 }
 
@@ -1168,7 +1168,7 @@ function _checkBuild(build) {
     _buildReloading = true;
     const overlay = document.createElement('div');
     overlay.className = 'ar-forcelogout ar-newbuild';
-    overlay.innerHTML = `<div class="ar-forcelogout-title">${ico('refresh-cw')}Versiune nouă, se reîncarcă...</div>`;
+    overlay.innerHTML = `<div class="ar-forcelogout-title">${ico('refresh-cw')}New version detected. Reloading...</div>`;
     document.body.appendChild(overlay);
     setTimeout(() => location.reload(), 2000);
 }
@@ -1231,7 +1231,7 @@ function createSessionSocket() {
             friendsData.friends.push({ nickname: nick, online: !!online, xp: xp || 0 });
         }
         renderFriendsPanel();
-        showToast(`${nick} a acceptat cererea ta de prietenie!`);
+        showToast(`${nick} accepted your friend request!`);
     });
 
     // server sends { nickname, xp, online } — new friend added on acceptor side
@@ -1257,14 +1257,14 @@ function createSessionSocket() {
     });
 
     _sessionSocket.on('invite-declined', ({ by }) => {
-        showToast(`${by} a refuzat invitatia.`);
+        showToast(`${by} declined the invite.`);
     });
 
     return _sessionSocket;
 }
 
 function showFriendRequestToast(requester) {
-    showToast(`${requester} vrea sa te adauge prieten!`);
+    showToast(`${requester} sent you a friend request!`);
 }
 
 function showToast(msg) {
@@ -1335,10 +1335,10 @@ async function doLogin() {
     const btn      = document.getElementById('login-btn');
     const btnText  = btn.querySelector('.btn-text');
 
-    if (!nickname || !password) { errorEl.textContent = 'Completeaza toate campurile'; return; }
+    if (!nickname || !password) { errorEl.textContent = 'Please fill in all fields.'; return; }
 
     btn.disabled = true;
-    btnText.textContent = 'Se verifica...';
+    btnText.textContent = 'Signing in...';
     errorEl.textContent = '';
 
     try {
@@ -1352,15 +1352,15 @@ async function doLogin() {
         if (!data.ok) {
             errorEl.textContent = '' + data.error;
             btn.disabled = false;
-            btnText.textContent = 'INTRU IN JOC';
+            btnText.textContent = 'SIGN IN';
             return;
         }
         await Promise.all([SKINS_READY, WEAPONS_ART_READY]);
         authSuccess(nickname, password, data.player, data.token);
     } catch {
-        errorEl.textContent = 'Eroare de retea. Incearca din nou.';
+        errorEl.textContent = 'Network error. Please try again.';
         btn.disabled = false;
-        btnText.textContent = 'INTRU IN JOC';
+        btnText.textContent = 'SIGN IN';
     }
 }
 
@@ -1372,11 +1372,11 @@ async function doRegister() {
     const btn      = document.getElementById('reg-btn');
     const btnText  = btn.querySelector('.btn-text');
 
-    if (!nickname || !password || !confirm) { errorEl.textContent = 'Completeaza toate campurile'; return; }
-    if (password !== confirm) { errorEl.textContent = 'Parolele nu coincid'; return; }
+    if (!nickname || !password || !confirm) { errorEl.textContent = 'Please fill in all fields.'; return; }
+    if (password !== confirm) { errorEl.textContent = 'Passwords do not match.'; return; }
 
     btn.disabled = true;
-    btnText.textContent = 'Se creeaza...';
+    btnText.textContent = 'Creating account...';
     errorEl.textContent = '';
 
     try {
@@ -1390,15 +1390,15 @@ async function doRegister() {
         if (!data.ok) {
             errorEl.textContent = '' + data.error;
             btn.disabled = false;
-            btnText.textContent = 'CREEAZA CONT';
+            btnText.textContent = 'CREATE ACCOUNT';
             return;
         }
         await Promise.all([SKINS_READY, WEAPONS_ART_READY]);
         authSuccess(nickname, password, data.player, data.token);
     } catch {
-        errorEl.textContent = 'Eroare de retea. Incearca din nou.';
+        errorEl.textContent = 'Network error. Please try again.';
         btn.disabled = false;
-        btnText.textContent = 'CREEAZA CONT';
+        btnText.textContent = 'CREATE ACCOUNT';
     }
 }
 
@@ -1433,9 +1433,9 @@ function selectGamemode(mode) {
     if (bigIcon)  bigIcon.innerHTML  = ico(isBr ? 'swords' : 'biohazard');
     if (bigName)  bigName.textContent  = isBr ? 'BATTLE ROYALE' : 'SURVIVAL PvE';
     if (bigBadge) bigBadge.textContent = isBr ? 'PvP' : 'CO-OP';
-    if (bigDesc)  bigDesc.textContent  = isBr ? 'Ultimul supravietuitor castiga' : 'Cooperare contra hoardelor';
-    if (feat1)    feat1.innerHTML      = isBr ? ico('users') + 'Max 20 jucatori' : ico('handshake') + 'Echipe 2-4 jucatori';
-    if (feat2)    feat2.innerHTML      = isBr ? ico('timer') + '~10 min / runda' : ico('biohazard') + 'Horde de zombii';
+    if (bigDesc)  bigDesc.textContent  = isBr ? 'Be the last player standing' : 'Team up against the horde';
+    if (feat1)    feat1.innerHTML      = isBr ? ico('users') + 'Up to 20 players' : ico('handshake') + 'Teams of 2–4 players';
+    if (feat2)    feat2.innerHTML      = isBr ? ico('timer') + '~10 min / match' : ico('biohazard') + 'Zombie hordes';
 }
 
 function prepopulateLobby() {
@@ -1483,8 +1483,8 @@ function prepopulateLobby() {
     const xpPct    = Math.round(Math.min(1, xpInLvl / xpNeeded) * 100);
 
     const RANKS = [
-        'Recrut','Novice','Cercetaș','Supraviețuitor','Vânător',
-        'Duelist','Raider','Mercenar','Asaltor','Veteran',
+        'Recruit','Novice','Scout','Survivor','Hunter',
+        'Duelist','Raider','Mercenary','Assaulter','Veteran',
         'Eliminator','Striker','Gladiator','Dominator','Executor',
         'Predator','Berserker','Shadow','Phantom','Ravager',
         'Titan','Conqueror','Warlord','Bloodhound','Reaper',
@@ -1520,7 +1520,7 @@ function prepopulateLobby() {
 
     const _set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     _set('lp-level',   'LV ' + level);
-    _set('lp-nick',    currentNickname || 'JUCATOR');
+    _set('lp-nick',    currentNickname || 'PLAYER');
     _set('lp-rank',    rank);
     _set('lp-xp-txt',  xpInLvl + ' / ' + xpNeeded);
     _set('lp-coins',   coins.toLocaleString());
@@ -1547,7 +1547,7 @@ let _missionsCache = [];
 function renderMissions(list) {
     const el = document.getElementById('lp-missions');
     if (!el) return;
-    if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="lp-lb-row lp-lb-empty">Se incarca...</div>'; return; }
+    if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="lp-lb-row lp-lb-empty">Loading...</div>'; return; }
     _missionsCache = list;
     const count = document.getElementById('mc-count');
     if (count) count.textContent = list.length;
@@ -1562,7 +1562,7 @@ function renderMissions(list) {
         const fmt = v => big && v >= 1000 ? (v / 1000).toFixed(1).replace('.0', '') + 'k' : v;
         const reward = '<span class="rw rw-coin">+' + m.coins + ico('coins') + '</span>' + (m.diamonds ? '<span class="rw rw-gem">+' + m.diamonds + ico('gem') + '</span>' : '');
         const right = m.claimed ? '<span class="mc-done">' + ico('check') + '</span>'
-            : done ? '<button class="mission-claim-btn mc-claim" onclick="claimMission(\'' + m.id + '\',this,' + m.coins + ',' + m.diamonds + ')">Revendica</button>'
+            : done ? '<button class="mission-claim-btn mc-claim" onclick="claimMission(\'' + m.id + '\',this,' + m.coins + ',' + m.diamonds + ')">Claim</button>'
             : '<span class="mc-reward">' + reward + '</span>';
         return '<div class="mc-row' + (done ? ' is-done' : '') + (m.claimed ? ' is-claimed' : '') + '" id="mission-' + m.id + '">'
             + '<span class="mc-title" title="' + m.title + '">' + m.title + '</span>' + right
@@ -1596,10 +1596,10 @@ function _renderMissionsFull(list) {
         const tileHtml = !done && m.weapon ? ARIcons.weaponHtml(m.weapon, true) : ico(tileIco);
         const tags = (m.tag === 'pve' ? '<span class="mm-tag mm-pve">PvE</span>' : m.tag === 'br' ? '<span class="mm-tag mm-br">BR</span>' : '')
             + (m.weapon ? '<span class="mm-tag mm-wpn">' + ((_WEAPON_DATA[m.weapon] && _WEAPON_DATA[m.weapon].name) || m.weapon).toUpperCase() + '</span>' : '')
-            + (m.slot === 'hard' ? '<span class="mm-tag mm-hard">GREU</span>' : '');
+            + (m.slot === 'hard' ? '<span class="mm-tag mm-hard">HARD</span>' : '');
         const reward = '<span class="rw rw-coin">+' + m.coins + ico('coins') + '</span>' + (m.diamonds ? '<span class="rw rw-gem">+' + m.diamonds + ico('gem') + '</span>' : '');
-        const action = m.claimed ? '<span class="mm-claimed">' + ico('check') + 'Revendicat</span>'
-            : done ? '<button class="mission-claim-btn mm-claim" onclick="claimMission(\'' + m.id + '\',this,' + m.coins + ',' + m.diamonds + ')">Revendica</button>' : '';
+        const action = m.claimed ? '<span class="mm-claimed">' + ico('check') + 'Claimed</span>'
+            : done ? '<button class="mission-claim-btn mm-claim" onclick="claimMission(\'' + m.id + '\',this,' + m.coins + ',' + m.diamonds + ')">Claim</button>' : '';
         return '<div class="mm-row mm-' + kind + (done ? ' is-done' : '') + (m.claimed ? ' is-claimed' : '') + '" id="mission-full-' + m.id + '">'
             + '<span class="mm-tile">' + tileHtml + '</span>'
             + '<span class="mm-title">' + m.title + '</span>'
@@ -1623,7 +1623,7 @@ async function claimMission(missionId, btn, coinsReward, diamondsReward) {
             body: JSON.stringify({ nickname: currentNickname, token: sessionToken, missionId })
         });
         const data = await res.json();
-        if (!data.ok) { btn.disabled = false; btn.textContent = 'Revendica'; return; }
+        if (!data.ok) { btn.disabled = false; btn.textContent = 'Claim'; return; }
 
         // Without a database the server only confirms the reward; add it locally
         const coins = data.coins ?? ((currentProfile && currentProfile.coins) || 0) + (data.rewardCoins || coinsReward);
@@ -1647,7 +1647,7 @@ async function claimMission(missionId, btn, coinsReward, diamondsReward) {
             _set('lp-coins', Number(coins).toLocaleString());
             _set('lp-crystals', diamonds);
         }, 900);
-    } catch { btn.disabled = false; btn.textContent = 'Revendica'; }
+    } catch { btn.disabled = false; btn.textContent = 'Claim'; }
 }
 
 function spawnCoinFly(fromEl, toEl, amount, icon) {
@@ -1684,7 +1684,7 @@ function loadMiniLeaderboard() {
         .then(data => {
             const rows = (Array.isArray(data) ? data : []).slice(0, 5);
             if (!rows.length) {
-                el.innerHTML = '<div class="lp-lb-row lp-lb-empty">Niciun jucator</div>';
+                el.innerHTML = '<div class="lp-lb-row lp-lb-empty">No players yet</div>';
                 return;
             }
             el.innerHTML = rows.map((row, i) => {
@@ -1700,18 +1700,18 @@ function loadMiniLeaderboard() {
                     </div>
                     <div class="lp-lb-wins">
                         <span class="lp-lb-val">${row.wins_total}</span>
-                        <span class="lp-lb-wins-label">victorii</span>
+                        <span class="lp-lb-wins-label">wins</span>
                     </div>
                 </div>`;
             }).join('');
         })
         .catch(() => {
-            if (el) el.innerHTML = '<div class="lp-lb-row lp-lb-empty">Indisponibil</div>';
+            if (el) el.innerHTML = '<div class="lp-lb-row lp-lb-empty">Unavailable</div>';
         });
 }
 
 function tournamentSignup() {
-    showToast('Inscrierile la Weekend Tournament se deschid in curand.');
+    showToast('Weekend Tournament registration opens soon.');
 }
 
 function stopEventTimer() {
@@ -1843,11 +1843,11 @@ function returnToLobby() {
     const goTitle = document.getElementById('gameover-title');
     const goMsg   = document.getElementById('gameover-msg');
     const goStats = document.getElementById('round-stats-section');
-    if (goTitle) goTitle.textContent = 'ELIMINAT!';
-    if (goMsg)   goMsg.textContent   = 'Ai fost eliminat din arena';
+    if (goTitle) goTitle.textContent = 'ELIMINATED!';
+    if (goMsg)   goMsg.textContent   = 'You were eliminated';
     if (goStats) goStats.style.display = 'none';
     const rematchBtn = document.getElementById('btn-rematch');
-    if (rematchBtn) { rematchBtn.disabled = false; rematchBtn.textContent = 'JOACA DIN NOU'; }
+    if (rematchBtn) { rematchBtn.disabled = false; rematchBtn.textContent = 'PLAY AGAIN'; }
 
     // --- Reset input camera din lobby ---
     const codeInput = document.getElementById('room-code-input');
@@ -1899,14 +1899,14 @@ async function loadLeaderboardOverlay() {
     const status = document.getElementById('lbo-status');
     const tbody  = document.getElementById('lbo-body');
     status.style.display = 'block';
-    status.textContent   = 'Se incarca...';
+    status.textContent   = 'Loading...';
     tbody.innerHTML      = '';
     try {
         const res  = await fetch('/api/leaderboard');
         const data = await res.json();
         renderLeaderboardOverlay(data);
     } catch {
-        status.textContent = 'Eroare la incarcare.';
+        status.textContent = 'Could not load the leaderboard.';
     }
 }
 
@@ -1915,7 +1915,7 @@ function renderLeaderboardOverlay(data) {
     const tbody  = document.getElementById('lbo-body');
     if (!data || data.length === 0) {
         tbody.innerHTML    = '';
-        status.textContent = 'Niciun jucator inregistrat inca.';
+        status.textContent = 'No players registered yet.';
         status.style.display = 'block';
         return;
     }
@@ -1945,7 +1945,7 @@ function startCreate() {
     const errEl = document.getElementById('error-msg');
     const preview = document.getElementById('preview');
     if (!preview || !preview.src || preview.style.display === 'none') {
-        errEl.textContent = 'Adauga imaginea personajului tau!';
+        errEl.textContent = 'Select a character first.';
         return;
     }
     errEl.textContent = '';
@@ -1960,12 +1960,12 @@ function startJoin() {
     const roomErr = document.getElementById('room-error-msg');
     const errEl   = document.getElementById('error-msg');
     if (code.length !== 5) {
-        roomErr.textContent = 'Codul trebuie sa aiba 5 litere.';
+        roomErr.textContent = 'Room codes must contain 5 letters.';
         return;
     }
     const preview = document.getElementById('preview');
     if (!preview || !preview.src || preview.style.display === 'none') {
-        errEl.textContent = 'Adauga imaginea personajului tau!';
+        errEl.textContent = 'Select a character first.';
         return;
     }
     roomErr.textContent = '';
@@ -2790,7 +2790,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     });
 
     socket.on('invite-declined', ({ by }) => {
-        showToast(`${by} a refuzat invitatia.`);
+        showToast(`${by} declined your invitation.`);
     });
 
     let gameLoopStarted = false;
@@ -3800,8 +3800,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const entry = document.createElement('div');
         entry.className = 'kill-entry';
         entry.textContent = byZone
-            ? `${victimName} a fost eliminat de zona`
-            : `${killerName} l-a eliminat pe ${victimName}`;
+            ? `${victimName} was eliminated by the zone`
+            : `${killerName} eliminated ${victimName}`;
         killFeedEl.appendChild(entry);
         setTimeout(() => { if (entry.parentNode) entry.parentNode.removeChild(entry); }, 4000);
         while (killFeedEl.children.length > 5) killFeedEl.removeChild(killFeedEl.firstChild);
@@ -3862,19 +3862,19 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         myElimData = { placement, totalPlayers, killedBy, kills };
         setTimeout(() => {
             if (_gameMode === 'pve') {
-                document.getElementById('gameover-title').textContent = 'ELIMINAT!';
-                document.getElementById('gameover-msg').textContent   = 'Vei fi respawnat la inceputul wave-ului urmator';
+                document.getElementById('gameover-title').textContent = 'ELIMINATED!';
+                document.getElementById('gameover-msg').textContent   = 'You will respawn at the start of the next wave.';
                 document.getElementById('round-stats-section').style.display = 'none';
                 const specBtn = document.getElementById('btn-spectate');
                 if (specBtn) specBtn.style.display = 'none';
             } else {
                 document.getElementById('gameover-title').textContent =
-                    `LOC ${placement} DIN ${totalPlayers}`;
+                    `PLACE ${placement} OF ${totalPlayers}`;
                 document.getElementById('gameover-msg').textContent = killedBy === 'zombie'
-                    ? 'Eliminat de un zombi'
+                    ? 'Eliminated by a zombie'
                     : killedBy
-                        ? `Eliminat de ${killedBy}`
-                        : 'Eliminat de zona';
+                        ? `Eliminated by ${killedBy}`
+                        : 'Eliminated by the zone';
                 document.getElementById('stat-round-kills').textContent = kills || 0;
                 document.getElementById('round-stats-section').style.display = 'block';
                 const specBtn = document.getElementById('btn-spectate');
@@ -3888,8 +3888,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         gameEnded = true;
         moveDir.x = 0; moveDir.y = 0; isShooting = false; aimStartTime = null;
         setTimeout(() => {
-            document.getElementById('gameover-title').textContent = 'LOC 1 — AI CASTIGAT!';
-            document.getElementById('gameover-msg').textContent   = 'Esti ultimul supravietuitor!';
+            document.getElementById('gameover-title').textContent = '1ST PLACE — YOU WON!';
+            document.getElementById('gameover-msg').textContent   = 'You are the last player standing!';
             document.getElementById('stat-round-kills').textContent = kills || 0;
             document.getElementById('round-stats-section').style.display = 'block';
             document.getElementById('screen-gameover').style.display = 'flex';
@@ -3959,8 +3959,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         document.getElementById('kill-notif').classList.remove('active');
         keysHeld.clear();
         document.getElementById('round-stats-section').style.display = 'none';
-        document.getElementById('gameover-title').textContent = 'ELIMINAT!';
-        document.getElementById('gameover-msg').textContent   = 'Ai fost eliminat din arena';
+        document.getElementById('gameover-title').textContent = 'ELIMINATED!';
+        document.getElementById('gameover-msg').textContent   = 'You were eliminated';
         const specBtn = document.getElementById('btn-spectate');
         if (specBtn) specBtn.style.display = 'none';
         exitSpectating();
@@ -4086,7 +4086,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     window.skipWaveBreak = function() {
         socket.emit('pve-skip');
         const btn = document.getElementById('pve-skip-btn');
-        if (btn) { btn.disabled = true; btn.textContent = 'Vot inregistrat'; }
+        if (btn) { btn.disabled = true; btn.textContent = 'Vote recorded'; }
     };
 
     socket.on('pve-coins', ({ coins, earned, x, y }) => {
@@ -4098,14 +4098,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('upgrade-result', ({ ok, type, coins, upgCounts, reason, newMaxHp }) => {
-        if (!ok) { if (reason === 'max') showToast('Upgrade maxim atins!'); return; }
+        if (!ok) { if (reason === 'max') showToast('Maximum upgrade level reached!'); return; }
         _pveState.myCoins = coins;
         if (upgCounts) Object.assign(_pveUpgCounts, upgCounts);
         if (newMaxHp && playerMeta[socket.id]) playerMeta[socket.id].maxHp = newMaxHp;
         updatePveHud();
         updateUpgradeButtons();
-        const labels = { dmg: 'Damage +5%', spd: 'Viteza +4%', hp: 'HP Max +15', ammo: 'Ammo +12%' };
-        showToast(labels[type] || 'Upgrade aplicat!');
+        const labels = { dmg: 'Damage +5%', spd: 'Speed +4%', hp: 'Max HP +15', ammo: 'Ammo +12%' };
+        showToast(labels[type] || 'Upgrade applied!');
     });
 
     socket.on('pve-wave-start', ({ wave, total, batches }) => {
@@ -4129,7 +4129,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('pve-subwave', ({ remaining }) => {
-        showToast(remaining > 0 ? 'Intariri!' : '');
+        showToast(remaining > 0 ? 'Reinforcements!' : '');
     });
 
     socket.on('pve-skip-status', ({ votes, total }) => {
@@ -4175,11 +4175,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         hidePvePanel();
         setTimeout(() => {
             if (result === 'victory') {
-                document.getElementById('gameover-title').textContent = 'VICTORIE!';
-                document.getElementById('gameover-msg').textContent   = `Ati supravietuit toate cele ${wavesCleared} wave-uri!`;
+                document.getElementById('gameover-title').textContent = 'VICTORY!';
+                document.getElementById('gameover-msg').textContent   = `You survived all ${wavesCleared} waves!`;
             } else {
-                document.getElementById('gameover-title').textContent = 'INFRANGERE!';
-                document.getElementById('gameover-msg').textContent   = `Baza a cazut dupa ${wavesCleared} wave${wavesCleared === 1 ? '' : '-uri'} complete!`;
+                document.getElementById('gameover-title').textContent = 'DEFEAT!';
+                document.getElementById('gameover-msg').textContent   = `The base fell after ${wavesCleared} wave${wavesCleared === 1 ? '' : 's'}.`;
             }
             document.getElementById('round-stats-section').style.display = 'none';
             document.getElementById('screen-gameover').style.display = 'flex';
@@ -4195,7 +4195,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
         const btn = document.getElementById('btn-rematch');
         btn.disabled    = false;
-        btn.textContent = 'JOACA DIN NOU';
+        btn.textContent = 'PLAY AGAIN';
         document.getElementById('screen-gameover').style.display = 'none';
         document.getElementById('screen-game').style.display     = 'none';
         document.getElementById('screen-waiting').style.display  = 'flex';
@@ -5196,10 +5196,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.fillStyle = '#FF4155'; ctx.fillText('!', W / 2, H / 2 - Math.max(32, W * 0.05));
             ctx.font      = `bold ${Math.max(16, W * 0.022)}px Sen, sans-serif`;
             ctx.fillStyle = '#ff4444';
-            ctx.fillText('CONEXIUNE PIERDUTA', W / 2, H / 2 + 4);
+            ctx.fillText('CONNECTION LOST', W / 2, H / 2 + 4);
             ctx.font      = `${Math.max(12, W * 0.016)}px Sen, sans-serif`;
             ctx.fillStyle = '#aaaaaa';
-            ctx.fillText('Serverul nu raspunde. Reincarca pagina.', W / 2, H / 2 + Math.max(24, W * 0.038));
+            ctx.fillText('The server is not responding. Reload the page.', W / 2, H / 2 + Math.max(24, W * 0.038));
             ctx.restore();
         }
 
@@ -5306,7 +5306,7 @@ function openWaitingInvitePanel() {
     const onlineFriends = (friendsData.friends || []).filter(f => f.online);
 
     if (onlineFriends.length === 0) {
-        list.innerHTML = '<div class="wip-empty">Niciun prieten online momentan.</div>';
+        list.innerHTML = '<div class="wip-empty">No friends are online right now.</div>';
     } else {
         list.innerHTML = onlineFriends.map(f => {
             const nick = f.nickname.replace(/'/g, "\\'");
@@ -5316,8 +5316,8 @@ function openWaitingInvitePanel() {
                 <span class="wip-dot"></span>
                 <span class="wip-nick">${f.nickname}</span>
                 ${inRoom
-                    ? `<span class="wip-in-room">${ico('check')}în cameră</span>`
-                    : `<button class="wip-invite-btn" id="wip-btn-${nick}" onclick="sendRoomInvite('${nick}','${roomCode}')">INVITA</button>`
+                    ? `<span class="wip-in-room">${ico('check')}In room</span>`
+                    : `<button class="wip-invite-btn" id="wip-btn-${nick}" onclick="sendRoomInvite('${nick}','${roomCode}')">INVITE</button>`
                 }
             </div>`;
         }).join('');
@@ -5335,7 +5335,7 @@ function sendRoomInvite(targetNickname, roomCode) {
     if (!socket) return;
     socket.emit('invite-friend', { targetNickname, roomCode });
     const btn = document.getElementById(`wip-btn-${targetNickname}`);
-    if (btn) { btn.textContent = 'TRIMIS'; btn.disabled = true; }
+    if (btn) { btn.textContent = 'SENT'; btn.disabled = true; }
 }
 
 let _pendingInvite      = null;

@@ -1,5 +1,5 @@
 ---
-name: Arena Royale
+name: Blastridge
 description: Toy-block arena. Chunky outlined blocks with a lip and a ground shadow, laid over the live match pitch; press them and they squash.
 colors:
   ink-line: "#0A1013"
@@ -161,7 +161,7 @@ components:
     height: "44px"
 ---
 
-# Design System: Arena Royale
+# Design System: Blastridge
 
 ## Overview
 
@@ -219,7 +219,7 @@ Saturated toy colors, each with its own lip shade and hover face, over black gla
 **Character:** one friendly, open sans in a heavy cut. The cartoon character comes from the ink stroke-shadow drawn around white 800 letters, not from a novelty face. Sen stays because the user chose it.
 
 ### Hierarchy
-- **Display** (800, `clamp(1.35rem, 2.5vw, 2rem)`, line-height 0.9): the ARENA ROYALE logo, white plus orange, drawn with the large stroke and tilted by 2 degrees.
+- **Display** (800, `clamp(1.35rem, 2.5vw, 2rem)`, line-height 0.9): the Blastridge logo, white plus orange, drawn with the large stroke and tilted by 2 degrees.
 - **Headline** (800, `clamp(1.5rem, min(3.4vw, 6.4vh), 2.4rem)`): screen titles such as the waiting room, with the large stroke.
 - **Title** (800, about 1.05rem): mode names, the athlete name, character and weapon names, modal titles; medium stroke.
 - **Body** (600, 0.78rem to 0.95rem): descriptions, hints, mission names; small stroke when they sit on color.
@@ -272,7 +272,7 @@ Softly rounded toy forms: 8px chips, 10px badges and small keys, 12px buttons an
 - **Focus:** a 3px white outline at a 3px offset.
 
 ### Top bar
-Transparent, a three-part grid: the outlined ARENA ROYALE logo (straight, not tilted) on the left, the season pill in the middle, and on the right a sky Friends block, a gold Leaderboard block and a slate Settings block (logout lives inside Settings, shown only in the lobby). On phones the middle holds the tab control instead: a black-glass pill with a 3px outline, where the active tab is a raised orange key. There is no online-players counter.
+Transparent, a three-part grid: the outlined Blastridge logo (straight, not tilted) on the left, the season pill in the middle, and on the right a sky Friends block, a gold Leaderboard block and a slate Settings block (logout lives inside Settings, shown only in the lobby). On phones the middle holds the tab control instead: a black-glass pill with a 3px outline, where the active tab is a raised orange key. There is no online-players counter.
 
 ### Trays (cards / containers)
 - **Corner Style:** 16px.

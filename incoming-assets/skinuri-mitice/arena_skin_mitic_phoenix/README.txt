@@ -1,4 +1,4 @@
-Arena Royale - skin MITIC pentru Hawkeye (sniper): sn_phoenix
+Blastridge - skin MITIC pentru Hawkeye (sniper): sn_phoenix
 
 sprites/sn_phoenix.png  320x576, acelasi cadru ca restul skin-urilor (viewBox -40 0 80 144, teava in jos, 4 px/unitate).
 svg/sn_phoenix.svg      aceeasi imagine, pentru lobby / Arsenal.

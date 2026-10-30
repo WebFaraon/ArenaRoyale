@@ -1,5 +1,5 @@
 // ============================================
-// ARENA ROYALE - ground-layer.js
+// Blastridge - ground-layer.js
 // The static part of the pitch (turf, colour patches, grass, chalk markings, kerb) drawn from cached bitmap tiles.
 // Before, every frame stroked ~20 paths (grass tufts, dashed rings, lattice, boundary): the GPU needed 10-13 ms
 // for them at 2560x1600, so the frame rate stayed at 55-80 whatever the screen refresh. The tiles are painted once

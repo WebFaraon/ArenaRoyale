@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ARENA ROYALE : start list
+   Blastridge : start list
    A stadium start list and results board read under floodlights.
    Ruled rows, lane hues, bibs and board readouts. Corners stay square.
    ========================================================================== */
@@ -122,6 +122,7 @@ button:focus:not(:focus-visible) { outline: none; }
     white-space: nowrap;
 }
 .wordmark .wm-r, .wordmark > span.wm-r { color: var(--start); }
+.brand-wordmark { gap: 0; }
 .wm-lg { font-size: clamp(2.4rem, 8vw, 3.8rem); }
 .wm-xl {
     flex-direction: column;
@@ -315,7 +316,7 @@ button:disabled { cursor: not-allowed; }
     text-align: center;
     margin: auto;
 }
-.fs-mark { width: clamp(40px, 11vh, 64px); height: clamp(40px, 11vh, 64px); color: var(--start); stroke-width: 1.5; }
+.fs-brand-icon { width: clamp(64px, 16vh, 112px); height: clamp(64px, 16vh, 112px); object-fit: contain; }
 #fs-ios-hint { display: none; flex-direction: column; align-items: stretch; gap: 14px; }
 .fs-hint-lead { color: var(--chalk-2); font-size: .9rem; line-height: 1.45; }
 .fs-steps {
@@ -378,7 +379,7 @@ button:disabled { cursor: not-allowed; }
     gap: clamp(8px, 2vh, 16px);
     min-width: 0;
 }
-.auth-logo-icon { width: clamp(30px, 7vh, 52px); height: clamp(30px, 7vh, 52px); color: var(--start); stroke-width: 1.6; position: relative; z-index: 1; }
+.auth-logo-icon { width: clamp(54px, 10vh, 88px); height: clamp(54px, 10vh, 88px); object-fit: contain; position: relative; z-index: 1; }
 .auth-logo-title { position: relative; z-index: 1; }
 
 /* lanes: six hairlines, runners leave the blocks once on arrival */
@@ -625,7 +626,8 @@ button:disabled { cursor: not-allowed; }
 }
 .lb-topbar-back:active { background: var(--alert); color: var(--ink); border-color: var(--alert); transform: translateY(1px); transition-duration: 0s; }
 .lb-topbar-title { font-size: clamp(1.25rem, 2.4vw, 1.7rem); margin-left: 6px; }
-.lb-topbar-title .tb-mark { width: 1.1em; height: 1.1em; color: var(--start); stroke-width: 2; margin-right: .1em; }
+.brand-lockup { display: inline-flex; gap: 0; font-size: clamp(1.05rem, 2.4vw, 1.7rem); margin-left: 0; }
+.brand-emblem { width: 1.8em; height: 1.8em; object-fit: contain; margin-right: .18em; }
 
 .lb-btn {
     position: relative;
@@ -2186,7 +2188,7 @@ button:disabled { cursor: not-allowed; }
     .lb-topbar-title { font-size: 1.15rem; }
 }
 @media (max-width: 560px) {
-    .lb-topbar-title .tb-mark { display: none; }
+    .brand-lockup { font-size: 1.05rem; }
     .lb-btn-text { display: none !important; }
     .lb-btn { padding: 0 11px; }
 }
@@ -2560,7 +2562,6 @@ button:disabled { cursor: not-allowed; }
     transform: rotate(-2deg);
     transform-origin: left center;
 }
-.lb-topbar-title .tb-mark { filter: drop-shadow(0 3px 0 var(--ink-line)) drop-shadow(0 0 0 var(--ink-line)); }
 .lb-btn {
     min-height: 44px;
     padding: 0 16px 3px;
@@ -4008,7 +4009,7 @@ button:disabled { cursor: not-allowed; }
     .lb-btn { padding: 0 11px 3px; }
     .lb-topbar { grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; }
     .lb-topbar > .season-pill { display: none; }
-    .lb-topbar-title .tb-mark { display: none; }
+    .brand-lockup { font-size: 1rem; }
 
     .lobby-body {
         display: grid !important;
@@ -4083,6 +4084,9 @@ button:disabled { cursor: not-allowed; }
     .lobby-body[data-tab="center"] { grid-template-columns: minmax(0, 1fr); }
     .lobby-body[data-tab="left"] { grid-template-columns: minmax(0, 1fr); }
     .lb-topbar-title { display: none; }
+    .brand-lockup { display: inline-flex; width: 40px; height: 40px; overflow: hidden; }
+    .brand-lockup > span { display: none; }
+    .brand-emblem { flex: none; width: 40px; height: 40px; margin: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

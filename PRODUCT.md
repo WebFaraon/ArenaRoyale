@@ -10,7 +10,7 @@ web
 Players of a browser battle royale, on phone and iPad (touch, landscape, fullscreen/PWA) and on desktop (mouse + keyboard), with equal weight on both. Sessions are short: log in, check loadout, pick a mode, create or join a room, play ~10 minutes, return to the lobby. Romanian-language UI; the developer also tests on iPad and PC.
 
 ## Product Purpose
-Arena Royale is a top-down, multiplayer battle royale that runs in the browser (Node.js, Socket.IO, Canvas). Up to 20 players per round; last survivor wins. A second mode, Survival PvE, is cooperative against waves of enemies. Around the match sits a progression layer: accounts, levels and XP, coins and crystals, daily missions, chests, a character shop, weapon selection, a 10-point stat loadout (HP / DMG / SPD), friends and room invites, and a leaderboard. Success is a player who reads the lobby in a glance, starts a match fast, and feels the game's weight in every interaction.
+Blastridge is a top-down, multiplayer battle royale that runs in the browser (Node.js, Socket.IO, Canvas). Up to 20 players per round; last survivor wins. A second mode, Survival PvE, is cooperative against waves of enemies. Around the match sits a progression layer: accounts, levels and XP, coins and crystals, daily missions, chests, a character shop, weapon selection, a 10-point stat loadout (HP / DMG / SPD), friends and room invites, and a leaderboard. Success is a player who reads the lobby in a glance, starts a match fast, and feels the game's weight in every interaction.
 
 ## Positioning
 A competitive, instantly-joinable arena shooter with a roster of 30 distinct character sprites and matching projectiles, playable in one tap from a link on any device.
@@ -23,7 +23,7 @@ A competitive, instantly-joinable arena shooter with a roster of 30 distinct cha
 - Fonts and icons load from CDNs today (Google Fonts); local self-hosting is acceptable.
 
 ## Brand Commitments
-- The name "Arena Royale" and the existing character sprites and projectile art stay.
+- The name "Blastridge" and the existing character sprites and projectile art stay.
 - No emoji anywhere in the UI; use professional vector icons.
 - Tone: competitive, sharp, sporty. It must not read as "made with AI": no oversized corner radii, no default AI palettes, no generic animation.
 
