@@ -1711,8 +1711,9 @@ function prepopulateLobby() {
     _set('lp-nick',    currentNickname || 'JUCATOR');
     _set('lp-rank',    rank);
     _set('lp-xp-txt',  xpInLvl + ' / ' + xpNeeded);
-    _set('lp-coins',   coins.toLocaleString());
-    _set('lp-crystals', crystals);
+    // the currency rolls up to the new total (after a match: from what it was to what it is); the first draw just shows it
+    { const _ce = document.getElementById('lp-coins'), _ge = document.getElementById('lp-crystals');
+      if (_ce) window.ARJuice.roll(_ce, coins); if (_ge) window.ARJuice.roll(_ge, crystals); }
     _set('lp-wins',    wins);
     _set('lp-kills',   kills);
     _set('lp-games',   games);
@@ -3304,7 +3305,20 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _gameMode = gameControl.mode || 'br'; delete gameControl.mode;
     let _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
     let _zoneTimerAlpha = 0;
-    const _vig = { c: null, w: 0, h: 0, dpr: 0 };   // the cached zone vignette
+    const _vig = { c: null, w: 0, h: 0, dpr: 0 };   // the cached red vignette (the zone in BR, low health)
+    let _lowA = 0;   // how far the low-health beat is in (eased 0..1)
+    // the vignette bitmap: a gradient alpha 0 -> 1 at the canvas's own size (made again only when the canvas changes size)
+    function _vigEnsure() {
+        const _vcw = canvas.width, _vch = canvas.height;
+        if (_vig.w === _vcw && _vig.h === _vch) return;
+        if (!_vig.c) _vig.c = document.createElement('canvas');
+        _vig.c.width = _vcw; _vig.c.height = _vch;
+        const vg = _vig.c.getContext('2d');
+        const gr = vg.createRadialGradient(_vcw / 2, _vch / 2, _vch * 0.25, _vcw / 2, _vch / 2, _vch * 0.75);
+        gr.addColorStop(0, 'rgba(220,0,0,0)'); gr.addColorStop(1, 'rgba(220,0,0,1)');
+        vg.fillStyle = gr; vg.fillRect(0, 0, _vcw, _vch);
+        _vig.w = _vcw; _vig.h = _vch;
+    }
     const _zl = { sec: -1, st: -1, fs: 0, text: '', key: '', w: 0, h: 0 }; // the cached zone label (see TIMER ZONA)
     const _zombies        = [];  // by zombie id (server.js), hp -1 = dead / not drawn
     const _tanks          = [];  // the tanks of the latest packet, [x, y, r] each: a player cannot push them, so to the prediction they are a wall
@@ -4373,7 +4387,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             let da = t.tang - t.ang; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
             const step = 12 * dt; t.ang += Math.abs(da) <= step ? da : Math.sign(da) * step;
             const pop = t.pop ? Math.max(0, 1 - (now - t.pop) / 380) : 0;
-            _drawTurret(ctx, t, scale, 1, t.ang, 1 + 0.2 * pop * pop);
+            _drawTurret(ctx, t, scale, 1, t.ang, 1 + (t.popA || 0.2) * pop * pop);
             if (t.stunUntil > now) {   // stunned by a screamer: dimmed, with stars going round it
                 ctx.globalAlpha = 0.42; ctx.fillStyle = '#141B2B'; ctx.beginPath(); ctx.arc(t.x, t.y, R + 1, 0, TAU); ctx.fill();
                 ctx.globalAlpha = 1; ctx.fillStyle = '#FFE27A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
@@ -4393,7 +4407,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const sp = _barSprite(s.t, ARStructs.state(s), s.o, scale);
             const pop = s.pop ? Math.max(0, 1 - (now - s.pop) / 380) : 0;   // an upgraded one swells and settles
             if (sp && pop > 0) {
-                const k = 1 + 0.2 * pop * pop;
+                const k = 1 + (s.popA || 0.2) * pop * pop;
                 ctx.save(); ctx.translate(s.x, s.y); ctx.scale(k, k); ctx.drawImage(sp.c, -sp.w / 2, -sp.h / 2, sp.w, sp.h); ctx.restore();
             } else if (sp) ctx.drawImage(sp.c, s.x - sp.w / 2, s.y - sp.h / 2, sp.w, sp.h);
         }
@@ -4611,6 +4625,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _pingInterval = setInterval(() => { if (!gameEnded) socket.emit('c-ping', performance.now()); }, 2000);
 
     let mouseActive = false;
+    // The camera leans a little towards where you aim and move ("Efecte fine"), so the player is not always dead centre: the mouse is read against
+    // where the player really is on the screen (the centre minus the lean), and the angle is worked out again every frame while the lean moves.
+    let _lookX = 0, _lookY = 0, _mcx = 0, _mcy = 0, _mrL = 0, _mrT = 0, _zoomCss = 1;   // _zoomCss: css px per world unit of the last frame
+    function _aimFromMouse() {
+        const W = canvas.width / _rsDpr(), H = canvas.height / _rsDpr();
+        const dx = (_mcx - _mrL) - (W / 2 - _lookX * _zoomCss), dy = (_mcy - _mrT) - (H / 2 - _lookY * _zoomCss);
+        _mouseOff = Math.hypot(dx, dy);   // how far the mouse is from the player on the screen (css px): the placement ghost follows it
+        myAngle = Math.atan2(-dx, dy);
+        if (isShooting) { shootDir.x = -Math.sin(myAngle); shootDir.y = Math.cos(myAngle); }
+    }
     let _mouseOff = 0;   // css px from the centre of the screen (the player) to the mouse
     let _lineDashZoom = -1;
     let _lineDashArr  = [0, 0];
@@ -4625,16 +4649,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _clock = ARInterp.createClock({ tickMs: EMIT_MS, minMs: 26, maxMs: _imaxQ >= 26 && _imaxQ <= 400 ? _imaxQ : 80, win: 180, stepMs: 1.5,
                                           pauseLateMs: 30, pauseWinMs: 300, stallWinMs: 12000, stallHold: 0.3, stallN: 8 });
     const EXTRAP_MS     = 200;  // how far past the newest snapshot other players keep moving in a pause
-    // The camera leans a little towards where you aim and move ("Efecte fine"), so the player is not always dead centre: the mouse is read against
-    // where the player really is on the screen (the centre minus the lean), and the angle is worked out again every frame while the lean moves.
-    let _lookX = 0, _lookY = 0, _mcx = 0, _mcy = 0, _mrL = 0, _mrT = 0, _zoomCss = 1;   // _zoomCss: css px per world unit of the last frame
-    function _aimFromMouse() {
-        const W = canvas.width / _rsDpr(), H = canvas.height / _rsDpr();
-        const dx = (_mcx - _mrL) - (W / 2 - _lookX * _zoomCss), dy = (_mcy - _mrT) - (H / 2 - _lookY * _zoomCss);
-        _mouseOff = Math.hypot(dx, dy);   // how far the mouse is from the player on the screen (css px): the placement ghost follows it
-        myAngle = Math.atan2(-dx, dy);
-        if (isShooting) { shootDir.x = -Math.sin(myAngle); shootDir.y = Math.cos(myAngle); }
-    }
     const CORRECT_MS    = 60;   // time constant for blending out the guess once real data is back
     let _dbgExtrapFrames = 0, _dbgFrozenFrames = 0;   // (frames drawn past the newest snapshot, and past the extrapolation too: for __arDiag)
 
@@ -5024,6 +5038,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 _zb.seen = _zGen;
                 if (_zPrevHp > 0 && _zPrevHp - _zb.hp > 0.5) {
                     hitEffects.push({ x: _zb.sx, y: _zb.sy, life: 2.0 });
+                    _zb.hitT = performance.now();   // the white flash and the small shove of the draw (ARJuice)
                 }
             }
             for (let _zi = 0; _zi < _zombies.length; _zi++) {
@@ -5611,6 +5626,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const panel = _$('pve-upgrade-panel');
         updateUpgradeButtons(); _pbkTabs(); _pbkResults(); _pbkClock();
         clearInterval(_pbk.iv); _pbk.iv = setInterval(_pbkClock, 250);
+        // the cards (and the blocks round them) come in one after the other, a few ms apart (css .is-enter, only with "Efecte fine")
+        if (window.ARJuice.on()) {
+            let _n = 0; for (const { el } of _pbk.cards.values()) if (el.style.display !== 'none') el.style.setProperty('--pbk-i', _n++);
+            panel.classList.add('is-enter');
+            clearTimeout(_pbk.enterT); _pbk.enterT = setTimeout(() => panel.classList.remove('is-enter'), 1400);
+        }
         panel.style.transition = 'none';
         panel.style.opacity    = '0';
         panel.style.display    = 'flex';
@@ -5691,7 +5712,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         updatePveHud();
         updateUpgradeButtons();
         const k = _pbk.cards && _pbk.cards.get(type);
-        if (k) { k.el.classList.remove('is-pop'); void k.el.offsetWidth; k.el.classList.add('is-pop'); }
+        if (k) {
+            k.el.classList.remove('is-pop'); void k.el.offsetWidth; k.el.classList.add('is-pop');
+            if (k.tag && window.ARJuice.on()) { k.tag.classList.remove('is-bump'); void k.tag.offsetWidth; k.tag.classList.add('is-bump'); }   // the "xN" pill grows for a moment
+        }
     });
 
     socket.on('acid', ({ a }) => { _zFxPush(_acidFx(a)); });
@@ -5748,6 +5772,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const _now = performance.now(), _t = { id: s.id, k: 't', kd: s.kd || 'mg', x: s.x, y: s.y, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, ang: a, tang: a, flash: 0, flameT: -1e9, flameS: 0, pop: _now };
         if (_t.kd === 'support') _t.dr = { ph: 4, t0: _now, ms: ARStructs.TURRET.kinds.support.drone.takeoff + 350 + ARStructs.TURRET.kinds.support.drone.landing, fx: _t.x, fy: _t.y, tx: _t.x, ty: _t.y, tk: 's', tid: -1, dock: true, fxT: 0 };
         _turrets.push(_t); _fxSpawn('place', _t, _now);
+        if (window.ARSound) window.ARSound.play('placeTurret');
         _pveFeed(`${s.by} a plasat ${s.kd === 'tesla' ? 'o Tesla Tower' : s.kd === 'bomb' ? 'o Bomb Tower' : s.kd === 'flame' ? 'un Flamethrower' : s.kd === 'heal' ? 'o Health Station' : s.kd === 'support' ? 'un Support Tower' : 'o tureta'}`);
     });
     // The Support Tower's drone: off to mend something (tk 't' a turret / 's' a barricade, tid its id, ms how long the flight takes) and back home
@@ -5770,7 +5795,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (t) {
             const up = u.t > t.t, now = performance.now();
             t.t = u.t; t.hp = u.hp; t.maxHp = u.mhp;
-            if (up) t.pop = now;
+            if (up) { t.pop = now; t.popA = 0.2; } else if (window.ARJuice.on()) { t.pop = now; t.popA = 0.07; }   // a repair gives a smaller swell
             _fxSpawn(up ? 'upgrade' : 'repair', t, now);
         }
         _bar.useKey = '-';
@@ -5842,6 +5867,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     socket.on('struct-add', (s) => {
         const _now = performance.now(), _s = { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, pop: _now };   // pop: it lands with a little swell
         _structs.push(_s); _fxSpawn('place', _s, _now);
+        if (window.ARSound) window.ARSound.play('placeBarricade');
         _pveFeed(`${s.by} a plasat o baricada`);
     });
     socket.on('struct-hp', (rows) => {
@@ -5852,7 +5878,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (s) {
             const up = u.t > s.t, now = performance.now();
             s.t = u.t; s.hp = u.hp; s.maxHp = u.mhp;
-            if (up) s.pop = now;
+            if (up) { s.pop = now; s.popA = 0.2; } else if (window.ARJuice.on()) { s.pop = now; s.popA = 0.07; }
             _fxSpawn(up ? 'upgrade' : 'repair', s, now);
         }
         _bar.useKey = '-';   // what E does here has changed
@@ -5957,7 +5983,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const k of ['normal', 'runner', 'heavy', 'special']) _peSet('pe-k-' + k, _peN(d.kinds[k]));
         // the numbers of the match
         const w = document.getElementById('pe-st-waves'); w.innerHTML = (win ? d.total : d.wave) + '<small>/ ' + d.total + '</small>'; w.parentNode.className = 'pe-stat ' + (win ? 'is-good' : 'is-bad');
-        _peSet('pe-st-zombies', _peN(d.zombies));
         const bh = document.getElementById('pe-st-base'); bh.innerHTML = _peN(d.base.hp) + '<small>/ ' + _peN(d.base.max) + '</small>';
         document.getElementById('pe-st-base-fill').style.width = Math.round(Math.max(0, Math.min(1, d.base.hp / Math.max(1, d.base.max))) * 100) + '%';
         _peSet('pe-st-time', Math.floor(d.timeSec / 60) + ':' + String(d.timeSec % 60).padStart(2, '0'));
@@ -5985,10 +6010,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             row.append(nm, k, dm, c); rows.appendChild(row);
         });
         // what it paid
-        _peSet('pe-p-coins', '+' + _peN(r.coins)); _peSet('pe-p-gems', '+' + _peN(r.gems)); _peSet('pe-p-xp', '+' + _peN(r.xp));
+        // the prizes roll up from zero one after the other, then the breakdown and the zombie count
+        const _roll = (id, v, delay, prefix) => window.ARJuice.roll(document.getElementById(id), v, { from: 0, ms: 900, delay: delay, prefix: prefix || '' });
+        _roll('pe-p-coins', r.coins, 250, '+'); _roll('pe-p-gems', r.gems, 420, '+'); _roll('pe-p-xp', r.xp, 590, '+'); _roll('pe-st-zombies', d.zombies, 150);
         const [lw, lk, lv] = r.lines;
-        _peSet('pe-w-waves', lw.n + (lw.n === 1 ? ' val terminat' : ' valuri terminate')); _peSet('pe-w-waves-c', '+' + _peN(lw.coins));
-        _peSet('pe-w-kills-c', '+' + _peN(lk.coins)); _peSet('pe-w-win-c', '+' + _peN(lv.coins));
+        _peSet('pe-w-waves', lw.n + (lw.n === 1 ? ' val terminat' : ' valuri terminate')); _roll('pe-w-waves-c', lw.coins, 700, '+');
+        _roll('pe-w-kills-c', lk.coins, 800, '+'); _roll('pe-w-win-c', lv.coins, 900, '+');
         const got = r.milestones.filter(m => m.got).map(m => m.wave);
         _peSet('pe-w-gem-note', win ? 'Praguri de val: ' + got.join(', ') : got.length ? 'Praguri de val atinse: ' + got.join(', ') : 'Niciun prag de val atins');
         document.getElementById('pe-w-gems').innerHTML = '+' + (r.gems | 0) + ' ' + _PE_GEM;
@@ -6407,6 +6434,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         const dtSec = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.05) : 0.016;
         lastTime = timestamp;
+        const _juiceOn = window.ARJuice.on();   // "Efecte fine": the small touches of motion (Settings, off with reduced motion)
 
         // Zoom out per arma (weapons.json cameraZoom: sniper vede mai mult din mapa), tranzitie lina
         const _targetZoom = (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON]).cameraZoom;
@@ -6445,7 +6473,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (isShooting && !_selfDead && !gameControl.countdownActive && _pendingBurstShots.length === 0 && ARAmmo.autoReload(ammoState, true)) {
             _reloadHoldUntil = _shotNow + Math.max(300, _rttMs() + 150);
         }
-        const _juiceOn = window.ARJuice.on();   // "Efecte fine": the small touches of motion (Settings, off with reduced motion)
         if (isShooting && !_shootMustRelease && !_selfDead && !gameControl.countdownActive &&
             _shotNow >= _clientNextShotAt && ARAmmo.canFire(ammoState) && predX !== null &&
             aimStartTime !== null && _shotNow - aimStartTime >= _AIM_MS) {
@@ -6987,7 +7014,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 ctx.beginPath(); ctx.arc(_zb.x, _zb.y, _zbR, 0, Math.PI*2); ctx.fill();
                 continue;
             }
-            ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow, _zb.burnT ? Math.max(0, 1 - (_zNow - _zb.burnT) / 600) : 0);
+            // a hit: a white wash (70 ms) and a shove back along the way it faces (a few units, less for the heavy ones) that settles in 110 ms
+            let _zFl = 0, _zNx = 0, _zNy = 0;
+            if (_zb.hitT && _juiceOn) {
+                const _ha = _zNow - _zb.hitT;
+                if (_ha < 110) {
+                    _zFl = _ha < 70 ? 1 - _ha / 70 : 0;
+                    const _sh = (_zDef.heavy ? 1 : 2.6) * (1 - _ha / 110) * (1 - _ha / 110), _za = (_zb.angle || 0);
+                    _zNx = -Math.cos(_za) * _sh; _zNy = -Math.sin(_za) * _sh;
+                }
+            }
+            ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow, _zb.burnT ? Math.max(0, 1 - (_zNow - _zb.burnT) / 600) : 0, _zFl, _zNx, _zNy);
             if (_zType === 4 && _gameMode === 'pve') { ctx.setTransform(_wm); _drawExploderFuse(ctx, _zb, _zDef, _zNow); }
         }
         // HP bars: only on the zombies that are hurt (see _drawZombieBars)
@@ -7005,6 +7042,26 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_bombFx.length) _drawBombFx(ctx, _zNow);
         _drawFlameFx(ctx, _zNow);
         if (_zFx.length) _drawZombieFx(ctx, _zNow);
+
+        // --- the dust under the feet (drawn under the players) ---
+        if (_dustLive > 0) {
+            ctx.setTransform(_wm);
+            const _dms = dtSec * 1000;
+            for (let _di = 0; _di < _DUST_N; _di++) {
+                const _o = _di * 6, _life = _dust[_o + 5];
+                if (_life <= 0) continue;
+                const _age = _dust[_o + 4] + _dms;
+                if (_age >= _life) { _dust[_o + 5] = 0; _dustLive--; continue; }
+                _dust[_o + 4] = _age;
+                _dust[_o] += _dust[_o + 2] * dtSec; _dust[_o + 1] += _dust[_o + 3] * dtSec;
+                _dust[_o + 2] *= 0.94; _dust[_o + 3] *= 0.94;
+                const _k = _age / _life;
+                ctx.globalAlpha = 0.5 * (1 - _k) * (1 - _k);
+                ctx.fillStyle = '#E3D9BC';
+                ctx.beginPath(); ctx.arc(_dust[_o], _dust[_o + 1], 3 + 6 * _k, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
 
         // --- JUCATORI ---
         // The ring sits just outside the default hands and the labels stack on it
@@ -7043,26 +7100,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _pWeapon = isMe ? (_playerWeapons.get(socket.id) || selectedWeapon) : (_playerWeapons.get(player.id) || DEFAULT_WEAPON);
             _drawPlayerFigure(ctx, _wm, px, py, pangle, playerImages[player.id], _pWeapon, _lblScale, ringColor, ringFill, _playerFx.get(player.id), _bulletNow, _playerWeaponSkins.get(player.id));
             if (_skinPollen) {   // a mythic skin sheds pollen from the wings
-        // --- the dust under the feet (drawn under the players) ---
-        if (_dustLive > 0) {
-            ctx.setTransform(_wm);
-            const _dms = dtSec * 1000;
-            for (let _di = 0; _di < _DUST_N; _di++) {
-                const _o = _di * 6, _life = _dust[_o + 5];
-                if (_life <= 0) continue;
-                const _age = _dust[_o + 4] + _dms;
-                if (_age >= _life) { _dust[_o + 5] = 0; _dustLive--; continue; }
-                _dust[_o + 4] = _age;
-                _dust[_o] += _dust[_o + 2] * dtSec; _dust[_o + 1] += _dust[_o + 3] * dtSec;
-                _dust[_o + 2] *= 0.94; _dust[_o + 3] *= 0.94;
-                const _k = _age / _life;
-                ctx.globalAlpha = 0.5 * (1 - _k) * (1 - _k);
-                ctx.fillStyle = '#E3D9BC';
-                ctx.beginPath(); ctx.arc(_dust[_o], _dust[_o + 1], 3 + 6 * _k, 0, Math.PI * 2); ctx.fill();
-            }
-            ctx.globalAlpha = 1;
-        }
-
                 const _sg = _gunLook(_pWeapon, _playerWeaponSkins.get(player.id));
                 if (_sg && _sg.fx && _sg.fx.pollen) ARSkinFx.emitPollen(_skinPool, _skinEmitter(_skinEm, player.id), _sg.fx, px, py, pangle, PLAYER_VISUAL_SCALE, _skinDt, Math.random);
             }
@@ -7282,6 +7319,26 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
         }
 
+        // --- low health: the red edge of the screen beats like a heart, faster the less is left, and calms when you are healed ("Efecte fine") ---
+        {
+            const _meta = playerMeta[socket.id], _mhp = (_meta && _meta.maxHp) || 500, _hpNow = latestHp[socket.id];
+            const _ratio = _hpNow === undefined ? 1 : Math.max(0, Math.min(1, _hpNow / _mhp));
+            const _on = _juiceOn && !gameEnded && !_selfDead && !isSpectating && _hpNow !== undefined && _ratio > 0 && _ratio < 0.3;
+            // 0 at 30% health, 1 at 0%
+            const _sev = _on ? 1 - _ratio / 0.3 : 0;
+            _lowA += (_sev - _lowA) * Math.min(1, dtSec * 3);
+            if (_lowA > 0.01) {
+                // two beats a period ("lub-dub"), the period from 1.1 s (30%) down to 0.55 s (almost nothing left)
+                const _per = 1100 - 550 * _lowA, _ph = (_zNow % _per) / _per;
+                const _beat = Math.exp(-Math.pow((_ph - 0.04) / 0.05, 2)) + 0.65 * Math.exp(-Math.pow((_ph - 0.22) / 0.05, 2));
+                _vigEnsure();
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.globalAlpha = Math.min(0.85, (0.45 + 0.55 * _lowA) * (0.22 + 0.6 * _beat));
+                ctx.drawImage(_vig.c, 0, 0);
+                ctx.globalAlpha = 1;
+            }
+        }
+
         // --- VIGNETA ZONA (screen space, cand esti in afara) --- BR only
         if (!gameEnded && _gameMode !== 'pve' && _zone.r >= 0 && predX !== null) {
             const _distZ = Math.hypot(predX - _zone.cx, predY - _zone.cy);
@@ -7289,16 +7346,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 // a pre-painted gradient (alpha 0 -> 1) at the canvas's own size, blitted 1:1 and faded by the pulse: no gradient
                 // object and no string per frame. (It used to be a quarter-size one stretched over the screen: the filtering of
                 // that stretch cost ~3.9 ms/frame at 1280x720 in a software raster, ~0.9 ms for the 1:1 blit.)
-                const _vcw = canvas.width, _vch = canvas.height;
-                if (_vig.w !== _vcw || _vig.h !== _vch) {
-                    if (!_vig.c) _vig.c = document.createElement('canvas');
-                    _vig.c.width = _vcw; _vig.c.height = _vch;
-                    const vg = _vig.c.getContext('2d');
-                    const gr = vg.createRadialGradient(_vcw / 2, _vch / 2, _vch * 0.25, _vcw / 2, _vch / 2, _vch * 0.75);
-                    gr.addColorStop(0, 'rgba(220,0,0,0)'); gr.addColorStop(1, 'rgba(220,0,0,1)');
-                    vg.fillStyle = gr; vg.fillRect(0, 0, _vcw, _vch);
-                    _vig.w = _vcw; _vig.h = _vch;
-                }
+                _vigEnsure();
                 ctx.setTransform(1, 0, 0, 1, 0, 0);
                 ctx.globalAlpha = Math.round((0.25 + 0.15 * Math.sin(performance.now() / 160)) * 100) / 100;
                 ctx.drawImage(_vig.c, 0, 0);
