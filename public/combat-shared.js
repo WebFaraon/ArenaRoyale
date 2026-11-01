@@ -19,6 +19,14 @@
     // Server ticks: exactly 60 per second (server.js runs them on an accumulator clock)
     const TICK_RATE = 60;
     const TICK_S = 1 / TICK_RATE;
+    // The player's velocity follows the wanted one (the direction times the speed) with a short exponential ramp, about 40 ms: a step on a
+    // key press or release no longer starts and stops at full speed, and the glide is a few pixels. The server runs one step per tick
+    // (server.js), the client the same step in the prediction (replay of the unacknowledged inputs, one per tick) and a smoother one per frame,
+    // so they agree: v += (wanted - v) * k, then x += v * dt.
+    const MOVE_TAU = 0.04;
+    const moveK = (dt) => 1 - Math.exp(-dt / MOVE_TAU);
+    const MOVE_K_TICK = moveK(TICK_S);
+
     // The tick the game used before (17 ms): bullet ranges are still worked out from it (bulletLife)
     const LEGACY_TICK_S = 0.017;
 
@@ -150,5 +158,5 @@
         return errs;
     }
 
-    return { PLAYER_VISUAL_SCALE, TICK_RATE, TICK_S, LEGACY_TICK_S, LEGACY_MUZZLE, NET_BULLET_SPEED, muzzleDistance, legacyTicks, bulletLife, weaponStats, checkWeapons, weaponSkins, checkWeaponSkins, MAP_OBJECT_IDS, checkMapObjects };
+    return { PLAYER_VISUAL_SCALE, TICK_RATE, TICK_S, MOVE_TAU, moveK, MOVE_K_TICK, LEGACY_TICK_S, LEGACY_MUZZLE, NET_BULLET_SPEED, muzzleDistance, legacyTicks, bulletLife, weaponStats, checkWeapons, weaponSkins, checkWeaponSkins, MAP_OBJECT_IDS, checkMapObjects };
 });

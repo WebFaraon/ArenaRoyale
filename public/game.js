@@ -4625,12 +4625,38 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _clock = ARInterp.createClock({ tickMs: EMIT_MS, minMs: 26, maxMs: _imaxQ >= 26 && _imaxQ <= 400 ? _imaxQ : 80, win: 180, stepMs: 1.5,
                                           pauseLateMs: 30, pauseWinMs: 300, stallWinMs: 12000, stallHold: 0.3, stallN: 8 });
     const EXTRAP_MS     = 200;  // how far past the newest snapshot other players keep moving in a pause
+    // The camera leans a little towards where you aim and move ("Efecte fine"), so the player is not always dead centre: the mouse is read against
+    // where the player really is on the screen (the centre minus the lean), and the angle is worked out again every frame while the lean moves.
+    let _lookX = 0, _lookY = 0, _mcx = 0, _mcy = 0, _mrL = 0, _mrT = 0, _zoomCss = 1;   // _zoomCss: css px per world unit of the last frame
+    function _aimFromMouse() {
+        const W = canvas.width / _rsDpr(), H = canvas.height / _rsDpr();
+        const dx = (_mcx - _mrL) - (W / 2 - _lookX * _zoomCss), dy = (_mcy - _mrT) - (H / 2 - _lookY * _zoomCss);
+        _mouseOff = Math.hypot(dx, dy);   // how far the mouse is from the player on the screen (css px): the placement ghost follows it
+        myAngle = Math.atan2(-dx, dy);
+        if (isShooting) { shootDir.x = -Math.sin(myAngle); shootDir.y = Math.cos(myAngle); }
+    }
     const CORRECT_MS    = 60;   // time constant for blending out the guess once real data is back
     let _dbgExtrapFrames = 0, _dbgFrozenFrames = 0;   // (frames drawn past the newest snapshot, and past the extrapolation too: for __arDiag)
 
     let _inputSeq        = 0;
     let _lastInputSend   = 0;
-    const _pendingInputs = []; // [{seq, dx, dy, dt}] — replay buffer for CSP
+    const _pendingInputs = []; // [{seq, dx, dy, dt, vx, vy}] — replay buffer for CSP (vx, vy: the velocity after that input's tick, see ARShared.MOVE_TAU)
+    // The velocity ramp (about 40 ms, ARShared.moveK): _tickV is the server's velocity as this client works it out tick by tick from its own
+    // inputs, _ackV what it was after the last input the server has confirmed (where a replay starts), _fV the smooth one of the frame loop.
+    let _tickVx = 0, _tickVy = 0, _ackVx = 0, _ackVy = 0, _fVx = 0, _fVy = 0;
+    // Dust ("Efecte fine"): a few puffs under the feet when you turn hard (the velocity against the new heading). One small pool, nothing allocated per frame.
+    const _DUST_N = 24, _dust = new Float32Array(_DUST_N * 6);   // x, y, vx, vy, age (ms), life (ms); life 0 = free
+    let _dustAt = 0, _dustLive = 0;
+    function _dustPuff(x, y, vx, vy) {
+        for (let i = 0; i < _DUST_N; i++) {
+            const o = i * 6;
+            if (_dust[o + 5] > 0) continue;
+            _dust[o] = x; _dust[o + 1] = y; _dust[o + 2] = vx; _dust[o + 3] = vy; _dust[o + 4] = 0; _dust[o + 5] = 320 + Math.random() * 120;
+            _dustLive++;
+            return;
+        }
+    }
+    function _resetMoveV() { _tickVx = _tickVy = _ackVx = _ackVy = _fVx = _fVy = 0; _dust.fill(0); _dustLive = 0; }
 
     // ── Inputs: one per server tick ──────────────────────────────────────────
     // An input goes out for every state packet the server sends (one per tick), so the client can never
@@ -4645,7 +4671,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _sendInput(now);
     }
     function _sendInput(now) {
-        if (gameEnded || gameControl.countdownActive || _selfDead || _pveState.waveBreak) return;
+        if (gameEnded || gameControl.countdownActive || _selfDead || _pveState.waveBreak) { _tickVx = _tickVy = _ackVx = _ackVy = 0; return; }   // the server holds the velocity at zero here
         _lastInputSend = now;
         const seq = ++_inputSeq;
         const _inp = {
@@ -4661,7 +4687,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _dbgPktSent++;
         // Record for CSP replay (limit buffer to ~3s worth of inputs)
         if (predX !== null) {
-            _pendingInputs.push({ seq, dx: moveDir.x, dy: moveDir.y, dt: ARShared.TICK_S });
+            _tickVx += (moveDir.x * predSpeed - _tickVx) * ARShared.MOVE_K_TICK;
+            _tickVy += (moveDir.y * predSpeed - _tickVy) * ARShared.MOVE_K_TICK;
+            _pendingInputs.push({ seq, dx: moveDir.x, dy: moveDir.y, dt: ARShared.TICK_S, vx: _tickVx, vy: _tickVy });
             if (_pendingInputs.length > 180) _pendingInputs.shift();
         }
     }
@@ -4806,20 +4834,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (e.pointerType !== 'mouse') return;
         mouseActive = true;
         const rect = canvas.getBoundingClientRect();
-        const W  = canvas.width  / _rsDpr();
-        const H  = canvas.height / _rsDpr();
-        const dx = (e.clientX - rect.left) - W / 2;
-        const dy = (e.clientY - rect.top)  - H / 2;
-        _mouseOff = Math.hypot(dx, dy);   // how far the mouse is from the player on the screen (css px): the placement ghost follows it
-        myAngle = Math.atan2(-dx, dy);
+        _mrL = rect.left; _mrT = rect.top; _mcx = e.clientX; _mcy = e.clientY;
         // Angle is sent via unified input at 30Hz from rAF — no separate rotate emit needed.
         // Sending 'rotate' here too doubled mouse packet rate and caused server-side angle
         // race conditions with the input packet arriving in the same tick window.
-        if (isShooting) {
-            shootDir.x = -Math.sin(myAngle);
-            shootDir.y =  Math.cos(myAngle);
-            // Shoot emit handled after aim delay in draw loop
-        }
+        _aimFromMouse();   // (shoot emit is handled after the aim delay in the draw loop)
     };
     const onPointerLeave = (e) => {
         if (e.pointerType !== 'mouse') return;
@@ -4883,7 +4902,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         isShooting = false;
         aimStartTime = null;
         gameEnded = false;
-        _pendingInputs.length = 0;
+        _pendingInputs.length = 0; _resetMoveV();
         _inputSeq = 0;
         _lastInputSend = 0;
         document.removeEventListener('visibilitychange', _visibilityHandler);
@@ -5092,12 +5111,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // 3. Smooth-correct predX/Y toward the replayed position.
             const ackSeq = (ammoArr && ammoArr[4]) ? ammoArr[4] : 0;
             while (_pendingInputs.length > 0 && _pendingInputs[0].seq <= ackSeq) {
-                _pendingInputs.shift();
+                const _acked = _pendingInputs.shift();
+                _ackVx = _acked.vx; _ackVy = _acked.vy;   // the velocity the server has after this input: a replay starts from it
             }
-            let _rx = me.x, _ry = me.y;
+            let _rx = me.x, _ry = me.y, _rvx = _ackVx, _rvy = _ackVy;
             for (const inp of _pendingInputs) {
-                _rx = Math.max(20, Math.min(ARENA_W - 20, _rx + inp.dx * predSpeed * inp.dt));
-                _ry = Math.max(20, Math.min(ARENA_H - 20, _ry + inp.dy * predSpeed * inp.dt));
+                _rvx += (inp.dx * predSpeed - _rvx) * ARShared.MOVE_K_TICK;
+                _rvy += (inp.dy * predSpeed - _rvy) * ARShared.MOVE_K_TICK;
+                _rx = Math.max(20, Math.min(ARENA_W - 20, _rx + _rvx * inp.dt));
+                _ry = Math.max(20, Math.min(ARENA_H - 20, _ry + _rvy * inp.dt));
                 const _rs = _pushOutOfSolids(_rx, _ry); // same slide-out as the server tick
                 _rx = _rs.x; _ry = _rs.y;
             }
@@ -5313,7 +5335,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         stateBuffer.length = 0;
         _clock.reset();
         _inputSeq = 0; _lastInputSend = 0;
-        _pendingInputs.length = 0;
+        _pendingInputs.length = 0; _resetMoveV();
         _clientBullets.length = 0;
         _clientNextShotAt = 0; _ammoHoldUntil = 0;
         _pendingBurstShots.length = 0;
@@ -5705,7 +5727,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _shootMustRelease = false; _clientHasReleased = true;
         _clientNextShotAt = 0; _ammoHoldUntil = 0; _pendingBurstShots.length = 0;
         moveDir.x = 0; moveDir.y = 0;
-        _pendingInputs.length = 0;
+        _pendingInputs.length = 0; _resetMoveV();
     });
 
     socket.on('pve-subwave', ({ remaining, queued }) => {
@@ -5864,7 +5886,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _pveState.breakTimerMax = timer; _pveState.breakAt = performance.now();
         _pbkGoReset(); _pbk.res = null;
         isShooting = false; moveDir.x = 0; moveDir.y = 0;
-        _pendingInputs.length = 0;
+        _pendingInputs.length = 0; _resetMoveV();
         keysHeld.clear();
         // Delay 1s inainte de a arata panoul (ca sa se vada coin-urile de la ultimul zombi)
         const _panelDelay = 1000;
@@ -6393,15 +6415,26 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // Device pixels per world unit as a multiple of 1/256 (a change of at most 0.2%): a 256-unit ground tile is then a whole
         // number of pixels and the ground and the zone blit 1:1 instead of being filtered (see ground-layer.js).
         const _sq = Math.max(1 / 256, Math.round(dpr * ZOOM * 256) / 256);
-        ZOOM = _sq / dpr;
+        ZOOM = _sq / dpr; _zoomCss = ZOOM;
 
         // ── Local position prediction (runs every rAF frame) ─────────────────
         // Same rules as the server tick: move, clamp to the arena, slide out of obstacles (and the
         // PvE base). Without the slide the client walked into trees and was pulled back by every
         // server packet (rubber-banding along cover).
         if (predX !== null && !_selfDead) {
-            predX = Math.max(20, Math.min(ARENA_W - 20, predX + moveDir.x * predSpeed * dtSec));
-            predY = Math.max(20, Math.min(ARENA_H - 20, predY + moveDir.y * predSpeed * dtSec));
+            // the same ramp as the server, in frame steps (exact for any dt: a first-order lag)
+            const _fk = ARShared.moveK(dtSec);
+            _fVx += (moveDir.x * predSpeed - _fVx) * _fk; _fVy += (moveDir.y * predSpeed - _fVy) * _fk;
+            // a hard turn (running one way and now asking for the other): puffs of dust fly off behind the old heading
+            if (_juiceOn && (moveDir.x || moveDir.y)) {
+                const _sp = Math.hypot(_fVx, _fVy), _md = Math.hypot(moveDir.x, moveDir.y);
+                if (_sp > predSpeed * 0.5 && (_fVx * moveDir.x + _fVy * moveDir.y) / (_sp * _md) < 0.1 && timestamp - _dustAt > 170) {
+                    _dustAt = timestamp;
+                    for (let _di = 0; _di < 4; _di++) _dustPuff(predX + (Math.random() - 0.5) * 12, predY + 10 + (Math.random() - 0.5) * 6, -_fVx / _sp * (14 + Math.random() * 22) + (Math.random() - 0.5) * 18, -_fVy / _sp * (14 + Math.random() * 22) + (Math.random() - 0.5) * 18);
+                }
+            }
+            predX = Math.max(20, Math.min(ARENA_W - 20, predX + _fVx * dtSec));
+            predY = Math.max(20, Math.min(ARENA_H - 20, predY + _fVy * dtSec));
             const _ps = _pushOutOfSolids(predX, predY);
             predX = _ps.x; predY = _ps.y;
         }
@@ -6412,6 +6445,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (isShooting && !_selfDead && !gameControl.countdownActive && _pendingBurstShots.length === 0 && ARAmmo.autoReload(ammoState, true)) {
             _reloadHoldUntil = _shotNow + Math.max(300, _rttMs() + 150);
         }
+        const _juiceOn = window.ARJuice.on();   // "Efecte fine": the small touches of motion (Settings, off with reduced motion)
         if (isShooting && !_shootMustRelease && !_selfDead && !gameControl.countdownActive &&
             _shotNow >= _clientNextShotAt && ARAmmo.canFire(ammoState) && predX !== null &&
             aimStartTime !== null && _shotNow - aimStartTime >= _AIM_MS) {
@@ -6554,8 +6588,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
 
         const specTarget = isSpectating && spectateTargetId ? rState.players[spectateTargetId] : null;
-        const camX = specTarget ? specTarget.x : (predX !== null ? predX : (me ? me.x : ARENA_W / 2));
-        const camY = specTarget ? specTarget.y : (predY !== null ? predY : (me ? me.y : ARENA_H / 2));
+        // The lean: towards where you aim (12 units) and where you run (9), eased in ~0.25 s; none when spectating, dead or with the effects off
+        {
+            const _lk = _juiceOn && !specTarget && predX !== null && !_selfDead && !gameEnded;
+            const _tx = _lk ? -Math.sin(myAngle) * 12 + (_fVx / predSpeed) * 9 : 0, _ty = _lk ? Math.cos(myAngle) * 12 + (_fVy / predSpeed) * 9 : 0;
+            const _ke = Math.min(1, dtSec * 4);
+            _lookX += (_tx - _lookX) * _ke; _lookY += (_ty - _lookY) * _ke;
+            if (Math.abs(_lookX) < 0.01 && !_lk) _lookX = 0;
+            if (Math.abs(_lookY) < 0.01 && !_lk) _lookY = 0;
+            if (mouseActive && !isSpectating) _aimFromMouse();   // the player moved on the screen: the angle to the (still) mouse changed
+        }
+        const camX = specTarget ? specTarget.x : (predX !== null ? predX + _lookX : (me ? me.x : ARENA_W / 2));
+        const camY = specTarget ? specTarget.y : (predY !== null ? predY + _lookY : (me ? me.y : ARENA_H / 2));
 
         // The camera sits on whole device pixels: _ox/_oy are where world (0, 0) lands, so everything static blits at the same
         // sub-pixel phase, and the ground can blit 1:1. Moving things are still drawn at their exact (fractional) positions.
@@ -6999,6 +7043,26 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const _pWeapon = isMe ? (_playerWeapons.get(socket.id) || selectedWeapon) : (_playerWeapons.get(player.id) || DEFAULT_WEAPON);
             _drawPlayerFigure(ctx, _wm, px, py, pangle, playerImages[player.id], _pWeapon, _lblScale, ringColor, ringFill, _playerFx.get(player.id), _bulletNow, _playerWeaponSkins.get(player.id));
             if (_skinPollen) {   // a mythic skin sheds pollen from the wings
+        // --- the dust under the feet (drawn under the players) ---
+        if (_dustLive > 0) {
+            ctx.setTransform(_wm);
+            const _dms = dtSec * 1000;
+            for (let _di = 0; _di < _DUST_N; _di++) {
+                const _o = _di * 6, _life = _dust[_o + 5];
+                if (_life <= 0) continue;
+                const _age = _dust[_o + 4] + _dms;
+                if (_age >= _life) { _dust[_o + 5] = 0; _dustLive--; continue; }
+                _dust[_o + 4] = _age;
+                _dust[_o] += _dust[_o + 2] * dtSec; _dust[_o + 1] += _dust[_o + 3] * dtSec;
+                _dust[_o + 2] *= 0.94; _dust[_o + 3] *= 0.94;
+                const _k = _age / _life;
+                ctx.globalAlpha = 0.5 * (1 - _k) * (1 - _k);
+                ctx.fillStyle = '#E3D9BC';
+                ctx.beginPath(); ctx.arc(_dust[_o], _dust[_o + 1], 3 + 6 * _k, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
+
                 const _sg = _gunLook(_pWeapon, _playerWeaponSkins.get(player.id));
                 if (_sg && _sg.fx && _sg.fx.pollen) ARSkinFx.emitPollen(_skinPool, _skinEmitter(_skinEm, player.id), _sg.fx, px, py, pangle, PLAYER_VISUAL_SCALE, _skinDt, Math.random);
             }
