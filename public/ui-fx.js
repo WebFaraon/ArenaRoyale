@@ -9,6 +9,91 @@
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
+    // ---------- "Fine effects": the small touches of motion (a button that springs back, numbers that roll up, bars that trail, the
+    // camera that leans, dust, a flash on a hurt zombie). One switch in Settings (ar_juice, on by default); off as well when the
+    // system asks for reduced motion. Nothing here changes what the game does. CSS reads html[data-juice], JS reads ARJuice.on().
+    let juiceSetting = true;
+    try { juiceSetting = localStorage.getItem('ar_juice') !== '0'; } catch (e) { /* storage blocked: on */ }
+    const juiceOn = function () { return juiceSetting && !reduceMotion.matches; };
+    const syncJuice = function () { document.documentElement.setAttribute('data-juice', juiceOn() ? 'on' : 'off'); };
+    syncJuice();
+    if (reduceMotion.addEventListener) reduceMotion.addEventListener('change', syncJuice);
+    // Counts a readout up (or down) to `to`: easeOutCubic over `ms`, the final text is always exact. `from` defaults to what the element
+    // showed last through this function (so a value that changes again rolls on from where it is), or to `to` (nothing to roll).
+    const roll = function (el, to, o) {
+        if (!el) return;
+        o = o || {};
+        const fmt = o.fmt || function (n) { return Math.round(n).toLocaleString(); }, pre = o.prefix || '', suf = o.suffix || '';
+        const from = o.from !== undefined ? o.from : (el.__rollVal !== undefined ? el.__rollVal : to);
+        if (el.__rollRaf) { cancelAnimationFrame(el.__rollRaf); el.__rollRaf = 0; }
+        el.__rollVal = to;
+        // the number flap (data-flap) must not restart on every frame of the roll: it is told the text it is about to see, and fires once at the end
+        const put = function (t) { el.__flapText = t; el.textContent = t; };
+        const done = function () { el.textContent = pre + fmt(to) + suf; el.__rollRaf = 0; };
+        if (!juiceOn() || from === to || document.hidden) { done(); return; }
+        const ms = o.ms || 700, t0 = performance.now() + (o.delay || 0);
+        put(pre + fmt(from) + suf);
+        const step = function (now) {
+            const k = (now - t0) / ms;
+            if (k < 0) { el.__rollRaf = requestAnimationFrame(step); return; }
+            if (k >= 1) { done(); return; }
+            const e = 1 - Math.pow(1 - k, 3);
+            put(pre + fmt(from + (to - from) * e) + suf);
+            el.__rollRaf = requestAnimationFrame(step);
+        };
+        el.__rollRaf = requestAnimationFrame(step);
+    };
+    // A bar that leaves a pale trail: when the fill shrinks, a ghost stays at the old width for a moment and then slides down to it, so
+    // you see how much was lost; when it grows the ghost is just behind it. Watches the style of the fill, so no caller changes.
+    const trail = function (fill) {
+        if (!fill || fill.__trail || !fill.parentNode) return;
+        const ghost = document.createElement('i');
+        ghost.className = 'j-trail';
+        fill.parentNode.insertBefore(ghost, fill);
+        fill.classList.add('j-fill');
+        fill.__trail = ghost;
+        let last = parseFloat(fill.style.width);
+        if (!(last >= 0)) last = 100;
+        ghost.style.width = last + '%';
+        let timer = 0;
+        new MutationObserver(function () {
+            const now = parseFloat(fill.style.width);
+            if (!(now >= 0) || now === last) return;
+            if (!juiceOn()) { ghost.style.width = now + '%'; last = now; return; }
+            if (now < last) {
+                // keep the old width for a beat, then slide down to the new one
+                ghost.style.transition = 'none';
+                ghost.style.width = last + '%';
+                void ghost.offsetWidth;
+                clearTimeout(timer);
+                timer = setTimeout(function () { ghost.style.transition = ''; ghost.style.width = now + '%'; }, 260);
+            } else {
+                clearTimeout(timer);
+                ghost.style.transition = 'none';
+                ghost.style.width = now + '%';
+            }
+            last = now;
+        }).observe(fill, { attributes: true, attributeFilter: ['style'] });
+    };
+    window.ARJuice = {
+        trail: trail,
+        on: juiceOn,
+        set: function (v) { juiceSetting = !!v; try { localStorage.setItem('ar_juice', juiceSetting ? '1' : '0'); } catch (e) { /* ignore */ } syncJuice(); },
+        setting: function () { return juiceSetting; },
+        roll: roll,
+    };
+    // A button that was let go springs back (css: .j-rel). Added on pointerup to the nearest button-like thing, removed when it has played.
+    const JUICE_SEL = 'button, a.lb-btn, [role="button"], .gm-card, .char-shop-card, .pbk-c, .pb-slot';
+    document.addEventListener('pointerup', function (e) {
+        if (!juiceOn()) return;
+        const t = e.target && e.target.closest && e.target.closest(JUICE_SEL);
+        if (!t || t.disabled) return;
+        t.classList.remove('j-rel');
+        void t.offsetWidth;
+        t.classList.add('j-rel');
+        t.addEventListener('animationend', function f(ev) { if (ev.animationName !== 'jRelease') return; t.classList.remove('j-rel'); t.removeEventListener('animationend', f); });
+    }, true);
+
     // ---------- cache busting ----------
     // The server stamps each page with its build (<meta name="ar-build">) and caches files asked for with
     // ?v=<build> for a year (server.js). arAsset() adds it to a local file URL built in JS.
@@ -63,6 +148,9 @@
         click:  { file: 'ButtonClick.mp3', gain: 0.55 },
         select: { file: 'Select.mp3',      gain: 0.8 },
         start:  { file: 'GameStart.mp3',   gain: 0.9 },
+        // building in PvE (only placing has a sound for now)
+        placeBarricade: { file: 'PlaceBarricadeSFX.mp3', gain: 0.8 },
+        placeTurret:    { file: 'PlaceTurretSFX.mp3',    gain: 0.8 },
     };
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     let actx = null;
@@ -252,6 +340,20 @@
             });
         }
         paintSound();
+
+        // ---------- bars that trail: the XP bar of the lobby, the health under the gun, the base in the PvE HUD ----------
+        ['lp-xp-fill', 'hb-hpfill', 'pve-base-bar-inner'].forEach(function (id) { window.ARJuice.trail(document.getElementById(id)); });
+
+        // ---------- settings: the small touches of motion ----------
+        const swJuice = document.getElementById('set-juice');
+        if (swJuice) {
+            const paintJuice = function () {
+                swJuice.setAttribute('aria-checked', window.ARJuice.setting() ? 'true' : 'false');
+                const t = swJuice.querySelector('.switch-text'); if (t) t.textContent = window.ARJuice.setting() ? 'ON' : 'OFF';
+            };
+            swJuice.addEventListener('click', function () { window.ARJuice.set(!window.ARJuice.setting()); paintJuice(); });
+            paintJuice();
+        }
 
         const docEl = document.documentElement;
         const canFs = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);

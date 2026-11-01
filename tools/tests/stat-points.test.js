@@ -35,7 +35,7 @@ test('the stat points route: failure is logged and answered ok:false, success se
 
         // 4. a total over 10, a wrong password and missing fields are refused before the database is written
         state.patches.length = 0;
-        r = await post(srv.port, '/api/profile/stats', { ...ok, stat_hp: 5, stat_dmg: 5, stat_spd: 1 }); assert.equal(r.ok, false); assert.equal(r.error, 'Total depasit');
+        r = await post(srv.port, '/api/profile/stats', { ...ok, stat_hp: 5, stat_dmg: 5, stat_spd: 1 }); assert.equal(r.ok, false); assert.equal(r.error, 'Maximum total exceeded');
         r = await post(srv.port, '/api/profile/stats', { ...ok, password: 'wrong' }); assert.equal(r.ok, false);
         r = await post(srv.port, '/api/profile/stats', { nickname: 'stat_t' }); assert.equal(r.ok, false);
         assert.equal(state.patches.length, 0, 'nothing written');

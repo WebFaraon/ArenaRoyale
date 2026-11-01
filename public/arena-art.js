@@ -623,7 +623,8 @@
             },
         };
     }
-    function drawZombieSprite(ctx, m, zb, def, typeKey, now, hot) {
+    // flash 0..1: a white wash over the body for a hit (a few frames); nx, ny: a small shove in world units drawn on top of the position
+    function drawZombieSprite(ctx, m, zb, def, typeKey, now, hot, flash, nx, ny) {
         let s = null, pad = 0;
         const zp = zombiePainter(def, typeKey);
         if (zp) {
@@ -634,9 +635,16 @@
         }
         if (!s) { ctx.setTransform(m); drawZombie(ctx, zb, def, def.r, now); return; }
         const a = (zb.angle || 0) - Math.PI / 2, cs = Math.cos(a), sn = Math.sin(a);
+        const zx = nx ? zb.x + nx : zb.x, zy = ny ? zb.y + ny : zb.y;
         ctx.setTransform(m.a * cs + m.c * sn, m.b * cs + m.d * sn, m.c * cs - m.a * sn, m.d * cs - m.b * sn,
-                         m.a * zb.x + m.c * zb.y + m.e, m.b * zb.x + m.d * zb.y + m.f);
+                         m.a * zx + m.c * zy + m.e, m.b * zx + m.d * zy + m.f);
         ctx.drawImage(s.c, -pad, -pad, pad * 2, pad * 2);
+        if (flash > 0.02 && zp) {   // hit: the same picture washed white, as strong as `flash` (one bitmap per type, made once)
+            const fk = 'flash' + typeKey, fold = zombieSprites.get(fk);
+            const fs = sprite(fold, pad, function (g) { zp.paint(g); g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(-pad, -pad, pad * 2, pad * 2); g.globalCompositeOperation = 'source-over'; });
+            if (fs !== fold && fs) zombieSprites.set(fk, fs);
+            if (fs || fold) { ctx.globalAlpha = flash; ctx.drawImage((fs || fold).c, -pad, -pad, pad * 2, pad * 2); ctx.globalAlpha = 1; }
+        }
         if (hot > 0.02 && zp) {   // burning (hit by a Flamethrower): the same picture with a red-orange wash over the body, as strong as `hot`
             const hk = 'hot' + typeKey, hold = zombieSprites.get(hk);
             const hs = sprite(hold, pad, function (g) { zp.paint(g); g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(255,70,24,0.45)'; g.fillRect(-pad, -pad, pad * 2, pad * 2); g.globalCompositeOperation = 'source-over'; });

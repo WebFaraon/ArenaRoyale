@@ -1711,8 +1711,9 @@ function prepopulateLobby() {
     _set('lp-nick',    currentNickname || 'PLAYER');
     _set('lp-rank',    rank);
     _set('lp-xp-txt',  xpInLvl + ' / ' + xpNeeded);
-    _set('lp-coins',   coins.toLocaleString());
-    _set('lp-crystals', crystals);
+    // the currency rolls up to the new total (after a match: from what it was to what it is); the first draw just shows it
+    { const _ce = document.getElementById('lp-coins'), _ge = document.getElementById('lp-crystals');
+      if (_ce) window.ARJuice.roll(_ce, coins); if (_ge) window.ARJuice.roll(_ge, crystals); }
     _set('lp-wins',    wins);
     _set('lp-kills',   kills);
     _set('lp-games',   games);
@@ -3304,7 +3305,20 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _gameMode = gameControl.mode || 'br'; delete gameControl.mode;
     let _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
     let _zoneTimerAlpha = 0;
-    const _vig = { c: null, w: 0, h: 0, dpr: 0 };   // the cached zone vignette
+    const _vig = { c: null, w: 0, h: 0, dpr: 0 };   // the cached red vignette (the zone in BR, low health)
+    let _lowA = 0;   // how far the low-health beat is in (eased 0..1)
+    // the vignette bitmap: a gradient alpha 0 -> 1 at the canvas's own size (made again only when the canvas changes size)
+    function _vigEnsure() {
+        const _vcw = canvas.width, _vch = canvas.height;
+        if (_vig.w === _vcw && _vig.h === _vch) return;
+        if (!_vig.c) _vig.c = document.createElement('canvas');
+        _vig.c.width = _vcw; _vig.c.height = _vch;
+        const vg = _vig.c.getContext('2d');
+        const gr = vg.createRadialGradient(_vcw / 2, _vch / 2, _vch * 0.25, _vcw / 2, _vch / 2, _vch * 0.75);
+        gr.addColorStop(0, 'rgba(220,0,0,0)'); gr.addColorStop(1, 'rgba(220,0,0,1)');
+        vg.fillStyle = gr; vg.fillRect(0, 0, _vcw, _vch);
+        _vig.w = _vcw; _vig.h = _vch;
+    }
     const _zl = { sec: -1, st: -1, fs: 0, text: '', key: '', w: 0, h: 0 }; // the cached zone label (see TIMER ZONA)
     const _zombies        = [];  // by zombie id (server.js), hp -1 = dead / not drawn
     const _tanks          = [];  // the tanks of the latest packet, [x, y, r] each: a player cannot push them, so to the prediction they are a wall
@@ -4373,7 +4387,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             let da = t.tang - t.ang; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
             const step = 12 * dt; t.ang += Math.abs(da) <= step ? da : Math.sign(da) * step;
             const pop = t.pop ? Math.max(0, 1 - (now - t.pop) / 380) : 0;
-            _drawTurret(ctx, t, scale, 1, t.ang, 1 + 0.2 * pop * pop);
+            _drawTurret(ctx, t, scale, 1, t.ang, 1 + (t.popA || 0.2) * pop * pop);
             if (t.stunUntil > now) {   // stunned by a screamer: dimmed, with stars going round it
                 ctx.globalAlpha = 0.42; ctx.fillStyle = '#141B2B'; ctx.beginPath(); ctx.arc(t.x, t.y, R + 1, 0, TAU); ctx.fill();
                 ctx.globalAlpha = 1; ctx.fillStyle = '#FFE27A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
@@ -4393,7 +4407,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const sp = _barSprite(s.t, ARStructs.state(s), s.o, scale);
             const pop = s.pop ? Math.max(0, 1 - (now - s.pop) / 380) : 0;   // an upgraded one swells and settles
             if (sp && pop > 0) {
-                const k = 1 + 0.2 * pop * pop;
+                const k = 1 + (s.popA || 0.2) * pop * pop;
                 ctx.save(); ctx.translate(s.x, s.y); ctx.scale(k, k); ctx.drawImage(sp.c, -sp.w / 2, -sp.h / 2, sp.w, sp.h); ctx.restore();
             } else if (sp) ctx.drawImage(sp.c, s.x - sp.w / 2, s.y - sp.h / 2, sp.w, sp.h);
         }
@@ -4611,6 +4625,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _pingInterval = setInterval(() => { if (!gameEnded) socket.emit('c-ping', performance.now()); }, 2000);
 
     let mouseActive = false;
+    // The camera leans a little towards where you aim and move ("Fine effects"), so the player is not always dead centre: the mouse is read against
+    // where the player really is on the screen (the centre minus the lean), and the angle is worked out again every frame while the lean moves.
+    let _lookX = 0, _lookY = 0, _mcx = 0, _mcy = 0, _mrL = 0, _mrT = 0, _zoomCss = 1;   // _zoomCss: css px per world unit of the last frame
+    function _aimFromMouse() {
+        const W = canvas.width / _rsDpr(), H = canvas.height / _rsDpr();
+        const dx = (_mcx - _mrL) - (W / 2 - _lookX * _zoomCss), dy = (_mcy - _mrT) - (H / 2 - _lookY * _zoomCss);
+        _mouseOff = Math.hypot(dx, dy);   // how far the mouse is from the player on the screen (css px): the placement ghost follows it
+        myAngle = Math.atan2(-dx, dy);
+        if (isShooting) { shootDir.x = -Math.sin(myAngle); shootDir.y = Math.cos(myAngle); }
+    }
     let _mouseOff = 0;   // css px from the centre of the screen (the player) to the mouse
     let _lineDashZoom = -1;
     let _lineDashArr  = [0, 0];
@@ -4630,7 +4654,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     let _inputSeq        = 0;
     let _lastInputSend   = 0;
-    const _pendingInputs = []; // [{seq, dx, dy, dt}] — replay buffer for CSP
+    const _pendingInputs = []; // [{seq, dx, dy, dt, vx, vy}] — replay buffer for CSP (vx, vy: the velocity after that input's tick, see ARShared.MOVE_TAU)
+    // The velocity ramp (about 40 ms, ARShared.moveK): _tickV is the server's velocity as this client works it out tick by tick from its own
+    // inputs, _ackV what it was after the last input the server has confirmed (where a replay starts), _fV the smooth one of the frame loop.
+    let _tickVx = 0, _tickVy = 0, _ackVx = 0, _ackVy = 0, _fVx = 0, _fVy = 0;
+    // Dust ("Fine effects"): a few puffs under the feet when you turn hard (the velocity against the new heading). One small pool, nothing allocated per frame.
+    const _DUST_N = 24, _dust = new Float32Array(_DUST_N * 6);   // x, y, vx, vy, age (ms), life (ms); life 0 = free
+    let _dustAt = 0, _dustLive = 0;
+    function _dustPuff(x, y, vx, vy) {
+        for (let i = 0; i < _DUST_N; i++) {
+            const o = i * 6;
+            if (_dust[o + 5] > 0) continue;
+            _dust[o] = x; _dust[o + 1] = y; _dust[o + 2] = vx; _dust[o + 3] = vy; _dust[o + 4] = 0; _dust[o + 5] = 320 + Math.random() * 120;
+            _dustLive++;
+            return;
+        }
+    }
+    function _resetMoveV() { _tickVx = _tickVy = _ackVx = _ackVy = _fVx = _fVy = 0; _dust.fill(0); _dustLive = 0; }
 
     // ── Inputs: one per server tick ──────────────────────────────────────────
     // An input goes out for every state packet the server sends (one per tick), so the client can never
@@ -4645,7 +4685,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _sendInput(now);
     }
     function _sendInput(now) {
-        if (gameEnded || gameControl.countdownActive || _selfDead || _pveState.waveBreak) return;
+        if (gameEnded || gameControl.countdownActive || _selfDead || _pveState.waveBreak) { _tickVx = _tickVy = _ackVx = _ackVy = 0; return; }   // the server holds the velocity at zero here
         _lastInputSend = now;
         const seq = ++_inputSeq;
         const _inp = {
@@ -4661,7 +4701,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _dbgPktSent++;
         // Record for CSP replay (limit buffer to ~3s worth of inputs)
         if (predX !== null) {
-            _pendingInputs.push({ seq, dx: moveDir.x, dy: moveDir.y, dt: ARShared.TICK_S });
+            _tickVx += (moveDir.x * predSpeed - _tickVx) * ARShared.MOVE_K_TICK;
+            _tickVy += (moveDir.y * predSpeed - _tickVy) * ARShared.MOVE_K_TICK;
+            _pendingInputs.push({ seq, dx: moveDir.x, dy: moveDir.y, dt: ARShared.TICK_S, vx: _tickVx, vy: _tickVy });
             if (_pendingInputs.length > 180) _pendingInputs.shift();
         }
     }
@@ -4806,20 +4848,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (e.pointerType !== 'mouse') return;
         mouseActive = true;
         const rect = canvas.getBoundingClientRect();
-        const W  = canvas.width  / _rsDpr();
-        const H  = canvas.height / _rsDpr();
-        const dx = (e.clientX - rect.left) - W / 2;
-        const dy = (e.clientY - rect.top)  - H / 2;
-        _mouseOff = Math.hypot(dx, dy);   // how far the mouse is from the player on the screen (css px): the placement ghost follows it
-        myAngle = Math.atan2(-dx, dy);
+        _mrL = rect.left; _mrT = rect.top; _mcx = e.clientX; _mcy = e.clientY;
         // Angle is sent via unified input at 30Hz from rAF — no separate rotate emit needed.
         // Sending 'rotate' here too doubled mouse packet rate and caused server-side angle
         // race conditions with the input packet arriving in the same tick window.
-        if (isShooting) {
-            shootDir.x = -Math.sin(myAngle);
-            shootDir.y =  Math.cos(myAngle);
-            // Shoot emit handled after aim delay in draw loop
-        }
+        _aimFromMouse();   // (shoot emit is handled after the aim delay in the draw loop)
     };
     const onPointerLeave = (e) => {
         if (e.pointerType !== 'mouse') return;
@@ -4883,7 +4916,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         isShooting = false;
         aimStartTime = null;
         gameEnded = false;
-        _pendingInputs.length = 0;
+        _pendingInputs.length = 0; _resetMoveV();
         _inputSeq = 0;
         _lastInputSend = 0;
         document.removeEventListener('visibilitychange', _visibilityHandler);
@@ -5005,6 +5038,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 _zb.seen = _zGen;
                 if (_zPrevHp > 0 && _zPrevHp - _zb.hp > 0.5) {
                     hitEffects.push({ x: _zb.sx, y: _zb.sy, life: 2.0 });
+                    _zb.hitT = performance.now();   // the white flash and the small shove of the draw (ARJuice)
                 }
             }
             for (let _zi = 0; _zi < _zombies.length; _zi++) {
@@ -5092,12 +5126,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // 3. Smooth-correct predX/Y toward the replayed position.
             const ackSeq = (ammoArr && ammoArr[4]) ? ammoArr[4] : 0;
             while (_pendingInputs.length > 0 && _pendingInputs[0].seq <= ackSeq) {
-                _pendingInputs.shift();
+                const _acked = _pendingInputs.shift();
+                _ackVx = _acked.vx; _ackVy = _acked.vy;   // the velocity the server has after this input: a replay starts from it
             }
-            let _rx = me.x, _ry = me.y;
+            let _rx = me.x, _ry = me.y, _rvx = _ackVx, _rvy = _ackVy;
             for (const inp of _pendingInputs) {
-                _rx = Math.max(20, Math.min(ARENA_W - 20, _rx + inp.dx * predSpeed * inp.dt));
-                _ry = Math.max(20, Math.min(ARENA_H - 20, _ry + inp.dy * predSpeed * inp.dt));
+                _rvx += (inp.dx * predSpeed - _rvx) * ARShared.MOVE_K_TICK;
+                _rvy += (inp.dy * predSpeed - _rvy) * ARShared.MOVE_K_TICK;
+                _rx = Math.max(20, Math.min(ARENA_W - 20, _rx + _rvx * inp.dt));
+                _ry = Math.max(20, Math.min(ARENA_H - 20, _ry + _rvy * inp.dt));
                 const _rs = _pushOutOfSolids(_rx, _ry); // same slide-out as the server tick
                 _rx = _rs.x; _ry = _rs.y;
             }
@@ -5313,7 +5350,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         stateBuffer.length = 0;
         _clock.reset();
         _inputSeq = 0; _lastInputSend = 0;
-        _pendingInputs.length = 0;
+        _pendingInputs.length = 0; _resetMoveV();
         _clientBullets.length = 0;
         _clientNextShotAt = 0; _ammoHoldUntil = 0;
         _pendingBurstShots.length = 0;
@@ -5589,6 +5626,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const panel = _$('pve-upgrade-panel');
         updateUpgradeButtons(); _pbkTabs(); _pbkResults(); _pbkClock();
         clearInterval(_pbk.iv); _pbk.iv = setInterval(_pbkClock, 250);
+        // the cards (and the blocks round them) come in one after the other, a few ms apart (css .is-enter, only with "Fine effects")
+        if (window.ARJuice.on()) {
+            let _n = 0; for (const { el } of _pbk.cards.values()) if (el.style.display !== 'none') el.style.setProperty('--pbk-i', _n++);
+            panel.classList.add('is-enter');
+            clearTimeout(_pbk.enterT); _pbk.enterT = setTimeout(() => panel.classList.remove('is-enter'), 1400);
+        }
         panel.style.transition = 'none';
         panel.style.opacity    = '0';
         panel.style.display    = 'flex';
@@ -5669,7 +5712,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         updatePveHud();
         updateUpgradeButtons();
         const k = _pbk.cards && _pbk.cards.get(type);
-        if (k) { k.el.classList.remove('is-pop'); void k.el.offsetWidth; k.el.classList.add('is-pop'); }
+        if (k) {
+            k.el.classList.remove('is-pop'); void k.el.offsetWidth; k.el.classList.add('is-pop');
+            if (k.tag && window.ARJuice.on()) { k.tag.classList.remove('is-bump'); void k.tag.offsetWidth; k.tag.classList.add('is-bump'); }   // the "xN" pill grows for a moment
+        }
     });
 
     socket.on('acid', ({ a }) => { _zFxPush(_acidFx(a)); });
@@ -5705,7 +5751,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _shootMustRelease = false; _clientHasReleased = true;
         _clientNextShotAt = 0; _ammoHoldUntil = 0; _pendingBurstShots.length = 0;
         moveDir.x = 0; moveDir.y = 0;
-        _pendingInputs.length = 0;
+        _pendingInputs.length = 0; _resetMoveV();
     });
 
     socket.on('pve-subwave', ({ remaining, queued }) => {
@@ -5726,6 +5772,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const _now = performance.now(), _t = { id: s.id, k: 't', kd: s.kd || 'mg', x: s.x, y: s.y, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, ang: a, tang: a, flash: 0, flameT: -1e9, flameS: 0, pop: _now };
         if (_t.kd === 'support') _t.dr = { ph: 4, t0: _now, ms: ARStructs.TURRET.kinds.support.drone.takeoff + 350 + ARStructs.TURRET.kinds.support.drone.landing, fx: _t.x, fy: _t.y, tx: _t.x, ty: _t.y, tk: 's', tid: -1, dock: true, fxT: 0 };
         _turrets.push(_t); _fxSpawn('place', _t, _now);
+        if (window.ARSound) window.ARSound.play('placeTurret');
         _pveFeed(`${s.by} placed ${s.kd === 'tesla' ? 'a Tesla Tower' : s.kd === 'bomb' ? 'a Bomb Tower' : s.kd === 'flame' ? 'a Flamethrower' : s.kd === 'heal' ? 'a Health Station' : s.kd === 'support' ? 'a Support Tower' : 'a turret'}`);
     });
     // The Support Tower's drone: off to mend something (tk 't' a turret / 's' a barricade, tid its id, ms how long the flight takes) and back home
@@ -5748,7 +5795,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (t) {
             const up = u.t > t.t, now = performance.now();
             t.t = u.t; t.hp = u.hp; t.maxHp = u.mhp;
-            if (up) t.pop = now;
+            if (up) { t.pop = now; t.popA = 0.2; } else if (window.ARJuice.on()) { t.pop = now; t.popA = 0.07; }   // a repair gives a smaller swell
             _fxSpawn(up ? 'upgrade' : 'repair', t, now);
         }
         _bar.useKey = '-';
@@ -5820,6 +5867,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     socket.on('struct-add', (s) => {
         const _now = performance.now(), _s = { id: s.id, x: s.x, y: s.y, o: s.o, t: s.t, hp: s.hp, maxHp: s.mhp, by: s.by, pop: _now };   // pop: it lands with a little swell
         _structs.push(_s); _fxSpawn('place', _s, _now);
+        if (window.ARSound) window.ARSound.play('placeBarricade');
         _pveFeed(`${s.by} placed a barricade`);
     });
     socket.on('struct-hp', (rows) => {
@@ -5830,7 +5878,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (s) {
             const up = u.t > s.t, now = performance.now();
             s.t = u.t; s.hp = u.hp; s.maxHp = u.mhp;
-            if (up) s.pop = now;
+            if (up) { s.pop = now; s.popA = 0.2; } else if (window.ARJuice.on()) { s.pop = now; s.popA = 0.07; }
             _fxSpawn(up ? 'upgrade' : 'repair', s, now);
         }
         _bar.useKey = '-';   // what E does here has changed
@@ -5864,7 +5912,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _pveState.breakTimerMax = timer; _pveState.breakAt = performance.now();
         _pbkGoReset(); _pbk.res = null;
         isShooting = false; moveDir.x = 0; moveDir.y = 0;
-        _pendingInputs.length = 0;
+        _pendingInputs.length = 0; _resetMoveV();
         keysHeld.clear();
         // Delay 1s inainte de a arata panoul (ca sa se vada coin-urile de la ultimul zombi)
         const _panelDelay = 1000;
@@ -5935,7 +5983,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const k of ['normal', 'runner', 'heavy', 'special']) _peSet('pe-k-' + k, _peN(d.kinds[k]));
         // the numbers of the match
         const w = document.getElementById('pe-st-waves'); w.innerHTML = (win ? d.total : d.wave) + '<small>/ ' + d.total + '</small>'; w.parentNode.className = 'pe-stat ' + (win ? 'is-good' : 'is-bad');
-        _peSet('pe-st-zombies', _peN(d.zombies));
         const bh = document.getElementById('pe-st-base'); bh.innerHTML = _peN(d.base.hp) + '<small>/ ' + _peN(d.base.max) + '</small>';
         document.getElementById('pe-st-base-fill').style.width = Math.round(Math.max(0, Math.min(1, d.base.hp / Math.max(1, d.base.max))) * 100) + '%';
         _peSet('pe-st-time', Math.floor(d.timeSec / 60) + ':' + String(d.timeSec % 60).padStart(2, '0'));
@@ -5963,10 +6010,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             row.append(nm, k, dm, c); rows.appendChild(row);
         });
         // what it paid
-        _peSet('pe-p-coins', '+' + _peN(r.coins)); _peSet('pe-p-gems', '+' + _peN(r.gems)); _peSet('pe-p-xp', '+' + _peN(r.xp));
+        // the prizes roll up from zero one after the other, then the breakdown and the zombie count
+        const _roll = (id, v, delay, prefix) => window.ARJuice.roll(document.getElementById(id), v, { from: 0, ms: 900, delay: delay, prefix: prefix || '' });
+        _roll('pe-p-coins', r.coins, 250, '+'); _roll('pe-p-gems', r.gems, 420, '+'); _roll('pe-p-xp', r.xp, 590, '+'); _roll('pe-st-zombies', d.zombies, 150);
         const [lw, lk, lv] = r.lines;
-        _peSet('pe-w-waves', lw.n + (lw.n === 1 ? ' wave cleared' : ' waves cleared')); _peSet('pe-w-waves-c', '+' + _peN(lw.coins));
-        _peSet('pe-w-kills-c', '+' + _peN(lk.coins)); _peSet('pe-w-win-c', '+' + _peN(lv.coins));
+        _peSet('pe-w-waves', lw.n + (lw.n === 1 ? ' wave cleared' : ' waves cleared')); _roll('pe-w-waves-c', lw.coins, 700, '+');
+        _roll('pe-w-kills-c', lk.coins, 800, '+'); _roll('pe-w-win-c', lv.coins, 900, '+');
         const got = r.milestones.filter(m => m.got).map(m => m.wave);
         _peSet('pe-w-gem-note', win ? 'Wave milestones: ' + got.join(', ') : got.length ? 'Wave milestones reached: ' + got.join(', ') : 'No wave milestones reached');
         document.getElementById('pe-w-gems').innerHTML = '+' + (r.gems | 0) + ' ' + _PE_GEM;
@@ -6385,6 +6434,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         const dtSec = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.05) : 0.016;
         lastTime = timestamp;
+        const _juiceOn = window.ARJuice.on();   // "Fine effects": the small touches of motion (Settings, off with reduced motion)
 
         // Zoom out per arma (weapons.json cameraZoom: sniper vede mai mult din mapa), tranzitie lina
         const _targetZoom = (_WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON]).cameraZoom;
@@ -6393,15 +6443,26 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // Device pixels per world unit as a multiple of 1/256 (a change of at most 0.2%): a 256-unit ground tile is then a whole
         // number of pixels and the ground and the zone blit 1:1 instead of being filtered (see ground-layer.js).
         const _sq = Math.max(1 / 256, Math.round(dpr * ZOOM * 256) / 256);
-        ZOOM = _sq / dpr;
+        ZOOM = _sq / dpr; _zoomCss = ZOOM;
 
         // ── Local position prediction (runs every rAF frame) ─────────────────
         // Same rules as the server tick: move, clamp to the arena, slide out of obstacles (and the
         // PvE base). Without the slide the client walked into trees and was pulled back by every
         // server packet (rubber-banding along cover).
         if (predX !== null && !_selfDead) {
-            predX = Math.max(20, Math.min(ARENA_W - 20, predX + moveDir.x * predSpeed * dtSec));
-            predY = Math.max(20, Math.min(ARENA_H - 20, predY + moveDir.y * predSpeed * dtSec));
+            // the same ramp as the server, in frame steps (exact for any dt: a first-order lag)
+            const _fk = ARShared.moveK(dtSec);
+            _fVx += (moveDir.x * predSpeed - _fVx) * _fk; _fVy += (moveDir.y * predSpeed - _fVy) * _fk;
+            // a hard turn (running one way and now asking for the other): puffs of dust fly off behind the old heading
+            if (_juiceOn && (moveDir.x || moveDir.y)) {
+                const _sp = Math.hypot(_fVx, _fVy), _md = Math.hypot(moveDir.x, moveDir.y);
+                if (_sp > predSpeed * 0.5 && (_fVx * moveDir.x + _fVy * moveDir.y) / (_sp * _md) < 0.1 && timestamp - _dustAt > 170) {
+                    _dustAt = timestamp;
+                    for (let _di = 0; _di < 4; _di++) _dustPuff(predX + (Math.random() - 0.5) * 12, predY + 10 + (Math.random() - 0.5) * 6, -_fVx / _sp * (14 + Math.random() * 22) + (Math.random() - 0.5) * 18, -_fVy / _sp * (14 + Math.random() * 22) + (Math.random() - 0.5) * 18);
+                }
+            }
+            predX = Math.max(20, Math.min(ARENA_W - 20, predX + _fVx * dtSec));
+            predY = Math.max(20, Math.min(ARENA_H - 20, predY + _fVy * dtSec));
             const _ps = _pushOutOfSolids(predX, predY);
             predX = _ps.x; predY = _ps.y;
         }
@@ -6554,8 +6615,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
 
         const specTarget = isSpectating && spectateTargetId ? rState.players[spectateTargetId] : null;
-        const camX = specTarget ? specTarget.x : (predX !== null ? predX : (me ? me.x : ARENA_W / 2));
-        const camY = specTarget ? specTarget.y : (predY !== null ? predY : (me ? me.y : ARENA_H / 2));
+        // The lean: towards where you aim (12 units) and where you run (9), eased in ~0.25 s; none when spectating, dead or with the effects off
+        {
+            const _lk = _juiceOn && !specTarget && predX !== null && !_selfDead && !gameEnded;
+            const _tx = _lk ? -Math.sin(myAngle) * 12 + (_fVx / predSpeed) * 9 : 0, _ty = _lk ? Math.cos(myAngle) * 12 + (_fVy / predSpeed) * 9 : 0;
+            const _ke = Math.min(1, dtSec * 4);
+            _lookX += (_tx - _lookX) * _ke; _lookY += (_ty - _lookY) * _ke;
+            if (Math.abs(_lookX) < 0.01 && !_lk) _lookX = 0;
+            if (Math.abs(_lookY) < 0.01 && !_lk) _lookY = 0;
+            if (mouseActive && !isSpectating) _aimFromMouse();   // the player moved on the screen: the angle to the (still) mouse changed
+        }
+        const camX = specTarget ? specTarget.x : (predX !== null ? predX + _lookX : (me ? me.x : ARENA_W / 2));
+        const camY = specTarget ? specTarget.y : (predY !== null ? predY + _lookY : (me ? me.y : ARENA_H / 2));
 
         // The camera sits on whole device pixels: _ox/_oy are where world (0, 0) lands, so everything static blits at the same
         // sub-pixel phase, and the ground can blit 1:1. Moving things are still drawn at their exact (fractional) positions.
@@ -6943,7 +7014,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 ctx.beginPath(); ctx.arc(_zb.x, _zb.y, _zbR, 0, Math.PI*2); ctx.fill();
                 continue;
             }
-            ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow, _zb.burnT ? Math.max(0, 1 - (_zNow - _zb.burnT) / 600) : 0);
+            // a hit: a white wash (70 ms) and a shove back along the way it faces (a few units, less for the heavy ones) that settles in 110 ms
+            let _zFl = 0, _zNx = 0, _zNy = 0;
+            if (_zb.hitT && _juiceOn) {
+                const _ha = _zNow - _zb.hitT;
+                if (_ha < 110) {
+                    _zFl = _ha < 70 ? 1 - _ha / 70 : 0;
+                    const _sh = (_zDef.heavy ? 1 : 2.6) * (1 - _ha / 110) * (1 - _ha / 110), _za = (_zb.angle || 0);
+                    _zNx = -Math.cos(_za) * _sh; _zNy = -Math.sin(_za) * _sh;
+                }
+            }
+            ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow, _zb.burnT ? Math.max(0, 1 - (_zNow - _zb.burnT) / 600) : 0, _zFl, _zNx, _zNy);
             if (_zType === 4 && _gameMode === 'pve') { ctx.setTransform(_wm); _drawExploderFuse(ctx, _zb, _zDef, _zNow); }
         }
         // HP bars: only on the zombies that are hurt (see _drawZombieBars)
@@ -6961,6 +7042,26 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_bombFx.length) _drawBombFx(ctx, _zNow);
         _drawFlameFx(ctx, _zNow);
         if (_zFx.length) _drawZombieFx(ctx, _zNow);
+
+        // --- the dust under the feet (drawn under the players) ---
+        if (_dustLive > 0) {
+            ctx.setTransform(_wm);
+            const _dms = dtSec * 1000;
+            for (let _di = 0; _di < _DUST_N; _di++) {
+                const _o = _di * 6, _life = _dust[_o + 5];
+                if (_life <= 0) continue;
+                const _age = _dust[_o + 4] + _dms;
+                if (_age >= _life) { _dust[_o + 5] = 0; _dustLive--; continue; }
+                _dust[_o + 4] = _age;
+                _dust[_o] += _dust[_o + 2] * dtSec; _dust[_o + 1] += _dust[_o + 3] * dtSec;
+                _dust[_o + 2] *= 0.94; _dust[_o + 3] *= 0.94;
+                const _k = _age / _life;
+                ctx.globalAlpha = 0.5 * (1 - _k) * (1 - _k);
+                ctx.fillStyle = '#E3D9BC';
+                ctx.beginPath(); ctx.arc(_dust[_o], _dust[_o + 1], 3 + 6 * _k, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
 
         // --- JUCATORI ---
         // The ring sits just outside the default hands and the labels stack on it
@@ -7218,6 +7319,26 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
         }
 
+        // --- low health: the red edge of the screen beats like a heart, faster the less is left, and calms when you are healed ("Fine effects") ---
+        {
+            const _meta = playerMeta[socket.id], _mhp = (_meta && _meta.maxHp) || 500, _hpNow = latestHp[socket.id];
+            const _ratio = _hpNow === undefined ? 1 : Math.max(0, Math.min(1, _hpNow / _mhp));
+            const _on = _juiceOn && !gameEnded && !_selfDead && !isSpectating && _hpNow !== undefined && _ratio > 0 && _ratio < 0.3;
+            // 0 at 30% health, 1 at 0%
+            const _sev = _on ? 1 - _ratio / 0.3 : 0;
+            _lowA += (_sev - _lowA) * Math.min(1, dtSec * 3);
+            if (_lowA > 0.01) {
+                // two beats a period ("lub-dub"), the period from 1.1 s (30%) down to 0.55 s (almost nothing left)
+                const _per = 1100 - 550 * _lowA, _ph = (_zNow % _per) / _per;
+                const _beat = Math.exp(-Math.pow((_ph - 0.04) / 0.05, 2)) + 0.65 * Math.exp(-Math.pow((_ph - 0.22) / 0.05, 2));
+                _vigEnsure();
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.globalAlpha = Math.min(0.85, (0.45 + 0.55 * _lowA) * (0.22 + 0.6 * _beat));
+                ctx.drawImage(_vig.c, 0, 0);
+                ctx.globalAlpha = 1;
+            }
+        }
+
         // --- VIGNETA ZONA (screen space, cand esti in afara) --- BR only
         if (!gameEnded && _gameMode !== 'pve' && _zone.r >= 0 && predX !== null) {
             const _distZ = Math.hypot(predX - _zone.cx, predY - _zone.cy);
@@ -7225,16 +7346,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 // a pre-painted gradient (alpha 0 -> 1) at the canvas's own size, blitted 1:1 and faded by the pulse: no gradient
                 // object and no string per frame. (It used to be a quarter-size one stretched over the screen: the filtering of
                 // that stretch cost ~3.9 ms/frame at 1280x720 in a software raster, ~0.9 ms for the 1:1 blit.)
-                const _vcw = canvas.width, _vch = canvas.height;
-                if (_vig.w !== _vcw || _vig.h !== _vch) {
-                    if (!_vig.c) _vig.c = document.createElement('canvas');
-                    _vig.c.width = _vcw; _vig.c.height = _vch;
-                    const vg = _vig.c.getContext('2d');
-                    const gr = vg.createRadialGradient(_vcw / 2, _vch / 2, _vch * 0.25, _vcw / 2, _vch / 2, _vch * 0.75);
-                    gr.addColorStop(0, 'rgba(220,0,0,0)'); gr.addColorStop(1, 'rgba(220,0,0,1)');
-                    vg.fillStyle = gr; vg.fillRect(0, 0, _vcw, _vch);
-                    _vig.w = _vcw; _vig.h = _vch;
-                }
+                _vigEnsure();
                 ctx.setTransform(1, 0, 0, 1, 0, 0);
                 ctx.globalAlpha = Math.round((0.25 + 0.15 * Math.sin(performance.now() / 160)) * 100) / 100;
                 ctx.drawImage(_vig.c, 0, 0);

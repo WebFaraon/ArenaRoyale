@@ -1886,7 +1886,7 @@ function startPveWave(code, room) {
         p.hp = p.maxHp; p.alive = true;
         p.shooting = false; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = true;
         p.shootCooldown = 0; p.aimTimer = 0; p.burstRemaining = 0; p.burstTimer = 0;
-        p.moveDir.x = 0; p.moveDir.y = 0;
+        p.moveDir.x = 0; p.moveDir.y = 0; p.vx = 0; p.vy = 0;
     });
     room.pveHpMul = pveHpMul(room.pveWave);
     room._acid = []; room._hits.length = 0;
@@ -2031,6 +2031,7 @@ function addPlayer(code, room, socket, data) {
         angle: 0, size: PLAYER_SIZE,
         hp: maxHp, maxHp, damage, speed,
         moveDir:  { x: 0, y: 0 },
+        vx: 0, vy: 0,   // velocity (units a second): follows moveDir * speed with the ramp of ARShared.MOVE_TAU
         shootDir: { x: 0, y: 0 },
         shooting: false, shootCooldown: 0, aimTimer: 0, needsReleaseToShoot: false, hasReleasedSinceEmpty: false,
         burstRemaining: 0, burstTimer: 0, burstDx: 0, burstDy: 0, burstWeapon: null, inputQ: [],
@@ -2169,8 +2170,8 @@ function startRoomLoop(code, room) {
             if (room.mode === 'pve') for (let hz = 0; hz < room.zombies.length; hz++) { const q = room.zombies[hz]; if (q.alive && (PVE_ZOMBIE_DEFS[q.type] || PVE_ZOMBIE_DEFS.normal).heavy) _heavyZ.push(q); }
 
             allPlayers.forEach(player => {
-                if (!player.alive || room.gameEnded || room.countdownActive) { player.inputQ.length = 0; return; }
-                if (room.pveWaveBreak) { player.moveDir.x = 0; player.moveDir.y = 0; player.shooting = false; player.inputQ.length = 0; return; }
+                if (!player.alive || room.gameEnded || room.countdownActive) { player.inputQ.length = 0; player.vx = 0; player.vy = 0; return; }
+                if (room.pveWaveBreak) { player.moveDir.x = 0; player.moveDir.y = 0; player.vx = 0; player.vy = 0; player.shooting = false; player.inputQ.length = 0; return; }
 
                 // inputs: one per tick in arrival order; any beyond one more waiting are applied now as
                 // well, so an input never waits more than one tick (no queue can build up)
@@ -2180,8 +2181,11 @@ function startRoomLoop(code, room) {
                 }
                 if (PERF) PERF.applied(room, player.id, _applied);
 
-                player.x = Math.max(20, Math.min(ARENA_W - 20, player.x + player.moveDir.x * player.speed * dt));
-                player.y = Math.max(20, Math.min(ARENA_H - 20, player.y + player.moveDir.y * player.speed * dt));
+                // the velocity follows the wanted one with a ~40 ms ramp (ARShared.MOVE_K_TICK; the client predicts with the same step)
+                player.vx += (player.moveDir.x * player.speed - player.vx) * ARShared.MOVE_K_TICK;
+                player.vy += (player.moveDir.y * player.speed - player.vy) * ARShared.MOVE_K_TICK;
+                player.x = Math.max(20, Math.min(ARENA_W - 20, player.x + player.vx * dt));
+                player.y = Math.max(20, Math.min(ARENA_H - 20, player.y + player.vy * dt));
                 // a heavy zombie first (the rocks and barricades below have the last word on where the player can stand)
                 for (let hi = 0; hi < _heavyZ.length; hi++) {
                     const hz = _heavyZ[hi], hr = PVE_ZOMBIE_DEFS[hz.type].r + PLAYER_R;
@@ -2730,7 +2734,7 @@ function startRoomLoop(code, room) {
                         room.pveWaveBreak  = true;
                         room.pveBreakTimer = PVE_BREAK_DURATION;
                         room.pveSkipVotes.clear();
-                        room._playerArr.forEach(p => { p.moveDir.x = 0; p.moveDir.y = 0; p.shooting = false; });
+                        room._playerArr.forEach(p => { p.moveDir.x = 0; p.moveDir.y = 0; p.vx = 0; p.vy = 0; p.shooting = false; });
                         // next = what the next wave brings [normal, runner, tank] for the preview (nothing after the last wave)
                         io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION, next: pveWaveRow(room.pveWave, room._playerArr.length) });
                         // the panel covers the pitch after 1 s (game.js): the coins still lying around are handed out just before,
@@ -3115,7 +3119,7 @@ function triggerRematch(code, room) {
         p.coins = 0;
         flushWeaponStats(p); // anything not saved yet from the last match
         p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0; p.rs = Missions.newRoundStats();
-        p.moveDir = { x: 0, y: 0 }; p.shootDir = { x: 0, y: 0 };
+        p.moveDir = { x: 0, y: 0 }; p.vx = 0; p.vy = 0; p.shootDir = { x: 0, y: 0 };
         p.shooting = false; p.shootCooldown = 0; p.aimTimer = 0; p.needsReleaseToShoot = false; p.hasReleasedSinceEmpty = false;
         p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
         ARAmmo.refill(p, p.reserveStart); p.reloadReq = false; p.lastShotTime = 0;

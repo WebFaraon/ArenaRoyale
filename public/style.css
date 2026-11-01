@@ -4952,7 +4952,7 @@ button:disabled { cursor: not-allowed; }
 .hb-hpbar #hb-hpfill::after { content: ''; position: absolute; left: 10px; right: 10px; top: 3px; height: 3px; background: rgba(255, 255, 255, .35); }
 .hb-hpbar.hb-hp-mid { --f: #FFC72E; --l: #C68A07; }
 .hb-hpbar.hb-hp-low { --f: #FF4B5C; --l: #B11F2E; }
-.hb-hpbar b { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: 1px; font-size: 1rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.hb-hpbar b { position: absolute; z-index: 2; inset: 0; display: grid; place-items: center; padding-bottom: 1px; font-size: 1rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 
 #hud-ping {
     position: absolute;
@@ -5587,3 +5587,40 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
 }
 @media (max-height: 560px) and (max-width: 1000px) { .pe-body { grid-template-columns: 15em minmax(0, 1fr) 16em; } .pe-mid { grid-column: auto; order: 0; } }
 @media (prefers-reduced-motion: reduce) { .pe-fit { animation: none; } .pe-bar > i { transition: none; } }
+
+/* ==========================================================================
+   "Fine effects" (ui-fx.js ARJuice, Settings "Fine effects"; off with prefers-reduced-motion): small touches of motion that change nothing in the game.
+   Buttons: a pop on hover, a squeeze while pressed, a spring back with an overshoot when let go (.j-rel, added by ui-fx.js on pointerup). Everything uses the
+   `scale` property, which stacks with the `transform` each component already has (the press translate, the lift), so no component rule is touched.
+   ========================================================================== */
+@keyframes jHover { 0% { scale: 1; } 55% { scale: 1.055; } 100% { scale: 1.03; } }
+@keyframes jRelease { 0% { scale: .965; } 55% { scale: 1.06; } 100% { scale: var(--j-end, 1); } }
+:root[data-juice="on"] :is(button:not(.btn-play), a.lb-btn, [role="button"], .gm-card:not(.gm-selected), .char-shop-card):not(:disabled):active { scale: .975; }
+:root[data-juice="on"] :is(button:not(.btn-play), a.lb-btn, [role="button"], .gm-card:not(.gm-selected), .char-shop-card):not(:disabled).j-rel:not(:active) { animation: jRelease .34s var(--spring) both; }
+@media (hover: hover) and (pointer: fine) {
+    :root[data-juice="on"] :is(button:not(.btn-play), a.lb-btn, [role="button"], .gm-card:not(.gm-selected), .char-shop-card):not(:disabled):hover { --j-end: 1.03; }
+    :root[data-juice="on"] :is(button:not(.btn-play), a.lb-btn, [role="button"], .gm-card:not(.gm-selected), .char-shop-card):not(:disabled):hover:not(:active):not(.j-rel) { animation: jHover .22s var(--spring) both; }
+}
+/* the small round / icon-only buttons would jump too much: half as much */
+:root[data-juice="on"] :is(.settings-close, .friends-close, .char-shop-close, .wip-close, .lbo-close, .missions-close, .switch):not(:disabled):active { scale: .94; }
+@media (hover: hover) and (pointer: fine) {
+    :root[data-juice="on"] :is(.settings-close, .friends-close, .char-shop-close, .wip-close, .lbo-close, .missions-close, .switch):not(:disabled):hover:not(:active):not(.j-rel) { animation: none; scale: 1.08; transition: scale .18s var(--spring); }
+}
+/* bars that trail (ARJuice.trail): a pale ghost behind the fill that slides down a beat after it */
+.j-trail { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: rgba(255, 255, 255, .6); border-radius: inherit; transition: width .55s var(--ease-out); pointer-events: none; z-index: 0; }
+.j-fill { position: relative; z-index: 1; }
+.hb-hpbar .j-trail { border-radius: 11px; }
+.pve-base-bar-outer { position: relative; }
+.pve-base-bar-outer .j-trail { border-radius: 999px; }
+:root[data-juice="off"] .j-trail { display: none; }
+
+/* between-waves panel with "Fine effects": the cards come in one after the other; a bought card jumps and its "xN" pill grows */
+@keyframes pbkIn { 0% { opacity: 0; transform: translateY(1.1em) scale(.94); } 100% { opacity: 1; transform: none; } }
+:root[data-juice="on"] #pve-upgrade-panel.is-enter .pbk-c { animation: pbkIn .42s var(--spring) backwards; animation-delay: calc(var(--pbk-i, 0) * 34ms + 90ms); }
+:root[data-juice="on"] #pve-upgrade-panel.is-enter .pbk-card, :root[data-juice="on"] #pve-upgrade-panel.is-enter .pbk-box { animation: pbkIn .4s var(--spring) backwards; }
+:root[data-juice="on"] #pve-upgrade-panel.is-enter .pbk-left .pbk-card { animation-delay: .1s; }
+:root[data-juice="on"] #pve-upgrade-panel.is-enter .pbk-right .pbk-card { animation-delay: .2s; }
+@keyframes pbkJump { 0% { transform: none; } 28% { transform: translateY(-.55em) scale(1.06); } 58% { transform: translateY(.1em) scale(.985); } 100% { transform: none; } }
+:root[data-juice="on"] .pbk-c.is-pop { animation: pbkJump .44s var(--spring); }
+@keyframes pbkBump { 0% { transform: scale(1); } 40% { transform: scale(1.5); } 100% { transform: scale(1); } }
+:root[data-juice="on"] .pbk-c-tag.is-bump { animation: pbkBump .42s var(--spring); transform-origin: center; }
