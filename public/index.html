@@ -28,6 +28,33 @@
 <symbol id="medal" viewBox="0 0 24 24"><path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15" /><path d="M11 12 5.12 2.2" /><path d="m13 12 5.88-9.8" /><path d="M8 7h8" /><circle cx="12" cy="17" r="5" /><path d="M12 18v-2h-.5" /></symbol>
 <symbol id="target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></symbol>
 <symbol id="crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="22" x2="18" y1="12" y2="12" /><line x1="6" x2="2" y1="12" y2="12" /><line x1="12" x2="12" y1="6" y2="2" /><line x1="12" x2="12" y1="22" y2="18" /></symbol>
+<symbol id="wm-blastridge" viewBox="0 0 600 336">
+<defs>
+<filter id="wm-blur" x="-10%" y="-10%" width="120%" height="140%"><feGaussianBlur stdDeviation="5"/></filter>
+<text id="wm-t1" x="22" y="140" font-family="Sen, 'Helvetica Neue', Arial, sans-serif" font-weight="800" font-size="150" letter-spacing="3" textLength="520" lengthAdjust="spacingAndGlyphs" stroke-linejoin="round">BLAST</text>
+<text id="wm-t2" x="22" y="292" font-family="Sen, 'Helvetica Neue', Arial, sans-serif" font-weight="800" font-size="150" letter-spacing="3" textLength="520" lengthAdjust="spacingAndGlyphs" stroke-linejoin="round">RIDGE</text>
+<clipPath id="wm-g1"><rect x="0" y="0" width="600" height="86"/></clipPath>
+<clipPath id="wm-g2"><rect x="0" y="152" width="600" height="72"/></clipPath>
+<clipPath id="wm-s1"><rect x="0" y="108" width="600" height="60"/></clipPath>
+<clipPath id="wm-s2"><rect x="0" y="260" width="600" height="60"/></clipPath>
+</defs>
+<g transform="rotate(-2.2 300 168)">
+<!-- ground shadow -->
+<use href="#wm-t1" fill="#000" stroke="#000" stroke-width="26" paint-order="stroke" opacity=".34" transform="translate(8,30)" filter="url(#wm-blur)"/>
+<use href="#wm-t2" fill="#000" stroke="#000" stroke-width="26" paint-order="stroke" opacity=".34" transform="translate(8,30)" filter="url(#wm-blur)"/>
+<!-- lip: the darker underside of the block -->
+<use href="#wm-t1" fill="#C4CCD1" stroke="#0A1013" stroke-width="20" paint-order="stroke" transform="translate(0,18)"/>
+<use href="#wm-t2" fill="#B94E0C" stroke="#0A1013" stroke-width="20" paint-order="stroke" transform="translate(0,18)"/>
+<!-- face -->
+<use href="#wm-t1" fill="#FFFFFF" stroke="#0A1013" stroke-width="20" paint-order="stroke"/>
+<use href="#wm-t2" fill="#FF7A1F" stroke="#0A1013" stroke-width="20" paint-order="stroke"/>
+<!-- belly shade and gloss -->
+<use href="#wm-t1" fill="#9FB0BC" opacity=".5" clip-path="url(#wm-s1)"/>
+<use href="#wm-t2" fill="#B94E0C" opacity=".38" clip-path="url(#wm-s2)"/>
+<use href="#wm-t1" fill="#fff" opacity=".0" clip-path="url(#wm-g1)"/>
+<use href="#wm-t2" fill="#FFB56B" opacity=".5" clip-path="url(#wm-g2)"/>
+</g>
+</symbol>
 <symbol id="zap" viewBox="0 0 24 24"><path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" /></symbol>
 <symbol id="heart-pulse" viewBox="0 0 24 24"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" /><path d="M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27" /></symbol>
 <symbol id="heart" viewBox="0 0 24 24"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" /></symbol>
@@ -107,7 +134,7 @@
 <!-- ========== OVERLAY FULLSCREEN ========== -->
 <div id="fs-overlay">
     <div class="fs-content">
-        <img class="fs-brand-icon" src="/images/blastridge-logo.png" alt="">
+        <img class="fs-brand-icon" src="/images/blastridge-logo-256.png" alt="">
         <h2 class="wordmark wm-lg brand-wordmark"><span>BLAST</span><span class="wm-r">RIDGE</span></h2>
         <div id="fs-ios-hint">
             <p class="fs-hint-lead">The browser bar takes up space. Install the game as an app for fullscreen play:</p>
@@ -129,12 +156,8 @@
     <div class="auth-wrap">
 
         <div class="auth-logo">
-            <div class="auth-lanes" aria-hidden="true">
-                <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span>
-                <span style="--i:3"></span><span style="--i:4"></span><span style="--i:5"></span>
-            </div>
-            <img class="auth-logo-icon" src="/images/blastridge-logo.png" alt="">
-            <h1 class="auth-logo-title wordmark wm-xl"><span>BLAST</span><span class="wm-r">RIDGE</span></h1>
+            <img class="auth-logo-icon" src="/images/blastridge-logo-256.png" alt="">
+            <h1 class="auth-logo-title" aria-label="Blastridge"><svg class="auth-word" viewBox="0 0 600 336" aria-hidden="true"><use href="#wm-blastridge"/></svg></h1>
         </div>
 
         <div class="auth-card">
@@ -200,7 +223,7 @@
     <!-- Top bar: logo, season, (tabs on phones), social + settings -->
     <header class="lb-topbar">
         <div class="lb-topbar-left">
-            <span class="lb-topbar-title wordmark brand-lockup" aria-label="Blastridge"><img class="brand-emblem" src="/images/blastridge-logo.png" alt=""><span>BLAST</span><span class="wm-r">RIDGE</span></span>
+            <span class="lb-topbar-title wordmark brand-lockup" aria-label="Blastridge"><img class="brand-emblem" src="/images/blastridge-logo-256.png" alt=""><span>BLAST</span><span class="wm-r">RIDGE</span></span>
         </div>
         <div class="season-pill" aria-label="Current season: Stadium Showdown">
             <span class="sp-ball" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#ball"/></svg></span>
@@ -514,7 +537,7 @@
 
     <header class="waiting-topbar">
         <button class="lb-topbar-back" onclick="leaveWaiting()" title="Leave room" aria-label="Leave room"><svg class="ic" aria-hidden="true"><use href="#log-out"/></svg></button>
-        <span class="lb-topbar-title wordmark brand-lockup" aria-label="Blastridge"><img class="brand-emblem" src="/images/blastridge-logo.png" alt=""><span>BLAST</span><span class="wm-r">RIDGE</span></span>
+        <span class="lb-topbar-title wordmark brand-lockup" aria-label="Blastridge"><img class="brand-emblem" src="/images/blastridge-logo-256.png" alt=""><span>BLAST</span><span class="wm-r">RIDGE</span></span>
         <div class="lb-topbar-right">
             <a href="#" class="lb-btn lb-btn-icon" onclick="openLeaderboard(); return false;" aria-label="Leaderboard"><img class="pic" src="/images/ui/leaderboard.svg" alt="" aria-hidden="true" draggable="false"></a>
             <button class="lb-btn lb-btn-icon" onclick="openSettings()" title="Settings" aria-label="Settings"><img class="pic" src="/images/ui/setari.svg" alt="" aria-hidden="true" draggable="false"></button>

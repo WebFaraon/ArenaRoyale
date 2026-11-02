@@ -388,34 +388,11 @@ button:disabled { cursor: not-allowed; }
     min-width: 0;
     animation: trayDrop .62s var(--settle) .04s backwards;
 }
-.auth-logo-icon { width: clamp(54px, 10vh, 88px); height: clamp(54px, 10vh, 88px); object-fit: contain; position: relative; z-index: 1; }
-.auth-logo-title { position: relative; z-index: 1; }
-
-/* lanes: six hairlines, runners leave the blocks once on arrival */
-.auth-lanes {
-    container-type: inline-size;
-    position: absolute;
-    inset: -8% -2% -8% -2%;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    pointer-events: none;
-    z-index: 0;
-}
-.auth-lanes span { position: relative; height: 1px; background: var(--rule); }
-.auth-lanes span::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: -3px;
-    width: 22px;
-    height: 7px;
-    background: var(--rule-hi);
-    transform: translateX(calc((100cqw - 28px) * (.5 + var(--i) * .09)));
-    animation: runner 1.15s var(--ease-out) calc(var(--i) * 85ms) backwards;
-}
-.auth-lanes span:first-child::after { background: var(--start); }
-@keyframes runner { from { transform: translateX(-30px); } }
+.auth-logo-icon { width: clamp(54px, 10vh, 88px); height: clamp(54px, 10vh, 88px); object-fit: contain; position: relative; z-index: 1; filter: drop-shadow(0 5px 0 rgba(0, 0, 0, .32)); }
+/* the title is a drawn block lettering (symbol #wm-blastridge in index.html): ink outline, a lip underneath, a belly shade, a gloss and a soft ground shadow */
+.auth-logo-title { position: relative; z-index: 1; margin: 0; line-height: 0; }
+.auth-word { display: block; width: clamp(240px, min(38vw, 66vh), 540px); height: auto; overflow: visible; animation: wmDrop .72s var(--spring) .1s backwards; }
+@keyframes wmDrop { from { opacity: 0; transform: translateY(-26px) scale(.88) rotate(-4deg); } }
 
 /* the card: a tray with the tabs as one segmented block on top */
 .auth-card {
@@ -538,7 +515,7 @@ button:disabled { cursor: not-allowed; }
 }
 @media (max-width: 699px) {
     .auth-logo { align-items: center; text-align: center; }
-    .auth-logo-title { align-items: center; transform-origin: center; }
+    .auth-logo-title { transform-origin: center; }
     .auth-modes { justify-content: center; }
     .auth-card { justify-self: center; }
 }
