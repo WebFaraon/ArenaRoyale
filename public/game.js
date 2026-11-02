@@ -2909,6 +2909,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     paint();
 });
+// Hit effects: the chunks that fly off what a bullet hits (public/impact-fx.js). The setting "Hit effects" (Settings, ar_impactfx); the burst thins
+// out when the dynamic resolution has stepped down (the device is struggling) and is gone at the lowest step.
+const _IMPACT = { on: true };
+try { _IMPACT.on = localStorage.getItem('ar_impactfx') !== '0'; } catch (e) { /* storage blocked: on */ }
+const _impactQuality = () => !_IMPACT.on ? 0 : _RS.idx === 0 ? 1 : _RS.idx === 1 ? 0.75 : _RS.idx === 2 ? 0.5 : _RS.idx === 3 ? 0.3 : 0;
+document.addEventListener('DOMContentLoaded', () => {
+    const sw = document.getElementById('set-impactfx');
+    if (!sw) return;
+    const paint = () => {
+        sw.setAttribute('aria-checked', _IMPACT.on ? 'true' : 'false');
+        const t = sw.querySelector('.switch-text'); if (t) t.textContent = _IMPACT.on ? 'ON' : 'OFF';
+    };
+    sw.addEventListener('click', () => {
+        _IMPACT.on = !_IMPACT.on;
+        try { localStorage.setItem('ar_impactfx', _IMPACT.on ? '1' : '0'); } catch (e) { /* ignore */ }
+        paint();
+    });
+    paint();
+});
 const _hexRgba = (hex, a) => 'rgba(' + parseInt(hex.slice(1, 3), 16) + ',' + parseInt(hex.slice(3, 5), 16) + ',' + parseInt(hex.slice(5, 7), 16) + ',' + a + ')';
 // A soft round glow in one colour, fading to nothing at the edge; box = its radius in world units
 function _glowSprite(holder, key, scale, box, hex) {
@@ -3505,6 +3524,38 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // server bullet.
     const _AIM_MS = (() => { let c = WEAPON_RULES.aimDelay, k = 0; while (c > 0) { c -= ARShared.TICK_S; k++; } return Math.max(0, (k - 1) * ARShared.TICK_S * 1000); })();
 
+    // ---------- bullet impacts (public/impact-fx.js) ----------
+    // What a bullet that vanished at (x, y) was touching: 'tree' | 'rock' | 'metal' (the base) | 'zombie' | 'player', or null when nothing is there
+    // (it ran out of range: no effect). Only asked when a bullet disappears, so the scan costs nothing per frame.
+    let _impRS = null;   // the last frame's interpolated state (set where it is made), for the players' places
+    function _impactKindAt(x, y) {
+        const rState = _impRS;
+        for (let i = 0; i < _obstacles.length; i++) {
+            const o = _obstacles[i], R = o.r + 22;
+            if (Math.abs(o.x - x) > R || Math.abs(o.y - y) > R) continue;
+            if (Math.hypot(o.x - x, o.y - y) <= R) return o.type === 'tree' ? 'tree' : 'rock';
+        }
+        if (_gameMode === 'pve' && Math.hypot(_PVE_BASE.x - x, _PVE_BASE.y - y) <= _PVE_BASE.r + 22) return 'metal';
+        for (let i = 0; i < _zombies.length; i++) {
+            const z = _zombies[i];
+            if (!z || z.hp <= 0) continue;
+            const R = (_gameMode === 'pve' ? (_PVE_ZB_RADIUS[z.type || 0] || 20) : 20) + 22;
+            if (Math.abs(z.x - x) <= R && Math.abs(z.y - y) <= R && Math.hypot(z.x - x, z.y - y) <= R) return 'zombie';
+        }
+        if (_gameMode !== 'pve' && rState) {
+            for (const pid in rState.players) {
+                const pp = rState.players[pid];
+                if (pp.alive && Math.hypot(pp.x - x, pp.y - y) <= PLAYER_HIT_R + 22) return 'player';
+            }
+        }
+        return null;
+    }
+    const _IMP_KIND = [null, 'tree', 'rock', 'metal', 'zombie', 'player'];
+    function _spawnImpact(kind, x, y, dx, dy) {
+        const q = _impactQuality();
+        if (q > 0 && kind) ARImpact.spawn(kind, x, y, dx, dy, q);
+    }
+
     function _reconcileOwnBullets(bullets, now) {
         const myId = socket.id;
         _ownSeenGen++;
@@ -3562,7 +3613,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_ownUnmatched.size) for (const [sid, t0] of _ownUnmatched) if (now - t0 > 1000) _ownUnmatched.delete(sid);
         // A linked bullet missing from this packet was removed by the server (hit or expired)
         for (const [sid, c] of _ownLinked) {
-            if (c.seenGen !== _ownSeenGen) { _ownLinked.delete(sid); c.dead = true; _bDiag.srvRemoved++; }
+            if (c.seenGen !== _ownSeenGen) {
+                _ownLinked.delete(sid); c.dead = true; _bDiag.srvRemoved++;
+                if (!c.tomb && !c.fx && !c.hiddenAt) {   // the server stopped it where the prediction saw nothing: an effect if something is there (not for a bullet out of range)
+                    const _ag = Math.min(c.life, (now - c.spawnTime) / 1000), _ix = c.x + c.dx * _ag, _iy = c.y + c.dy * _ag;
+                    c.fx = true; _spawnImpact(_impactKindAt(_ix, _iy), _ix, _iy, c.dx, c.dy);
+                }
+            }
         }
     }
     // The server tells the shooter which bullet hit (hit event, bid). Usually that bullet is
@@ -3572,7 +3629,10 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // the target and end it now.
     function _ownBulletHit(bid, tx, ty) {
         const linked = _ownLinked.get(bid);
-        if (linked) { linked.dead = true; return; }
+        if (linked) {
+            if (!linked.fx && !linked.hiddenAt) { const _ag = Math.min(linked.life, (performance.now() - linked.spawnTime) / 1000); linked.fx = true; _spawnImpact(_impactKindAt(tx, ty) || 'spark', linked.x + linked.dx * _ag, linked.y + linked.dy * _ag, linked.dx, linked.dy); }
+            linked.dead = true; return;
+        }
         const now = performance.now();
         const win = Math.min(900, _rttMs() + 300);
         let best = null;
@@ -3586,6 +3646,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (!best || c.spawnTime < best.spawnTime) best = c;
         }
         if (!best) return;
+        if (!best.fx) { best.fx = true; _spawnImpact(_impactKindAt(tx, ty) || 'spark', tx, ty, best.dx, best.dy); }
         best.sid = bid; best.dead = true;  // dead + linked: removed without a tombstone or phantom count
         _bDiag.hitLinked++;
     }
@@ -3594,7 +3655,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _bDiag.predicted++;
         _shotKick(_fxFor(socket.id), now);
         if (_bDiag.spawnLog && _bDiag.spawnLog.length < 300) { _bDiag.spawnLog.push(Math.round(now)); _bDiag.spawnPos.push([+x.toFixed(2), +y.toFixed(2), +ox.toFixed(2), +oy.toFixed(2), +(dx / Math.hypot(dx, dy)).toFixed(4), +(dy / Math.hypot(dx, dy)).toFixed(4)]); }
-        return { x, y, dx, dy, life, spawnTime: now, sid: null, seenGen: 0, px: ox, py: oy, hiddenAt: 0, dead: false, noPredict: false };
+        return { x, y, dx, dy, life, spawnTime: now, sid: null, seenGen: 0, px: ox, py: oy, hiddenAt: 0, dead: false, noPredict: false, fx: false };
     }
     // The equipped gun's muzzle distance and bullet lifetime (WEAPON_ART, same formula as server.js)
     function _myGunFire() {
@@ -5172,12 +5233,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _srvSeenGen++;
         for (const b of entry.bullets) {
             const _s = _srvBulletSeen.get(b.id);
-            if (_s) _s.gen = _srvSeenGen;
+            if (_s) { _s.gen = _srvSeenGen; _s.x = b.x; _s.y = b.y; }
             else {
-                _srvBulletSeen.set(b.id, { t: now, gen: _srvSeenGen });
+                _srvBulletSeen.set(b.id, { t: now, gen: _srvSeenGen, x: b.x, y: b.y, dx: b.dx, dy: b.dy, own: b.ownerId === socket.id });
             }
         }
-        for (const [_sid, _s] of _srvBulletSeen) { if (_s.gen !== _srvSeenGen) _srvBulletSeen.delete(_sid); }
+        for (const [_sid, _s] of _srvBulletSeen) {
+            if (_s.gen === _srvSeenGen) continue;
+            _srvBulletSeen.delete(_sid);
+            if (_s.own || _s.dx === undefined) continue;   // (own bullets: _reconcileOwnBullets)
+            const _ix = _s.x + _s.dx * ARShared.TICK_S, _iy = _s.y + _s.dy * ARShared.TICK_S;   // where it went in the last tick
+            _spawnImpact(_impactKindAt(_ix, _iy), _ix, _iy, _s.dx, _s.dy);
+        }
 
         ARNet.eachPlayer(pFlat, (slot, x, y, angle, hp, alive, kills) => {
             const id = _slotId[slot];
@@ -5440,7 +5507,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _clock.reset();
         _inputSeq = 0; _lastInputSend = 0;
         _pendingInputs.length = 0; _resetMoveV();
-        _clientBullets.length = 0;
+        _clientBullets.length = 0; ARImpact.reset();
         _clientNextShotAt = 0; _ammoHoldUntil = 0;
         _pendingBurstShots.length = 0;
         _ownLinked.clear(); _ownUnmatched.clear(); _srvBulletSeen.clear();
@@ -6520,6 +6587,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         let ZOOM = Math.min(W / VIEW_W, H / VIEW_H); // recalculat dupa dtSec
 
         const rState = getInterpolatedState();
+        _impRS = rState;
         if (!rState) { ctx.clearRect(0, 0, canvas.width, canvas.height); lastTime = timestamp; return; }
 
         const dtSec = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.05) : 0.016;
@@ -6637,18 +6705,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (_cb.noPredict) continue;
             const _bMinX = _x0 < _x1 ? _x0 : _x1, _bMaxX = _x0 < _x1 ? _x1 : _x0;
             const _bMinY = _y0 < _y1 ? _y0 : _y1, _bMaxY = _y0 < _y1 ? _y1 : _y0;
-            let _hitT = 2, _hitObs = -1;
+            let _hitT = 2, _hitObs = -1, _hitK = 0;   // _hitK: what it touches, for the effect (_IMP_KIND)
             for (let _oi = 0; _oi < _obstacles.length; _oi++) {
                 const _o = _obstacles[_oi], _R = _o.r + 6;
                 if (_o.x + _R < _bMinX || _o.x - _R > _bMaxX || _o.y + _R < _bMinY || _o.y - _R > _bMaxY) continue;
                 const _t = _segCircleT(_x0, _y0, _x1, _y1, _o.x, _o.y, _R);
-                if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = _oi; }
+                if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = _oi; _hitK = _o.type === 'tree' ? 1 : 2; }
             }
             if (_gameMode === 'pve') {   // the base stops bullets too
                 const _R = _PVE_BASE.r + 6;
                 if (!(_PVE_BASE.x + _R < _bMinX || _PVE_BASE.x - _R > _bMaxX || _PVE_BASE.y + _R < _bMinY || _PVE_BASE.y - _R > _bMaxY)) {
                     const _t = _segCircleT(_x0, _y0, _x1, _y1, _PVE_BASE.x, _PVE_BASE.y, _R);
-                    if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = -1; }
+                    if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = -1; _hitK = 3; }
                 }
             }
             for (let _zi = 0; _zi < _zombies.length; _zi++) {
@@ -6658,7 +6726,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const _zbx = _zb.sx, _zby = _zb.sy;   // the server's latest place, as the prediction always used
                 if (_zbx + _R < _bMinX || _zbx - _R > _bMaxX || _zby + _R < _bMinY || _zby - _R > _bMaxY) continue;
                 const _t = _segCircleT(_x0, _y0, _x1, _y1, _zbx, _zby, _R);
-                if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = -1; }
+                if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = -1; _hitK = 4; }
             }
             if (_predictEnemies) {
                 const _R = PLAYER_HIT_R + 6;
@@ -6668,12 +6736,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     if (!_pp.alive || _hiddenPlayers.has(_pid)) continue;
                     if (_pp.x + _R < _bMinX || _pp.x - _R > _bMaxX || _pp.y + _R < _bMinY || _pp.y - _R > _bMaxY) continue;
                     const _t = _segCircleT(_x0, _y0, _x1, _y1, _pp.x, _pp.y, _R);
-                    if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = -1; }
+                    if (_t >= 0 && _t < _hitT) { _hitT = _t; _hitObs = -1; _hitK = 5; }
                 }
             }
             if (_hitT <= 1) {
                 _cb.hiddenAt = _cbNow;
                 if (_hitObs >= 0) _obsShake[_hitObs] = _cbNow;
+                if (!_cb.fx) { _cb.fx = true; _spawnImpact(_IMP_KIND[_hitK], _x0 + (_x1 - _x0) * _hitT, _y0 + (_y1 - _y0) * _hitT, _cb.dx, _cb.dy); }
             }
         }
 
@@ -7235,6 +7304,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 ARArena.drawCrown(ctx, obs, obs.x + _obsShakeX(_oi, _obsNow), obs.y, dtSec, _crX, _crY, _crR, _crN);
             }
         }
+
+        // --- IMPACTS --- (above the zombies, the players and the crowns, under the names) (public/impact-fx.js: the chunks that fly off what a bullet hit; nothing is drawn when nothing is alive)
+        ARImpact.step(Math.min(dtSec, 0.05));
+        ARImpact.draw(ctx, visLeft, visTop, visRight, visBottom);
+        ARImpact.beginFrame();
 
         // --- NUME + HP --- (above the crowns, so a tag is never hidden)
         ctx.imageSmoothingEnabled = true;
