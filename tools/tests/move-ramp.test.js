@@ -53,3 +53,10 @@ test('the server and the client use the ramp, and the velocity is cleared where 
     assert.ok((server.match(/\.vx = 0/g) || []).length >= 4, 'velocity zeroed on death, wave break, wave start, end and rematch');
     assert.ok(/ARShared\.moveK\(/.test(game) && /_resetMoveV\(\)/.test(game), 'client predicts with the ramp and resets it with the pending inputs');
 });
+
+test('the aim guide starts at the player, not at the middle of the screen (the camera leans: camX = predX + _lookX)', () => {
+    const game = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'game.js'), 'utf8');
+    const i = game.indexOf('--- INDICATOR TRAIECTORIE ---'), block = game.slice(i, i + 2600);
+    assert.ok(/const _tmx = \(predX !== null \? predX : camX\)/.test(block) && /_tmy = \(predY !== null \? predY : camY\)/.test(block));
+    assert.ok(!/_tmx = camX/.test(block), 'not the camera');
+});

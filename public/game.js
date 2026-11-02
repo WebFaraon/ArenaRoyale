@@ -6818,7 +6818,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // spread start there, and the arc at their ends is centred on the muzzle, not on the player.
             const _trajFire = _myGunFire();
             const TRAJ_LEN  = _trajWd.bulletSpeed * _trajFire.bulletLife;
-            const _tmx = camX + dirX * _trajFire.muzzleDist, _tmy = camY + dirY * _trajFire.muzzleDist;
+            // from the player, not from the middle of the screen: with the camera lean (camX = predX + _lookX) the two are not the same point
+            const _tmx = (predX !== null ? predX : camX) + dirX * _trajFire.muzzleDist, _tmy = (predY !== null ? predY : camY) + dirY * _trajFire.muzzleDist;
             ctx.save();
             ctx.lineWidth = 2.5 / ZOOM;
             if (_lineDashZoom !== ZOOM) { _lineDashZoom = ZOOM; _lineDashArr = [6 / ZOOM, 24 / ZOOM]; }
