@@ -984,6 +984,24 @@
             setTimeout(wait, 80);
         })();
     }
+    // How far the loading screen is, 0..1: map-objects.json counts a tenth, the rest is the sprites asked for (state 0 = still loading)
+    function spritesProgress(season, ids) {
+        if (!mapArt.meta) return 0;
+        const s = mapArt.meta.seasons.indexOf(season) >= 0 ? season : mapArt.meta.seasons[0];
+        let done = 0;
+        for (const id of ids) if (mapEntry(s, id).state !== 0) done++;
+        return 0.1 + 0.9 * done / ids.length;
+    }
+    function lobbyProgress(season) { setMapSeason(season); return spritesProgress(season, LOBBY_IDS); }
+    function mapProgress() {
+        const ids = window.ARShared ? window.ARShared.MAP_OBJECT_IDS : LOBBY_IDS;
+        return spritesProgress(mapArt.want || 'vara', ids);
+    }
+    function zombieProgress() {
+        let done = 0;
+        for (let i = 0; i < zombieImgs.length; i++) if (zombieImgs[i].state !== 0) done++;
+        return done / zombieImgs.length;
+    }
     function lobbyRand(seed) {   // mulberry32
         let a = seed >>> 0;
         return function () {
@@ -1061,6 +1079,9 @@
         drawZombie: drawZombie,
         drawLobbyField: drawLobbyField,
         prepareLobby: prepareLobby,
+        lobbyProgress: lobbyProgress,
+        mapProgress: mapProgress,
+        zombieProgress: zombieProgress,
         beginFrame: beginFrame,
         allowBurst: allowBurst,
         drawProp: drawProp,

@@ -5601,3 +5601,59 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
 :root[data-juice="on"] .pbk-c.is-pop { animation: pbkJump .44s var(--spring); }
 @keyframes pbkBump { 0% { transform: scale(1); } 40% { transform: scale(1.5); } 100% { transform: scale(1); } }
 :root[data-juice="on"] .pbk-c-tag.is-bump { animation: pbkBump .42s var(--spring); transform-origin: center; }
+
+/* ---------- Loading screen (public/loader.js) ----------
+   The pitch (stripes and a centre ring, vignette), the logo with the block lettering, a chunky bar and what it is doing. It is in the HTML,
+   so it is there from the first paint; the page boot and the start of a match use it. */
+#ar-loader {
+    position: fixed; inset: 0; z-index: 9600;
+    display: grid; place-items: center;
+    padding: var(--safe-t, 0px) var(--safe-r, 0px) var(--safe-b, 0px) var(--safe-l, 0px);
+    background: #356A2C;
+    opacity: 1; visibility: visible;
+    transition: opacity .4s ease, visibility 0s;
+}
+#ar-loader.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .4s ease, visibility 0s .4s; }
+.ld-field {
+    position: absolute; inset: 0; overflow: hidden;
+    background: repeating-linear-gradient(90deg, #3A7330 0 90px, #356A2C 90px 180px);
+}
+.ld-field::before {
+    content: ''; position: absolute; left: 50%; top: 50%; width: min(74vmin, 560px); aspect-ratio: 1; border-radius: 50%;
+    transform: translate(-50%, -50%); border: 3px solid rgba(255, 255, 255, .16);
+}
+.ld-field::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(11, 20, 23, .08) 30%, rgba(11, 20, 23, .62) 100%); }
+.ld-center {
+    position: relative; z-index: 1; width: min(92vw, 440px);
+    display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 2vh, 16px);
+}
+.ld-emblem { width: clamp(52px, 11vh, 88px); height: clamp(52px, 11vh, 88px); object-fit: contain; filter: drop-shadow(0 5px 0 rgba(0, 0, 0, .32)); animation: ldBob 1.7s ease-in-out infinite; }
+@keyframes ldBob { 50% { transform: translateY(-7px) rotate(2deg); } }
+.ld-word { display: block; width: clamp(190px, 38vmin, 380px); height: auto; overflow: visible; margin-bottom: clamp(4px, 1.6vh, 14px); }
+.ld-bar {
+    width: 100%; height: clamp(20px, 3.6vh, 26px); padding: 3px; box-sizing: border-box;
+    background: rgba(14, 20, 25, .84); border: 3px solid var(--ink-line, #0A1013); border-radius: 999px;
+    box-shadow: 0 5px 0 rgba(0, 0, 0, .45), inset 0 2px 5px rgba(0, 0, 0, .55);
+}
+.ld-fill {
+    position: relative; display: block; width: 100%; height: 100%; border-radius: 999px; overflow: hidden;
+    background: linear-gradient(#FF9447, #FF7A1F 55%, #E8660F);
+    box-shadow: inset 0 -3px 0 #B94E0C, inset 0 2px 0 rgba(255, 255, 255, .38);
+    transform-origin: left center; transform: scaleX(0); will-change: transform;
+}
+.ld-fill::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit;
+    background: repeating-linear-gradient(-45deg, rgba(255, 255, 255, .17) 0 9px, transparent 9px 18px);
+    background-size: 25.46px 25.46px; animation: ldStripes 1s linear infinite;
+}
+@keyframes ldStripes { to { background-position: 25.46px 0; } }
+.ld-row {
+    width: 100%; display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px; box-sizing: border-box;
+    font-family: var(--f, 'Sen', sans-serif); font-weight: 800; font-size: .95rem; letter-spacing: .05em; text-transform: uppercase; color: #fff;
+    text-shadow: var(--stroke-sm, 0 2px 0 #0A1013);
+}
+.ld-pct { font-variant-numeric: tabular-nums; }
+.ld-tip { display: none; max-width: 100%; text-align: center; font-family: var(--f, 'Sen', sans-serif); font-weight: 600; font-size: .86rem; line-height: 1.3; color: #DCE4E8; text-shadow: var(--stroke-sm, 0 2px 0 #0A1013); margin-top: 6px; }
+#ar-loader.has-tip .ld-tip { display: block; }
+@media (max-height: 420px) { .ld-emblem { display: none; } .ld-tip { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { .ld-emblem, .ld-fill::after, .auth-word { animation: none; } #ar-loader, #ar-loader.is-hidden { transition-duration: .01s; } }

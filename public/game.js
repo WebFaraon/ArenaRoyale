@@ -77,10 +77,14 @@ function startLobbyBackground() {
     const ctx = canvas.getContext('2d');
     _lobbyBgRaf = requestAnimationFrame(() => _lobbyBgTick(ctx));
     const gen = _LBG.gen;
+    // The page boot screen (loader.js) stays up until the trees and rocks are drawn, so they never pop in after it is gone
+    if (window.ARLoader && ARLoader.boot) ARLoader.boot.poll('field', () => Math.min(0.97, ARArena.lobbyProgress(ARArena.mapState().season || 'vara')));
     ARArena.prepareLobby(ARArena.mapState().season || 'vara', season => {
-        if (gen !== _LBG.gen || !season || !_lobbyBgRaf) return;
-        _LBG.season = season;
-        _lobbyBgTick(ctx);
+        if (gen === _LBG.gen && season && _lobbyBgRaf) {
+            _LBG.season = season;
+            _lobbyBgTick(ctx);
+        }
+        if (window.ARLoader && ARLoader.boot) ARLoader.boot.set('field', 1);   // also when there are no sprites: the backdrop is optional
     });
 }
 
@@ -2711,6 +2715,88 @@ function _gunLook(weaponId, skinId) {
     return sk.img.complete && sk.img.naturalWidth ? sk : base;
 }
 
+// ---------- THE LOADING SCREEN OF A MATCH ----------
+// Before the first frame everything a match draws is made ready behind the loading screen (public/loader.js): the map's sprites, the
+// zombies' pictures, every player's skin and gun (with the weapon skin in hand: until its sprite is in, _gunLook returns the base gun,
+// which used to show for a moment at the start), then the first frames build the sprites (ARArena.warm and the players' own).
+let _matchLoad = null;       // the running session; the game loop reports its warm-up to it
+let _wskReady = false;       // weapon-skin-sprites.json is read
+WEAPON_SKIN_ART_READY.then(() => { _wskReady = true; });
+// How far the guns in hand are in, 0..1: the base gun's picture and, with a weapon skin equipped, the skin's sprite
+function _gunsProgress(meta) {
+    if (!WEAPON_ART.ready || !_wskReady) return 0;
+    const seen = new Set();
+    let n = 0, done = 0;
+    for (const id in meta) {
+        const w = meta[id].weapon, sk = meta[id].weaponSkin, key = w + '|' + (sk || '');
+        if (seen.has(key)) continue;
+        seen.add(key); n++;
+        const base = WEAPON_ART.byId[w];
+        if (!base || (base.img && base.img.complete)) {
+            const k = sk && sk !== 'default' ? WEAPON_ART.skins[sk] : null;
+            if (!k || k.weapon !== w) { done++; continue; }
+            _gunLook(w, sk);   // starts its sprite if it is not loading yet
+            if (k.failed || (k.img && k.img.complete)) done++;
+        }
+    }
+    return n ? done / n : 1;
+}
+// The characters' pictures of the players of the match (the entries come with the server's player-image events)
+function _playersProgress(meta, playerImages) {
+    if (!SKIN_META) return 0;
+    let n = 0, done = 0;
+    for (const id in meta) {
+        n++;
+        const e = playerImages[id];
+        if (e && e.img && e.img.complete) done++;
+    }
+    return n ? done / n : 1;
+}
+// The sprites the first frames would build (the body, the gun in hand, the flash and the bullet of each player), here before the
+// loading screen goes. Returns how many are still missing; the budgeted ones (ARArena.takeBudget) come a few a frame.
+function _warmPlayerSprites(ids, playerImages, scale) {
+    let missing = 0;
+    for (const id of ids) {
+        const entry = playerImages[id];
+        if (!entry) { missing++; continue; }
+        if (!_skinSprite(entry, scale)) missing++;
+        const w = _playerWeapons.get(id);
+        if (!w) continue;
+        const sk = _playerWeaponSkins.get(id), gun = _gunLook(w, sk);
+        if (!gun) { missing++; continue; }
+        if (!_imageSprite(gun, 'sprite', gun.img, scale, WEAPON_ART.size[0], WEAPON_ART.size[1])) missing++;
+        _flashSprite(gun, scale);
+        _bulletSprite(w, scale, sk);
+    }
+    return missing;
+}
+function _beginMatchLoad(data, playerImages) {
+    if (!window.ARLoader) return null;
+    const meta = (data && data.playersMeta) || {}, season = (data && data.season) || 'vara';
+    const ld = ARLoader.begin({ delay: 150, timeout: 15000, tips: true, onDone: () => { if (_matchLoad === ld) _matchLoad = null; } });
+    ld.add('fonts', 1, 'Loading fonts');
+    ld.poll('fonts', () => (document.fonts && document.fonts.status === 'loading') ? 0 : 1);
+    ld.add('map', 4, 'Loading the arena');
+    ARArena.setMapSeason(season);
+    ld.poll('map', () => ARArena.mapProgress());
+    ld.add('zombies', 1, 'Waking the zombies');
+    ld.poll('zombies', () => ARArena.zombieProgress());
+    ld.add('guns', 2, 'Loading weapons');
+    ld.poll('guns', () => _gunsProgress(meta));
+    ld.add('skins', 2, 'Loading skins');
+    ld.poll('skins', () => _playersProgress(meta, playerImages));
+    ld.add('warm', 5, 'Warming up');   // reported by the game loop
+    return ld;
+}
+// In the waiting room, with time to spare: the own gun's skin and the map's sprites start loading
+function _preloadMatchAssets() {
+    try {
+        ARArena.setMapSeason(ARArena.mapState().season || 'vara');
+        const eq = (currentProfile && currentProfile.equipped_weapon_skins) || {};
+        if (selectedWeapon) _gunLook(selectedWeapon, eq[selectedWeapon]);
+    } catch (e) { /* only a head start */ }
+}
+
 // A skin's draw cache: the image, its colours and the sprites made from it
 function _makeSkinEntry(skinId) {
     const charDef = getCharacterById(skinId) || getCharacterById(DEFAULT_SKIN);
@@ -3050,12 +3136,14 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     }
 
     socket.on('room-created', ({ code }) => {
+        _preloadMatchAssets();
         document.getElementById('waiting-code-display').textContent = code;
         document.getElementById('btn-start-game').style.display     = 'block';
         document.getElementById('waiting-sub-msg').style.display    = 'none';
     });
 
     socket.on('room-joined', ({ code }) => {
+        _preloadMatchAssets();
         document.getElementById('waiting-code-display').textContent = code;
     });
 
@@ -3215,6 +3303,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
         };
         if (!gameLoopStarted) {
             gameLoopStarted = true;
+            _matchLoad = _beginMatchLoad(data, playerImages);
             startGameLoop(socket, canvas, ctx, playerImages, gameControl);
         } else if (gameControl.reset) {
             gameControl.reset();
@@ -6412,6 +6501,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _plQ = [], _plQx = [], _plQy = [];
     const _crX = [], _crY = [], _crR = [];
     let _spriteBurst     = true;
+    let _ldFrames = 0, _ldWarm0 = -1;   // frames drawn under the loading screen, and what was to build at the first of them
     let _warmLeft        = 1;       // sprites still to be made ahead of their first use (ARArena.warm); 0 when done
 
     // ---------- BUCLA DE RANDARE ----------
@@ -6652,6 +6742,16 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
         ARGround.beginFrame(gameControl.countdownActive || _spriteBurst0 || (_gjBurst > 0 && _gjBurst-- > 0));
         const _lblScale = dpr * ZOOM;
+        // the loading screen of the match: what the first frames build is built here, behind it, and reported as the warm-up
+        if (_matchLoad) {
+            const _ld = _matchLoad;
+            _ldFrames++;
+            const _plMissing = _warmPlayerSprites(Object.keys(playerMeta), playerImages, _lblScale);
+            if (_ldWarm0 < 0) _ldWarm0 = Math.max(1, _warmLeft + _plMissing);
+            const _built = 1 - Math.min(1, (_warmLeft + _plMissing) / _ldWarm0);
+            const _fr = Math.min(1, _ldFrames / 10);   // a few frames, so the ground tiles and the trees and rocks are made too
+            _ld.set('warm', ((_warmLeft + _plMissing) === 0 && _ldFrames >= 10) || _ldFrames >= 240 ? 1 : Math.min(0.96, 0.6 * _built + 0.4 * _fr));
+        }
 
         const visLeft   = -_ox / _sq;
         const visTop    = -_oy / _sq;
