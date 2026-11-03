@@ -4979,7 +4979,7 @@ button:disabled { cursor: not-allowed; }
 .btn-reload.is-busy { filter: saturate(.4) brightness(.8); }
 
 /* ---------- Match HUD scale: --hk (game.js _hudScale) is 1 on a laptop and smaller on a phone, so the blocks keep their share of the screen ---------- */
-#hud-ping, #game-ui, #spectator-hud, #pve-team, #pve-wave, #pve-warn, #pve-right, #pve-build, #pve-use, #pve-place-bar { zoom: var(--hk, 1); }
+#hud-ping, #game-ui, #spectator-hud, #pve-team, #pve-wave, #pve-warn, #pve-right, #pve-build, #pve-use, #pve-sell, #pve-place-bar { zoom: var(--hk, 1); }
 #btn-reload { zoom: var(--hk-btn, 1); }   /* the reload button shrinks less: it is pressed */
 .hud-actions { zoom: var(--hk-top, 1); }   /* DBG and settings: scaled with the screen, never under 0.68 (about 30 px) */
 #set-row-leave .settings-btn { white-space: nowrap; }
@@ -5087,7 +5087,7 @@ button:disabled { cursor: not-allowed; }
 .pb-slot:not(.is-soon) { pointer-events: auto; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .pb-slot.is-empty { opacity: .55; }
 .pb-slot.is-on { border-color: var(--c-gold); box-shadow: inset 0 -4px 0 var(--l-slate), 0 0 0 3px rgba(255, 199, 46, .55), 0 4px 0 rgba(0, 0, 0, .45); transform: translateY(-4px); }
-#pve-use, #pve-place-bar { position: absolute; left: 50%; bottom: calc(max(10px, var(--safe-b)) + 74px); transform: translateX(-50%); pointer-events: auto; }
+#pve-use, #pve-sell, #pve-place-bar { position: absolute; left: 50%; bottom: calc(max(10px, var(--safe-b)) + 74px); transform: translateX(-50%); pointer-events: auto; }
 #pve-use {
     --c: var(--c-green); --l: var(--l-green);
     display: flex; align-items: center; gap: 8px; padding: 5px 10px 8px 7px;
@@ -5103,6 +5103,21 @@ button:disabled { cursor: not-allowed; }
 #pve-use.is-bad { --c: #6D2B35; --l: #4D1B24; }
 #pve-use.is-bad .pu-cost { background: rgba(255, 75, 92, .35); }
 #pve-use:active { transform: translateX(-50%) translateY(3px); }
+/* SELL (X): the red twin of the E button, a step above it (or on its line when E has nothing to do) */
+#pve-sell {
+    --c: var(--c-red); --l: var(--l-red);
+    bottom: calc(max(10px, var(--safe-b)) + 74px + 50px);
+    display: flex; align-items: center; gap: 8px; padding: 4px 10px 7px 7px;
+    background: var(--c); border: var(--o) solid var(--ink-line); border-radius: 999px;
+    box-shadow: inset 0 -4px 0 var(--l), inset 0 2px 0 rgba(255, 255, 255, .3), 0 4px 0 rgba(0, 0, 0, .45);
+    color: #fff; font-weight: 800; font-size: .8rem; text-shadow: var(--stroke-sm); letter-spacing: .04em; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+#pve-use[style*="none"] + #pve-sell { bottom: calc(max(10px, var(--safe-b)) + 74px); }
+#pve-sell .pu-key { font-style: normal; min-width: 1.4rem; padding: 1px 6px 3px; text-align: center; background: #fff; color: #18232A; border: 2px solid var(--ink-line); border-radius: 8px; text-shadow: none; }
+#pve-sell .pu-ic { width: 1.1rem; height: 1.1rem; filter: drop-shadow(0 2px 0 var(--ink-line)); }
+#pve-sell .pu-cost { display: inline-flex; align-items: center; gap: 3px; margin-left: 2px; padding: 1px 8px 3px 5px; background: rgba(0, 0, 0, .28); border-radius: 999px; }
+#pve-sell .pu-cost .pic { width: 1.05rem; height: 1.05rem; }
+#pve-sell:active { transform: translateX(-50%) translateY(3px); }
 #pve-place-bar { display: flex; gap: 10px; }
 #pve-place-bar button {
     min-width: 3.2rem; height: 2.7rem; padding: 0 16px 3px; display: grid; place-items: center;
@@ -5115,12 +5130,12 @@ button:disabled { cursor: not-allowed; }
 #pve-place-bar .ic { width: 1.3rem; height: 1.3rem; filter: drop-shadow(0 2px 0 var(--ink-line)); }
 /* touch screens: the E / PUNE prompts sit to the left of the build slots, which take the right third of a phone */
 @media not ((hover: hover) and (pointer: fine)) {
-    #pve-use, #pve-place-bar { left: 36%; }
+    #pve-use, #pve-sell, #pve-place-bar { left: 36%; }
 }
 /* seven build slots take the right 620 px: in PvE the gun + health block moves left, beside the ping chip, and the E / PUNE prompts sit above it */
 body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none; }
 @media (hover: hover) and (pointer: fine) {
-    #pve-use, #pve-place-bar { left: 92px; transform: none; }
+    #pve-use, #pve-sell, #pve-place-bar { left: 92px; transform: none; }
 }
 
 /* ==========================================================================
@@ -5359,7 +5374,7 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
 @media (prefers-reduced-motion: reduce) { .pbk-c.is-pop { animation: none; } }
 
 /* no keyboard on a phone or tablet: the repair / upgrade block is tapped, so it does not show the E key (same test as isDesktop in game.js) */
-@media not all and (hover: hover) and (pointer: fine) { #pve-use .pu-key { display: none; } }
+@media not all and (hover: hover) and (pointer: fine) { #pve-use .pu-key, #pve-sell .pu-key { display: none; } }
 
 /* ==========================================================================
    PvE end board (#pve-end): victory when the last wave is held, "the base fell" when it is not. Same grammar as the break panel:

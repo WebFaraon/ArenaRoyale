@@ -4241,7 +4241,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _barEls() {
         const g = id => document.getElementById(id);
-        return _bar.els = { slot: g('pb-barricade'), cost: g('pb-barricade-cost'), tslot: g('pb-turret'), tcost: g('pb-turret-cost'), eslot: g('pb-tesla'), ecost: g('pb-tesla-cost'), oslot: g('pb-bomb'), ocost: g('pb-bomb-cost'), fslot: g('pb-flame'), fcost: g('pb-flame-cost'), hslot: g('pb-heal'), hcost: g('pb-heal-cost'), sslot: g('pb-support'), scost: g('pb-support-cost'), use: g('pve-use'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar') };
+        return _bar.els = { slot: g('pb-barricade'), cost: g('pb-barricade-cost'), tslot: g('pb-turret'), tcost: g('pb-turret-cost'), eslot: g('pb-tesla'), ecost: g('pb-tesla-cost'), oslot: g('pb-bomb'), ocost: g('pb-bomb-cost'), fslot: g('pb-flame'), fcost: g('pb-flame-cost'), hslot: g('pb-heal'), hcost: g('pb-heal-cost'), sslot: g('pb-support'), scost: g('pb-support-cost'), use: g('pve-use'), sell: g('pve-sell'), sellCost: g('pve-sell-cost'), useTxt: g('pve-use-txt'), useCost: g('pve-use-cost'), useIc: document.querySelector('#pve-use .pu-ic use'), pbar: g('pve-place-bar') };
     }
     function _barUi() {
         const e = _bar.els || _barEls();
@@ -4282,6 +4282,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         else socket.emit('place-struct', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), o: _bar.g.o });
     }
     function _barUse() { if (_bar.use && !_bar.place) socket.emit('use-struct', { id: _bar.use.id }); }
+    function _barSell() { if (_bar.use && !_bar.place && !_selfDead) socket.emit('sell-struct', { id: _bar.use.id }); }   // X: take down the one next to you (it gives back ARStructs.SELL.rate of what it cost)
     // Where the ghost stands and whether the barricade can go there (the same check the server makes)
     function _barGhost(players, now, zoom) {
         if (!_bar.place) return;
@@ -4313,6 +4314,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const can = _pveState.myCoins >= cost;
         _bar.act = act; _bar.can = can;   // for the highlight on the thing E would work on
         const key = act ? act + cost + (can ? 'y' : 'n') : '';
+        // SELL: shown whenever something is within reach (not while it is being worked on)
+        const sellV = best && !_bar.work.has(best.id) ? ARStructs.sellValue(best) : 0, e0 = _bar.els || _barEls();
+        if (e0.sell && _bar.sellV !== sellV) { _bar.sellV = sellV; e0.sell.style.display = sellV ? '' : 'none'; if (sellV && e0.sellCost) e0.sellCost.textContent = sellV; }
         if (key === _bar.useKey) return;
         _bar.useKey = key;
         const e = _bar.els || _barEls();
@@ -4339,7 +4343,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             parts.push({ ox: horiz ? along : (r() * 2 - 1) * 12, oy: horiz ? (r() * 2 - 1) * 12 : along,
                          a: r() * Math.PI * 2, v: 0.5 + r(), rot: r() * Math.PI, rs: (r() - 0.5) * 9, sz: 3.5 + r() * 4, c: (r() * 3) | 0 });
         }
-        _structFx.push({ k, x: s.x, y: s.y, o: s.o, t: s.t, t0: now, parts, len, round: tur, pal: tur ? (_PAL_BY_KIND[s.kd || 'mg'] || _TUR_PAL)[s.t] : null });
+        _structFx.push({ k, x: s.x, y: s.y, o: s.o, t: s.t, t0: now, sold: s.sold || 0, parts, len, round: tur, pal: tur ? (_PAL_BY_KIND[s.kd || 'mg'] || _TUR_PAL)[s.t] : null });
         if (_structFx.length > 40) _structFx.shift();
     }
     function _fxShape(ctx, f, hw, hh) {   // the outline of the thing the effect plays over: a barricade's rectangle or a turret's disc
@@ -4354,7 +4358,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _drawStructFx(ctx, now) {
         for (let i = _structFx.length - 1; i >= 0; i--) {
-            const f = _structFx[i], dur = f.k === 'break' ? 1100 : f.k === 'upgrade' ? 1000 : f.k === 'place' ? 750 : 900, t = (now - f.t0) / dur;
+            const f = _structFx[i], dur = f.k === 'break' ? 1100 : f.k === 'sold' ? 1000 : f.k === 'upgrade' ? 1000 : f.k === 'place' ? 750 : 900, t = (now - f.t0) / dur;
             if (t >= 1) { _structFx.splice(i, 1); continue; }
             const e = 1 - (1 - t) * (1 - t);     // ease out
             const hw = f.round ? ARStructs.TURRET.r : f.o ? 17 : 54, hh = f.round ? ARStructs.TURRET.r : f.o ? 54 : 17;
@@ -4423,6 +4427,21 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                         _star(ctx, gx, gy, 3 + p.sz * 0.7 * Math.sin(Math.PI * (t - 0.25) / 0.75)); ctx.fill(); ctx.stroke();
                     }
                 }
+            } else if (f.k === 'sold') {
+                // taken down: a gold ring that closes in, coins that hop up, and the refund floating away
+                ctx.lineWidth = 4 * (1 - t) + 1; ctx.strokeStyle = 'rgba(255,199,46,' + (0.9 * (1 - t)).toFixed(3) + ')';
+                ctx.beginPath(); ctx.arc(f.x, f.y, (f.len + 22) * (1 - e * 0.7), 0, Math.PI * 2); ctx.stroke();
+                ctx.globalAlpha = 1 - t * t; ctx.lineWidth = 1.6; ctx.strokeStyle = '#0B0F1A'; ctx.fillStyle = '#FFD84A';
+                for (let k = 0; k < f.parts.length; k++) {
+                    const p = f.parts[k], px = f.x + p.ox * 0.6, py = f.y + p.oy * 0.6 - 8 - 46 * e * p.v;
+                    ctx.beginPath(); ctx.arc(px, py, 3.4 + p.sz * 0.35, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                }
+                if (f.sold) {
+                    ctx.globalAlpha = 1 - Math.max(0, (t - 0.55) / 0.45);
+                    ctx.font = '800 20px Sen, sans-serif'; ctx.textAlign = 'center'; ctx.lineJoin = 'round'; ctx.lineWidth = 5; ctx.strokeStyle = '#0B0F1A'; ctx.fillStyle = '#FFD84A';
+                    const ty = f.y - 20 - 34 * e, label = '+' + f.sold;
+                    ctx.strokeText(label, f.x, ty); ctx.fillText(label, f.x, ty);
+                }
             } else if (f.k === 'repair') {
                 // a green glow over the barricade and plus signs rising from it
                 ctx.fillStyle = 'rgba(70,212,106,' + (0.5 * (1 - t)).toFixed(3) + ')';
@@ -4458,8 +4477,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const tur = s.k === 't';
             const hh = tur ? ARStructs.TURRET.r : ARStructs.halfH(s), cx = s.x, cy = s.y - hh - 34;
             if (cx < visL - 30 || cx > visR + 30 || cy < visT - 30 || cy > visB + 30) return;
-            const p = Math.max(0, Math.min(1, (now - w.t0) / w.dur)), rep = w.action === 'repair';
-            const col = rep ? '#46D46A' : '#FFC72E';
+            const p = Math.max(0, Math.min(1, (now - w.t0) / w.dur)), rep = w.action === 'repair', sel = w.action === 'sell';
+            const col = sel ? '#FF5A4D' : rep ? '#46D46A' : '#FFC72E';
             // sparks off the work
             ctx.fillStyle = col;
             for (let k = 0; k < 3; k++) {
@@ -4475,7 +4494,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (p > 0.01) { ctx.beginPath(); ctx.arc(cx, cy, 13, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); ctx.stroke(); }
             ctx.lineWidth = 2.4; ctx.strokeStyle = '#FFFFFF'; ctx.lineJoin = 'round';
             ctx.beginPath();
-            if (rep) { ctx.moveTo(cx - 5, cy); ctx.lineTo(cx + 5, cy); ctx.moveTo(cx, cy - 5); ctx.lineTo(cx, cy + 5); }
+            if (sel) { ctx.moveTo(cx - 4.5, cy - 4.5); ctx.lineTo(cx + 4.5, cy + 4.5); ctx.moveTo(cx + 4.5, cy - 4.5); ctx.lineTo(cx - 4.5, cy + 4.5); }
+            else if (rep) { ctx.moveTo(cx - 5, cy); ctx.lineTo(cx + 5, cy); ctx.moveTo(cx, cy - 5); ctx.lineTo(cx, cy + 5); }
             else { ctx.moveTo(cx - 5, cy + 3); ctx.lineTo(cx, cy - 3); ctx.lineTo(cx + 5, cy + 3); }
             ctx.stroke();
         });
@@ -5030,6 +5050,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (k === '7') { _barPlaceMode(undefined, 'd'); return; }
             if (k === 'escape' && _bar.place) { _barPlaceMode(false); return; }
             if (k === 'e') { _barUse(); return; }
+            if (k === 'x' && !_bar.place) { _barSell(); return; }
         }
         if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) {
             e.preventDefault();
@@ -6003,10 +6024,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
         _bar.useKey = '-';
     });
-    socket.on('turret-del', ({ id, broke }) => {
+    socket.on('turret-del', ({ id, broke, sold }) => {
         const i = _turrets.findIndex(q => q.id === id);
         if (i === -1) return;
         const now = performance.now();
+        if (sold) _fxSpawn('sold', Object.assign({}, _turrets[i], { sold }), now);
         if (broke) { _structDying.push({ s: _turrets[i], t0: now }); _fxSpawn('break', _turrets[i], now); }
         _bar.work.delete(id);
         _turrets.splice(i, 1);
@@ -6088,10 +6110,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
     socket.on('struct-work', ({ id, action, dur }) => { _bar.work.set(id, { t0: performance.now(), dur, action }); _bar.useKey = '-'; });
     socket.on('struct-work-end', ({ id }) => { _bar.work.delete(id); _bar.useKey = '-'; });
-    socket.on('struct-del', ({ id, broke }) => {
+    socket.on('struct-del', ({ id, broke, sold }) => {
         const i = _structs.findIndex(q => q.id === id);
         if (i === -1) return;
         const now = performance.now();
+        if (sold) _fxSpawn('sold', Object.assign({}, _structs[i], { sold }), now);
         if (broke) { _structDying.push({ s: _structs[i], t0: now }); _fxSpawn('break', _structs[i], now); }
         _bar.work.delete(id);
         _structs.splice(i, 1);
@@ -7700,6 +7723,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (e.oslot) e.oslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'o'); };
         if (e.fslot) e.fslot.onclick = () => { if (_gameMode === 'pve') _barPlaceMode(undefined, 'f'); };
         if (e.use) e.use.onclick = _barUse;
+        if (e.sell) e.sell.onclick = _barSell;
         const ok = document.getElementById('pve-place-ok'), no = document.getElementById('pve-place-x');
         if (ok) ok.onclick = _barPlace;
         if (no) no.onclick = () => _barPlaceMode(false);

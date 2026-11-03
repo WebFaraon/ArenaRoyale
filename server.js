@@ -1443,6 +1443,7 @@ function tickWork(code, room, p, now) {
     if (p.moveDir.x || p.moveDir.y || Math.abs(p.x - w.x) > WORK_SLACK || Math.abs(p.y - w.y) > WORK_SLACK
         || builtDist(p.x, p.y, s) > PLAYER_R + builtUseRange(s) + WORK_SLACK) { cancelWork(code, room, p, 'moved'); return; }
     if (now < w.end) return;
+    if (w.action === 'sell') { sellBuilt(code, room, p, s); return; }
     // the ring is full: is it still what E would do, and are there coins for it?
     const action = builtAction(s);
     const cost = builtCost(s, action);
@@ -1455,6 +1456,21 @@ function tickWork(code, room, p, now) {
     io.to(code).emit(s.k === 't' ? 'turret-upd' : 'struct-upd', s.k === 't' ? turretPublic(s) : structPublic(s));
     io.to(code).emit('struct-work-end', { id: s.id, done: true, action });
     io.to(p.id).emit('struct-result', { ok: true, action });
+}
+
+// X next to a barricade or a turret, standing still for ARStructs.SELL.ms: it comes down and the one who did it gets ARStructs.SELL.rate of its
+// total cost back (the tier it is at, upgrades included). Done like a repair (the ring, the work that stops if you move), but it pays instead of
+// charging; whoever is next to it may do it.
+function sellBuilt(code, room, p, s) {
+    const refund = ARStructs.sellValue(s);
+    p.coins += refund;
+    p.work = null; s._busy = null;
+    for (const q of room._playerArr) if (q.work && q.work.id === s.id) cancelWork(code, room, q);
+    s._gone = true;
+    if (s.k === 't') { room.turrets.splice(room.turrets.indexOf(s), 1); io.to(code).emit('turret-del', { id: s.id, sold: refund }); }
+    else { room.structs.splice(room.structs.indexOf(s), 1); io.to(code).emit('struct-del', { id: s.id, sold: refund }); }
+    io.to(code).emit('struct-work-end', { id: s.id, done: true, action: 'sell' });
+    io.to(p.id).emit('struct-result', { ok: true, action: 'sell', refund });
 }
 
 // A turret is gone (a zombie broke it)
@@ -3516,6 +3532,28 @@ io.on('connection', (socket) => {
         const workMs = ARStructs.workTime(s, action);   // a repair 1 s, an upgrade by the tier it goes into
         p.work = { id: s.id, action, end: now + workMs, x: p.x, y: p.y };
         io.to(code).emit('struct-work', { id: s.id, action, dur: workMs, by: p.name });
+    });
+
+    // X next to a barricade or a turret: take it down for ARStructs.SELL.rate of what it cost (see sellBuilt)
+    socket.on('sell-struct', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !data || typeof data !== 'object') return;
+        const { code, room } = r;
+        const p = room.players[socket.id];
+        if (!p || room.mode !== 'pve' || !room.gameStarted || room.gameEnded || room.countdownActive || room.pveWaveBreak || !p.alive) return;
+        const now = Date.now();
+        if (now - (p._structAt || 0) < 150) return;
+        p._structAt = now;
+        const s = findBuilt(room, data.id);
+        const fail = (reason) => socket.emit('struct-result', { ok: false, action: 'sell', reason });
+        if (!s) return fail('gone');
+        if (builtDist(p.x, p.y, s) > PLAYER_R + builtUseRange(s)) return fail('far');
+        if (p.moveDir.x || p.moveDir.y) return fail('moving');
+        if (p.work) return;
+        if (s._busy && s._busy !== p.id) return fail('busy');
+        s._busy = p.id;
+        p.work = { id: s.id, action: 'sell', end: now + ARStructs.SELL.ms, x: p.x, y: p.y };
+        io.to(code).emit('struct-work', { id: s.id, action: 'sell', dur: ARStructs.SELL.ms, by: p.name });
     });
 
     socket.on('disconnect', () => {

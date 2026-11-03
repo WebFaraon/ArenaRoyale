@@ -331,3 +331,28 @@ test('the Flamethrower: three levels, 35 coins, a short range that stays under t
     assert.deepEqual([0, 1].map(i => S.workTime({ k: 't', kd: 'flame', t: i }, 'upgrade')), [2000, 3000]);
     assert.equal(k.inv, 'flame');
 });
+
+test('selling: 75% of the total cost at the tier it has reached (upgrades included), rounded down', () => {
+    assert.equal(S.SELL.rate, 0.75);
+    assert.equal(S.sellValue({ k: 's', t: 0 }), Math.floor(0.75 * S.BARRICADE.tiers[0].total));
+    assert.equal(S.sellValue({ k: 's', t: 0 }), 7);              // a wooden barricade cost 10
+    assert.equal(S.sellValue({ k: 's', t: 3 }), Math.floor(0.75 * 150));
+    for (const kd of Object.keys(S.TURRET.kinds)) {
+        const tiers = S.TURRET.kinds[kd].tiers;
+        tiers.forEach((tr, i) => {
+            const v = S.sellValue({ k: 't', kd, t: i });
+            assert.equal(v, Math.floor(0.75 * tr.total), kd + ' tier ' + i);
+            assert.ok(v < tr.total, 'never the whole price back');
+            if (i) assert.ok(v > S.sellValue({ k: 't', kd, t: i - 1 }), 'an upgrade is worth something when sold');
+        });
+    }
+});
+
+test('selling is wired on the server: the sell-struct request, the work that pays instead of charging, and the refund events', () => {
+    const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../server.js'), 'utf8');
+    assert.match(src, /socket\.on\('sell-struct'/);
+    assert.match(src, /function sellBuilt\(/);
+    assert.match(src, /w\.action === 'sell'/);
+    assert.match(src, /'turret-del', \{ id: s\.id, sold: refund \}/);
+    assert.match(src, /'struct-del', \{ id: s\.id, sold: refund \}/);
+});

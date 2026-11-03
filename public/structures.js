@@ -277,6 +277,14 @@
     }
     // How long the work of E takes at a barricade or a turret: a repair is workMs, an upgrade what the tier it goes INTO says (barricades 1 / 2 / 3 s,
     // machine guns and Tesla Towers 2 / 3 s)
+    // Taking a barricade or a turret down: X next to it, standing still for SELL.ms, gives back SELL.rate of everything it cost up to its tier
+    // (the shop price of the tier it is at, upgrades included; what was spent on repairs is not counted)
+    const SELL = { rate: 0.75, ms: 1200 };
+    function sellValue(s) {
+        const tiers = s.k === 't' ? turretTiers(s) : BARRICADE.tiers;
+        return Math.floor(SELL.rate * tiers[s.t].total);
+    }
+
     function workTime(s, action) {
         if (action !== 'upgrade') return BARRICADE.workMs;
         const next = (s.k === 't' ? turretTiers(s) : BARRICADE.tiers)[s.t + 1];
@@ -315,5 +323,5 @@
         return null;
     }
 
-    return { droneSpot, BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretKind, turretTiers, turretBuyCost, workTime, turretCountOf, buyBlocked, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
+    return { droneSpot, BARRICADE, BUY_COST, TURRET, TURRET_BUY_COST, turretKind, turretTiers, turretBuyCost, SELL, sellValue, workTime, turretCountOf, buyBlocked, turretDist, turretPushOut, turretPushOutAll, nearestTurretInRange, turretRepairCost, turretUpgradeCost, turretUseAction, turretPlacement, turretLimit, checkPlaceTurret, halfW, halfH, distToRect, nearestPoint, nearestInRange, segmentHits, blockerBetween, asBlocker, pushOut, pushOutAll, rectsOverlap, state, repairCost, upgradeCost, useAction, placement, checkPlace };
 });
