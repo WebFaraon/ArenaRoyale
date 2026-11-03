@@ -5412,16 +5412,23 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
     --pe-halo: rgba(70, 212, 106, .16); --pe-core: #46D46A; --pe-node: #46D46A; --pe-shine: 1; --pe-crack: 0;
     position: absolute; inset: 0; z-index: 41; display: none; align-items: center; justify-content: center;
     padding: calc(var(--safe-t) + clamp(6px, 1.6dvh, 20px)) calc(var(--safe-r) + clamp(10px, 2vw, 28px)) calc(var(--safe-b) + clamp(6px, 1.6dvh, 20px)) calc(var(--safe-l) + clamp(10px, 2vw, 28px));
-    background: rgba(4, 7, 9, .95); overflow: hidden auto;
+    background: rgba(5, 12, 9, .74); overflow: hidden auto;   /* the pitch shows through, as behind the lobby */
 }
-#pve-end[data-result="win"] { background: radial-gradient(ellipse at 50% 14%, rgba(255, 199, 46, .3) 0, rgba(255, 199, 46, 0) 58%), rgba(4, 7, 9, .95); }
+#pve-end[data-result="win"] { background: radial-gradient(ellipse at 50% 14%, rgba(255, 199, 46, .32) 0, rgba(255, 199, 46, 0) 58%), rgba(5, 12, 9, .74); }
 #pve-end[data-result="lose"] {
     --pe-acc: var(--c-red); --pe-acc-l: var(--l-red);
     --pe-halo: rgba(255, 75, 92, .14); --pe-core: #7B2A33; --pe-node: #4A2A2E; --pe-shine: 0; --pe-crack: 1;
-    background: radial-gradient(ellipse at 50% 40%, rgba(255, 75, 92, 0) 40%, rgba(255, 75, 92, .3) 100%), rgba(10, 3, 6, .95);
+    background: radial-gradient(ellipse at 50% 40%, rgba(255, 75, 92, 0) 40%, rgba(255, 75, 92, .3) 100%), rgba(12, 6, 8, .76);
 }
-.pe-confetti, .pe-swarm { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
-#pve-end[data-result="win"] .pe-confetti, #pve-end[data-result="lose"] .pe-swarm { display: block; }
+.pe-swarm { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
+#pve-end[data-result="lose"] .pe-swarm { display: block; }
+.pe-confetti { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; display: none; }
+#pve-end[data-result="win"] .pe-confetti { display: block; }
+/* the rays behind a victory title: one element, turning slowly */
+.pe-rays { position: absolute; left: 50%; top: 16%; width: 150vmax; height: 150vmax; margin: -75vmax 0 0 -75vmax; pointer-events: none; display: none; opacity: .55;
+    background: repeating-conic-gradient(from 0deg, rgba(255, 199, 46, .22) 0 7deg, rgba(255, 199, 46, 0) 7deg 22deg);
+    -webkit-mask-image: radial-gradient(circle, #000 0, rgba(0, 0, 0, .5) 22%, transparent 48%); mask-image: radial-gradient(circle, #000 0, rgba(0, 0, 0, .5) 22%, transparent 48%); }
+#pve-end[data-result="win"] .pe-rays { display: block; }
 .pe-fit {
     position: relative; width: 100%; max-width: 88em; margin: auto; display: flex; flex-direction: column; align-items: center; gap: 1.3em;
     font-size: clamp(9px, min(1.05vw, 1.85dvh), 17px);
@@ -5452,7 +5459,7 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
     background: var(--tray); border: var(--o) solid var(--tray-line); border-radius: var(--r-tray);
     box-shadow: inset 0 2px 0 rgba(255, 255, 255, .07), inset 0 -4px 0 rgba(0, 0, 0, .28), 0 .4em 0 rgba(0, 0, 0, .32), 0 1em 1.6em -.8em rgba(0, 0, 0, .6);
 }
-.pe-me { border-color: var(--pe-acc); }
+.pe-me { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .07), inset 0 -4px 0 rgba(0, 0, 0, .28), inset 0 0 0 .17em color-mix(in srgb, var(--pe-acc) 38%, transparent), 0 .4em 0 rgba(0, 0, 0, .32), 0 1em 1.6em -.8em rgba(0, 0, 0, .6); }
 .pe-bar { display: block; height: .85em; border-radius: .5em; background: rgba(0, 0, 0, .45); box-shadow: inset 0 .15em 0 rgba(0, 0, 0, .35); overflow: hidden; }
 .pe-bar > i { display: block; height: 100%; width: 0; border-radius: .5em; background: var(--c-sky); box-shadow: inset 0 -.2em 0 var(--l-sky); transition: width .9s var(--ease-out) .25s; }
 .pe-bar.is-thin { height: .55em; margin-top: .1em; }
@@ -5570,14 +5577,73 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
 .pe-btn span { display: flex; flex-direction: column; align-items: flex-start; gap: .25em; line-height: 1; }
 .pe-btn span b { font-size: 1.7em; }
 .pe-btn em { font-size: .8em; letter-spacing: .02em; color: #E6F8EA; }
-.pe-btn.is-go { --c: var(--c-green); --cl: var(--l-green); min-width: 21em; }
-.pe-btn.is-gold { --c: var(--c-gold); --cl: var(--l-gold); color: #1A1205; text-shadow: none; }
-.pe-btn.is-gold .ic { filter: none; }
+.pe-btn.is-go { --c: var(--c-gold); --cl: var(--l-gold); min-width: 21em; }
+.pe-btn.is-go em { color: #FFF3C4; }
+.pe-btn.is-sky { --c: var(--c-sky); --cl: var(--l-sky); }
+.pe-btn.is-gold { --c: var(--c-sky); --cl: var(--l-sky); }
 #pve-end[data-result="lose"] #pe-share { display: none; }
 .pe-btn:disabled { opacity: .7; cursor: default; }
 @media (hover: hover) and (pointer: fine) { .pe-btn:not(:disabled):hover { transform: translateY(-.15em); filter: brightness(1.08); } }
 .pe-btn:not(:disabled):active { transform: translateY(.25em); box-shadow: inset 0 -.1em 0 var(--cl), 0 0 0 rgba(0, 0, 0, .45); transition-duration: 0s; }
 .pe-btn:focus-visible { outline: .22em solid #fff; outline-offset: .2em; }
+
+/* ---- the reveal: piece by piece, under the Fine effects setting (the board is complete at once with them off) ---- */
+:root[data-juice="on"] #pve-end.is-reveal .pe-chip { animation: peDrop .5s var(--spring) both; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-title-row { animation: peTitle .75s var(--spring) .1s both; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-base { animation: peWobble 1.1s var(--spring) .45s both; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-sub { animation: peUp .5s var(--settle) .5s both; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-card { animation: peUp .6s var(--settle) both; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-me { animation-delay: .3s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-mid { animation-delay: .45s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-rew { animation-delay: .6s; }
+:root[data-juice="on"] #pve-end.is-reveal :is(.pe-kind, .pe-stat, .pe-prize, .pe-why-row) { animation: pePop .45s var(--spring) both; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-kind:nth-child(1) { animation-delay: .7s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-kind:nth-child(2) { animation-delay: .8s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-kind:nth-child(3) { animation-delay: .9s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-kind:nth-child(4) { animation-delay: 1s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-stat:nth-child(1) { animation-delay: .7s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-stat:nth-child(2) { animation-delay: .8s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-stat:nth-child(3) { animation-delay: .9s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-stat:nth-child(4) { animation-delay: 1s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-prize:nth-child(1) { animation-delay: 1.4s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-prize:nth-child(2) { animation-delay: 1.6s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-prize:nth-child(3) { animation-delay: 1.8s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-why-row:nth-child(2) { animation-delay: 1.95s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-why-row:nth-child(3) { animation-delay: 2.05s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-why-row:nth-child(4) { animation-delay: 2.15s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-why-row:nth-child(5) { animation-delay: 2.25s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-pip { animation: pePop .35s var(--spring) both; animation-delay: calc(1s + var(--i, 0) * 38ms); }
+:root[data-juice="on"] #pve-end.is-reveal .pe-ms > div { animation: pePop .4s var(--spring) 1.7s both; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-trow:not(.is-h) { animation: peSlide .5s var(--settle) 1.05s both; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-mission { animation: pePop .5s var(--spring) 2.3s both; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-newlvl { animation: pePop .5s var(--spring) 1.5s both, peBeat 1.3s ease-in-out 2.1s infinite; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-btn { animation: peUp .5s var(--settle) 2.3s both; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-btn + .pe-btn { animation-delay: 2.4s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-btn + .pe-btn + .pe-btn { animation-delay: 2.5s; }
+:root[data-juice="on"] #pve-end.is-reveal .pe-bar > i { transition-delay: 1.3s; transition-duration: 1.4s; }
+:root[data-juice="on"] #pve-end[data-result="win"] .pe-rays { animation: peRays 60s linear infinite, peFade 1.2s ease-out both; }
+:root[data-juice="on"] #pve-end[data-result="win"] #pe-title { animation: peShine 3.2s ease-in-out 1.2s infinite; }
+:root[data-juice="on"] #pve-end[data-result="lose"] .pe-swarm g { animation: peSwarm 5s ease-in-out infinite alternate; }
+:root[data-juice="on"] #pve-end[data-result="lose"] .pe-swarm g + g { animation-duration: 7s; animation-delay: -2s; }
+:root[data-juice="on"] #pve-end[data-result="lose"] .pe-base { animation-name: peWobble, peHeart; animation-duration: 1.1s, 2.4s; animation-delay: .45s, 1.6s; animation-iteration-count: 1, infinite; animation-fill-mode: both, none; }
+.pe-confetti i { position: absolute; top: 0; left: var(--x); width: var(--w); height: var(--h); background: var(--c); border-radius: 2px; opacity: 0;
+    animation: peFall var(--t) linear var(--d) infinite; will-change: transform; }
+:root[data-juice="off"] .pe-confetti { display: none !important; }
+@keyframes peFall { 0% { transform: translate3d(0, -8vh, 0) rotate(0); opacity: 1; } 50% { transform: translate3d(calc(var(--s) * .5), 55vh, 0) rotate(calc(var(--r) * .5)) scaleY(.4); } 100% { transform: translate3d(var(--s), 112vh, 0) rotate(var(--r)) scaleY(1); opacity: 1; } }
+@keyframes peDrop { from { transform: translateY(-1.6em) scale(.7); opacity: 0; } }
+@keyframes peTitle { 0% { transform: scale(1.9) rotate(-3deg); opacity: 0; } 60% { opacity: 1; } 100% { transform: none; } }
+@keyframes peWobble { 0% { transform: scale(0) rotate(-40deg); } 70% { transform: scale(1.15) rotate(8deg); } 100% { transform: none; } }
+@keyframes peHeart { 0%, 100% { transform: none; } 50% { transform: scale(.94); } }
+@keyframes peUp { from { transform: translateY(1.6em) scale(.97); opacity: 0; } }
+@keyframes pePop { from { transform: scale(.5); opacity: 0; } }
+@keyframes peSlide { from { transform: translateX(-1.6em); opacity: 0; } }
+@keyframes peBeat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+@keyframes peRays { to { transform: rotate(360deg); } }
+@keyframes peFade { from { opacity: 0; } }
+@keyframes peShine { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.22) drop-shadow(0 0 .35em rgba(255, 199, 46, .55)); } }
+@keyframes peSwarm { from { transform: translate(0, 0); } to { transform: translate(.8%, -1.6%); } }
+@media (prefers-reduced-motion: reduce) { .pe-confetti, .pe-rays { display: none !important; } }
+
 
 /* narrow screens: the sides stack under the middle */
 @media (max-width: 1000px) {

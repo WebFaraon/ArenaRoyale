@@ -6306,7 +6306,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _peSet('pe-title', win ? 'VICTORY!' : 'BASE DESTROYED');
         _peSet('pe-sub-lbl', win ? 'THE BASE SURVIVED EVERY WAVE' : 'YOU REACHED WAVE');
         _peSet('pe-sub-num', win ? d.total + ' / ' + d.total : d.wave);
-        _peSet('pe-sub-tail', win ? '' : 'din ' + d.total);
+        _peSet('pe-sub-tail', win ? '' : 'of ' + d.total);
         // you: level and xp from what the account had when the match ended plus what it paid
         const xp1 = _peXp0 + r.xp, l0 = getLevelFromXP(_peXp0), l1 = getLevelFromXP(xp1);
         const from = _LVL_XP[l1], need = (_LVL_XP[l1 + 1] ?? from + 9999) - from, into = xp1 - from, tier = getTier(l1);
@@ -6322,8 +6322,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = Math.round(Math.min(1, into / need) * 100) + '%'; }));
         for (const k of ['normal', 'runner', 'heavy', 'special']) _peSet('pe-k-' + k, _peN(d.kinds[k]));
         // the numbers of the match
-        const w = document.getElementById('pe-st-waves'); w.innerHTML = (win ? d.total : d.wave) + '<small>/ ' + d.total + '</small>'; w.parentNode.className = 'pe-stat ' + (win ? 'is-good' : 'is-bad');
-        const bh = document.getElementById('pe-st-base'); bh.innerHTML = _peN(d.base.hp) + '<small>/ ' + _peN(d.base.max) + '</small>';
+        const w = document.getElementById('pe-st-waves'); w.innerHTML = '<span id="pe-st-waves-n">0</span><small>/ ' + d.total + '</small>'; w.parentNode.className = 'pe-stat ' + (win ? 'is-good' : 'is-bad');
+        const bh = document.getElementById('pe-st-base'); bh.innerHTML = '<span id="pe-st-base-n">0</span><small>/ ' + _peN(d.base.max) + '</small>';
         document.getElementById('pe-st-base-fill').style.width = Math.round(Math.max(0, Math.min(1, d.base.hp / Math.max(1, d.base.max))) * 100) + '%';
         _peSet('pe-st-time', Math.floor(d.timeSec / 60) + ':' + String(d.timeSec % 60).padStart(2, '0'));
         // the road through the waves, with the diamond thresholds
@@ -6336,7 +6336,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ms.appendChild(cell);
             const pip = document.createElement('div'), fell = !win && i === d.wave;
             pip.className = 'pe-pip' + (win || i <= r.wavesCleared ? ' is-done' : fell ? ' is-fall' : '');
-            pip.textContent = fell ? '\u00D7' : i; pips.appendChild(pip);
+            pip.textContent = fell ? '\u00D7' : i; pip.style.setProperty('--i', i); pips.appendChild(pip);
         }
         // the team
         const rows = document.getElementById('pe-rows'); rows.textContent = '';
@@ -6352,10 +6352,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // what it paid
         // the prizes roll up from zero one after the other, then the breakdown and the zombie count
         const _roll = (id, v, delay, prefix) => window.ARJuice.roll(document.getElementById(id), v, { from: 0, ms: 900, delay: delay, prefix: prefix || '' });
-        _roll('pe-p-coins', r.coins, 250, '+'); _roll('pe-p-gems', r.gems, 420, '+'); _roll('pe-p-xp', r.xp, 590, '+'); _roll('pe-st-zombies', d.zombies, 150);
+        const _roll2 = (el, v, delay) => { if (el) window.ARJuice.roll(el, v, { from: 0, ms: 800, delay: delay }); };
+        _roll('pe-st-waves-n', win ? d.total : d.wave, 700); _roll('pe-st-base-n', d.base.hp, 820); _roll('pe-st-zombies', d.zombies, 940);
+        ['normal', 'runner', 'heavy', 'special'].forEach((k, i) => _roll('pe-k-' + k, d.kinds[k], 700 + i * 110));
+        document.querySelectorAll('#pe-rows .pe-trow').forEach((row, i) => { const v = d.team[i]; if (v) { _roll2(row.querySelector('.pe-k'), v.kills, 1100 + i * 90); _roll2(row.querySelector('.pe-d'), v.dmg, 1200 + i * 90); _roll2(row.querySelector('.pe-c'), v.coins, 1300 + i * 90); } });
+        _roll('pe-p-coins', r.coins, 1500, '+'); _roll('pe-p-gems', r.gems, 1700, '+'); _roll('pe-p-xp', r.xp, 1900, '+');
         const [lw, lk, lv] = r.lines;
-        _peSet('pe-w-waves', lw.n + (lw.n === 1 ? ' wave cleared' : ' waves cleared')); _roll('pe-w-waves-c', lw.coins, 700, '+');
-        _roll('pe-w-kills-c', lk.coins, 800, '+'); _roll('pe-w-win-c', lv.coins, 900, '+');
+        _peSet('pe-w-waves', lw.n + (lw.n === 1 ? ' wave cleared' : ' waves cleared')); _roll('pe-w-waves-c', lw.coins, 2000, '+');
+        _roll('pe-w-kills-c', lk.coins, 2100, '+'); _roll('pe-w-win-c', lv.coins, 2200, '+');
         const got = r.milestones.filter(m => m.got).map(m => m.wave);
         _peSet('pe-w-gem-note', win ? 'Wave milestones: ' + got.join(', ') : got.length ? 'Wave milestones reached: ' + got.join(', ') : 'No wave milestones reached');
         document.getElementById('pe-w-gems').innerHTML = '+' + (r.gems | 0) + ' ' + _PE_GEM;
@@ -6365,7 +6369,26 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         document.getElementById('pve-top-hud').style.display = 'none';   // the match HUD is not needed behind the board (game-start shows it again)
         document.getElementById('screen-gameover').style.display = 'none';
         root.style.display = 'flex';
+        _peReveal(root, win);
         try { again.focus({ preventScroll: true }); } catch (_) {}
+    }
+    // The board comes in piece by piece (CSS, the .is-reveal class; every delay is in style.css) and, on a victory, confetti rains over it.
+    // The confetti is made once per board: a few dozen spans with their own colour, size, fall time and sway; they fall on the compositor, no JS per frame.
+    const _PE_CONF = ['#FFC72E', '#FFFFFF', '#FF7A1F', '#46D46A', '#38A7F2', '#FF4B5C'];
+    function _peReveal(root, win) {
+        root.classList.remove('is-reveal'); void root.offsetWidth; root.classList.add('is-reveal');
+        const box = document.getElementById('pe-confetti'); if (!box) return;
+        box.textContent = '';
+        if (!win) return;
+        const n = window.innerWidth < 700 ? 40 : 70, frag = document.createDocumentFragment();
+        for (let i = 0; i < n; i++) {
+            const c = document.createElement('i'), big = Math.random() < 0.3;
+            c.style.cssText = '--x:' + (Math.random() * 100).toFixed(1) + '%;--w:' + (big ? 12 + Math.random() * 6 : 7 + Math.random() * 5).toFixed(1) + 'px;--h:' + (big ? 7 + Math.random() * 4 : 4 + Math.random() * 4).toFixed(1) + 'px;'
+                + '--c:' + _PE_CONF[(Math.random() * _PE_CONF.length) | 0] + ';--t:' + (3.4 + Math.random() * 3.2).toFixed(2) + 's;--d:' + (Math.random() * 1.8).toFixed(2) + 's;'
+                + '--s:' + ((Math.random() - 0.5) * 160).toFixed(0) + 'px;--r:' + ((Math.random() < 0.5 ? -1 : 1) * (360 + Math.random() * 720)).toFixed(0) + 'deg';
+            frag.appendChild(c);
+        }
+        box.appendChild(frag);
     }
     socket.on('pve-end', (d) => {
         gameEnded = true;
@@ -6373,13 +6396,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         hidePvePanel();
         _peData = d; _peNote = undefined;
         _peXp0 = currentProfile ? (currentProfile.xp || 0) : 0;   // before round-stats (sent after this event) overwrites it
-        setTimeout(() => {
-            if (_peData && _peData.reward && Array.isArray(_peData.team)) { _peRender(_peData); return; }
-            document.getElementById('gameover-title').textContent = d.result === 'victory' ? 'VICTORY!' : 'DEFEAT!';
-            document.getElementById('gameover-msg').textContent   = d.result === 'victory' ? `You survived all ${d.wavesCleared} waves!` : `The base fell after ${d.wavesCleared} completed wave${d.wavesCleared === 1 ? '' : 's'}!`;
-            document.getElementById('round-stats-section').style.display = 'none';
-            document.getElementById('screen-gameover').style.display = 'flex';
-        }, 1500);
+        _downHudMode('');
+        // at once: the board is the first thing that shows (nothing else, no small box, no delay)
+        if (_peData && _peData.reward && Array.isArray(_peData.team)) { _peRender(_peData); return; }
+        document.getElementById('gameover-title').textContent = d.result === 'victory' ? 'VICTORY!' : 'DEFEAT!';
+        document.getElementById('gameover-msg').textContent   = d.result === 'victory' ? `You survived all ${d.wavesCleared} waves!` : `The base fell after ${d.wavesCleared} completed wave${d.wavesCleared === 1 ? '' : 's'}!`;
+        document.getElementById('round-stats-section').style.display = 'none';
+        document.getElementById('screen-gameover').style.display = 'flex';
     });
 
     socket.on('game-rematch', ({ isHost, playersMeta }) => {
