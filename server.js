@@ -1095,7 +1095,7 @@ const PVE_ZOMBIE_DEFS = {
     // the shielded: walks on to the base like the tank (never goes for a player or hits one, only barricades, turrets and the base) behind a riot shield:
     // what comes at its front (within `half` radians of where it faces) is stopped, a player's bullet or a machine gun turret's round; from the side or
     // the back it is hurt as any. The Tesla bolt, the bombs and the flames go over the shield. See shieldBlocks in zombie-steer.js.
-    shielded: { hp: 520, chaseSpd: 48, patrolSpd: 28, dmg: 0, attackR: 62, attackCd: 1.2, coinsMin: 10, coinsMax: 16, baseDmg: 65, r: 24, hunts: false, mass: 3,
+    shielded: { hp: 520, chaseSpd: 48, patrolSpd: 28, dmg: 0, attackR: 62, attackCd: 1.2, coinsMin: 10, coinsMax: 16, baseDmg: 50, r: 24, hunts: false, mass: 3,
                 shield: { half: 1.25 } },
     // the screamer: fast and hard-hitting. It goes for the nearest player from the moment it spawns (no detection range): when it gets within `near` of one it stops
     // for a moment and screams, and every turret of any kind within `range` of IT is stunned for `stun` seconds (it does not fire, flame or heal); then it
@@ -1105,7 +1105,7 @@ const PVE_ZOMBIE_DEFS = {
     // the dark versions of the normal and the runner for the late waves: much more health and a harder hit, and nothing else new about them
     ghoul: { hp: 340, chaseSpd: 66, patrolSpd: 34, dmg: 34, attackR: 58, attackCd: 1.0, coinsMin: 5, coinsMax: 8, baseDmg: 26, r: 23, hunts: true, mass: 2 },
     stalker: { hp: 160, chaseSpd: 138, patrolSpd: 70, dmg: 20, attackR: 52, attackCd: 0.7, coinsMin: 6, coinsMax: 9, baseDmg: 15, r: 17, hunts: true, mass: 1 },
-    minion: { hp: 200, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 2, coinsMax: 4, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
+    minion: { hp: 250, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 2, coinsMax: 4, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
 };
 const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses

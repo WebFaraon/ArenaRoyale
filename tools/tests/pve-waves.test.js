@@ -57,16 +57,22 @@ test('the new kinds come in one at a time: tanks from wave 4, spitters 5, explod
     assert.equal(first('normal'), 1);
 });
 
-test('the shielded: 520 health, a wider shield, a harder hit on what it bashes, in numbers that grow to 13; they do not outnumber half of the walkers', () => {
+test('the shielded: 520 health, a wider shield, a harder hit on what it bashes (50), in numbers that grow to 13; they do not outnumber half of the walkers', () => {
     const k = idx('shielded');
     assert.equal(waves.findIndex(w => w[k] > 0) + 1, 7);
     for (const w of waves) assert.ok(w[k] <= walkers(w) / 2 && w[k] <= 13);
     assert.equal(waves[19][k], 13, 'the last wave has 13 of them');
     assert.equal(hp('shielded'), 520);
     assert.match(defs, /shielded:[^}]*shield: \{ half: 1\.25 \}/);
-    assert.match(defs, /shielded:[^}]*baseDmg: 65/);
+    assert.match(defs, /shielded:[^}]*baseDmg: 50/);
     assert.match(defs, /shielded:[^}]*coinsMin: 10, coinsMax: 16/);
     assert.match(defs, /shielded:[^}]*hunts: false/);
+});
+
+test('the minion: 250 health, it does not grow with the waves', () => {
+    assert.equal(hp('minion'), 250);
+    assert.match(defs, /minion:[^}]*noScale: true/);
+    assert.match(src, /ARShared|PVE_ZOMBIE_DEFS\.minion/, 'the summoner reads the def');
 });
 
 test('the screamer: 450 health, fast, hits hard, goes for the nearest player from the start, screams once when it is near them and stuns every turret within 300 of it for 2 s', () => {
@@ -95,4 +101,16 @@ test('more players, more zombies: +40% for each player after the first (up to 4)
     assert.deepEqual([1, 2, 3, 4, 6].map(n => Math.round(mul(n) * 10) / 10), [1, 1.4, 1.8, 2.2, 2.2]);
     assert.match(src, /bsize = Math\.max\(PVE_BATCH_SIZE, Math\.ceil\(types\.length \/ 10\)\)/);
     assert.match(src, /next: pveWaveRow\(room\.pveWave, room\._playerArr\.length\)/);
+});
+
+test('the runner and the stalker have no white motion lines behind them; the scream is drawn by _screamFx (built once, nothing made per frame)', () => {
+    for (const f of ['zombi_rapid.svg', 'zombi_stalker.svg']) {
+        const svg = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'images', 'zombies', f), 'utf8');
+        assert.ok(!/<g stroke="#fff"[^>]*opacity="\.55"/.test(svg), f + ' has no white speed lines');
+        assert.ok(svg.trimEnd().endsWith('</svg>'));
+    }
+    const game = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'game.js'), 'utf8');
+    assert.ok(/_zFxPush\(_screamFx\(x, y, r\)\)/.test(game) && /function _screamFx\(x, y, r\)/.test(game));
+    const i = game.indexOf("f.k === 'scream'"), block = game.slice(i, i + 4200);
+    assert.ok(!/\[\s*\]|\{\s*\}|new Array|\.push\(/.test(block.slice(0, block.indexOf('summon: a purple ring'))), 'no allocation in the scream drawing');
 });

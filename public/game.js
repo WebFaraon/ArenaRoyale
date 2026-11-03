@@ -3772,6 +3772,15 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     // The clang of a shield stopping a round or a bullet (event shield-block: [zombie x, zombie y, angle x100 to where it came from]): a flash and a ring on
     // the shield and a few sparks glancing off to the sides.
+    // A scream (event scream): the burst at the mouth, four waves of broken arcs going out to the range, comic-book speed lines and, at the end, the
+    // reach of the stun drawn as a dashed ring. Everything the drawing needs is worked out here, once, so a frame makes nothing.
+    const _SCREAM_DASH = [10, 9], _NO_DASH = [];   // (kept, so the drawing makes no array a frame)
+    function _screamFx(x, y, r) {
+        const f = { k: 'scream', x0: x, y0: y, r, t0: performance.now(), rot: _rnd() * TAU, sl: [], tip: [] };
+        for (let i = 0; i < 18; i++) f.sl.push({ a: (i / 18) * TAU + (_rnd() - 0.5) * 0.25, d: _rnd(), l: 9 + _rnd() * 14 });   // speed lines: angle, head start, length
+        for (let i = 0; i < 14; i++) f.tip.push(i % 2 ? 0.5 : 0.92 + _rnd() * 0.16);                                         // the burst's points (long, short, long...)
+        return f;
+    }
     function _clangFx(x, y, a) {
         const f = { k: 'clang', x0: x, y0: y, a, t0: performance.now(), sp: [] };
         for (let i = 0; i < 6; i++) f.sp.push({ a: a + (_rnd() * 2 - 1) * 1.5, v: 70 + _rnd() * 90, l: 7 + _rnd() * 8 });
@@ -3894,17 +3903,49 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     ctx.globalAlpha = 1 - u; ctx.beginPath(); ctx.moveTo(px + c * r0, py + s * r0); ctx.lineTo(px + c * r1, py + s * r1); ctx.stroke();
                 }
                 ctx.lineCap = 'butt'; ctx.globalAlpha = 1;
-            } else if (f.k === 'scream') {   // three rings of sound out to the range of the scream, the first fastest, and a flash at the mouth
-                if (age >= 800) { _zFx.splice(i, 1); continue; }
-                ctx.lineJoin = 'round';
-                for (let k = 0; k < 3; k++) {
-                    const u = (age - k * 110) / 620; if (u <= 0 || u >= 1) continue;
-                    const e = 1 - (1 - u) * (1 - u), rr = 24 + (f.r - 24) * e * (1 - k * 0.07);
-                    ctx.globalAlpha = (1 - u) * 0.85; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 7 * (1 - u) + 2; ctx.beginPath(); ctx.arc(f.x0, f.y0, rr, 0, TAU); ctx.stroke();
-                    ctx.strokeStyle = k === 0 ? '#FFFFFF' : '#BFD6FF'; ctx.lineWidth = 3.4 * (1 - u) + 0.8; ctx.beginPath(); ctx.arc(f.x0, f.y0, rr, 0, TAU); ctx.stroke();
+            } else if (f.k === 'scream') {   // see _screamFx: the burst, four waves of arcs, speed lines, the reach of the stun
+                if (age >= 1000) { _zFx.splice(i, 1); continue; }
+                const X = f.x0, Y = f.y0, R = f.r;
+                ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+                // the shock on the ground: a flat pink disc at the front of the first wave, fading
+                const u0 = Math.min(1, age / 620);
+                if (u0 < 1) { const e0 = 1 - (1 - u0) * (1 - u0); ctx.globalAlpha = (1 - u0) * 0.10; ctx.fillStyle = '#FF8DB0'; ctx.beginPath(); ctx.arc(X, Y, 24 + (R - 24) * e0, 0, TAU); ctx.fill(); }
+                // four waves of broken arcs (seven pieces each, turning a little as they go), ink outline under a colour
+                for (let k = 0; k < 4; k++) {
+                    const u = (age - k * 95) / 640; if (u <= 0 || u >= 1) continue;
+                    const e = 1 - (1 - u) * (1 - u) * (1 - u), rr = 26 + (R - 26) * e * (1 - k * 0.06), fade = Math.pow(1 - u, 0.8);
+                    const turn = f.rot + k * 0.55 + (k & 1 ? -1 : 1) * u * 0.7, seg = TAU / 7, span = seg * (0.62 - k * 0.04);
+                    ctx.beginPath();
+                    for (let j = 0; j < 7; j++) { const a0 = turn + j * seg; ctx.moveTo(X + Math.cos(a0) * rr, Y + Math.sin(a0) * rr); ctx.arc(X, Y, rr, a0, a0 + span); }
+                    ctx.globalAlpha = fade * 0.95; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 11 * (1 - u) + 3.2 - k * 0.6; ctx.stroke();
+                    ctx.strokeStyle = k === 0 ? '#FFFFFF' : k === 1 ? '#FF8DB0' : k === 2 ? '#FFE27A' : '#FFD0E0'; ctx.lineWidth = 6 * (1 - u) + 1.4 - k * 0.2; ctx.stroke();
                 }
-                if (age < 220) { ctx.globalAlpha = 1 - age / 220; ctx.fillStyle = '#E8F1FF'; ctx.beginPath(); ctx.arc(f.x0, f.y0, 16 + 22 * (age / 220), 0, TAU); ctx.fill(); }
-                ctx.globalAlpha = 1;
+                // speed lines flying out with the first wave
+                if (age < 520) {
+                    const u = age / 520, e = 1 - (1 - u) * (1 - u);
+                    ctx.beginPath();
+                    for (let j = 0; j < f.sl.length; j++) {
+                        const q = f.sl[j], r0 = 30 + (R * 0.82) * Math.min(1, e * (0.55 + q.d * 0.6)), r1 = r0 + q.l * (1 - u), c = Math.cos(q.a), sn = Math.sin(q.a);
+                        ctx.moveTo(X + c * r0, Y + sn * r0); ctx.lineTo(X + c * r1, Y + sn * r1);
+                    }
+                    ctx.globalAlpha = (1 - u) * 0.9; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 5.2 * (1 - u) + 1.6; ctx.stroke();
+                    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2.6 * (1 - u) + 0.8; ctx.stroke();
+                }
+                // the burst at the mouth: a pink star with an ink edge and a white heart, popping out and gone in a fifth of a second
+                if (age < 240) {
+                    const u = age / 240, e = 1 - (1 - u) * (1 - u), Rb = 14 + 40 * e, n = f.tip.length;
+                    ctx.globalAlpha = 1 - u * u; ctx.beginPath();
+                    for (let j = 0; j < n; j++) { const a = f.rot + (j / n) * TAU, rj = Rb * f.tip[j]; if (j) ctx.lineTo(X + Math.cos(a) * rj, Y + Math.sin(a) * rj); else ctx.moveTo(X + Math.cos(a) * rj, Y + Math.sin(a) * rj); }
+                    ctx.closePath(); ctx.fillStyle = '#FF8DB0'; ctx.fill(); ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 3.4 * (1 - u) + 1; ctx.stroke();
+                    ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(X, Y, Rb * 0.38, 0, TAU); ctx.fill();
+                }
+                // the reach of the stun, a dashed ring that appears where the first wave ends and fades
+                if (age > 380) {
+                    const u = Math.min(1, (age - 380) / 620), a = u < 0.25 ? u / 0.25 : 1 - (u - 0.25) / 0.75;
+                    ctx.globalAlpha = a * 0.55; ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2.4; ctx.setLineDash(_SCREAM_DASH);
+                    ctx.beginPath(); ctx.arc(X, Y, R, 0, TAU); ctx.stroke(); ctx.setLineDash(_NO_DASH);
+                }
+                ctx.globalAlpha = 1; ctx.lineCap = 'butt';
             } else {   // summon: a purple ring and sparks round the summoner
                 if (age >= 700) { _zFx.splice(i, 1); continue; }
                 const u = age / 700;
@@ -5881,7 +5922,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // A screamer has screamed (x, y, r its range, ms how long the turrets are stunned, ids the turrets it got): rings of sound go out from it, and the turrets look dazed
     socket.on('scream', ({ x, y, r, ms, ids }) => {
         const now = performance.now();
-        _zFxPush({ k: 'scream', x0: x, y0: y, r, t0: now });
+        _zFxPush(_screamFx(x, y, r));
         for (let i = 0; i < ids.length; i++) { const t = _turrets.find(q => q.id === ids[i]); if (t) t.stunUntil = now + ms; }
     });
     // The zombies the Flamethrowers hit (ids, every 250 ms): they stay red while they burn
@@ -6554,7 +6595,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { r: 18, maxHp: 110, bodyColor: '#E2773A', innerColor: '#F7A862', armColor: '#B85A22', armStroke: '#5A2A0E', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 4 exploder
         { r: 34, maxHp: 900, heavy: true, warn: 'BRUTA', bodyColor: '#7B8493', innerColor: '#A5AEBD', armColor: '#59616E', armStroke: '#262B34', ringColor: '#C0C6D0', ringFill: 'rgba(192,198,208,0.10)' },   // 5 brute
         { r: 30, maxHp: 500, heavy: true, warn: 'SUMMONER', bodyColor: '#8A5FB8', innerColor: '#B591DC', armColor: '#6B449A', armStroke: '#2F1A4A', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.12)' },   // 6 summoner
-        { r: 15, maxHp: 200, noScale: true, bodyColor: '#9B7BD0', innerColor: '#C2A9EA', armColor: '#7A5CB8', armStroke: '#3A2A60', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.10)' },   // 7 minion
+        { r: 15, maxHp: 250, noScale: true, bodyColor: '#9B7BD0', innerColor: '#C2A9EA', armColor: '#7A5CB8', armStroke: '#3A2A60', ringColor: '#B070FF', ringFill: 'rgba(176,112,255,0.10)' },   // 7 minion
         { r: 24, maxHp: 520, bigBar: true, bodyColor: '#7C9A78', innerColor: '#A7C4A2', armColor: '#5E7A5A', armStroke: '#25422A', ringColor: '#FF9F1C', ringFill: 'rgba(255,159,28,0.10)' },   // 8 shielded
         { r: 21, maxHp: 450, bodyColor: '#D9A0A0', innerColor: '#F1C8C4', armColor: '#A8666E', armStroke: '#4A2A2E', ringColor: '#FFD34D', ringFill: 'rgba(255,211,77,0.10)' },   // 9 screamer
         { r: 23, maxHp: 340, bodyColor: '#3E5A38', innerColor: '#5E8050', armColor: '#2F4A2D', armStroke: '#16240F', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },   // 10 ghoul (the dark normal)
