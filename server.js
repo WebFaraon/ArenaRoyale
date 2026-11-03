@@ -2040,6 +2040,7 @@ function addPlayer(code, room, socket, data) {
         reloading: false, reloadProgress: 0, reloadReq: false, lastShotTime: 0,
         bulletSpeed: _ws.bulletSpeed,
         alive: true, kills: 0, lastDamageTime: 0, rs: Missions.newRoundStats(),
+        waitLoad: !!data.loader,   // the client has a loading screen and says match-ready when it is gone: the countdown waits for it (beginMatchCountdown)
         lastAckSeq: 0, pendingAckSeq: 0,
         coins: 0,
         lastInputAt: 0, stalled: false, backlogged: false, nextKeepAt: 0,   // slow client detection (STALL_MS)
@@ -3084,6 +3085,20 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
     }
 }
 
+// The countdown of a match: the clients show 3, 2, 1, GO (3700 ms) and the server holds the players still for the same time, then the
+// match goes on (a PvE match starts its first wave).
+const LOAD_WAIT_MS = 20000;
+function beginMatchCountdown(code, room) {
+    if (!rooms.has(code) || room._cdStarted || !room.gameStarted) return;
+    room._cdStarted = true;
+    clearTimeout(room._loadTimer);
+    io.to(code).emit('countdown-start', { ms: 3700 });
+    setTimeout(() => {
+        if (rooms.has(code)) room.countdownActive = false;
+        if (rooms.has(code) && room.mode === 'pve') startPveWave(code, room);
+    }, 3700);
+}
+
 function triggerRematch(code, room) {
     const diagState = NET_DIAG.forRoom(code);
     if (diagState) { try { diagState.socket.emit('netdiag-ended', { session: diagState.session, reason: 'rematch' }); } catch (_) {} NET_DIAG.release(diagState.socket); }
@@ -3142,6 +3157,7 @@ function closeRoom(code, room) {
     const diagState = NET_DIAG.forRoom(code);
     if (diagState) { try { diagState.socket.emit('netdiag-ended', { session: diagState.session, reason: 'room-closed' }); } catch (_) {} NET_DIAG.release(diagState.socket); }
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); }
+    clearTimeout(room._loadTimer);
     io.to(code).emit('game-reset');
     rooms.delete(code);
     console.log(`[${code}] Camera inchisa`);
@@ -3285,12 +3301,24 @@ io.on('connection', (socket) => {
         io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles, mode: room.mode, season: room.season });
         console.log(`[${code}] Joc pornit cu ${room._playerArr.length} jucatori (${room.mode})`);
 
-        setTimeout(() => {
-            if (rooms.has(code)) room.countdownActive = false;
-            if (rooms.has(code) && room.mode === 'pve') startPveWave(code, room);
-        }, 3700);
+        // The 3-2-1 starts when every client that has a loading screen has said it is gone (match-ready), not before: the players see the
+        // screen, then the count. A client that never answers is not waited for more than LOAD_WAIT_MS; one without a loading screen (the
+        // test harness) is not waited for at all.
+        room._cdStarted = false;
+        room._loadWait = new Set(room._playerArr.filter(p => p.waitLoad).map(p => p.id));
+        clearTimeout(room._loadTimer);
+        if (room._loadWait.size === 0) beginMatchCountdown(code, room);
+        else room._loadTimer = setTimeout(() => beginMatchCountdown(code, room), LOAD_WAIT_MS);
 
         startRoomLoop(code, room);
+    });
+
+    // A client's loading screen is gone: when the last one has said so, the countdown starts
+    socket.on('match-ready', () => {
+        const r = fastGetRoom(socket);
+        if (!r || !r.room.gameStarted || !r.room._loadWait) return;
+        r.room._loadWait.delete(socket.id);
+        if (r.room._loadWait.size === 0) beginMatchCountdown(r.code, r.room);
     });
 
     socket.on('input', (data) => {
@@ -3504,6 +3532,7 @@ io.on('connection', (socket) => {
         if (!result) return;
         const { code, room } = result;
         room.rematchVotes.delete(socket.id);
+        if (room._loadWait) room._loadWait.delete(socket.id);
         const _leavingP = room.players[socket.id];
         if (_leavingP && _leavingP.work) cancelWork(code, room, _leavingP);
         if (_leavingP) flushWeaponStats(_leavingP); // left early: the weapon counts so far still count
@@ -3524,6 +3553,7 @@ io.on('connection', (socket) => {
         }
 
         if (!room.gameStarted) broadcastWaiting(code, room);
+        if (room.gameStarted && room._loadWait && room._loadWait.size === 0) beginMatchCountdown(code, room);   // the one who was holding the countdown left
 
         if (room.gameEnded) {
             const remaining = room._playerArr.length;

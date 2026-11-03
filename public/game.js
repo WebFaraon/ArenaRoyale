@@ -2770,10 +2770,12 @@ function _warmPlayerSprites(ids, playerImages, scale) {
     }
     return missing;
 }
-function _beginMatchLoad(data, playerImages) {
-    if (!window.ARLoader) return null;
+// Tell the server this client is ready (its loading screen is gone, the scene is made): when all are, the countdown starts
+function _matchReady(socket) { setTimeout(() => { try { socket.emit('match-ready'); } catch (e) { /* gone */ } }, 60); }
+function _beginMatchLoad(data, playerImages, onGone) {
+    if (!window.ARLoader) { if (onGone) onGone(); return null; }
     const meta = (data && data.playersMeta) || {}, season = (data && data.season) || 'vara';
-    const ld = ARLoader.begin({ delay: 150, timeout: 15000, tips: true, onDone: () => { if (_matchLoad === ld) _matchLoad = null; } });
+    const ld = ARLoader.begin({ delay: 0, minShow: 700, timeout: 15000, tips: true, onDone: () => { if (_matchLoad === ld) _matchLoad = null; if (onGone) setTimeout(onGone, 420); } });   // shown at once; the fade is 400 ms, the count starts after it
     ld.add('fonts', 1, 'Loading fonts');
     ld.poll('fonts', () => (document.fonts && document.fonts.status === 'loading') ? 0 : 1);
     ld.add('map', 4, 'Loading the arena');
@@ -3146,7 +3148,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     const socket = _sessionSocket || _watchBuild(io(_ioFallbackOpts));
     _sessionSocket = null;
 
-    const playerData = { name: playerName, skin: playerSkin, stats: playerStats, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode || 'br', proto: ARNet.PROTO };
+    const playerData = { name: playerName, skin: playerSkin, stats: playerStats, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode || 'br', proto: ARNet.PROTO, loader: 1 };   // loader: this client has a loading screen: the server waits for match-ready before the 3-2-1
 
     if (roomAction.action === 'create') {
         socket.emit('create-room', playerData);
@@ -3299,7 +3301,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
         document.getElementById('players-alive').textContent = '0';
         document.getElementById('kill-feed').innerHTML       = '';
         const _isPve = (data && data.mode) === 'pve';
-        showCountdown();
+        gameControl.countdownActive = true;   // nobody moves until the 3-2-1 is over: it starts (countdown-start) when every loading screen is gone
         document.getElementById('btn-rematch').onclick = () => {
             socket.emit('rematch');
             const btn = document.getElementById('btn-rematch');
@@ -3322,15 +3324,19 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
         };
         if (!gameLoopStarted) {
             gameLoopStarted = true;
-            _matchLoad = _beginMatchLoad(data, playerImages);
+            _matchLoad = _beginMatchLoad(data, playerImages, () => _matchReady(socket));
             startGameLoop(socket, canvas, ctx, playerImages, gameControl);
         } else if (gameControl.reset) {
             gameControl.reset();
+            _matchReady(socket);   // a rematch: everything is loaded already, the count can start
         }
         // Set AFTER reset — reset ascunde pve-top-hud
         document.getElementById('pve-top-hud').style.display = _isPve ? 'flex' : 'none';
         document.getElementById('game-ui').style.display     = _isPve ? 'none' : 'block';
     });
+
+    // The server says every loading screen is gone: now the 3, 2, 1
+    socket.on('countdown-start', () => showCountdown());
 
     socket.on('game-reset', reloadAfterDiagnostic);
 

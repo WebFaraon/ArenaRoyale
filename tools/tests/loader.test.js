@@ -68,7 +68,7 @@ test('the page has the loading screen, the new wordmark and no grey lanes; the s
 test('the game waits for the backdrop and for the match: sprites, skins, guns and the first frames', () => {
     const game = read('public/game.js'.replace('public/', '')), art = read('arena-art.js');
     assert.ok(/ARLoader\.boot\.set\('field', 1\)/.test(game), 'the backdrop reports to the boot screen');
-    assert.ok(/_matchLoad = _beginMatchLoad\(data, playerImages\)/.test(game), 'a match starts behind the loading screen');
+    assert.ok(/_matchLoad = _beginMatchLoad\(data, playerImages, \(\) => _matchReady\(socket\)\)/.test(game), 'a match starts behind the loading screen and tells the server when it is gone (the 3-2-1 waits for it)');
     for (const part of ["'map'", "'zombies'", "'guns'", "'skins'", "'warm'"]) assert.ok(game.includes('ld.add(' + part), 'part ' + part);
     assert.ok(/_warmPlayerSprites\(/.test(game) && /_ld\.set\('warm'/.test(game), 'the game loop reports the warm-up');
     assert.ok(/_gunsProgress[\s\S]*?_gunLook\(w, sk\)/.test(game), 'the equipped weapon skin sprite is waited for, not the base gun');
