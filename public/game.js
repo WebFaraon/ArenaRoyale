@@ -3387,6 +3387,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     let aimStartTime         = null;
     let gameEnded    = false;
     let _selfDead    = false;
+    // PvE: a player at zero health is knocked down for a while (the knock bar drains), a teammate can lift them with E, and when the bar is empty they are out.
+    // By events (player-down / revive-work / revive-end / player-up / player-out), not gs2. _down[id] = { x, y, ms (left at t0), t0, rev: { by, t0, dur } | null }
+    const _down = {};
+    let _selfDown = false, _selfOut = false;
+    const _DOWN_MAX = 30000, _REVIVE_R = 84;   // the knock bar's full length; how close a teammate has to be (the server allows 90)
     let myAngle      = 0;
     let moveAngle    = 0;
 
@@ -3441,6 +3446,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     let _gjX = null, _gjY = null, _gjBurst = 0;   // the camera of the last frame, and the frames left of the burst of tile builds after a jump
     const _pveState = { baseHp: 1000, baseMaxHp: 1000, wave: 0, waveBreak: false, breakTimer: 0, breakTimerMax: 15, myCoins: 0 };
     const _playerDeathFx  = [];  // { x, y, startTime, shards }
+    function _spawnPlayerDeathFx(x, y) {
+        const _dshards = [];
+        const _dk0 = (Math.random() * 5) | 0;   // player pieces are kinds 5-9
+        for (let _si = 0; _si < 8; _si++) {
+            _dshards.push({ angle: (_si / 8) * Math.PI * 2 + Math.random() * 0.5, speed: 45 + Math.random() * 55, rot: Math.random() * Math.PI, rotSpeed: (Math.random() - 0.5) * 9, kind: 5 + (_dk0 + _si) % 5, size: 0.85 + Math.random() * 0.35 });
+        }
+        _playerDeathFx.push({ x, y, startTime: performance.now(), shards: _dshards });
+    }
     const _prevPlayerAlive = {};
     const _healthKits   = new Map(); // id → {x, y, timeLeft}
     const _kitPickupFx  = [];        // { x, y, amount, startTime }
@@ -4281,7 +4294,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_bar.kind !== 'b') socket.emit('place-turret', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), kd: _BAR_KINDS[_bar.kind].kd });
         else socket.emit('place-struct', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), o: _bar.g.o });
     }
-    function _barUse() { if (_bar.use && !_bar.place) socket.emit('use-struct', { id: _bar.use.id }); }
+    function _barUse() {
+        if (_bar.place) return;
+        if (_bar.revive) { socket.emit('revive-player', { id: _bar.revive }); return; }   // a teammate is down next to you: lift them
+        if (_bar.use) socket.emit('use-struct', { id: _bar.use.id });
+    }
+    // The knock bar's time left (ms): it holds while somebody lifts them and in the break between waves (the server holds it too)
+    function _downLeft(d, now) { return Math.max(0, (d.rev || _pveState.waveBreak) ? d.ms : d.ms - (now - d.t0)); }
+    function _downSnap(now) { for (const id in _down) { const d = _down[id]; d.ms = _downLeft(d, now); d.t0 = now; } }
     function _barSell() { if (_bar.use && !_bar.place && !_selfDead) socket.emit('sell-struct', { id: _bar.use.id }); }   // X: take down the one next to you (it gives back ARStructs.SELL.rate of what it cost)
     // Where the ghost stands and whether the barricade can go there (the same check the server makes)
     function _barGhost(players, now, zoom) {
@@ -4307,21 +4327,32 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             for (let i = 0; i < _structs.length; i++) { const d = ARStructs.distToRect(predX, predY, _structs[i]); if (d <= reach && d < bd) { bd = d; best = _structs[i]; } }
             for (let i = 0; i < _turrets.length; i++) { const d = ARStructs.turretDist(predX, predY, _turrets[i]); if (d <= PLAYER_HIT_R + ARStructs.TURRET.useRange && d < bd) { bd = d; best = _turrets[i]; } }
         }
+        // a teammate who is down within reach (and not already being lifted) comes before any barricade: E lifts them
+        let rv = null;
+        if (predX !== null && !_bar.place && !_selfDead && !_pveState.waveBreak) {
+            let rd = 1e9;
+            for (const id in _down) { const d = _down[id]; if (id === socket.id || d.rev) continue; const dist = Math.hypot(predX - d.x, predY - d.y); if (dist <= _REVIVE_R && dist < rd) { rd = dist; rv = id; } }
+        }
+        _bar.revive = rv;
+        if (rv) best = null;
         _bar.use = best;
         const tur = best && best.k === 't';
         const act = best && !_bar.work.has(best.id) ? (tur ? ARStructs.turretUseAction(best) : ARStructs.useAction(best)) : null;   // not while it is being worked on
         const cost = !act ? 0 : tur ? (act === 'repair' ? ARStructs.turretRepairCost(best) : ARStructs.turretUpgradeCost(best)) : act === 'repair' ? ARStructs.repairCost(best) : ARStructs.upgradeCost(best);
         const can = _pveState.myCoins >= cost;
         _bar.act = act; _bar.can = can;   // for the highlight on the thing E would work on
-        const key = act ? act + cost + (can ? 'y' : 'n') : '';
         // SELL: shown whenever something is within reach (not while it is being worked on)
         const sellV = best && !_bar.work.has(best.id) ? ARStructs.sellValue(best) : 0, e0 = _bar.els || _barEls();
         if (e0.sell && _bar.sellV !== sellV) { _bar.sellV = sellV; e0.sell.style.display = sellV ? '' : 'none'; if (sellV && e0.sellCost) e0.sellCost.textContent = sellV; }
+        const key = rv ? 'revive' + rv : act ? act + cost + (can ? 'y' : 'n') : '';
         if (key === _bar.useKey) return;
         _bar.useKey = key;
         const e = _bar.els || _barEls();
         if (!e.use) return;
-        e.use.style.display = act ? '' : 'none';
+        e.use.style.display = act || rv ? '' : 'none';
+        e.use.classList.toggle('is-revive', !!rv);
+        if (e.useCost && e.useCost.parentNode) e.useCost.parentNode.style.display = rv ? 'none' : '';
+        if (rv) { e.useTxt.textContent = 'REVIVE'; e.use.classList.remove('is-repair', 'is-upgrade', 'is-bad'); e.useIc.setAttribute('href', '#heart-pulse'); return; }
         if (!act) return;
         e.use.classList.toggle('is-repair', act === 'repair');
         e.use.classList.toggle('is-upgrade', act === 'upgrade');
@@ -5320,14 +5351,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const meta = playerMeta[id] || {};
             if (!alive) _hiddenPlayers.delete(id);
             // Detectie moarte jucator → efect vizual
-            if (!alive && _prevPlayerAlive[id] === true && id !== socket.id) {
-                const _dshards = [];
-                const _dk0 = (Math.random() * 5) | 0;   // player pieces are kinds 5-9
-                for (let _si = 0; _si < 8; _si++) {
-                    _dshards.push({ angle: (_si / 8) * Math.PI * 2 + Math.random() * 0.5, speed: 45 + Math.random() * 55, rot: Math.random() * Math.PI, rotSpeed: (Math.random() - 0.5) * 9, kind: 5 + (_dk0 + _si) % 5, size: 0.85 + Math.random() * 0.35 });
-                }
-                _playerDeathFx.push({ x, y, startTime: performance.now(), shards: _dshards });
-            }
+            if (!alive && _prevPlayerAlive[id] === true && id !== socket.id && !_down[id]) _spawnPlayerDeathFx(x, y);   // (a player who is down only falls: the pieces fly when they are out)
             _prevPlayerAlive[id] = !!alive;
             entry.players[id] = { id, x, y, angle, hp, maxHp: meta.maxHp || 500, alive: !!alive, kills, name: meta.name || '' };
         });
@@ -5431,17 +5455,108 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('kill-event', ({ killerName, victimName, byZone, victimId }) => {
-        if (victimId && victimId !== socket.id) _hiddenPlayers.add(victimId);
+        if (victimId && victimId !== socket.id && _gameMode !== 'pve') _hiddenPlayers.add(victimId);   // (in PvE a player goes down first: they stay on the ground)
         const entry = document.createElement('div');
         entry.className = 'kill-entry';
         entry.textContent = byZone
             ? `${victimName} was eliminated by the zone`
-            : `${killerName} eliminated ${victimName}`;
+            : _gameMode === 'pve' ? `${victimName} went down` : `${killerName} eliminated ${victimName}`;
         killFeedEl.appendChild(entry);
-        if (_gameMode === 'pve') _pveFeed(`${victimName} a cazut`, true);
+        if (_gameMode === 'pve') _pveFeed(`${victimName} went down`, true);
         setTimeout(() => { if (entry.parentNode) entry.parentNode.removeChild(entry); }, 4000);
         while (killFeedEl.children.length > 5) killFeedEl.removeChild(killFeedEl.firstChild);
     });
+
+    // ---------- PLAYER DOWN (PvE) ----------
+    socket.on('player-down', ({ id, x, y, ms }) => {
+        const now = performance.now();
+        _down[id] = { x, y, ms, t0: now, rev: null, ang: id === socket.id ? myAngle : 0 };
+        if (id === socket.id) {
+            _selfDown = true; _selfOut = false; _selfDead = true;
+            moveDir.x = 0; moveDir.y = 0; isShooting = false; aimStartTime = null;
+            _pendingInputs.length = 0; _resetMoveV(); keysHeld.clear();
+            _barPlaceMode(false);
+            _downHudMode('down');
+        }
+        _hiddenPlayers.delete(id);
+    });
+    socket.on('revive-work', ({ id, by, dur, ms }) => {
+        const d = _down[id], now = performance.now();
+        if (!d) return;
+        d.ms = ms; d.t0 = now; d.rev = { by, t0: now, dur };
+        _bar.useKey = '-';
+        if (id === socket.id) _downHudMode('rev');
+    });
+    socket.on('revive-end', ({ id, done, ms }) => {
+        const d = _down[id], now = performance.now();
+        if (!d) return;
+        d.rev = null; d.t0 = now; if (!done) d.ms = ms;
+        _bar.useKey = '-';
+        if (id === socket.id && !done) _downHudMode('down');
+    });
+    socket.on('player-up', ({ id }) => {
+        const d = _down[id];
+        delete _down[id];
+        _hiddenPlayers.delete(id);
+        _bar.useKey = '-';
+        if (d) _fxSpawn('repair', { x: d.x, y: d.y, o: 0, t: 0, k: 't' }, performance.now());   // green plusses over them
+        if (id === socket.id) {
+            _selfDown = false; _selfDead = false;
+            _pendingInputs.length = 0; _resetMoveV();
+            isShooting = false; aimStartTime = null; _shootMustRelease = false; _clientHasReleased = true; _clientNextShotAt = 0;
+            _downHudMode('');
+        }
+    });
+    socket.on('player-out', ({ id, x, y }) => {
+        delete _down[id];
+        _bar.useKey = '-';
+        if (id !== socket.id) { _hiddenPlayers.add(id); _spawnPlayerDeathFx(x, y); }
+        else { _selfDown = false; _selfOut = true; _selfDead = true; _spawnPlayerDeathFx(x, y); _downHudMode('out'); }
+    });
+    // The banner of the player who is down / out (#down-hud): the knock bar and what to do. DOM touched only when something changes.
+    const _dh = { mode: '', fill: -1, sec: -1, el: null, t: 0 };
+    function _downHudMode(mode) {
+        const el = _dh.el || (_dh.el = document.getElementById('down-hud'));
+        if (!el) return;
+        _dh.mode = mode; _dh.fill = -1; _dh.sec = -1; _dh.rp = -1;
+        clearTimeout(_dh.t);
+        el.style.display = mode ? '' : 'none';
+        el.classList.toggle('is-rev', mode === 'rev');
+        el.classList.toggle('is-out', mode === 'out');
+        if (!mode) return;
+        document.getElementById('dh-title').textContent = mode === 'rev' ? 'GETTING UP' : mode === 'out' ? 'YOU ARE OUT' : 'YOU ARE DOWN';
+        document.getElementById('dh-sub').textContent = mode === 'rev' ? 'A teammate is lifting you' : mode === 'out' ? 'You are out until the match ends. Watch your team.' : 'Stay put: a teammate next to you can lift you with E';
+        if (mode === 'out') { _dh.t = setTimeout(() => { if (_dh.mode === 'out') _downHudMode(''); }, 5000); setTimeout(() => { if (_selfOut && !isSpectating && window._startSpectating) window._startSpectating(); }, 900); }
+    }
+    function _downHudTick(now) {
+        const d = _down[socket.id];
+        if (!d || (_dh.mode !== 'down' && _dh.mode !== 'rev')) return;
+        const left = _downLeft(d, now), f = Math.round(left / _DOWN_MAX * 200) / 200, sec = Math.ceil(left / 1000);
+        if (f !== _dh.fill) { _dh.fill = f; document.getElementById('dh-fill').style.transform = 'scaleX(' + f + ')'; document.getElementById('dh-bar').classList.toggle('is-low', f < 0.34); }
+        if (sec !== _dh.sec) { _dh.sec = sec; document.getElementById('dh-time').textContent = sec + 's'; }
+        if (d.rev) { const p = Math.max(0, Math.min(1, (now - d.rev.t0) / d.rev.dur)), q = Math.round(p * 100); if (q !== _dh.rp) { _dh.rp = q; document.getElementById('dh-rev').style.transform = 'scaleX(' + (q / 100) + ')'; } }
+    }
+    // A player who is down: the body lying there, dimmed, with an orange ring, the name, the knock bar, and (when somebody lifts them) a ring that fills
+    function _drawDownedPlayer(ctx, id, d, now, ringR, lblScale, players, wm, bulletNow) {
+        const left = _downLeft(d, now), ratio = left / _DOWN_MAX, isMe = id === socket.id;
+        const pl = players[id], ang = isMe ? myAngle : ((pl && pl.angle) || d.ang || 0);
+        const pulse = 0.5 + 0.5 * Math.sin(now / (110 + 420 * ratio));
+        ctx.globalAlpha = 0.55;
+        _drawPlayerFigure(ctx, wm, d.x, d.y, ang, playerImages[id], _playerWeapons.get(id) || (isMe ? selectedWeapon : DEFAULT_WEAPON), lblScale, '#FF9F3D', 'rgba(255,159,61,0.20)', null, bulletNow, _playerWeaponSkins.get(id));
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,' + Math.round(80 + 80 * ratio) + ',61,' + (0.35 + 0.45 * pulse).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(d.x, d.y, ringR + 7 + 3 * pulse, 0, Math.PI * 2); ctx.stroke();
+        if (d.rev) {
+            const p = Math.max(0, Math.min(1, (now - d.rev.t0) / d.rev.dur));
+            ctx.lineCap = 'round';
+            ctx.lineWidth = 9; ctx.strokeStyle = INK; ctx.beginPath(); ctx.arc(d.x, d.y, ringR + 12, 0, Math.PI * 2); ctx.stroke();
+            ctx.lineWidth = 5; ctx.strokeStyle = '#46E0B8'; if (p > 0.01) { ctx.beginPath(); ctx.arc(d.x, d.y, ringR + 12, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); ctx.stroke(); }
+        }
+        const barW = 70, barH = 12, bx = d.x - barW / 2, by = d.y - ringR - barH - 14;
+        _drawLabel(ctx, (pl && pl.name) || (isMe ? 'You' : ''), 12, '#ffffff', INK, 4, 'alphabetic', d.x, by - 10, lblScale);
+        _drawHpBar(ctx, bx, by, barW, barH, ratio, 2);
+        _drawLabel(ctx, Math.ceil(left / 1000) + 's', 8, '#ffffff', INK, 3, 'middle', bx + barW / 2, by + barH / 2, lblScale);
+    }
 
     // ---------- SPECTATOR ----------
     function exitSpectating() {
@@ -5491,18 +5606,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     });
 
     socket.on('eliminated', ({ placement, totalPlayers, killedBy, kills } = {}) => {
-        // In PvE jucatorul poate fi respawnat la wave urmatoare, deci nu setam gameEnded
-        if (_gameMode !== 'pve') gameEnded = true;
+        // PvE: this comes when the knock bar is empty (player-out shows the banner and the spectating); no box: the match goes on without them, and its board comes at the end
+        if (_gameMode === 'pve') { _selfDead = true; moveDir.x = 0; moveDir.y = 0; isShooting = false; aimStartTime = null; return; }
+        gameEnded = true;
         _selfDead  = true;
         moveDir.x = 0; moveDir.y = 0; isShooting = false; aimStartTime = null;
         myElimData = { placement, totalPlayers, killedBy, kills };
         setTimeout(() => {
-            if (_gameMode === 'pve') {
-                document.getElementById('gameover-title').textContent = 'ELIMINATED!';
-                document.getElementById('gameover-msg').textContent   = 'You will respawn at the start of the next wave.';
-                document.getElementById('round-stats-section').style.display = 'none';
-                const specBtn = document.getElementById('btn-spectate');
-                if (specBtn) specBtn.style.display = 'none';
+            if (false) {
             } else {
                 document.getElementById('gameover-title').textContent =
                     `PLACE ${placement} OF ${totalPlayers}`;
@@ -5558,6 +5669,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _spriteBurst = true;
         gameEnded  = false;
         _selfDead  = false;
+        _selfDown = false; _selfOut = false; for (const k in _down) delete _down[k]; _downHudMode('');
         _hiddenPlayers.clear();
         _playerWeapons.clear();
         _playerWeaponSkins.clear();
@@ -5964,8 +6076,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _pveState.wave = wave;
         hidePvePanel();
         document.getElementById('pve-wave-num').textContent = wave;
-        // Respawn local daca jucatorul era mort
-        if (_selfDead) {
+        // (nobody comes back with a new wave any more: only player-up lifts a player who is down)
+        { const _n = performance.now(); for (const id in _down) _down[id].t0 = _n; }   // the bars ran again from here (the break held them)
+        if (_selfDead && !_selfDown && !_selfOut) {
             _selfDead = false;
             document.getElementById('screen-gameover').style.display = 'none';
             document.getElementById('screen-game').style.display     = 'block';
@@ -6133,6 +6246,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     socket.on('pve-wave-break', ({ wave, nextWave, timer, next }) => {
         if (_BB.on) ARBlackBox.event('pve-wave-break', wave);
+        _downSnap(performance.now());   // the knock bars hold during the break
         _pveState.waveBreak = true;
         _pveState.breakTimer = timer;
         _pveState.breakTimerMax = timer; _pveState.breakAt = performance.now();
@@ -6431,7 +6545,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 const nm = document.createElement('span'); nm.className = 'pt-name'; nm.textContent = players[id].name || '';
                 const bar = document.createElement('span'); bar.className = 'pt-bar';
                 const fill = document.createElement('span'); fill.className = 'pt-fill'; bar.appendChild(fill);
-                const out = document.createElement('span'); out.className = 'pt-out'; out.textContent = 'ELIMINAT'; out.style.display = 'none';
+                const out = document.createElement('span'); out.className = 'pt-out'; out.textContent = ''; out.style.display = 'none';
                 row.append(dot, nm, bar, out); e.rows.appendChild(row);
                 _ph.rows.set(id, { row, bar, fill, out, pct: -1, band: -1, out_: null });
             });
@@ -6442,8 +6556,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             kills += p.kills | 0;
             if (!r) continue;
             const hp = latestHp[p.id] ?? p.hp, ratio = Math.max(0, Math.min(1, hp / (p.maxHp || 1)));
-            const out = !p.alive || hp <= 0;
-            if (out !== r.out_) { r.out_ = out; r.row.classList.toggle('is-out', out); r.out.style.display = out ? '' : 'none'; }
+            const st = _down[p.id] ? 1 : (!p.alive || hp <= 0) ? 2 : 0;   // 0 on their feet, 1 knocked down (the bar is running), 2 out
+            if (st !== r.out_) { r.out_ = st; r.row.classList.toggle('is-out', st > 0); r.row.classList.toggle('is-down', st === 1); r.out.textContent = st === 1 ? 'DOWN' : 'OUT'; r.out.style.display = st ? '' : 'none'; }
             const pct = hp > 0 ? Math.max(1, Math.round(ratio * 100)) : 0;   // alive: never 0
             if (pct !== r.pct) { r.pct = pct; r.fill.style.width = pct + '%'; }
             const band = ratio > 0.5 ? 0 : ratio > 0.25 ? 1 : 2;
@@ -6497,6 +6611,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const id in players) {
             const p = players[id];
             n++;
+            if (_down[id]) { g.fillStyle = '#FF9F3D'; g.strokeStyle = '#0F171B'; g.lineWidth = 2.5; g.beginPath(); g.arc(_down[id].x * k, _down[id].y * k, 6, 0, Math.PI * 2); g.fill(); g.stroke(); continue; }   // knocked down: an orange dot where they lie
             if (!p.alive || p.hp <= 0) continue;
             g.fillStyle = _pveColor(id, n - 1);
             g.beginPath(); g.arc(p.x * k, p.y * k, id === socket.id ? 7 : 6, 0, Math.PI * 2); g.fill();
@@ -7357,6 +7472,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
             _plQ[_plN] = player; _plQx[_plN] = px; _plQy[_plN] = py; _plN++;
         }
+        // --- DOWN --- (PvE) the players who are knocked down lie where they fell, with their knock bar
+        for (const _did in _down) {
+            const _dd = _down[_did];
+            if (_dd.x + 130 < visLeft || _dd.x - 130 > visRight || _dd.y + 130 < visTop || _dd.y - 130 > visBottom) continue;
+            _drawDownedPlayer(ctx, _did, _dd, performance.now(), _ringR, _lblScale, rState.players, _wm, _bulletNow);
+        }
+        if (_selfDown) _downHudTick(performance.now());
         ctx.imageSmoothingQuality = 'low'; // back to the default for the rest of the frame
         // The mythic skins' pollen: moved once, drawn over the players (only the particles of the pool; none = nothing to do)
         if (_skinPool.n) { ARSkinFx.step(_skinPool, _skinDt); ctx.setTransform(_wm); _drawSkinPollen(ctx, _skinPool, _lblScale); }

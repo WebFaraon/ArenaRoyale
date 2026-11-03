@@ -1431,6 +1431,12 @@ function cancelWork(code, room, p, reason) {
     const w = p.work;
     if (!w) return;
     p.work = null;
+    if (w.action === 'revive') {
+        const t = room.players[w.tid];
+        if (t && t._revBy === p.id) { t._revBy = null; io.to(code).emit('revive-end', { id: t.id, done: false, ms: Math.ceil(t.downMs) }); }
+        if (reason) io.to(p.id).emit('struct-result', { ok: false, action: 'revive', reason });
+        return;
+    }
     const s = findBuilt(room, w.id);
     if (s) s._busy = null;
     io.to(code).emit('struct-work-end', { id: w.id, done: false });
@@ -1438,6 +1444,7 @@ function cancelWork(code, room, p, reason) {
 }
 function tickWork(code, room, p, now) {
     const w = p.work;
+    if (w.action === 'revive') { tickRevive(code, room, p, w, now); return; }
     const s = findBuilt(room, w.id);
     if (!s || !p.alive || room.pveWaveBreak || room.gameEnded) { cancelWork(code, room, p); return; }
     if (p.moveDir.x || p.moveDir.y || Math.abs(p.x - w.x) > WORK_SLACK || Math.abs(p.y - w.y) > WORK_SLACK
@@ -1456,6 +1463,60 @@ function tickWork(code, room, p, now) {
     io.to(code).emit(s.k === 't' ? 'turret-upd' : 'struct-upd', s.k === 't' ? turretPublic(s) : structPublic(s));
     io.to(code).emit('struct-work-end', { id: s.id, done: true, action });
     io.to(p.id).emit('struct-result', { ok: true, action });
+}
+
+// ---------- PLAYER DOWN (PvE) ----------
+// Zero health does not end a player in PvE: they are knocked down for PVE_DOWN_MS and the knock bar drains. A teammate who stands next to them and
+// holds E (standing still) for PVE_REVIVE_MS lifts them back with PVE_REVIVE_HP; while that goes on the bar holds. When the bar is empty the player
+// is out for the rest of the match. Everyone down or out (nobody left to revive anybody) is a defeat. By events, never gs2: player-down {id, x, y, ms},
+// revive-work {id, by, dur, ms}, revive-end {id, done, ms}, player-up {id, hp}, player-out {id}.
+const PVE_DOWN_MS = 30000, PVE_REVIVE_MS = 5000, PVE_REVIVE_HP = 50, PVE_REVIVE_RANGE = PLAYER_R * 2 + 30, PVE_NOBODY_MS = 2500;
+function downPlayer(code, room, p) {
+    cancelWork(code, room, p);
+    for (const q of room._playerArr) if (q.work && q.work.action === 'revive' && q.work.tid === p.id) cancelWork(code, room, q);
+    p.alive = false; p.hp = 0; p.down = true; p.downMs = PVE_DOWN_MS; p._revBy = null;
+    p.moveDir.x = 0; p.moveDir.y = 0; p.vx = 0; p.vy = 0; p.shooting = false; p.inputQ.length = 0;
+    io.to(code).emit('player-down', { id: p.id, x: Math.round(p.x), y: Math.round(p.y), ms: p.downMs });
+}
+function outPlayer(code, room, p) {
+    for (const q of room._playerArr) if (q.work && q.work.action === 'revive' && q.work.tid === p.id) cancelWork(code, room, q);
+    p.down = false; p.out = true; p._revBy = null; p.downMs = 0;
+    let n = 0;
+    for (const q of room._playerArr) if (q.alive || q.down) n++;
+    io.to(code).emit('player-out', { id: p.id, x: Math.round(p.x), y: Math.round(p.y) });
+    io.to(p.id).emit('eliminated', { placement: n + 1, totalPlayers: room._playerArr.length, killedBy: 'zombie', kills: p.kills });
+    console.log(`[${code}] ${p.name} a murit definitiv (knock epuizat)`);
+}
+function tickDown(code, room, dt, now) {
+    let anyAlive = false, anyDown = false;
+    for (const p of room._playerArr) {
+        if (p.alive) { anyAlive = true; continue; }
+        if (!p.down) continue;
+        anyDown = true;
+        if (p._revBy) {   // the one who was lifting them is gone (left, fell, stopped): the bar runs again
+            const r = room.players[p._revBy];
+            if (!r || !r.work || r.work.action !== 'revive' || r.work.tid !== p.id) p._revBy = null;
+        }
+        if (p._revBy || room.pveWaveBreak || room.countdownActive) continue;   // the bar holds while somebody lifts them, in the break and in the countdown
+        p.downMs -= dt * 1000;
+        if (p.downMs <= 0) outPlayer(code, room, p);
+    }
+    if (anyAlive || !room.pveWaveActive || room.pveWaveBreak) room._noneAt = 0;
+    else if (!room._noneAt) room._noneAt = now;
+    else if (now - room._noneAt >= PVE_NOBODY_MS) return true;   // nobody on their feet: nobody to revive anybody
+    return false;
+}
+function tickRevive(code, room, p, w, now) {
+    const t = room.players[w.tid];
+    if (!t || !t.down || !p.alive || room.pveWaveBreak || room.gameEnded || room.countdownActive) { cancelWork(code, room, p); return; }
+    if (p.moveDir.x || p.moveDir.y || Math.abs(p.x - w.x) > WORK_SLACK || Math.abs(p.y - w.y) > WORK_SLACK
+        || Math.hypot(p.x - t.x, p.y - t.y) > PVE_REVIVE_RANGE + WORK_SLACK) { cancelWork(code, room, p, 'moved'); return; }
+    if (now < w.end) return;
+    p.work = null;
+    t.down = false; t._revBy = null; t.downMs = 0; t.alive = true; t.hp = Math.min(PVE_REVIVE_HP, t.maxHp);
+    ARAmmo.cancelReload(t); ARAmmo.finishReload(t); t.reloadReq = false; t.shooting = false; t.moveDir.x = 0; t.moveDir.y = 0; t.vx = 0; t.vy = 0;
+    io.to(code).emit('revive-end', { id: t.id, done: true, ms: 0 });
+    io.to(code).emit('player-up', { id: t.id, hp: t.hp });
 }
 
 // X next to a barricade or a turret, standing still for ARStructs.SELL.ms: it comes down and the one who did it gets ARStructs.SELL.rate of its
@@ -1890,8 +1951,10 @@ function startPveWave(code, room) {
     // Players come back next to the base with full health; a revived one also gets a full magazine and reserve
     room._playerArr.forEach((p, i) => {
         p.wv = { k0: p.kills, dmg: 0, coins: 0 };   // this wave's numbers for the break panel (kills = the counter now; the rest from zero)
+        // A player who is down or out stays so: only a teammate's revive (reviveDone) brings one back, never a new wave
+        if (p.down || p.out) return;
         // A player who is alive stays where the last wave left them (the break does not move anybody): putting them back by the base used to drop them
-        // inside the barricades and turrets they had built, with no way out. One who fell comes back by the base, on a free spot.
+        // inside the barricades and turrets they had built, with no way out.
         if (!p.alive) {
             const angle = (i / Math.max(room._playerArr.length, 1)) * Math.PI * 2 + Math.PI / 4, spot = pveFreeSpot(room, angle);
             p.x = spot.x; p.y = spot.y;
@@ -2055,7 +2118,7 @@ function addPlayer(code, room, socket, data) {
         ammo: _ws.ammoMax, ammoMax: _ws.ammoMax, reserve: _ws.reserveStart, reserveStart: _ws.reserveStart,   // magazine / its size, reserve / the reserve you begin with; only the magazine has a size, the reserve grows with boxes and purchases (public/ammo.js)
         reloading: false, reloadProgress: 0, reloadReq: false, lastShotTime: 0,
         bulletSpeed: _ws.bulletSpeed,
-        alive: true, kills: 0, lastDamageTime: 0, rs: Missions.newRoundStats(),
+        alive: true, down: false, out: false, downMs: 0, _revBy: null, kills: 0, lastDamageTime: 0, rs: Missions.newRoundStats(),
         waitLoad: !!data.loader,   // the client has a loading screen and says match-ready when it is gone: the countdown waits for it (beginMatchCountdown)
         lastAckSeq: 0, pendingAckSeq: 0,
         coins: 0,
@@ -2770,6 +2833,7 @@ function startRoomLoop(code, room) {
             if (room.turrets.length) tickTurrets(code, room, dt, now);
             if (room._turretDirty && now - (room._turretHpAt || 0) >= 100) { room._turretHpAt = now; flushTurretHp(code, room, now); }
             for (let wi = 0; wi < allPlayers.length; wi++) if (allPlayers[wi].work) tickWork(code, room, allPlayers[wi], now);
+            if (room.mode === 'pve' && tickDown(code, room, dt, now)) { pveDefeat(code, room); return; }
             if (PERF) PERF.mark(room, 'zombies');
 
             // Gloante: miscare + coliziune continua (swept). Pe segmentul parcurs in acest tick
@@ -3052,6 +3116,15 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
         if (killerPlayer.rs && room.mode === 'br') killerPlayer.rs.brKills++;
     }
 
+    if (room.mode === 'pve') {   // not out yet: knocked down (the 'eliminated' event comes with player-out, when the knock bar is empty)
+        if (!player.down && !player.out) {
+            io.to(code).emit('kill-event', { killerName: 'Zombi', victimName: player.name, byZone: false, victimId: player.id });
+            downPlayer(code, room, player);
+            console.log(`[${code}] ${player.name} la pamant (knock)`);
+        }
+        return;
+    }
+
     // Use _playerArr cache — avoids Object.values()+filter() allocations
     let _aliveN = 0;
     for (const p of room._playerArr) { if (p.alive) _aliveN++; }
@@ -3072,8 +3145,6 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
 
     const killerLabel = killerPlayer ? killerPlayer.name : (isZombieKill ? 'zombi' : 'zona');
     console.log(`[${code}] ${player.name} eliminat de ${killerLabel} (loc ${placement}/${totalPlayers})`);
-
-    if (room.mode === 'pve') return; // respawns next wave; stats are saved once, at pveVictory / pveDefeat
 
     if (_aliveN === 1 && totalPlayers > 1) {
         let winner = null;
@@ -3147,6 +3218,7 @@ function triggerRematch(code, room) {
         p.ammoMax = p.baseAmmoMax || p.ammoMax;
         p.pveUpgrades = { dmg: 0, spd: 0, hp: 0, ammo: 0 };
         p.pveInv = newInv(); p.work = null; p.pveTot = { dmg: 0, coins: 0 };
+        p.down = false; p.out = false; p.downMs = 0; p._revBy = null;
         p.coins = 0;
         flushWeaponStats(p); // anything not saved yet from the last match
         p.hp = p.maxHp; p.alive = true; p.angle = 0; p.kills = 0; p.rs = Missions.newRoundStats();
@@ -3307,6 +3379,7 @@ io.on('connection', (socket) => {
             p.burstRemaining = 0; p.burstTimer = 0; p.burstDx = 0; p.burstDy = 0;
             p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0; p.lastInputAt = 0; p.stalled = false;
             p.pveInv = newInv(); p.work = null; p.pveTot = { dmg: 0, coins: 0 };
+            p.down = false; p.out = false; p.downMs = 0; p._revBy = null;
         });
 
         const playersMeta = {};
@@ -3532,6 +3605,28 @@ io.on('connection', (socket) => {
         const workMs = ARStructs.workTime(s, action);   // a repair 1 s, an upgrade by the tier it goes into
         p.work = { id: s.id, action, end: now + workMs, x: p.x, y: p.y };
         io.to(code).emit('struct-work', { id: s.id, action, dur: workMs, by: p.name });
+    });
+
+    // E next to a teammate who is down: lift them (PVE_REVIVE_MS standing still, tickRevive); the knock bar holds meanwhile
+    socket.on('revive-player', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !data || typeof data !== 'object') return;
+        const { code, room } = r;
+        const p = room.players[socket.id];
+        if (!p || room.mode !== 'pve' || !room.gameStarted || room.gameEnded || room.countdownActive || room.pveWaveBreak || !p.alive) return;
+        const now = Date.now();
+        if (now - (p._structAt || 0) < 150) return;
+        p._structAt = now;
+        const t = room.players[data.id];
+        const fail = (reason) => socket.emit('struct-result', { ok: false, action: 'revive', reason });
+        if (!t || !t.down || t === p) return fail('gone');
+        if (Math.hypot(p.x - t.x, p.y - t.y) > PVE_REVIVE_RANGE) return fail('far');
+        if (p.moveDir.x || p.moveDir.y) return fail('moving');
+        if (p.work) return;
+        if (t._revBy && t._revBy !== p.id) return fail('busy');
+        t._revBy = p.id;
+        p.work = { id: t.id, tid: t.id, action: 'revive', end: now + PVE_REVIVE_MS, x: p.x, y: p.y };
+        io.to(code).emit('revive-work', { id: t.id, by: p.id, dur: PVE_REVIVE_MS, ms: Math.ceil(t.downMs) });
     });
 
     // X next to a barricade or a turret: take it down for ARStructs.SELL.rate of what it cost (see sellBuilt)
