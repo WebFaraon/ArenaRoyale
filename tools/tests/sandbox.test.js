@@ -30,13 +30,14 @@ async function sandboxClient(base, nick, opts = {}) {
     await new Promise(r => s.on('connect', r));
     s.emit('authenticate', { nickname: nick, token: lj.token });
     const c = { s, ev: {}, at: {}, baseAt: {}, baseHp: null, zombies: [], start: null };
-    for (const name of ['pve-wave-start', 'pve-inv', 'sandbox-state', 'egg-throw', 'egg-hatch', 'countdown-start', 'pve-vote-start', 'brood-swing', 'brood-hit']) s.on(name, (d) => { (c.ev[name] = c.ev[name] || []).push(d); (c.at[name] = c.at[name] || []).push(Date.now()); if ((name === 'brood-swing' || name === 'brood-hit') && c.baseAt[name] === undefined) c.baseAt[name] = c.baseHp; });
+    for (const name of ['pve-wave-start', 'pve-inv', 'sandbox-state', 'egg-throw', 'egg-hatch', 'countdown-start', 'pve-vote-start', 'brood-swing', 'brood-hit', 'struct-add', 'struct-hp']) s.on(name, (d) => { (c.ev[name] = c.ev[name] || []).push(d); (c.at[name] = c.at[name] || []).push(Date.now()); if ((name === 'brood-swing' || name === 'brood-hit') && c.baseAt[name] === undefined) c.baseAt[name] = c.baseHp; });
     s.on('game-start', (d) => { c.start = d; });
     s.on('gs2', (d) => {
         const z = d[3], out = [];
         for (let i = 0; i + 5 < z.length; i += 6) out.push([z[i], z[i + 5]]);
         c.zombies = out;
         if (d[6]) c.baseHp = d[6][0];
+        if (d[1].length >= 6) { c.me = { x: d[1][1] / 4, y: d[1][2] / 4 }; c.hp = d[1][4]; }
         s.emit('input', { seq: 1, dx: 0, dy: 0, angle: 0, shooting: false });
     });
     s.emit('create-room', { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, weapon: 'smg', mode: 'pve', sandbox: opts.sandbox !== false, xp: 0, proto: ARNet.PROTO });
@@ -148,6 +149,30 @@ test('the Brood Mother\'s blow is a swing: the damage lands at the END of the wi
         assert.ok(c.baseHp <= 1500 - 90, 'after the hit the base lost her blow (90): ' + c.baseHp);
         const gap2 = c.at['brood-swing'][1] - c.at['brood-swing'][0];
         assert.ok(gap2 >= 1500 && gap2 <= 1800, 'a swing every attackCd (1.6 s): ' + gap2 + ' ms');
+        c.s.close();
+    });
+});
+
+test('the Brood Mother hits the FIRST barricade built (id 0) too, and a hatchling pressed against a player does hurt them', async () => {
+    await withServer(async (base) => {
+        const c = await sandboxClient(base, 'sbx_id0');
+        const px = c.me.x, py = c.me.y;
+        let wy = py;
+        for (const dy of [0, -130, 130, -260, 260]) {   // (a tree may stand where the first try goes: take the first free place)
+            c.s.emit('place-struct', { x: px + 130, y: py + dy, o: 1 });
+            await sleep(300);
+            if (c.ev['struct-add']) { wy = py + dy; break; }
+        }
+        assert.equal(c.ev['struct-add'] && c.ev['struct-add'][0].id, 0, 'the first barricade has id 0');
+        c.s.emit('sandbox-spawn', { type: 'brood', x: px + 330, y: wy });
+        for (let i = 0; i < 100 && !(c.ev['struct-hp'] && c.ev['struct-hp'].length); i++) await sleep(100);
+        assert.ok(c.ev['struct-hp'] && c.ev['struct-hp'].some(rows => rows.some(r => r[0] === 0 && r[1] < 300)), 'barricade 0 lost health to her blow');
+        c.s.emit('sandbox-ctl', { action: 'clear' });
+        await sleep(300);
+        const hp0 = c.hp;
+        for (let k = 0; k < 3; k++) c.s.emit('sandbox-spawn', { type: 'hatchling', x: px + 80 + k * 10, y: py });
+        for (let i = 0; i < 40 && !(c.hp < hp0); i++) await sleep(100);
+        assert.ok(c.hp < hp0, 'hatchlings against the player take health from them: ' + hp0 + ' -> ' + c.hp);
         c.s.close();
     });
 });

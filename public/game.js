@@ -7666,14 +7666,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // under them all; the HP bars are then drawn as four fills in total (track + one per colour) instead of two each.
         const _zNow = performance.now();
         let _zVisible = 0;
-        for (let _zi = 0; _zi < _zombies.length; _zi++) {
-            const _zb = _zombies[_zi];
-            if (!_zb || _zb.hp < 0) continue;
-            const _zbx = _zb.x, _zby = _zb.y;
-            const _zDef = _ZB_DEFS[_zb.type || 0] || _ZB_DEFS[0];
-            const _zbR = _zDef.r;
-            if (_zbx + _zbR + 50 < visLeft || _zbx - _zbR - 50 > visRight || _zby + _zbR + 50 < visTop || _zby - _zbR - 50 > visBottom) continue;
-            _zVisibleList[_zVisible++] = _zb;
+        for (let _zpass = 0; _zpass < 2; _zpass++) {   // the eggs first (pass 0): they lie on the ground, so whatever walks over them (the Brood Mother) is drawn on top of them
+            for (let _zi = 0; _zi < _zombies.length; _zi++) {
+                const _zb = _zombies[_zi];
+                if (!_zb || _zb.hp < 0) continue;
+                if ((_zb.type === 13) !== (_zpass === 0)) continue;
+                const _zbx = _zb.x, _zby = _zb.y;
+                const _zDef = _ZB_DEFS[_zb.type || 0] || _ZB_DEFS[0];
+                const _zbR = _zDef.r;
+                if (_zbx + _zbR + 50 < visLeft || _zbx - _zbR - 50 > visRight || _zby + _zbR + 50 < visTop || _zby - _zbR - 50 > visBottom) continue;
+                _zVisibleList[_zVisible++] = _zb;
+            }
         }
         if (_zVisible > 0) {
             ctx.setTransform(_wm);

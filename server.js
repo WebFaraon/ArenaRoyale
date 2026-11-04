@@ -1122,7 +1122,7 @@ const PVE_ZOMBIE_DEFS = {
     egg: { hp: 150, noScale: true, chaseSpd: 0, patrolSpd: 0, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 0, coinsMax: 0, baseDmg: 0, r: 18, hunts: false, mass: 50, immovable: true,
            egg: { hatch: 8, spawn: 2 } },
     // what comes out of an egg: small, fast, fragile
-    hatchling: { hp: 120, noScale: true, chaseSpd: 150, patrolSpd: 80, dmg: 15, attackR: 40, attackCd: 0.6, coinsMin: 0, coinsMax: 1, baseDmg: 12, r: 13, hunts: true, mass: 0.4 },
+    hatchling: { hp: 120, noScale: true, chaseSpd: 150, patrolSpd: 80, dmg: 15, attackR: 56, attackCd: 0.6, coinsMin: 0, coinsMax: 1, baseDmg: 12, r: 13, hunts: true, mass: 0.4 },
 };
 const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
@@ -1930,8 +1930,13 @@ function swingTick(code, room, zombie, def, dt, tgtStruct, baseD) {
         st.t += dt;
         if (!st.hit && st.t >= sw.windup) {
             st.hit = true;
-            let target = st.sid ? findBuilt(room, st.sid) : null;
+            let target = st.sid !== null ? findBuilt(room, st.sid) : null;   // (ids start at 0: 0 is a thing, null is none)
             if (target && (target._gone || builtDist(zombie.x, zombie.y, target) > reachR + 10)) target = null;
+            if (!target) {   // the one she began on is gone or out of reach: whatever else is in reach now takes the blow
+                let bd = reachR + 10;
+                for (const q of room.structs) { const d = builtDist(zombie.x, zombie.y, q); if (d < bd) { bd = d; target = q; } }
+                for (const q of room.turrets) { const d = builtDist(zombie.x, zombie.y, q); if (d < bd) { bd = d; target = q; } }
+            }
             const baseIn = room.base && Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) < room.base.r + def.r + 14;
             const fx = zombie.x + Math.cos(zombie.angle) * (def.r + 16), fy = zombie.y + Math.sin(zombie.angle) * (def.r + 16);
             io.to(code).emit('brood-hit', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), miss: !target && !baseIn });
@@ -1945,7 +1950,7 @@ function swingTick(code, room, zombie, def, dt, tgtStruct, baseD) {
     const sReach = tgtStruct && !tgtStruct._gone && builtDist(zombie.x, zombie.y, tgtStruct) <= reachR;
     const bReach = zombie.targetingBase && room.base && baseD < room.base.r + def.r + 8;
     if (!sReach && !bReach) return false;
-    zombie._sw = { t: 0, hit: false, sid: sReach ? tgtStruct.id : 0 };
+    zombie._sw = { t: 0, hit: false, sid: sReach ? tgtStruct.id : null };
     zombie.attackCooldown = def.attackCd;
     io.to(code).emit('brood-swing', { id: zombie.id, ms: Math.round(sw.windup * 1000) });
     return false;
