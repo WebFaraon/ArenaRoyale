@@ -96,11 +96,22 @@ test('the total health of a wave (without the growth of the waves) goes up a lot
     assert.ok(health(waves[19]) > 30000, 'wave 20 has over 30000 health before the growth (x1.84)');
 });
 
-test('more players, more zombies: +40% for each player after the first (up to 4), and a big wave is split into at most 10 batches', () => {
-    const mul = new Function('return ' + /const pveCountMul = (\([^\n]*\) => [^\n]*);/.exec(src)[1])();
-    assert.deepEqual([1, 2, 3, 4, 6].map(n => Math.round(mul(n) * 10) / 10), [1, 1.4, 1.8, 2.2, 2.2]);
+test('the level, not the number of players, sets how many zombies a wave brings; a big wave is split into at most 10 batches', () => {
+    assert.ok(!/pveCountMul/.test(src), 'the +40% a player is gone');
+    const D = require('../../public/pve-difficulty.js');
+    const wave = (w, diff) => { const m = D.get(diff).count, wc = waves[w]; return m === 1 ? wc : wc.map(c => Math.round(c * m)); };
+    const sum = r => r.reduce((a, b) => a + b, 0);
+    for (const w of [0, 4, 9, 14, 19]) {
+        assert.ok(sum(wave(w, 'brood')) < sum(wave(w, 'colossus')) && sum(wave(w, 'colossus')) < sum(wave(w, 'reaper')), 'wave ' + (w + 1) + ': each level is harder');
+        assert.ok(sum(wave(w, 'brood')) > 0, 'never an empty wave');
+    }
+    assert.equal(sum(wave(0, 'colossus')), 9, 'the middle level is the table as it was for one player');
+    assert.match(src, /const pveWaveRow = \(waveIndex, diff\)/);
+    assert.match(src, /const pveHpMul = \(wave, diff\)/);
     assert.match(src, /bsize = Math\.max\(PVE_BATCH_SIZE, Math\.ceil\(types\.length \/ 10\)\)/);
-    assert.match(src, /next: pveWaveRow\(room\.pveWave, room\._playerArr\.length\)/);
+    assert.match(src, /next: pveWaveRow\(room\.pveWave, room\.pveDiff\)/);
+    assert.match(src, /wc = pveWaveRow\(waveIndex, room\.pveDiff\)/);
+    assert.match(src, /room\.pveHpMul = pveHpMul\(room\.pveWave, room\.pveDiff\)/);
 });
 
 test('the runner and the stalker have no white motion lines behind them; the scream is drawn by _screamFx (built once, nothing made per frame)', () => {

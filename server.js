@@ -14,6 +14,7 @@ const ZNav = require('./zombie-nav.js');              // where the PvE zombies w
 const PveCoins = require('./public/pve-coins.js');    // PvE coins on the ground (shared with the client)
 const Missions = require('./missions');
 const PveRewards = require('./pve-rewards');   // what a PvE match pays and the zombie families of the end board
+const PveDiff = require('./public/pve-difficulty.js');   // the three levels of a PvE match (named after their final boss), chosen by a vote at the start
 const ARShared = require('./public/combat-shared');
 const ARNet = require('./public/netproto');           // the state packet, protocol 3 (shared with the client)
 const KIT_HEAL = ARNet.KIT_HEAL, KIT_AMMO = ARNet.KIT_AMMO;   // the two kinds of kit on the ground (netproto.js)
@@ -1068,11 +1069,13 @@ const PVE_WAVES = [
     [ 0, 0,11,13,13, 7, 5,13, 6,23,16],     // wave 20
 ];
 // The health of every zombie (but the minions) grows from wave 7: x1 up to wave 6, then +6% a wave (x1.24 at wave 10, x1.84 at wave 20)
-// More players, more zombies: the counts of a wave grow by 40% for each player after the first (1 / 1.4 / 1.8 / 2.2 for 1 to 4 and more), so the extra
-// turrets and guns of a bigger team do not make the same wave easy; the batches grow along (see prepareAndSpawnWave) so a wave takes about as long.
-const pveCountMul = (players) => 1 + 0.4 * (Math.max(1, Math.min(players | 0, 4)) - 1);
-const pveWaveRow = (waveIndex, players) => { const wc = PVE_WAVES[waveIndex]; if (!wc) return null; const m = pveCountMul(players); return m === 1 ? wc : wc.map(c => Math.round(c * m)); };
-const pveHpMul = (wave) => wave <= 6 ? 1 : Math.round((1 + (wave - 6) * 0.06) * 100) / 100;
+// What a wave brings and how tough it is depends on the LEVEL the players chose at the start (public/pve-difficulty.js: Brood Mother x0.6 zombies and
+// x0.75 health, Colossus x1 / x1, Reaper x1.5 / x1.4), not on how many they are (it used to be +40% a player): the batches grow with the wave (see
+// prepareAndSpawnWave) so a wave takes about as long.
+const pveWaveRow = (waveIndex, diff) => { const wc = PVE_WAVES[waveIndex]; if (!wc) return null; const m = PveDiff.get(diff).count; return m === 1 ? wc : wc.map(c => Math.round(c * m)); };
+const pveHpMul = (wave, diff) => { const g = wave <= 6 ? 1 : Math.round((1 + (wave - 6) * 0.06) * 100) / 100; return Math.round(g * PveDiff.get(diff).hp * 100) / 100; };
+// How many zombies the 20 waves bring on a level (for the "up to" of the cards of the vote)
+const pveDiffZombies = (diff) => { let n = 0; for (let w = 0; w < PVE_WAVES.length; w++) for (const c of pveWaveRow(w, diff)) n += c; return n; };
 const PVE_ZOMBIE_DEFS = {
     // hunts: goes for a player in range first (then a barricade, then the base); false = never goes for a player or hits one, only barricades and the base
     // mass: how the zombies shove each other apart (the heavier one gives way less); heavy: a player cannot push it, it pushes the player (it is a wall to them)
@@ -1378,7 +1381,7 @@ const PVE_BATCH_DELAY  = 8;  // secunde intre mini-wave-uri
 const PVE_START_GRACE  = 8;  // secunde de la inceputul valului pana apare primul lot: timp sa reparam / upgradam constructiile (la valuri mari nu ajungea)
 
 function prepareAndSpawnWave(room, waveIndex) {
-    const wc = pveWaveRow(waveIndex, room._playerArr.length) || [8, 0, 0, 0, 0, 0, 0, 0];
+    const wc = pveWaveRow(waveIndex, room.pveDiff) || [8, 0, 0, 0, 0, 0, 0, 0];
     const types = [];
     PVE_TYPES.forEach((t, k) => { for (let n = 0; n < (wc[k] || 0); n++) types.push(t); });
     // Shuffle
@@ -1969,7 +1972,7 @@ function startPveWave(code, room) {
         p.shootCooldown = 0; p.aimTimer = 0; p.burstRemaining = 0; p.burstTimer = 0;
         p.moveDir.x = 0; p.moveDir.y = 0; p.vx = 0; p.vy = 0;
     });
-    room.pveHpMul = pveHpMul(room.pveWave);
+    room.pveHpMul = pveHpMul(room.pveWave, room.pveDiff);
     room._acid = []; room._hits.length = 0;
     // Nothing comes out at once: the first batch goes to the front of the queue and waits PVE_START_GRACE s (the same timer the later batches use),
     // so the players can walk to what they built and repair or upgrade it before the first zombie. The HUD counts the queued ones as "left".
@@ -1990,7 +1993,7 @@ function pveEndBoard(room, victory) {
     for (const t of team) if (t.kills > best) { best = t.kills; mvp = t.id; }
     const kinds = { ...room.pveKinds };
     return {
-        result: victory ? 'victory' : 'defeat',
+        result: victory ? 'victory' : 'defeat', diff: room.pveDiff,
         wavesCleared: victory ? PveRewards.TOTAL_WAVES : Math.max(0, room.pveWave - 1), wave: room.pveWave, total: PveRewards.TOTAL_WAVES,
         base: { hp: room.base ? Math.round(room.base.hp) : 0, max: room.base ? room.base.maxHp : PVE_BASE_HP },
         timeSec: room.pveT0 ? Math.max(0, Math.round((Date.now() - room.pveT0) / 1000)) : 0,
@@ -2004,7 +2007,7 @@ function pveFinish(code, room, victory) {
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
     const board = pveEndBoard(room, victory);
     room._playerArr.forEach(p => {
-        const reward = PveRewards.compute({ wavesCleared: board.wavesCleared, victory, kills: p.kills });
+        const reward = PveRewards.compute({ wavesCleared: board.wavesCleared, victory, kills: p.kills, diff: room.pveDiff });
         io.to(p.id).emit('pve-end', { ...board, reward });
         endPlayerRound(p, victory, { mode: 'pve', rs: p.rs, wave: room.pveWave, reward });
     });
@@ -2055,6 +2058,7 @@ function newRoom(hostId, mode = 'br') {
         pveWave: 0, pveWaveActive: false, pveWaveBreak: false, pveBreakTimer: 0, pveSkipVotes: new Set(),
         pveSpawnQueue: [], pveSpawnTimer: 0,
         pveKinds: PveRewards.newKinds(), pveT0: 0,   // PvE end board: zombies killed by family, when wave 1 began
+        pveDiff: PveDiff.DEFAULT_ID, pveVote: null,   // PvE: the level of the match (voted at the start) and the vote while it is open
         structs: [], turrets: [], _hits: [], nextStructId: 0, _structDirty: false, _structHpAt: 0,   // PvE: what the players built (barricades, turrets; ids from one counter), sent by events, not in gs2
         nextSlot: 0,   // players are named by a small number in the state packet (netproto.js)
         gameStarted:     false,
@@ -2818,7 +2822,7 @@ function startRoomLoop(code, room) {
                         room.pveSkipVotes.clear();
                         room._playerArr.forEach(p => { p.moveDir.x = 0; p.moveDir.y = 0; p.vx = 0; p.vy = 0; p.shooting = false; });
                         // next = what the next wave brings [normal, runner, tank] for the preview (nothing after the last wave)
-                        io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION, next: pveWaveRow(room.pveWave, room._playerArr.length) });
+                        io.to(code).emit('pve-wave-break', { wave: room.pveWave, nextWave: room.pveWave + 1, timer: PVE_BREAK_DURATION, next: pveWaveRow(room.pveWave, room.pveDiff) });
                         // the panel covers the pitch after 1 s (game.js): the coins still lying around are handed out just before,
                         // then the numbers of the wave go out (coins included)
                         setTimeout(() => {
@@ -3180,15 +3184,42 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
 // The countdown of a match: the clients show 3, 2, 1, GO (3700 ms) and the server holds the players still for the same time, then the
 // match goes on (a PvE match starts its first wave).
 const LOAD_WAIT_MS = 20000;
+// The three cards: before the 3-2-1 of a PvE match the players choose the level (the final boss it is named after). 10 s to vote (PVE_VOTE_MS; 0 skips the
+// vote: the default level); the level with the most votes wins, a tie is settled by chance among the tied ones, nobody voting is the default; alone in
+// the room the choice is made the moment it is clicked. By events, not gs2: pve-vote-start, pve-vote-update, pve-diff.
+const PVE_VOTE_MS = process.env.PVE_VOTE_MS !== undefined ? Math.max(0, (+process.env.PVE_VOTE_MS) | 0) : PveDiff.VOTE_MS;
 function beginMatchCountdown(code, room) {
     if (!rooms.has(code) || room._cdStarted || !room.gameStarted) return;
     room._cdStarted = true;
     clearTimeout(room._loadTimer);
+    if (room.mode === 'pve' && PVE_VOTE_MS > 0) beginPveVote(code, room); else runMatchCountdown(code, room);
+}
+function runMatchCountdown(code, room) {
+    if (!rooms.has(code) || !room.gameStarted) return;
     io.to(code).emit('countdown-start', { ms: 3700 });
     setTimeout(() => {
         if (rooms.has(code)) room.countdownActive = false;
         if (rooms.has(code) && room.mode === 'pve') startPveWave(code, room);
     }, 3700);
+}
+function beginPveVote(code, room) {
+    const max = {};
+    for (const d of PveDiff.DIFFS) max[d.id] = PveRewards.maxReward(d.id, pveDiffZombies(d.id));
+    room.pveVote = { votes: {}, done: false, timer: setTimeout(() => resolvePveVote(code, room), PVE_VOTE_MS), until: Date.now() + PVE_VOTE_MS };
+    io.to(code).emit('pve-vote-start', { ms: PVE_VOTE_MS, solo: room._playerArr.length <= 1, diffs: PveDiff.DIFFS.map(d => ({ id: d.id, name: d.name, level: d.level, art: d.art, max: max[d.id] })) });
+    console.log(`[${code}] Vot dificultate PvE (${room._playerArr.length} jucatori)`);
+}
+function resolvePveVote(code, room) {
+    const v = room.pveVote;
+    if (!v || v.done || !rooms.has(code)) return;
+    v.done = true; clearTimeout(v.timer);
+    const votes = {};
+    for (const p of room._playerArr) if (PveDiff.isId(v.votes[p.id])) votes[p.id] = v.votes[p.id];   // the ones who left do not count
+    const res = PveDiff.resolveVote(votes, Math.random);
+    room.pveDiff = res.id;
+    io.to(code).emit('pve-diff', { id: res.id, counts: res.counts, tie: res.tie, votes });
+    console.log(`[${code}] Dificultate PvE: ${res.id}${res.tie.length ? ' (egalitate: ' + res.tie.join('/') + ')' : ''}`);
+    setTimeout(() => runMatchCountdown(code, room), room._playerArr.length <= 1 ? 900 : 1700);   // the chosen card is shown for a moment, then the 3-2-1
 }
 
 function triggerRematch(code, room) {
@@ -3211,6 +3242,7 @@ function triggerRematch(code, room) {
     room.pveSpawnQueue = []; room.pveSpawnTimer = 0;
     room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
     room.pveKinds = PveRewards.newKinds(); room.pveT0 = 0;
+    room.pveDiff = PveDiff.DEFAULT_ID; clearTimeout(room.pveVote && room.pveVote.timer); room.pveVote = null;
     room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;
     setTimeout(() => { if (rooms.has(code)) room.countdownActive = false; }, 3700);
     assignSpawnPositions(room._playerArr, room.obstacles);
@@ -3251,6 +3283,7 @@ function closeRoom(code, room) {
     if (diagState) { try { diagState.socket.emit('netdiag-ended', { session: diagState.session, reason: 'room-closed' }); } catch (_) {} NET_DIAG.release(diagState.socket); }
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); }
     clearTimeout(room._loadTimer);
+    clearTimeout(room.pveVote && room.pveVote.timer);
     io.to(code).emit('game-reset');
     rooms.delete(code);
     console.log(`[${code}] Camera inchisa`);
@@ -3373,6 +3406,7 @@ io.on('connection', (socket) => {
             room.base = { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R };
             room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
             room.pveKinds = PveRewards.newKinds(); room.pveT0 = 0;
+            room.pveDiff = PveDiff.DEFAULT_ID; clearTimeout(room.pveVote && room.pveVote.timer); room.pveVote = null;
             room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;
         } else {
             assignSpawnPositions(room._playerArr, room.obstacles);
@@ -3656,6 +3690,44 @@ io.on('connection', (socket) => {
         io.to(code).emit('struct-work', { id: s.id, action: 'sell', dur: ARStructs.SELL.ms, by: p.name });
     });
 
+    // A vote on the cards at the start of a PvE match: the last one before the end counts (a player may change their mind); alone in the room it ends at once
+    socket.on('pve-vote', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !data || typeof data !== 'object') return;
+        const { code, room } = r, v = room.pveVote;
+        if (room.mode !== 'pve' || !v || v.done || !PveDiff.isId(data.id)) return;
+        v.votes[socket.id] = data.id;
+        io.to(code).emit('pve-vote-update', { votes: v.votes });
+        if (room._playerArr.length <= 1) resolvePveVote(code, room);
+    });
+    socket.on('sandbox-spawn', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !data || typeof data !== 'object') return;
+        const { code, room } = r;
+        if (!room.sandbox || !room.gameStarted || room.countdownActive || typeof data.type !== 'string') return;
+        const x = +data.x, y = +data.y;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const n = Math.max(1, Math.min(10, (+data.n) | 0 || 1));
+        for (let i = 0; i < n; i++) sandboxSpawn(code, room, data.type, x + (n > 1 ? (Math.random() - 0.5) * 60 : 0), y + (n > 1 ? (Math.random() - 0.5) * 60 : 0));
+    });
+    socket.on('sandbox-ctl', (data) => {
+        const r = fastGetRoom(socket);
+        if (!r || !data || typeof data !== 'object') return;
+        const { code, room } = r;
+        if (!room.sandbox || !room.gameStarted) return;
+        if (data.action === 'clear') {   // every zombie gone, without a kill or coins
+            for (const z of room.zombies) { z.alive = false; z.hp = 0; }
+            room._eggFlights = []; room._acid = [];
+        } else if (data.action === 'freeze') {
+            room.sandboxFreeze = typeof data.on === 'boolean' ? data.on : !room.sandboxFreeze;
+            io.to(code).emit('sandbox-state', { freeze: room.sandboxFreeze });
+        } else if (data.action === 'clear-built') {
+            for (const b of room.structs.slice()) { b._gone = true; io.to(code).emit('struct-del', { id: b.id }); }
+            for (const t of room.turrets.slice()) { t._gone = true; io.to(code).emit('turret-del', { id: t.id }); }
+            for (const q of room._playerArr) if (q.work) cancelWork(code, room, q);
+            room.structs.length = 0; room.turrets.length = 0; room._hits.length = 0;
+        }
+    });
     socket.on('disconnect', () => {
         NET_DIAG.release(socket);
         if (socket._nickname && connectedAccounts.get(socket._nickname) === socket.id) {
@@ -3671,6 +3743,8 @@ io.on('connection', (socket) => {
         const { code, room } = result;
         room.rematchVotes.delete(socket.id);
         if (room._loadWait) room._loadWait.delete(socket.id);
+        const _voteOpen = room.pveVote && !room.pveVote.done;
+        if (_voteOpen) delete room.pveVote.votes[socket.id];
         const _leavingP = room.players[socket.id];
         if (_leavingP && _leavingP.work) cancelWork(code, room, _leavingP);
         if (_leavingP) flushWeaponStats(_leavingP); // left early: the weapon counts so far still count
@@ -3692,6 +3766,10 @@ io.on('connection', (socket) => {
 
         if (!room.gameStarted) broadcastWaiting(code, room);
         if (room.gameStarted && room._loadWait && room._loadWait.size === 0) beginMatchCountdown(code, room);   // the one who was holding the countdown left
+        if (_voteOpen) {
+            io.to(code).emit('pve-vote-update', { votes: room.pveVote.votes });
+            if (room._playerArr.length <= 1 && room._playerArr.length && PveDiff.isId(room.pveVote.votes[room._playerArr[0].id])) resolvePveVote(code, room);   // the rest is alone now and has chosen
+        }
 
         if (room.gameEnded) {
             const remaining = room._playerArr.length;

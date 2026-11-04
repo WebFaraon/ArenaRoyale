@@ -838,6 +838,19 @@
         <div id="kill-notif-count">1 KILL</div>
     </div>
 
+    <!-- PvE: the vote on the three levels (named after their final boss) at the start of a match; built by game.js (pve-vote-start) -->
+    <div id="pve-vote" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pv-title">
+        <div class="pv-fit">
+            <header class="pv-head">
+                <div class="pv-chip">SURVIVAL<i></i>PvE</div>
+                <h2 id="pv-title">CHOOSE YOUR FINAL BOSS</h2>
+                <div class="pv-sub" id="pv-sub">The most votes wins</div>
+            </header>
+            <div class="pv-cards" id="pv-cards"></div>
+            <div class="pv-timer"><svg class="ic" aria-hidden="true"><use href="#timer"/></svg><b id="pv-time">10</b><div class="pv-bar"><i id="pv-bar"></i></div></div>
+        </div>
+    </div>
+
     <!-- Countdown -->
     <div id="countdown-overlay">
         <div id="countdown-number">3</div>
@@ -883,7 +896,7 @@
 
         <div class="pe-fit">
             <header class="pe-head">
-                <div class="pe-chip">SURVIVAL<i></i>PvE<i></i><span id="pe-count">1 PLAYER</span></div>
+                <div class="pe-chip">SURVIVAL<i></i>PvE<i></i><span id="pe-diff"></span><i></i><span id="pe-count">1 PLAYER</span></div>
                 <div class="pe-title-row">
                     <svg class="pe-base" aria-hidden="true"><use href="#pe-base-sym"/></svg>
                     <h2 id="pe-title">VICTORY!</h2>
@@ -1077,6 +1090,7 @@
 <script src="netproto.js"></script>
 <script src="ammo.js"></script>
 <script src="structures.js"></script>
+<script src="pve-difficulty.js"></script>
 <script src="interp.js"></script>
 <script src="frame-cap.js"></script>
 <script src="pve-coins.js"></script>

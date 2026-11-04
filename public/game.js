@@ -3289,7 +3289,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     }
 
     socket.on('game-start', (data) => {
-        if (data && data.playersMeta)  gameControl.pendingMeta      = data.playersMeta;
+        if (data && data.playersMeta)  { gameControl.pendingMeta = data.playersMeta; gameControl.matchMeta = data.playersMeta; }   // (matchMeta stays for the vote: names and slots)
         if (data && data.obstacles)    gameControl.pendingObstacles = data.obstacles;
         if (data && data.mode)         gameControl.mode             = data.mode;
         if (data && data.season)       gameControl.pendingSeason    = data.season;
@@ -3301,6 +3301,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
         document.getElementById('players-alive').textContent = '0';
         document.getElementById('kill-feed').innerHTML       = '';
         const _isPve = (data && data.mode) === 'pve';
+        _pvClose(); gameControl.pveDiff = null;
         gameControl.countdownActive = true;   // nobody moves until the 3-2-1 is over: it starts (countdown-start) when every loading screen is gone
         document.getElementById('btn-rematch').onclick = () => {
             socket.emit('rematch');
@@ -3335,8 +3336,98 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
         document.getElementById('game-ui').style.display     = _isPve ? 'none' : 'block';
     });
 
+    // ---- PvE: the vote on the three cards (the level of the match, named after its final boss), before the 3, 2, 1 ----
+    // pve-vote-start { ms, solo, diffs: [{ id, name, level, art, max: { coins, xp, gems } }] } opens it, pve-vote-update { votes } shows who voted what,
+    // pve-diff { id, counts, tie, votes } is the result (the chosen card is shown a moment, then the count starts). Not in gs2.
+    const _PV_COLORS = ['#FF8A1F', '#1FD1A5', '#FF5A6A', '#5B9BFF', '#FFC72E', '#B070FF', '#7DE04A', '#FF7AC8'];
+    const _pv = { open: false, mine: null, raf: 0, t0: 0, ms: 10000, cards: {}, ids: [], done: false, key: null };
+    const _pvEl = id => document.getElementById(id);
+    const _pvMeta = id => (gameControl.matchMeta && gameControl.matchMeta[id]) || {};
+    function _pvVoters(votes) {
+        for (const id of _pv.ids) _pv.cards[id].voters.textContent = '';
+        for (const pid in votes) {
+            const card = _pv.cards[votes[pid]]; if (!card) continue;
+            const m = _pvMeta(pid), dot = document.createElement('span');
+            dot.className = 'pv-dot'; dot.style.background = _PV_COLORS[((m.slot | 0) % _PV_COLORS.length)];
+            dot.title = m.name || ''; dot.textContent = ((m.name || '?').charAt(0) || '?').toUpperCase();
+            card.voters.appendChild(dot);
+        }
+    }
+    function _pvVote(id) {
+        if (!_pv.open || _pv.done || !_pv.cards[id]) return;
+        _pv.mine = id;
+        for (const k of _pv.ids) _pv.cards[k].el.classList.toggle('is-mine', k === id);
+        socket.emit('pve-vote', { id });
+        if (window.ARSound) window.ARSound.play('select');
+    }
+    function _pvTick() {
+        if (!_pv.open || _pv.done) return;
+        const left = Math.max(0, _pv.ms - (performance.now() - _pv.t0));
+        _pvEl('pv-bar').style.transform = 'scaleX(' + (left / _pv.ms).toFixed(4) + ')';
+        _pvEl('pv-bar').parentNode.classList.toggle('is-low', left < 3000);
+        const sec = Math.ceil(left / 1000), t = _pvEl('pv-time'); if (t.textContent !== String(sec)) t.textContent = sec;
+        _pv.raf = requestAnimationFrame(_pvTick);
+    }
+    gameControl.closeVote = () => _pvClose();   // (the game loop closes it when the end board comes)
+    function _pvClose() {
+        _pv.open = false; cancelAnimationFrame(_pv.raf);
+        if (_pv.key) { window.removeEventListener('keydown', _pv.key, true); _pv.key = null; }
+        const el = _pvEl('pve-vote'); if (el) { el.classList.remove('is-on', 'is-done'); el.style.display = 'none'; }
+    }
+    socket.on('pve-vote-start', ({ ms, solo, diffs }) => {
+        const el = _pvEl('pve-vote'); if (!el || !Array.isArray(diffs)) return;
+        _pv.open = true; _pv.mine = null; _pv.done = false; _pv.ms = ms || 10000; _pv.t0 = performance.now(); _pv.ids = diffs.map(d => d.id); _pv.cards = {};
+        const box = _pvEl('pv-cards'); box.textContent = '';
+        diffs.forEach((d, i) => {
+            const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-card'; b.dataset.id = d.id; b.dataset.lv = d.level;
+            const skulls = [1, 2, 3].map(k => '<svg class="ic' + (k <= d.level ? '' : ' is-off') + '" aria-hidden="true"><use href="#skull"/></svg>').join('');
+            const mx = d.max || { coins: 0, xp: 0, gems: 0 }, n = v => (Number(v) || 0).toLocaleString();
+            b.innerHTML = '<i class="pv-key">' + (i + 1) + '</i>'
+                + '<div class="pv-art"><img src="/images/zombies/' + d.art + '.svg" alt="" draggable="false"></div>'
+                + '<b class="pv-name"></b><div class="pv-skulls">' + skulls + '</div>'
+                + '<div class="pv-up">UP TO</div>'
+                + '<div class="pv-rew"><div class="pv-chip2"><img class="pic" src="/images/ui/monede.svg" alt="" draggable="false"><b>' + n(mx.coins) + '</b></div>'
+                + '<div class="pv-chip2"><svg class="ic" aria-hidden="true"><use href="#zap"/></svg><b>' + n(mx.xp) + ' XP</b></div>'
+                + '<div class="pv-chip2' + (mx.gems > 0 ? '' : ' is-none') + '"><img class="pic" src="/images/ui/diamante.svg" alt="" draggable="false"><b>' + (mx.gems > 0 ? n(mx.gems) : 'NONE') + '</b></div></div>'
+                + '<div class="pv-voters"></div><span class="pv-tag">YOUR VOTE</span>';
+            b.querySelector('.pv-name').textContent = d.name;
+            b.onclick = () => _pvVote(d.id);
+            box.appendChild(b);
+            _pv.cards[d.id] = { el: b, voters: b.querySelector('.pv-voters') };
+        });
+        _pvEl('pv-title').textContent = 'CHOOSE YOUR FINAL BOSS';
+        _pvEl('pv-sub').textContent = solo ? 'Pick one: it starts at once' : 'The most votes wins. A tie is settled by chance';
+        _pvEl('pv-time').textContent = Math.ceil(_pv.ms / 1000); _pvEl('pv-bar').style.transform = 'scaleX(1)';
+        _pvEl('pv-bar').parentNode.classList.remove('is-low');
+        el.classList.remove('is-done'); el.style.display = ''; el.classList.remove('is-on'); void el.offsetWidth; el.classList.add('is-on');
+        _pv.key = (e) => { const k = e.key; if (k >= '1' && k <= String(diffs.length)) { e.preventDefault(); e.stopPropagation(); _pvVote(diffs[(+k) - 1].id); } };
+        window.addEventListener('keydown', _pv.key, true);
+        cancelAnimationFrame(_pv.raf); _pv.raf = requestAnimationFrame(_pvTick);
+    });
+    socket.on('pve-vote-update', ({ votes }) => { if (_pv.open) _pvVoters(votes || {}); });
+    socket.on('pve-diff', ({ id, counts, tie, votes }) => {
+        if (!_pv.open) return;
+        _pv.done = true; cancelAnimationFrame(_pv.raf);
+        _pvVoters(votes || {});
+        gameControl.pveDiff = id;
+        const el = _pvEl('pve-vote'); el.classList.add('is-done');
+        for (const k of _pv.ids) _pv.cards[k].el.disabled = true;
+        const land = () => {
+            for (const k of _pv.ids) { const c = _pv.cards[k].el; c.classList.remove('is-roll', 'is-mine'); c.classList.toggle('is-win', k === id); c.classList.toggle('is-lose', k !== id); }
+            const d = window.ARPveDiff && window.ARPveDiff.get(id);
+            _pvEl('pv-title').textContent = (d ? d.name.toUpperCase() : id) + '!';
+            _pvEl('pv-sub').textContent = (tie && tie.length > 1) ? 'A tie: chosen by chance' : 'Chosen';
+            if (window.ARSound) window.ARSound.play('start');
+        };
+        if (tie && tie.length > 1 && window.ARJuice && window.ARJuice.on()) {   // a tie: the tied cards light up one after the other, then it lands
+            let i = 0; const seq = tie.slice(), t = setInterval(() => {
+                for (const k of _pv.ids) _pv.cards[k].el.classList.toggle('is-roll', k === seq[i % seq.length]);
+                if (++i > 7) { clearInterval(t); land(); }
+            }, 110);
+        } else land();
+    });
     // The server says every loading screen is gone: now the 3, 2, 1
-    socket.on('countdown-start', () => showCountdown());
+    socket.on('countdown-start', () => { _pvClose(); showCountdown(); });
 
     socket.on('game-reset', reloadAfterDiagnostic);
 
@@ -6303,6 +6394,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     function _peRender(d) {
         const win = d.result === 'victory', r = d.reward, root = document.getElementById('pve-end');
         root.dataset.result = win ? 'win' : 'lose';
+        _peSet('pe-diff', (window.ARPveDiff ? window.ARPveDiff.get(d.diff).name : '').toUpperCase());
         _peSet('pe-count', d.team.length === 1 ? '1 PLAYER' : d.team.length + ' PLAYERS');
         _peSet('pe-title', win ? 'VICTORY!' : 'BASE DESTROYED');
         _peSet('pe-sub-lbl', win ? 'THE BASE SURVIVED EVERY WAVE' : 'YOU REACHED WAVE');
@@ -6362,7 +6454,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _peSet('pe-w-waves', lw.n + (lw.n === 1 ? ' wave cleared' : ' waves cleared')); _roll('pe-w-waves-c', lw.coins, 2000, '+');
         _roll('pe-w-kills-c', lk.coins, 2100, '+'); _roll('pe-w-win-c', lv.coins, 2200, '+');
         const got = r.milestones.filter(m => m.got).map(m => m.wave);
-        _peSet('pe-w-gem-note', win ? 'Wave milestones: ' + got.join(', ') : got.length ? 'Wave milestones reached: ' + got.join(', ') : 'No wave milestones reached');
+        _peSet('pe-w-gem-note', !r.milestones.length ? 'No diamonds on this level' : win ? 'Wave milestones: ' + got.join(', ') : got.length ? 'Wave milestones reached: ' + got.join(', ') : 'No wave milestones reached');
         document.getElementById('pe-w-gems').innerHTML = '+' + (r.gems | 0) + ' ' + _PE_GEM;
         _peMission(_peNote);
         _peSet('pe-again-lbl', win ? 'PLAY AGAIN' : 'TRY AGAIN'); _peSet('pe-again-sub', 'Survival PvE');
@@ -6394,6 +6486,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     socket.on('pve-end', (d) => {
         gameEnded = true;
         _sceneFrozen = true;
+        if (gameControl.closeVote) gameControl.closeVote();   // (the vote is long over; it never stays on top of the board)
         moveDir.x = 0; moveDir.y = 0; isShooting = false;
         hidePvePanel();
         _peData = d; _peNote = undefined;

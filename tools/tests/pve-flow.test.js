@@ -16,7 +16,7 @@ test('the countdown waits for the loading screens: countdown-start only after ev
     assert.match(server, /socket\.on\('match-ready'/);
     assert.match(server, /waitLoad: !!data\.loader/);
     // the client shows 3-2-1 only on that event, never on game-start itself
-    assert.match(client, /socket\.on\('countdown-start', \(\) => showCountdown\(\)\)/);
+    assert.match(client, /socket\.on\('countdown-start', \(\) => \{ _pvClose\(\); showCountdown\(\); \}\)/);
     const calls = client.match(/\bshowCountdown\(\)/g) || [];
     assert.equal(calls.length, 2, 'showCountdown() is defined once and called from one place only: the countdown-start handler');
     assert.match(client, /function _matchReady\(/);

@@ -11,9 +11,9 @@ const ARNet = require('../../public/netproto.js');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function withServer(fn) {
+async function withServer(fn, extraEnv) {
     const port = 3980 + Math.floor(Math.random() * 20);
-    const child = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..', '..'), env: { ...process.env, PORT: String(port), SUPABASE_URL: '', SUPABASE_SERVICE_KEY: '', LAG_LOG: '0' }, stdio: 'ignore' });
+    const child = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..', '..'), env: { ...process.env, PORT: String(port), SUPABASE_URL: '', SUPABASE_SERVICE_KEY: '', LAG_LOG: '0', PVE_VOTE_MS: '0', ...(extraEnv || {}) }, stdio: 'ignore' });
     try {
         let up = false;
         for (let i = 0; i < 60 && !up; i++) { try { await fetch(`http://127.0.0.1:${port}/api/build`); up = true; } catch (e) { await sleep(250); } }
@@ -51,7 +51,7 @@ test('the wave tells the HUD how many zombies it brings: all of them and the one
     });
 });
 
-test('two players in the room: wave 1 brings 40% more zombies (9 -> 13)', async () => {
+test('two players in the room: the wave is the same as for one (9 zombies): the players do not make a match harder any more', async () => {
     await withServer(async (base) => {
         const login = async (nick) => { const lj = await (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nickname: nick, password: 'x' }) })).json(); const s = Client(base, { parser: msgpackParser, transports: ['websocket'], forceNew: true, reconnection: false }); await new Promise(r => s.on('connect', r)); s.emit('authenticate', { nickname: nick, token: lj.token }); return s; };
         const opts = { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, weapon: 'smg', mode: 'pve', xp: 0, proto: ARNet.PROTO };
@@ -64,9 +64,34 @@ test('two players in the room: wave 1 brings 40% more zombies (9 -> 13)', async 
         a.emit('start-game');
         for (let i = 0; i < 80 && !wave; i++) await sleep(100);
         assert.ok(wave, 'wave 1 started');
-        assert.equal(wave.zombies, 13, '9 x 1.4 = 12.6, rounded');
+        assert.equal(wave.zombies, 9, 'the middle level, whatever the number of players');
+        assert.equal(wave.hpMul, 1);
         a.close(); b.close();
     });
+});
+
+test('the level chosen in the vote sets the wave: Reaper brings 14 zombies with x1.4 health in wave 1 (9 x 1.5), Brood Mother 5 (9 x 0.6)', async () => {
+    for (const [pick, zombies, hp] of [['reaper', 14, 1.4], ['brood', 5, 0.75]]) {
+        await withServer(async (base) => {
+            const lj = await (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nickname: 'st_vote_' + pick, password: 'x' }) })).json();
+            const s = Client(base, { parser: msgpackParser, transports: ['websocket'], forceNew: true, reconnection: false });
+            await new Promise(r => s.on('connect', r)); s.emit('authenticate', { nickname: 'st_vote_' + pick, token: lj.token });
+            let wave = null, start = null, diff = null; s.on('pve-wave-start', (d) => { wave = wave || d; }); s.on('pve-vote-start', (d) => { start = d; }); s.on('pve-diff', (d) => { diff = d; });
+            s.on('gs2', () => s.emit('input', { seq: 1, dx: 0, dy: 0, angle: 0, shooting: false }));
+            s.emit('create-room', { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, weapon: 'smg', mode: 'pve', xp: 0, proto: ARNet.PROTO });
+            await new Promise(r => s.once('room-created', r));
+            s.emit('start-game');
+            for (let i = 0; i < 40 && !start; i++) await sleep(100);
+            assert.ok(start && start.solo && start.diffs.length === 3, 'the three cards were offered');
+            s.emit('pve-vote', { id: pick });
+            for (let i = 0; i < 100 && !wave; i++) await sleep(100);
+            assert.equal(diff && diff.id, pick, 'alone: chosen at once');
+            assert.ok(wave, 'wave 1 started');
+            assert.equal(wave.zombies, zombies);
+            assert.equal(wave.hpMul, hp);
+            s.close();
+        }, { PVE_VOTE_MS: '5000' });
+    }
 });
 
 test('the first batch comes out when the grace is over, and the HUD hears about it (pve-subwave)', async () => {
