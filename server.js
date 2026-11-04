@@ -1117,6 +1117,13 @@ const PVE_ZOMBIE_DEFS = {
              // her blow is a swing with a wind-up: it starts when something is in reach (attackCd is the whole cycle), she stands and raises her arms for `windup` s and the
              // damage lands at the END of the wind-up, at the moment the arms come down, to whatever is in reach THEN (nothing: it is a miss); `recover` s more to straighten up
              swing: { windup: 0.7, recover: 0.5 } },
+    // the Colossus (the final boss of the Colossus level, wave 20; also in the sandbox): a giant of stone and lava that walks on to the base like the siege types (it never
+    // goes for a player, only walls, turrets and the base). Two things set it apart: every footstep (`steps`: one every `stride` units, alternating feet) crushes the barricade
+    // or turret under that foot, and its blow is a slow two-fisted slam (`swing`, the same wind-up / hit / recover as the Brood Mother's) that lands on the thing in front AND
+    // splashes: the other built things within `splash.r` of the impact take `sdmg` and the players within it `pdmg`. Its health does not grow with the wave.
+    colossus: { hp: 18000, armor: 6, noScale: true, chaseSpd: 22, patrolSpd: 14, dmg: 0, attackR: 100, attackCd: 2.2, coinsMin: 200, coinsMax: 260, baseDmg: 140, r: 60, hunts: false, mass: 40, heavy: true, large: true,
+                steps: { stride: 58, r: 40, dmg: 90 },
+                swing: { ev: 'colossus', windup: 0.9, recover: 0.7, splash: { r: 120, sdmg: 70, pdmg: 30 } } },
     // an egg: it lies where it landed (a zombie that does not move or hit, so bullets, turrets, bombs and flames all work on it as on any), and if it is not broken
     // in `hatch` seconds `spawn` hatchlings come out of it. Not a kill when it hatches.
     egg: { hp: 150, noScale: true, chaseSpd: 0, patrolSpd: 0, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 0, coinsMax: 0, baseDmg: 0, r: 18, hunts: false, mass: 50, immovable: true,
@@ -1124,7 +1131,7 @@ const PVE_ZOMBIE_DEFS = {
     // what comes out of an egg: small, fast, fragile
     hatchling: { hp: 120, noScale: true, chaseSpd: 150, patrolSpd: 80, dmg: 15, attackR: 56, attackCd: 0.6, coinsMin: 0, coinsMax: 1, baseDmg: 12, r: 13, hunts: true, mass: 0.4 },
 };
-const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14 };
+const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14, colossus: 15 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
 const PVE_UPGRADE_DEFS = {
     dmg:  { baseCost: 6,  costInc: 4, maxUses: 5, apply: (p, n) => { p.damage  = Math.round(p.baseDamage  * (1 + n * 0.05)); } },
@@ -1408,9 +1415,10 @@ function prepareAndSpawnWave(room, waveIndex) {
     for (let i = 0; i < types.length; i += bsize) {
         batches.push(types.slice(i, i + bsize));
     }
-    if (waveIndex === PVE_TOTAL_WAVES - 1 && room.pveDiff === 'brood') {   // the final boss of the level: the Brood Mother walks in with the first batch
+    const finalBoss = { brood: 'brood', colossus: 'colossus' }[room.pveDiff];   // (the Reaper level has no boss in the game yet)
+    if (waveIndex === PVE_TOTAL_WAVES - 1 && finalBoss) {   // the final boss of the level walks in with the first batch of the last wave
         if (!batches.length) batches.push([]);
-        batches[0].unshift('brood');
+        batches[0].unshift(finalBoss);
     }
     const firstBatch = batches[0] || [];
     room.pveSpawnQueue = batches.slice(1);
@@ -1920,11 +1928,26 @@ function eggTick(code, room, zombie, def, dt) {
     io.to(code).emit('egg-hatch', { x: Math.round(zombie.x), y: Math.round(zombie.y) });
 }
 
+// A footstep of a zombie that crushes as it walks (def.steps: the Colossus). `mv` = how far it moved this tick; every `stride` units a foot comes down, alternately left and
+// right, a little ahead of the body: colossus-step {id, x, y, s} goes to the clients (the ground shakes) and any barricade or turret within `r` of that foot loses `dmg`.
+function stepTick(code, room, zombie, def, mv) {
+    const st = def.steps;
+    zombie._stp = (zombie._stp || 0) + mv;
+    if (zombie._stp < st.stride) return;
+    zombie._stp -= st.stride;
+    zombie._ss = -(zombie._ss || 1);
+    const ca = Math.cos(zombie.angle), sa = Math.sin(zombie.angle), fwd = def.r * 0.55, side = def.r * 0.5 * zombie._ss;
+    const fx = zombie.x + ca * fwd - sa * side, fy = zombie.y + sa * fwd + ca * side;
+    io.to(code).emit('colossus-step', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), s: zombie._ss > 0 ? 1 : 0 });
+    for (const q of room.structs.slice()) if (!q._gone && builtDist(fx, fy, q) <= st.r) hurtBuilt(code, room, q, st.dmg);
+    for (const q of room.turrets.slice()) if (!q._gone && builtDist(fx, fy, q) <= st.r) hurtBuilt(code, room, q, st.dmg);
+}
+
 // A zombie whose blow is a swing (def.swing: the Brood Mother). Called every tick from its place in the attack chain. It starts a swing when a built thing or the base is in reach
 // and the cycle (attackCd) allows; the client is told (brood-swing {id, ms}) so it can raise her arms; at the end of the wind-up the damage lands (brood-hit {id, x, y, miss}),
 // on the thing it began on if that is still in reach, else on what is in reach now, else nowhere. She does not walk while swinging. Returns true if the base fell (the match is over).
-function swingTick(code, room, zombie, def, dt, tgtStruct, baseD) {
-    const sw = def.swing, reachR = def.r + 14;
+function swingTick(code, room, zombie, def, dt, tgtStruct, baseD, now) {
+    const sw = def.swing, reachR = def.r + 14, ev = sw.ev || 'brood';   // ev: the prefix of the two events (brood-swing / brood-hit, colossus-swing / colossus-hit)
     let st = zombie._sw;
     if (st) {
         st.t += dt;
@@ -1939,9 +1962,15 @@ function swingTick(code, room, zombie, def, dt, tgtStruct, baseD) {
             }
             const baseIn = room.base && Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) < room.base.r + def.r + 14;
             const fx = zombie.x + Math.cos(zombie.angle) * (def.r + 16), fy = zombie.y + Math.sin(zombie.angle) * (def.r + 16);
-            io.to(code).emit('brood-hit', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), miss: !target && !baseIn });
+            io.to(code).emit(ev + '-hit', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), miss: !target && !baseIn, r: sw.splash ? sw.splash.r : 0 });
             if (target) hurtBuilt(code, room, target, def.baseDmg);
             else if (baseIn) { hurtBase(code, room, def.baseDmg); if (room.gameEnded) return true; }
+            if (sw.splash && (target || baseIn)) {   // the slam throws the shock out: the rest of what is built round the impact, and the players
+                const sp = sw.splash;
+                for (const q of room.structs.slice()) if (q !== target && !q._gone && builtDist(fx, fy, q) <= sp.r) hurtBuilt(code, room, q, sp.sdmg);
+                for (const q of room.turrets.slice()) if (q !== target && !q._gone && builtDist(fx, fy, q) <= sp.r) hurtBuilt(code, room, q, sp.sdmg);
+                for (const p of room._playerArr) if (p.alive && Math.hypot(p.x - fx, p.y - fy) <= sp.r + PLAYER_R) hurtPlayer(code, room, p, sp.pdmg, now);
+            }
         }
         if (st.t >= sw.windup + sw.recover) zombie._sw = null;
         return false;
@@ -1952,7 +1981,7 @@ function swingTick(code, room, zombie, def, dt, tgtStruct, baseD) {
     if (!sReach && !bReach) return false;
     zombie._sw = { t: 0, hit: false, sid: sReach ? tgtStruct.id : null };
     zombie.attackCooldown = def.attackCd;
-    io.to(code).emit('brood-swing', { id: zombie.id, ms: Math.round(sw.windup * 1000) });
+    io.to(code).emit(ev + '-swing', { id: zombie.id, ms: Math.round(sw.windup * 1000) });
     return false;
 }
 
@@ -2821,6 +2850,7 @@ function startRoomLoop(code, room) {
                         zombie.x += (ddx / moveLen) * speed * dt;
                         zombie.y += (ddy / moveLen) * speed * dt;
                         zombie.angle = Math.atan2(ddy / moveLen, ddx / moveLen);
+                        if (def.steps && speed > 0) stepTick(code, room, zombie, def, speed * dt);
                     }
 
                     zombie.x = Math.max(def.r, Math.min(ARENA_W - def.r, zombie.x));
@@ -2897,7 +2927,7 @@ function startRoomLoop(code, room) {
                             if (room.gameEnded) return;
                         }
                     } else if (def.swing) {
-                        if (swingTick(code, room, zombie, def, dt, tgtStruct, baseD)) return;
+                        if (swingTick(code, room, zombie, def, dt, tgtStruct, baseD, now)) return;
                     } else if (def.ranged) {
                         if (spit && zombie.attackCooldown <= 0) { spitAt(code, room, zombie, def.ranged, spit, now); zombie.attackCooldown = def.ranged.cd; }
                     } else if (zombie.attackCooldown <= 0 && !(zombie._scream > 0)) {
@@ -3331,6 +3361,8 @@ const LOAD_WAIT_MS = 20000;
 // vote: the default level); the level with the most votes wins, a tie is settled by chance among the tied ones, nobody voting is the default; alone in
 // the room the choice is made the moment it is clicked. By events, not gs2: pve-vote-start, pve-vote-update, pve-diff.
 const PVE_VOTE_MS = process.env.PVE_VOTE_MS !== undefined ? Math.max(0, (+process.env.PVE_VOTE_MS) | 0) : PveDiff.VOTE_MS;
+// PVE_FIRST_WAVE (tests and the harness only): the wave a PvE match starts at (1 = the usual first wave; 20 = straight to the last wave, where the final boss of the level walks in)
+const PVE_FIRST_WAVE = Math.max(1, Math.min(PVE_TOTAL_WAVES, (+process.env.PVE_FIRST_WAVE) | 0 || 1));
 function beginMatchCountdown(code, room) {
     if (!rooms.has(code) || room._cdStarted || !room.gameStarted) return;
     room._cdStarted = true;
@@ -3384,7 +3416,7 @@ function triggerRematch(code, room) {
     room.countdownActive = true;
     room.pveSkipVotes.clear();
     room.pveSpawnQueue = []; room.pveSpawnTimer = 0;
-    room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
+    room.pveWave = PVE_FIRST_WAVE - 1; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
     room.pveKinds = PveRewards.newKinds(); room.pveT0 = 0;
     room.pveDiff = PveDiff.DEFAULT_ID; clearTimeout(room.pveVote && room.pveVote.timer); room.pveVote = null;
     room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;
@@ -3548,7 +3580,7 @@ io.on('connection', (socket) => {
             assignPveSpawnPositions(room._playerArr);
             room.zombies = [];
             room.base = { x: PVE_BASE_X, y: PVE_BASE_Y, hp: PVE_BASE_HP, maxHp: PVE_BASE_HP, r: PVE_BASE_R };
-            room.pveWave = 0; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
+            room.pveWave = PVE_FIRST_WAVE - 1; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
             room.pveKinds = PveRewards.newKinds(); room.pveT0 = 0;
             room.pveDiff = PveDiff.DEFAULT_ID; clearTimeout(room.pveVote && room.pveVote.timer); room.pveVote = null;
             room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;

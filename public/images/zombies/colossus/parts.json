@@ -1,0 +1,48 @@
+{
+  "view": [
+    -104,
+    -104,
+    208,
+    232
+  ],
+  "order": [
+    "crown",
+    "pauL",
+    "pauR",
+    "armL",
+    "armR",
+    "head"
+  ],
+  "pivots": {
+    "crown": {
+      "x": 0,
+      "y": -20,
+      "note": "the boulders behind the head: heave a little with each step and rock a few degrees"
+    },
+    "pauL": {
+      "x": -58,
+      "y": 18,
+      "note": "left shoulder plates: follow the arm at about a third of its swing"
+    },
+    "pauR": {
+      "x": 58,
+      "y": 18,
+      "note": "right shoulder plates: the same, opposite phase"
+    },
+    "armL": {
+      "x": -58,
+      "y": 20,
+      "note": "left shoulder: swings +-30 degrees with the step, rises for the blow"
+    },
+    "armR": {
+      "x": 58,
+      "y": 20,
+      "note": "right shoulder: opposite phase"
+    },
+    "head": {
+      "x": 0,
+      "y": 0,
+      "note": "centre of the dome: sinks 2-4 units with each step, leans into the blow"
+    }
+  }
+}

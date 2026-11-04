@@ -48,7 +48,7 @@ const KIND_OF = {
     runner: 'runner', stalker: 'runner',
     tank: 'heavy', brute: 'heavy', summoner: 'heavy', shielded: 'heavy',
     spitter: 'special', exploder: 'special', screamer: 'special', minion: 'special',
-    brood: 'heavy', egg: 'special', hatchling: 'special',
+    brood: 'heavy', colossus: 'heavy', egg: 'special', hatchling: 'special',
 };
 const kindOf = type => KIND_OF[type] || 'normal';
 const newKinds = () => ({ normal: 0, runner: 0, heavy: 0, special: 0 });

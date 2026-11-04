@@ -92,7 +92,7 @@ const broodPartFiles = () => { const p = broodPieces(); const f = {}; BROOD_ORDE
 // ---------- COLOSSUS: a giant of stone and lava. A dome of rock plates ringed with bolts and glowing seams, a heavy brow and molten eyes between cheek plates (no mouth: from above
 // only the eyes show), a crown of rounded boulders behind the head with magma glowing between them, layered pauldrons, stone-braced arms and two boulder fists with lava in
 // their cracks. Every step crushes what is in its way.
-function colossus() {
+function colossusPieces() {
   const D = '#3E382F', M = '#6F6757', M2 = '#58513F', L = '#A89F88', LL = '#CFC7B1', LAVA = '#FF7A1F', HOT = '#FFD34D', RED = '#D9421A';
   const crack = (pts, w = 4.6) => path('M' + pts.map(p => p.join(' ')).join(' L'), 'none', w, RED) + path('M' + pts.map(p => p.join(' ')).join(' L'), 'none', w - 2.2, LAVA) + path('M' + pts.map(p => p.join(' ')).join(' L'), 'none', 1.2, HOT);
   const bolt = (x, y, r = 2.4) => circ(x, y, r, L, 1.4) + circ(x - r * 0.3, y - r * 0.3, r * 0.35, LL);
@@ -100,9 +100,9 @@ function colossus() {
   const crown = [[-58, -34, 20, 7, 0.4], [-34, -58, 23, 7, 1.1], [0, -70, 27, 8, 0.2], [34, -58, 23, 7, 2.2], [58, -34, 20, 6, 0.9], [-12, -50, 18, 6, 1.7], [18, -50, 17, 6, 2.6]].map(([x, y, r, n, rot]) =>
     poly(chunk(x, y, r, n, rot, 0.92), M, 4.4) + poly(chunk(x - 2, y - 2, r * 0.7, n, rot, 0.92), L, 0) + path(`M${x - r * 0.5} ${y + r * 0.2} q${r * 0.5} ${r * 0.3} ${r} 0`, 'none', 1.6, D) + path(`M${x - r * 0.4} ${y - r * 0.25} q${r * 0.4} ${r * 0.2} ${r * 0.8} 0`, 'none', 1.2, D, 'opacity=".6"')).join('');
   // pauldrons: two stacked plates each, rivet rows, lava in the joint and a crack
-  const paul = mirror(s => poly([[s * 40, -8], [s * 80, -22], [s * 96, 12], [s * 82, 36], [s * 46, 32]], D, 5) + poly([[s * 42, -10], [s * 78, -22], [s * 91, 10], [s * 78, 30], [s * 48, 28]], M, 0) + poly([[s * 46, -10], [s * 76, -20], [s * 82, -4], [s * 56, 6]], L, 0, INK, 'opacity=".7"') +
+  const paulS = s => poly([[s * 40, -8], [s * 80, -22], [s * 96, 12], [s * 82, 36], [s * 46, 32]], D, 5) + poly([[s * 42, -10], [s * 78, -22], [s * 91, 10], [s * 78, 30], [s * 48, 28]], M, 0) + poly([[s * 46, -10], [s * 76, -20], [s * 82, -4], [s * 56, 6]], L, 0, INK, 'opacity=".7"') +
     poly([[s * 50, 10], [s * 84, 2], [s * 90, 24], [s * 58, 34]], D, 4) + poly([[s * 52, 10], [s * 82, 4], [s * 86, 20], [s * 58, 30]], M2, 0) + crack([[s * 58, 8], [s * 68, 13], [s * 76, 8]], 3.4) +
-    [0, 1, 2, 3].map(i => bolt(s * (52 + i * 9), -12 + i * 3 + 0.5 * i * i, 2.2)).join('') + crack([[s * 70, -16], [s * 74, -6], [s * 68, 2]], 2.6));
+    [0, 1, 2, 3].map(i => bolt(s * (52 + i * 9), -12 + i * 3 + 0.5 * i * i, 2.2)).join('') + crack([[s * 70, -16], [s * 74, -6], [s * 68, 2]], 2.6);
   // arms: stone limbs in segments, a stone bracer with bolts and a lava inlay, and a boulder fist with knuckle ridges, lava cracks and drips
   const arm = s => {
     const x = s * 58, L0 = 57, y0 = 16, fy = y0 + L0 + 16, fx = x;
@@ -131,8 +131,23 @@ function colossus() {
     poly([[-6, 18], [6, 18], [9, 40], [-9, 40]], D, 3.6) + poly([[-4, 20], [4, 20], [6, 38], [-6, 38]], M2, 0) + poly([[-22, 46], [22, 46], [16, 56], [-16, 56]], D, 3.6) + poly([[-18, 47], [18, 47], [13, 54], [-13, 54]], M2, 0) + crack([[0, 40], [0, 54]], 2.6) +
     [-1, 1].map(s => circ(s * 21, 28, 14, LAVA, 0, INK, 'opacity=".3"') + circ(s * 21, 28, 9, RED, 3) + circ(s * 21, 28, 6.2, LAVA) + circ(s * 21 - s * 1.2, 26.8, 2.6, HOT)).join('') +
     ell(-22, -34, 13, 5, '#fff', 0, INK, 'opacity=".35" transform="rotate(-35 -22 -34)"') + circ(0, 0, 58, 'none', 7);
-  return svg('-104 -104 208 232', crown + paul + arm(-1) + arm(1) + head);
+  // the pieces, in drawing order (back to front), in one coordinate system and one viewBox: stacked at the same origin they give exactly the whole sprite, and each can be
+  // turned about its own pivot (COLOSSUS_PIVOTS) to animate it
+  return { crown, pauL: paulS(-1), pauR: paulS(1), armL: arm(-1), armR: arm(1), head };
 }
+const COLOSSUS_VIEW = '-104 -104 208 232';
+const COLOSSUS_ORDER = ['crown', 'pauL', 'pauR', 'armL', 'armR', 'head'];
+const COLOSSUS_PIVOTS = {
+  crown: { x: 0, y: -20, note: 'the boulders behind the head: heave a little with each step and rock a few degrees' },
+  pauL: { x: -58, y: 18, note: 'left shoulder plates: follow the arm at about a third of its swing' },
+  pauR: { x: 58, y: 18, note: 'right shoulder plates: the same, opposite phase' },
+  armL: { x: -58, y: 20, note: 'left shoulder: swings +-30 degrees with the step, rises for the blow' },
+  armR: { x: 58, y: 20, note: 'right shoulder: opposite phase' },
+  head: { x: 0, y: 0, note: 'centre of the dome: sinks 2-4 units with each step, leans into the blow' },
+};
+function colossus() { const p = colossusPieces(); return svg(COLOSSUS_VIEW, COLOSSUS_ORDER.map(k => p[k]).join('')); }
+// one SVG per piece (public/images/zombies/colossus/<piece>.svg) + the manifest with order and pivots
+const colossusPartFiles = () => { const p = colossusPieces(); const f = {}; COLOSSUS_ORDER.forEach(k => { f[k + '.svg'] = svg(COLOSSUS_VIEW, p[k]); }); f['parts.json'] = JSON.stringify({ view: COLOSSUS_VIEW.split(' ').map(Number), order: COLOSSUS_ORDER, pivots: COLOSSUS_PIVOTS }, null, 2) + '\n'; return f; };
 function ellipsePulse() { return ''; }
 
 // ---------- REAPER: a hooded wraith in a ragged cloak. A bone mask with sockets full of cold soul fire in the hood, a long scythe in one hand and a skeletal hand with a soul
@@ -198,7 +213,7 @@ const BOSSES = {
   egg: { svg: egg, file: 'boss_egg.svg', view: '-30 -36 60 72' },
   hatchling: { svg: hatchling, file: 'zombi_hatchling.svg', view: '-44 -36 88 88' },
 };
-module.exports = { brood, colossus, reaper, egg, hatchling, BOSSES, broodPieces, broodPartFiles, BROOD_ORDER, BROOD_PIVOTS, BROOD_VIEW };
+module.exports = { brood, colossus, reaper, egg, hatchling, BOSSES, broodPieces, broodPartFiles, BROOD_ORDER, BROOD_PIVOTS, BROOD_VIEW, colossusPieces, colossusPartFiles, COLOSSUS_ORDER, COLOSSUS_PIVOTS, COLOSSUS_VIEW };
 
 if (require.main === module) {
   const fs = require('fs'), path_ = require('path');
@@ -209,5 +224,8 @@ if (require.main === module) {
   const pd = path_.join(out, 'brood'); fs.mkdirSync(pd, { recursive: true });
   const pf = broodPartFiles(); for (const n of Object.keys(pf)) fs.writeFileSync(path_.join(pd, n), pf[n]);
   console.log('wrote brood/' + Object.keys(pf).join(', brood/'));
+  const cd = path_.join(out, 'colossus'); fs.mkdirSync(cd, { recursive: true });
+  const cf = colossusPartFiles(); for (const n of Object.keys(cf)) fs.writeFileSync(path_.join(cd, n), cf[n]);
+  console.log('wrote colossus/' + Object.keys(cf).join(', colossus/'));
   console.log('wrote', Object.keys(BOSSES).map(k => BOSSES[k].file).join(', '));
 }

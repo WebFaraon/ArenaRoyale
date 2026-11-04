@@ -5865,9 +5865,9 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
 .sbx-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; font-size: .85rem; }
 .sbx-head span { font-size: .68rem; color: var(--c-gold); }
 .sbx-hint { font-size: .64rem; font-weight: 700; opacity: .85; margin-bottom: 6px; line-height: 1.25; }
-#sbx-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-.sbx-card { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 54px; padding: 3px 2px 2px; background: #1B252C; border: 2.5px solid var(--ink-line); border-radius: 9px; color: #fff; cursor: pointer; font: inherit; box-sizing: border-box; overflow: hidden; box-shadow: inset 0 -3px 0 rgba(255,255,255,.07); }
-.sbx-card img { position: absolute; left: 50%; top: 3px; height: 31px; width: auto; max-width: 90%; transform: translateX(-50%); object-fit: contain; pointer-events: none; }
+#sbx-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.sbx-card { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 46px; padding: 2px 2px 2px; background: #1B252C; border: 2.5px solid var(--ink-line); border-radius: 9px; color: #fff; cursor: pointer; font: inherit; box-sizing: border-box; overflow: hidden; box-shadow: inset 0 -3px 0 rgba(255,255,255,.07); }
+.sbx-card img { position: absolute; left: 50%; top: 2px; height: 26px; width: auto; max-width: 90%; transform: translateX(-50%); object-fit: contain; pointer-events: none; }
 .sbx-card b { position: relative; font-size: .56rem; text-shadow: var(--stroke-sm); letter-spacing: .02em; line-height: 1; }
 .sbx-card.is-boss { border-color: #B070FF; }
 .sbx-card:hover { border-color: #fff; }

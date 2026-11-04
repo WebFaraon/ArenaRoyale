@@ -4010,7 +4010,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 ctx.globalAlpha = 1;
             } else if (f.k === 'slam') {   // the Brood Mother's blow lands: a flash, shock rings, cracks in the ground, rubble and dust (smaller when it hits nothing)
                 if (age >= 800) { _zFx.splice(i, 1); continue; }
-                const X = f.x0, Y = f.y0, sc = f.miss ? 0.6 : 1, u = age / 800;
+                const X = f.x0, Y = f.y0, sc = (f.miss ? 0.6 : 1) * (f.big || 1), u = age / 800;
                 if (age < 140) { const w = 1 - age / 140; ctx.globalAlpha = w; ctx.fillStyle = '#FFE2A8'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; _star(ctx, X, Y, (12 + 30 * (1 - w)) * sc); ctx.fill(); ctx.stroke(); }
                 const q = Math.min(1, age / 420), e = 1 - (1 - q) * (1 - q);
                 ctx.strokeStyle = '#0B0F1A'; ctx.globalAlpha = (1 - q) * 0.85; ctx.lineWidth = 7 * (1 - q) + 2; ctx.beginPath(); ctx.arc(X, Y, (12 + 78 * e) * sc, 0, TAU); ctx.stroke();
@@ -4034,6 +4034,19 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 }
                 ctx.fillStyle = '#CFC6A6';
                 for (let k = 0; k < 6; k++) { const a2 = k * 1.05 + 0.3, ee = Math.min(1, age / 700); ctx.globalAlpha = (1 - ee) * 0.5; ctx.beginPath(); ctx.arc(X + Math.cos(a2) * (10 + 34 * ee) * sc, Y + Math.sin(a2) * (8 + 26 * ee) * sc - 12 * ee, (6 + 9 * ee) * sc, 0, TAU); ctx.fill(); }
+                ctx.globalAlpha = 1;
+            } else if (f.k === 'stomp') {   // a footstep of the Colossus: a ring pressed into the ground, a few cracks, a heave of dust (small next to a blow)
+                if (age >= 700) { _zFx.splice(i, 1); continue; }
+                const X = f.x0, Y = f.y0, u = age / 700, q = Math.min(1, age / 260), e = 1 - (1 - q) * (1 - q);
+                ctx.strokeStyle = '#0B0F1A'; ctx.globalAlpha = (1 - q) * 0.7; ctx.lineWidth = 5 * (1 - q) + 1.5; ctx.beginPath(); ctx.arc(X, Y, 10 + 38 * e, 0, TAU); ctx.stroke();
+                ctx.lineCap = 'round'; ctx.strokeStyle = '#2B2016';
+                for (let k = 0; k < f.sp.length; k++) {
+                    const d = f.sp[k], L = d.l * Math.min(1, age / 120), c = Math.cos(d.a), s2 = Math.sin(d.a);
+                    ctx.globalAlpha = (u < 0.5 ? 1 : 1 - (u - 0.5) / 0.5) * 0.85; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(X + c * 6, Y + s2 * 6); ctx.lineTo(X + c * L, Y + s2 * L); ctx.stroke();
+                    if (u < 0.35) { ctx.globalAlpha = 0.9 * (1 - u / 0.35); ctx.strokeStyle = '#FF7A1F'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(X + c * 6, Y + s2 * 6); ctx.lineTo(X + c * L * 0.8, Y + s2 * L * 0.8); ctx.stroke(); ctx.strokeStyle = '#2B2016'; }
+                }
+                ctx.lineCap = 'butt'; ctx.fillStyle = '#CFC6A6';
+                for (let k = 0; k < 5; k++) { const a2 = k * 1.26 + 0.4, ee = Math.min(1, age / 650); ctx.globalAlpha = (1 - ee) * 0.5; ctx.beginPath(); ctx.arc(X + Math.cos(a2) * (8 + 30 * ee), Y + Math.sin(a2) * (6 + 22 * ee) - 10 * ee, 5 + 8 * ee, 0, TAU); ctx.fill(); }
                 ctx.globalAlpha = 1;
             } else if (f.k === 'hatch') {   // an egg hatches: the shell flies in pieces and a green ring goes out
                 if (age >= 650) { _zFx.splice(i, 1); continue; }
@@ -5276,8 +5289,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // the server decides; CLEAR ZOMBIES / FREEZE / CLEAR BUILT are sandbox-ctl. Desktop: the click places it; Esc (or the same card again) puts it away.
     const _SBX_TYPES = [['normal', 'Normal', 'zombi'], ['runner', 'Runner', 'zombi_rapid'], ['tank', 'Tank', 'zombi_tanc'], ['spitter', 'Spitter', 'zombi_toxic'], ['exploder', 'Exploder', 'zombi_exploder'],
         ['brute', 'Brute', 'zombi_brute'], ['summoner', 'Summoner', 'zombi_summoner'], ['minion', 'Minion', 'zombi_minion'], ['shielded', 'Shielded', 'zombi_shielded'], ['screamer', 'Screamer', 'zombi_screamer'],
-        ['ghoul', 'Ghoul', 'zombi_ghoul'], ['stalker', 'Stalker', 'zombi_stalker'], ['brood', 'Brood Mother', 'boss_brood', 1], ['egg', 'Egg', 'boss_egg', 1], ['hatchling', 'Hatchling', 'zombi_hatchling', 1]];
-    const _SBX_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14 };
+        ['ghoul', 'Ghoul', 'zombi_ghoul'], ['stalker', 'Stalker', 'zombi_stalker'], ['brood', 'Brood Mother', 'boss_brood', 1], ['egg', 'Egg', 'boss_egg', 1], ['hatchling', 'Hatchling', 'zombi_hatchling', 1], ['colossus', 'Colossus', 'boss_colossus', 1]];
+    const _SBX_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14, colossus: 15 };
     const _sbx = { type: null, n: 1, freeze: false };
     let _sbxBuilt = false;   // the cards are built once PER MATCH: built in an earlier match they would still talk to that match's state (pick a zombie, click the map, nothing happens)
     function _sbxUi() {
@@ -6351,6 +6364,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let k = 0; k < (miss ? 3 : 7); k++) ch.push({ a: Math.random() * TAU, v: 26 + Math.random() * 40, s: 2.4 + Math.random() * 3, w: (Math.random() - 0.5) * 8 });
         _zFxPush({ k: 'slam', x0: x, y0: y, t0: now, sp, ch, miss: !!miss });
     });
+    // The Colossus: the same two events for its blow (colossus-swing / colossus-hit: ARArena.drawColossusSprite reads zb.swingT / swingMs / slamT; r = the radius of the shock that
+    // hurts what is built round the impact and the players) and one per footstep (colossus-step: the body sinks, a ring and cracks under the foot)
+    socket.on('colossus-swing', ({ id, ms }) => { const z = _zombies[id]; if (z) { z.swingT = performance.now(); z.swingMs = ms; } });
+    socket.on('colossus-hit', ({ id, x, y, miss, r }) => {
+        const now = performance.now(), z = _zombies[id];
+        if (z) z.slamT = now;
+        const sp = [], ch = [], n = miss ? 6 : 12;
+        for (let k = 0; k < n; k++) sp.push({ a: (k / n) * TAU + Math.random() * 0.5, l: 26 + Math.random() * 40 });
+        for (let k = 0; k < (miss ? 5 : 11); k++) ch.push({ a: Math.random() * TAU, v: 34 + Math.random() * 56, s: 3 + Math.random() * 4, w: (Math.random() - 0.5) * 8 });
+        _zFxPush({ k: 'slam', x0: x, y0: y, t0: now, sp, ch, miss: !!miss, big: Math.max(1.2, (r || 120) / 80) });
+    });
+    socket.on('colossus-step', ({ id, x, y, s }) => {
+        const now = performance.now(), z = _zombies[id];
+        if (z) { z.stepT = now; z.stepS = s; }
+        const sp = []; for (let k = 0; k < 6; k++) sp.push({ a: (k / 6) * TAU + Math.random() * 0.6, l: 14 + Math.random() * 18 });
+        _zFxPush({ k: 'stomp', x0: x, y0: y, t0: now, sp });
+    });
     socket.on('egg-hatch', ({ x, y }) => {
         const sp = []; for (let k = 0; k < 9; k++) sp.push({ a: Math.random() * TAU, v: 20 + Math.random() * 34, s: 2.6 + Math.random() * 3, w: (Math.random() - 0.5) * 8 });
         _zFxPush({ k: 'hatch', x0: x, y0: y, t0: performance.now(), sp });
@@ -7070,6 +7100,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { r: 56, maxHp: 12000, noScale: true, heavy: true, bigBar: true, warn: 'BROOD MOTHER', bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 12 the Brood Mother
         { r: 18, maxHp: 150, noScale: true, bodyColor: '#E9DDBB', innerColor: '#F4EAD2', armColor: '#CDBB94', armStroke: '#7C5E2C', ringColor: '#B8FF4D', ringFill: 'rgba(184,255,77,0.10)' },   // 13 an egg
         { r: 13, maxHp: 120, noScale: true, bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 14 a hatchling
+        { r: 60, maxHp: 18000, noScale: true, heavy: true, bigBar: true, warn: 'COLOSSUS', bodyColor: '#6F6757', innerColor: '#A89F88', armColor: '#3E382F', armStroke: '#1F1B15', ringColor: '#FF7A1F', ringFill: 'rgba(255,122,31,0.10)' },   // 15 the Colossus
     ];
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)
