@@ -4020,11 +4020,44 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     ctx.closePath(); ctx.fill(); ctx.stroke();
                 }
                 ctx.globalAlpha = 1;
-            } else if (f.k === 'eggland') {   // an egg lands: a small ring of dust
+            } else if (f.k === 'eggland') {   // an egg lands (or leaves her hand, f.mini): a flash, two rings, goo that splashes and stays a moment, shell chips and dust
                 if (age < 0) continue;
-                if (age >= 380) { _zFx.splice(i, 1); continue; }
-                const u = age / 380;
-                ctx.globalAlpha = (1 - u) * 0.7; ctx.strokeStyle = '#E9DDBB'; ctx.lineWidth = 3 * (1 - u) + 1; ctx.beginPath(); ctx.arc(f.x0, f.y0, 8 + 26 * u, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
+                if (f.mini) {   // the launch: a small burst at her
+                    if (age >= 300) { _zFx.splice(i, 1); continue; }
+                    const u = age / 300;
+                    ctx.globalAlpha = (1 - u) * 0.8; ctx.strokeStyle = '#B8FF4D'; ctx.lineWidth = 3 * (1 - u) + 1; ctx.beginPath(); ctx.arc(f.x0, f.y0, 10 + 30 * u, 0, TAU); ctx.stroke();
+                    ctx.fillStyle = '#F4EAD2'; ctx.globalAlpha = (1 - u) * 0.9; ctx.beginPath(); ctx.arc(f.x0, f.y0, 12 * (1 - u) + 2, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+                    continue;
+                }
+                if (age >= 1100) { _zFx.splice(i, 1); continue; }
+                const u = age / 1100, X = f.x0, Y = f.y0;
+                // the splat on the ground: green-yellow goo blobs round the spot, fading over the last half
+                const ga = u < 0.45 ? 0.75 : 0.75 * (1 - (u - 0.45) / 0.55);
+                ctx.globalAlpha = ga; ctx.fillStyle = '#9BE03A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6;
+                ctx.beginPath(); ctx.ellipse(X, Y, 15 + 5 * Math.min(1, u * 5), 11 + 4 * Math.min(1, u * 5), 0, 0, TAU); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#C8F26B';
+                for (let k = 0; k < f.sp.length; k++) {
+                    const d = f.sp[k], e = Math.min(1, age / 220), r = d.v * (1 - (1 - e) * (1 - e));
+                    ctx.beginPath(); ctx.ellipse(X + Math.cos(d.a) * r, Y + Math.sin(d.a) * r * 0.8, d.s * (1 - u * 0.4), d.s * 0.7 * (1 - u * 0.4), d.a, 0, TAU); ctx.fill();
+                }
+                // the flash (a cream star), then the rings
+                if (age < 160) { const w = 1 - age / 160; ctx.globalAlpha = w; ctx.fillStyle = '#FFF6D0'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6; _star(ctx, X, Y, 10 + 22 * (1 - w)); ctx.fill(); ctx.stroke(); }
+                const q = Math.min(1, age / 520);
+                ctx.globalAlpha = (1 - q) * 0.85; ctx.strokeStyle = '#E9DDBB'; ctx.lineWidth = 4 * (1 - q) + 1; ctx.beginPath(); ctx.arc(X, Y, 10 + 46 * q, 0, TAU); ctx.stroke();
+                const q2 = Math.min(1, Math.max(0, (age - 90) / 600));
+                ctx.globalAlpha = (1 - q2) * 0.8; ctx.strokeStyle = '#B8FF4D'; ctx.lineWidth = 3 * (1 - q2) + 1; ctx.beginPath(); ctx.arc(X, Y, 8 + 62 * q2, 0, TAU); ctx.stroke();
+                // shell chips
+                ctx.fillStyle = '#F4EAD2'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6;
+                for (let k = 0; k < f.ch.length; k++) {
+                    const d = f.ch[k], e = Math.min(1, age / 520), r = d.v * (1 - (1 - e) * (1 - e)), x = X + Math.cos(d.a) * r, y = Y + Math.sin(d.a) * r - 16 * Math.sin(e * Math.PI), sz = d.s * (1 - e * 0.5), rot = d.a + e * d.w;
+                    ctx.globalAlpha = 1 - e * e; ctx.beginPath();
+                    for (let c = 0; c < 4; c++) { const a2 = rot + c * Math.PI / 2 + 0.4; const px = x + Math.cos(a2) * sz, py = y + Math.sin(a2) * sz; if (c) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+                    ctx.closePath(); ctx.fill(); ctx.stroke();
+                }
+                // dust: a few soft puffs that rise and thin out
+                ctx.fillStyle = '#CFC6A6';
+                for (let k = 0; k < 5; k++) { const a2 = k * 1.26 + 0.4, e = Math.min(1, age / 700); ctx.globalAlpha = (1 - e) * 0.45; ctx.beginPath(); ctx.arc(X + Math.cos(a2) * (8 + 26 * e), Y + Math.sin(a2) * (6 + 20 * e) - 10 * e, 5 + 7 * e, 0, TAU); ctx.fill(); }
+                ctx.globalAlpha = 1;
             } else if (f.k === 'clang') {
                 if (age >= 260) { _zFx.splice(i, 1); continue; }
                 const u = age / 260, px = f.x0 + Math.cos(f.a) * 31, py = f.y0 + Math.sin(f.a) * 31;
@@ -4136,13 +4169,30 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let i = _eggFx.length - 1; i >= 0; i--) {
             const f = _eggFx[i], age = now - f.t0;
             if (age >= f.dur) { _eggFx.splice(i, 1); continue; }
-            const u = age / f.dur, x = f.x0 + (f.x1 - f.x0) * u, y = f.y0 + (f.y1 - f.y0) * u, lift = Math.sin(u * Math.PI) * (46 + Math.hypot(f.x1 - f.x0, f.y1 - f.y0) * 0.22);
-            ctx.globalAlpha = 0.16 + 0.12 * u; ctx.strokeStyle = '#B8FF4D'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
-            ctx.beginPath(); ctx.arc(f.x1, f.y1, 17, 0, TAU); ctx.stroke(); ctx.setLineDash([]);   // where it will come down
-            ctx.globalAlpha = 0.26; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(x + 4, y + 5, 8, 6, 0, 0, TAU); ctx.fill();   // its shadow
+            const dist = Math.hypot(f.x1 - f.x0, f.y1 - f.y0), amp = 46 + dist * 0.22;
+            const pos = (u) => { const lu = Math.sin(u * Math.PI) * amp; return [f.x0 + (f.x1 - f.x0) * u, f.y0 + (f.y1 - f.y0) * u - lu, f.y0 + (f.y1 - f.y0) * u]; };
+            const u = age / f.dur, P = pos(u), x = P[0], y = P[1], gy = P[2];
+            // where it will come down: a pulsing marker that closes in as it falls
+            const pulse = 0.5 + 0.5 * Math.sin(now / 90), mr = 17 + 12 * (1 - u);
+            ctx.globalAlpha = 0.14 + 0.16 * u; ctx.fillStyle = '#B8FF4D'; ctx.beginPath(); ctx.arc(f.x1, f.y1, mr, 0, TAU); ctx.fill();
+            ctx.globalAlpha = 0.45 + 0.35 * pulse; ctx.strokeStyle = '#B8FF4D'; ctx.lineWidth = 2.4; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.arc(f.x1, f.y1, mr, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+            for (let k = 0; k < 4; k++) { const a2 = k * Math.PI / 2 + u * 3; ctx.beginPath(); ctx.moveTo(f.x1 + Math.cos(a2) * (mr - 5), f.y1 + Math.sin(a2) * (mr - 5)); ctx.lineTo(f.x1 + Math.cos(a2) * (mr + 4), f.y1 + Math.sin(a2) * (mr + 4)); ctx.stroke(); }
+            // the trail: ghosts of the egg and sparkles along the path it has flown
+            for (let k = 6; k >= 1; k--) {
+                const uk = u - k * 0.045; if (uk <= 0) continue;
+                const Q = pos(uk), t = 1 - k / 7;
+                ctx.globalAlpha = 0.34 * t; ctx.fillStyle = '#F4EAD2'; ctx.beginPath(); ctx.ellipse(Q[0], Q[1], 9 * t, 12 * t, uk * 7, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 0.7 * t; ctx.fillStyle = k % 2 ? '#FFF6D0' : '#B8FF4D'; ctx.beginPath(); ctx.arc(Q[0] + Math.sin(k * 5 + i) * 5, Q[1] + Math.cos(k * 4 + i) * 5, 2.6 * t + 0.6, 0, TAU); ctx.fill();
+            }
+            // its shadow grows as it comes down
+            ctx.globalAlpha = 0.18 + 0.12 * u; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(x + 4, gy + 5, 8 + 3 * u, 6 + 2 * u, 0, 0, TAU); ctx.fill();
+            // a glow, then the egg itself (turning, a little longer along the flight)
+            ctx.globalAlpha = 0.28; ctx.fillStyle = '#B8FF4D'; ctx.beginPath(); ctx.arc(x, y, 17 + 2 * pulse, 0, TAU); ctx.fill();
             ctx.globalAlpha = 1; ctx.fillStyle = '#F4EAD2'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2.4;
-            ctx.beginPath(); ctx.ellipse(x, y - lift, 9, 12, u * 7, 0, TAU); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.ellipse(x - 3, y - lift - 4, 2.6, 4, u * 7, 0, TAU); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(x, y, 9, 12 + 2 * Math.sin(u * Math.PI), u * 7, 0, TAU); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = '#7C5E2C'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(x - 3, y - 6); ctx.lineTo(x + 1, y - 1); ctx.lineTo(x - 2, y + 3); ctx.stroke();   // its crack
+            ctx.fillStyle = 'rgba(255,255,255,.65)'; ctx.beginPath(); ctx.ellipse(x - 3, y - 4, 2.6, 4, u * 7, 0, TAU); ctx.fill();
+            ctx.globalAlpha = 1;
         }
     }
     // The Flamethrower's fire. It is made of many separate pieces of flame, each with its own place in the world: every frame, while the server keeps sending
