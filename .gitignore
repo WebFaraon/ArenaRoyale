@@ -8,3 +8,4 @@ tools/catalog/bsheet.html
 
 # Private telemetry outbox
 .ops-queue/
+tools/catalog/gsheet.html
