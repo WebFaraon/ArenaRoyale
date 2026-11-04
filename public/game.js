@@ -4516,11 +4516,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const id in players) { const p = players[id]; if (p.alive && p.hp > 0) pl.push(id === socket.id ? { x: predX, y: predY } : p); }
         if (_bar.kind !== 'b') {
             _bar.g.kd = _BAR_KINDS[_bar.kind].kd;
-            ARStructs.turretPlacement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g, mouseActive ? _mouseOff / zoom : undefined);
+            ARStructs.turretPlacement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g, mouseActive ? _mouseOff / zoom : undefined, PLAYER_HIT_R);
             _bar.why = ARStructs.checkPlaceTurret(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, roomPlayers: _sandbox ? 99 : Math.max(1, Object.keys(players).length) });
             return;
         }
-        ARStructs.placement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g, mouseActive ? _mouseOff / zoom : undefined);
+        ARStructs.placement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g, mouseActive ? _mouseOff / zoom : undefined, PLAYER_HIT_R);
         _bar.why = ARStructs.checkPlace(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, count: _sandbox ? 0 : _structs.length });
     }
     // The barricade within reach of you, and what E would do to it (the prompt changes only when that does)

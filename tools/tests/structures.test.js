@@ -118,6 +118,27 @@ test('the ghost follows the mouse: from right by the player out to the limit and
     assert.equal(o.y, 1000 + S.TURRET.placeDist, 'no distance given: the limit');
 });
 
+test('the ghost is a doughnut: with the player radius it never goes on the player (any direction, any mouse distance) and never beyond the limit', () => {
+    const R = 30, ctx = { w: 4000, h: 4000, obstacles: [], base: null, structs: [], turrets: [], players: [{ x: 2000, y: 2000 }], playerR: R, count: 0, roomPlayers: 4 };
+    const o = { x: 0, y: 0, o: 0, kd: 'mg' };
+    let nearestB = 1e9, nearestT = 1e9;
+    for (let a = 0; a < 360; a += 5) {
+        for (let d = 0; d <= 200; d += 5) {
+            const dx = Math.cos(a * Math.PI / 180), dy = Math.sin(a * Math.PI / 180);
+            S.placement(2000, 2000, dx, dy, o, d, R);
+            assert.equal(S.checkPlace(o, ctx), null, 'a barricade at angle ' + a + ', mouse ' + d + ' is clear of the player');
+            assert.ok(Math.hypot(o.x - 2000, o.y - 2000) <= S.BARRICADE.placeDist + 1e-6, 'not past the limit');
+            nearestB = Math.min(nearestB, S.distToRect(2000, 2000, o));
+            S.turretPlacement(2000, 2000, dx, dy, o, d, R);
+            assert.equal(S.checkPlaceTurret(o, ctx), null, 'a turret at angle ' + a + ', mouse ' + d + ' is clear of the player');
+            assert.ok(Math.hypot(o.x - 2000, o.y - 2000) <= S.TURRET.placeDist + 1e-6);
+            nearestT = Math.min(nearestT, Math.hypot(o.x - 2000, o.y - 2000));
+        }
+    }
+    assert.ok(nearestB >= R + 4 && nearestB < R + 8, 'the barricade comes as close as the ring allows: ' + nearestB);
+    assert.ok(Math.abs(nearestT - (S.TURRET.r + R + 4)) < 1e-6, 'the turret too: ' + nearestT);
+});
+
 test('the ghost: 120 in front of the player, lying across the way they look', () => {
     const o = { x: 0, y: 0, o: 0 };
     S.placement(1000, 1000, 1, 0, o);          // looking right: stands up (o = 1), 120 to the right

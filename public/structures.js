@@ -137,8 +137,11 @@
         return t.t < turretTiers(t).length - 1 ? 'upgrade' : null;
     }
     // dist (optional): how far out the ghost stands; the mouse sets it (from right by the player up to placeDist, never beyond); without it, placeDist (a touch screen)
-    function turretPlacement(px, py, dx, dy, out, dist) {
-        const l = Math.hypot(dx, dy) || 1, d = dist === undefined ? TURRET.placeDist : Math.max(0, Math.min(dist, TURRET.placeDist));
+    // playerR (optional): the ghost is also kept off the player, so the places it can take are a ring round them (a doughnut): never closer than where it just clears the player
+    // (the radius of the turret, the player and a margin of 4), never further than placeDist
+    function turretPlacement(px, py, dx, dy, out, dist, playerR) {
+        const l = Math.hypot(dx, dy) || 1, lo = playerR === undefined ? 0 : TURRET.r + playerR + 4;
+        const d = dist === undefined ? TURRET.placeDist : Math.max(lo, Math.min(dist, TURRET.placeDist));
         out.x = px + dx / l * d;
         out.y = py + dy / l * d;
         return out;
@@ -297,12 +300,17 @@
     }
 
     // Where the ghost goes for a player at (px, py) looking along (dx, dy): in front of them, lying across the way they look
-    function placement(px, py, dx, dy, out, dist) {
-        const l = Math.hypot(dx, dy) || 1, d = dist === undefined ? BARRICADE.placeDist : Math.max(0, Math.min(dist, BARRICADE.placeDist));
+    // playerR (optional): the ring (see turretPlacement): the wall is moved out along the line of sight until it clears the player by 4
+    function placement(px, py, dx, dy, out, dist, playerR) {
+        const l = Math.hypot(dx, dy) || 1;
+        let d = dist === undefined ? BARRICADE.placeDist : Math.max(0, Math.min(dist, BARRICADE.placeDist));
         dx /= l; dy /= l;
+        out.o = Math.abs(dx) > Math.abs(dy) ? 1 : 0;   // looking sideways: the wall stands up; looking up or down: it lies down
         out.x = px + dx * d;
         out.y = py + dy * d;
-        out.o = Math.abs(dx) > Math.abs(dy) ? 1 : 0;   // looking sideways: the wall stands up; looking up or down: it lies down
+        if (playerR !== undefined) {
+            while (d < BARRICADE.placeDist && distToRect(px, py, out) < playerR + 4) { d += 1; out.x = px + dx * d; out.y = py + dy * d; }
+        }
         return out;
     }
 
