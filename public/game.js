@@ -5222,20 +5222,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
         for (const b of list.children) b.classList.toggle('is-on', b.dataset.t === _sbx.type);
         const hint = document.getElementById('sbx-hint');
-        if (hint) hint.textContent = _sbx.type ? 'Click the map to spawn: ' + _SBX_TYPES[_SBX_IDX[_sbx.type]][1] + '. Esc cancels.' : 'Pick a zombie, then click the map. 1-7 build.';
+        if (hint) hint.textContent = _sbx.type ? (isDesktop ? 'Click the map to spawn: ' + _SBX_TYPES[_SBX_IDX[_sbx.type]][1] + '. Esc cancels.' : _SBX_TYPES[_SBX_IDX[_sbx.type]][1] + ' picked: press SPAWN.') : (isDesktop ? 'Pick a zombie, then click the map. 1-7 build.' : 'Pick a zombie, then press SPAWN.');
         const cnt = document.getElementById('sbx-count');
         for (const b of cnt.children) { b.classList.toggle('is-on', +b.dataset.n === _sbx.n); b.onclick = () => { _sbx.n = +b.dataset.n; _sbxUi(); }; }
         document.getElementById('sbx-clear').onclick = () => socket.emit('sandbox-ctl', { action: 'clear' });
         document.getElementById('sbx-freeze').onclick = () => socket.emit('sandbox-ctl', { action: 'freeze' });
         document.getElementById('sbx-built').onclick = () => socket.emit('sandbox-ctl', { action: 'clear-built' });
         const st = document.getElementById('sbx-state'); if (st) st.textContent = _sbx.freeze ? 'FROZEN' : '';
+        const go = document.getElementById('sbx-go');   // no mouse (a phone): the picked zombie is put ahead of you by this button
+        if (go) { go.style.display = !isDesktop && _sbx.type ? '' : 'none'; go.onclick = _sbxSpawnAhead; }
+        const head = el.querySelector('.sbx-head'); if (head) head.onclick = () => { el.classList.toggle('is-min'); };
         const fz = document.getElementById('sbx-freeze'); if (fz) fz.textContent = _sbx.freeze ? 'RESUME' : 'FREEZE';
     }
     function _sbxSelect(type) {
         if (!_sandbox) return;
         _sbx.type = type || null;
         if (type && _bar.place) _barPlaceMode(false);
-        if (type) { isShooting = false; aimStartTime = null; }
+        if (type) { isShooting = false; aimStartTime = null; if (!isDesktop) document.getElementById('sbx').classList.add('is-min'); }   // on a phone the panel folds away so the map shows
         _sbxUi();
     }
     function _sbxWorld() {   // where the mouse is, in the world
@@ -5247,6 +5250,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (!_sbx.type || predX === null) return;
         const [x, y] = _sbxWorld();
         socket.emit('sandbox-spawn', { type: _sbx.type, x: Math.round(x), y: Math.round(y), n: _sbx.n });
+    }
+    function _sbxSpawnAhead() {   // touch: ahead of the player, where they face (a fixed distance, a little way off the screen's middle)
+        if (!_sbx.type || predX === null) return;
+        const D = 230;
+        socket.emit('sandbox-spawn', { type: _sbx.type, x: Math.round(predX - Math.sin(myAngle) * D), y: Math.round(predY + Math.cos(myAngle) * D), n: _sbx.n });
     }
     socket.on('sandbox-state', ({ freeze }) => { _sbx.freeze = !!freeze; _sbxUi(); });
     _sbxUi();
@@ -6249,7 +6257,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (z) z.throwT = now;
         _eggFx.push({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, t0: now, dur: d.ms });
         if (_eggFx.length > 40) _eggFx.splice(0, _eggFx.length - 40);
-        _zFxPush({ k: 'eggland', x0: d.x1, y0: d.y1, t0: now + d.ms });
+        const sp = [], ch = [];
+        for (let k = 0; k < 9; k++) sp.push({ a: Math.random() * TAU, v: 14 + Math.random() * 26, s: 3 + Math.random() * 3.4 });
+        for (let k = 0; k < 6; k++) ch.push({ a: Math.random() * TAU, v: 22 + Math.random() * 30, s: 2.6 + Math.random() * 2.6, w: (Math.random() - 0.5) * 8 });
+        _zFxPush({ k: 'eggland', x0: d.x1, y0: d.y1, t0: now + d.ms, sp, ch });
+        _zFxPush({ k: 'eggland', x0: d.x0, y0: d.y0, t0: now, mini: true, sp: [], ch: [] });
     });
     socket.on('egg-hatch', ({ x, y }) => {
         const sp = []; for (let k = 0; k < 9; k++) sp.push({ a: Math.random() * TAU, v: 20 + Math.random() * 34, s: 2.6 + Math.random() * 3, w: (Math.random() - 0.5) * 8 });
