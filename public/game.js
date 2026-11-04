@@ -6965,9 +6965,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { r: 21, maxHp: 450, bodyColor: '#D9A0A0', innerColor: '#F1C8C4', armColor: '#A8666E', armStroke: '#4A2A2E', ringColor: '#FFD34D', ringFill: 'rgba(255,211,77,0.10)' },   // 9 screamer
         { r: 23, maxHp: 340, bodyColor: '#3E5A38', innerColor: '#5E8050', armColor: '#2F4A2D', armStroke: '#16240F', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },   // 10 ghoul (the dark normal)
         { r: 17, maxHp: 160, bodyColor: '#6E5E1E', innerColor: '#8E7B2C', armColor: '#54471A', armStroke: '#2A2308', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 11 stalker (the dark runner)
-        { r: 56, maxHp: 3500, noScale: true, heavy: true, bigBar: true, warn: 'BROOD MOTHER', bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 12 the Brood Mother
-        { r: 18, maxHp: 80, noScale: true, bodyColor: '#E9DDBB', innerColor: '#F4EAD2', armColor: '#CDBB94', armStroke: '#7C5E2C', ringColor: '#B8FF4D', ringFill: 'rgba(184,255,77,0.10)' },   // 13 an egg
-        { r: 13, maxHp: 40, noScale: true, bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 14 a hatchling
+        { r: 56, maxHp: 9000, noScale: true, heavy: true, bigBar: true, warn: 'BROOD MOTHER', bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 12 the Brood Mother
+        { r: 18, maxHp: 150, noScale: true, bodyColor: '#E9DDBB', innerColor: '#F4EAD2', armColor: '#CDBB94', armStroke: '#7C5E2C', ringColor: '#B8FF4D', ringFill: 'rgba(184,255,77,0.10)' },   // 13 an egg
+        { r: 13, maxHp: 120, noScale: true, bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 14 a hatchling
     ];
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)

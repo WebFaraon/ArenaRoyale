@@ -1112,14 +1112,14 @@ const PVE_ZOMBIE_DEFS = {
     // the Brood Mother (the final boss of the Brood Mother level, wave 20; also in the sandbox): a huge slow queen that walks on to the base like the siege types (it
     // never goes for a player, only walls, turrets and the base) and does not carry her eggs: she throws `count` of them round her (within `range`) every `every`
     // seconds (every `rage` s under `rageAt` of her health), at most `max` of them lying about at once. Her health does not grow with the wave.
-    brood: { hp: 3500, armor: 4, noScale: true, chaseSpd: 25, patrolSpd: 15, dmg: 70, attackR: 96, attackCd: 1.6, coinsMin: 120, coinsMax: 160, baseDmg: 90, r: 56, hunts: false, mass: 30, heavy: true, large: true,
+    brood: { hp: 9000, armor: 4, noScale: true, chaseSpd: 25, patrolSpd: 15, dmg: 70, attackR: 96, attackCd: 1.6, coinsMin: 120, coinsMax: 160, baseDmg: 90, r: 56, hunts: false, mass: 30, heavy: true, large: true,
              brood: { first: 4, every: 12, rage: 8, rageAt: 0.4, count: 4, range: 160, max: 12, flight: 0.7 } },
     // an egg: it lies where it landed (a zombie that does not move or hit, so bullets, turrets, bombs and flames all work on it as on any), and if it is not broken
     // in `hatch` seconds `spawn` hatchlings come out of it. Not a kill when it hatches.
-    egg: { hp: 80, noScale: true, chaseSpd: 0, patrolSpd: 0, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 0, coinsMax: 0, baseDmg: 0, r: 18, hunts: false, mass: 50, immovable: true,
+    egg: { hp: 150, noScale: true, chaseSpd: 0, patrolSpd: 0, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 0, coinsMax: 0, baseDmg: 0, r: 18, hunts: false, mass: 50, immovable: true,
            egg: { hatch: 8, spawn: 2 } },
     // what comes out of an egg: small, fast, fragile
-    hatchling: { hp: 40, noScale: true, chaseSpd: 150, patrolSpd: 80, dmg: 12, attackR: 40, attackCd: 0.6, coinsMin: 0, coinsMax: 1, baseDmg: 6, r: 13, hunts: true, mass: 0.4 },
+    hatchling: { hp: 120, noScale: true, chaseSpd: 150, patrolSpd: 80, dmg: 15, attackR: 40, attackCd: 0.6, coinsMin: 0, coinsMax: 1, baseDmg: 12, r: 13, hunts: true, mass: 0.4 },
 };
 const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
