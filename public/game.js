@@ -3902,6 +3902,42 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let i = 0; i < 6; i++) f.sp.push({ a: a + (_rnd() * 2 - 1) * 1.5, v: 70 + _rnd() * 90, l: 7 + _rnd() * 8 });
         return f;
     }
+    // The marks a blow or a footstep leaves ON the ground (the rings and the cracks of 'slam' and 'stomp'): drawn right over the grass, UNDER everything that stands on it
+    // (the base, the barricades, the turrets, the trees and rocks, the players, the zombies). The flash, the flying chips and the dust stay in _drawZombieFx, above.
+    function _drawGroundFx(ctx, now) {
+        for (let i = 0; i < _zFx.length; i++) {
+            const f = _zFx[i], age = now - f.t0;
+            if (age < 0 || (f.k !== 'slam' && f.k !== 'stomp')) continue;
+            const X = f.x0, Y = f.y0;
+            if (f.k === 'slam') {
+                if (age >= 800) continue;
+                const sc = (f.miss ? 0.6 : 1) * (f.big || 1), u = age / 800;
+                const q = Math.min(1, age / 420), e = 1 - (1 - q) * (1 - q);
+                ctx.strokeStyle = '#0B0F1A'; ctx.globalAlpha = (1 - q) * 0.85; ctx.lineWidth = 7 * (1 - q) + 2; ctx.beginPath(); ctx.arc(X, Y, (12 + 78 * e) * sc, 0, TAU); ctx.stroke();
+                ctx.strokeStyle = '#FFB04A'; ctx.lineWidth = 4 * (1 - q) + 1; ctx.beginPath(); ctx.arc(X, Y, (12 + 78 * e) * sc, 0, TAU); ctx.stroke();
+                const q2 = Math.min(1, Math.max(0, (age - 70) / 520)); ctx.globalAlpha = (1 - q2) * 0.6; ctx.strokeStyle = '#F4EAD2'; ctx.lineWidth = 3 * (1 - q2) + 1; ctx.beginPath(); ctx.arc(X, Y, (8 + 56 * q2) * sc, 0, TAU); ctx.stroke();
+                // cracks: dark lines out of the point of the blow, they grow fast, then fade
+                const ca = u < 0.5 ? 1 : 1 - (u - 0.5) / 0.5, cg = Math.min(1, age / 160);
+                ctx.lineCap = 'round';
+                for (let k = 0; k < f.sp.length; k++) {
+                    const d = f.sp[k], L = d.l * cg * sc, c = Math.cos(d.a), s2 = Math.sin(d.a), mx = X + c * L * 0.55 + s2 * 4, my = Y + s2 * L * 0.55 - c * 4;
+                    ctx.globalAlpha = ca * 0.9; ctx.strokeStyle = '#2B2016'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(X + c * 8, Y + s2 * 8); ctx.lineTo(mx, my); ctx.lineTo(X + c * L, Y + s2 * L); ctx.stroke();
+                }
+                ctx.lineCap = 'butt'; ctx.globalAlpha = 1;
+            } else {
+                if (age >= 700) continue;
+                const u = age / 700, q = Math.min(1, age / 260), e = 1 - (1 - q) * (1 - q);
+                ctx.strokeStyle = '#0B0F1A'; ctx.globalAlpha = (1 - q) * 0.7; ctx.lineWidth = 5 * (1 - q) + 1.5; ctx.beginPath(); ctx.arc(X, Y, 10 + 38 * e, 0, TAU); ctx.stroke();
+                ctx.lineCap = 'round'; ctx.strokeStyle = '#2B2016';
+                for (let k = 0; k < f.sp.length; k++) {
+                    const d = f.sp[k], L = d.l * Math.min(1, age / 120), c = Math.cos(d.a), s2 = Math.sin(d.a);
+                    ctx.globalAlpha = (u < 0.5 ? 1 : 1 - (u - 0.5) / 0.5) * 0.85; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(X + c * 6, Y + s2 * 6); ctx.lineTo(X + c * L, Y + s2 * L); ctx.stroke();
+                    if (u < 0.35) { ctx.globalAlpha = 0.9 * (1 - u / 0.35); ctx.strokeStyle = '#FF7A1F'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(X + c * 6, Y + s2 * 6); ctx.lineTo(X + c * L * 0.8, Y + s2 * L * 0.8); ctx.stroke(); ctx.strokeStyle = '#2B2016'; }
+                }
+                ctx.lineCap = 'butt'; ctx.globalAlpha = 1;
+            }
+        }
+    }
     function _drawZombieFx(ctx, now) {
         for (let i = _zFx.length - 1; i >= 0; i--) {
             const f = _zFx[i], age = now - f.t0;
@@ -4012,18 +4048,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 if (age >= 800) { _zFx.splice(i, 1); continue; }
                 const X = f.x0, Y = f.y0, sc = (f.miss ? 0.6 : 1) * (f.big || 1), u = age / 800;
                 if (age < 140) { const w = 1 - age / 140; ctx.globalAlpha = w; ctx.fillStyle = '#FFE2A8'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; _star(ctx, X, Y, (12 + 30 * (1 - w)) * sc); ctx.fill(); ctx.stroke(); }
-                const q = Math.min(1, age / 420), e = 1 - (1 - q) * (1 - q);
-                ctx.strokeStyle = '#0B0F1A'; ctx.globalAlpha = (1 - q) * 0.85; ctx.lineWidth = 7 * (1 - q) + 2; ctx.beginPath(); ctx.arc(X, Y, (12 + 78 * e) * sc, 0, TAU); ctx.stroke();
-                ctx.strokeStyle = '#FFB04A'; ctx.lineWidth = 4 * (1 - q) + 1; ctx.beginPath(); ctx.arc(X, Y, (12 + 78 * e) * sc, 0, TAU); ctx.stroke();
-                const q2 = Math.min(1, Math.max(0, (age - 70) / 520)); ctx.globalAlpha = (1 - q2) * 0.6; ctx.strokeStyle = '#F4EAD2'; ctx.lineWidth = 3 * (1 - q2) + 1; ctx.beginPath(); ctx.arc(X, Y, (8 + 56 * q2) * sc, 0, TAU); ctx.stroke();
-                // cracks: dark lines out of the point of the blow, they grow fast, then fade
-                const ca = u < 0.5 ? 1 : 1 - (u - 0.5) / 0.5, cg = Math.min(1, age / 160);
-                ctx.lineCap = 'round';
-                for (let k = 0; k < f.sp.length; k++) {
-                    const d = f.sp[k], L = d.l * cg * sc, c = Math.cos(d.a), s2 = Math.sin(d.a), mx = X + c * L * 0.55 + s2 * 4, my = Y + s2 * L * 0.55 - c * 4;
-                    ctx.globalAlpha = ca * 0.9; ctx.strokeStyle = '#2B2016'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(X + c * 8, Y + s2 * 8); ctx.lineTo(mx, my); ctx.lineTo(X + c * L, Y + s2 * L); ctx.stroke();
-                }
-                ctx.lineCap = 'butt';
                 // rubble and dust
                 ctx.fillStyle = '#9A8F7A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6;
                 for (let k = 0; k < f.ch.length; k++) {
@@ -4037,15 +4061,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 ctx.globalAlpha = 1;
             } else if (f.k === 'stomp') {   // a footstep of the Colossus: a ring pressed into the ground, a few cracks, a heave of dust (small next to a blow)
                 if (age >= 700) { _zFx.splice(i, 1); continue; }
-                const X = f.x0, Y = f.y0, u = age / 700, q = Math.min(1, age / 260), e = 1 - (1 - q) * (1 - q);
-                ctx.strokeStyle = '#0B0F1A'; ctx.globalAlpha = (1 - q) * 0.7; ctx.lineWidth = 5 * (1 - q) + 1.5; ctx.beginPath(); ctx.arc(X, Y, 10 + 38 * e, 0, TAU); ctx.stroke();
-                ctx.lineCap = 'round'; ctx.strokeStyle = '#2B2016';
-                for (let k = 0; k < f.sp.length; k++) {
-                    const d = f.sp[k], L = d.l * Math.min(1, age / 120), c = Math.cos(d.a), s2 = Math.sin(d.a);
-                    ctx.globalAlpha = (u < 0.5 ? 1 : 1 - (u - 0.5) / 0.5) * 0.85; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(X + c * 6, Y + s2 * 6); ctx.lineTo(X + c * L, Y + s2 * L); ctx.stroke();
-                    if (u < 0.35) { ctx.globalAlpha = 0.9 * (1 - u / 0.35); ctx.strokeStyle = '#FF7A1F'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(X + c * 6, Y + s2 * 6); ctx.lineTo(X + c * L * 0.8, Y + s2 * L * 0.8); ctx.stroke(); ctx.strokeStyle = '#2B2016'; }
-                }
-                ctx.lineCap = 'butt'; ctx.fillStyle = '#CFC6A6';
+                const X = f.x0, Y = f.y0, u = age / 700;
+                ctx.fillStyle = '#CFC6A6';
                 for (let k = 0; k < 5; k++) { const a2 = k * 1.26 + 0.4, ee = Math.min(1, age / 650); ctx.globalAlpha = (1 - ee) * 0.5; ctx.beginPath(); ctx.arc(X + Math.cos(a2) * (8 + 30 * ee), Y + Math.sin(a2) * (6 + 22 * ee) - 10 * ee, 5 + 8 * ee, 0, TAU); ctx.fill(); }
                 ctx.globalAlpha = 1;
             } else if (f.k === 'hatch') {   // an egg hatches: the shell flies in pieces and a green ring goes out
@@ -7423,6 +7440,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         // --- INDICATOR TRAIECTORIE ---
         if ((_aimActive || isShooting || mouseActive) && me && me.alive && !gameEnded) {
+        // --- the marks of a blow on the ground (the cracks and rings of the slam and the footsteps): the last thing on the ground, under everything else ---
+        if (_zFx.length) _drawGroundFx(ctx, performance.now());
+
             const dirX       = -Math.sin(myAngle);
             const dirY       =  Math.cos(myAngle);
             const _trajWd   = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON];
