@@ -4,6 +4,7 @@ tools/catalog/data.json
 tools/catalog/catalog.html
 tools/catalog/sheet.html
 tools/catalog/zsheet.html
+tools/catalog/bsheet.html
 
 # Private telemetry outbox
 .ops-queue/

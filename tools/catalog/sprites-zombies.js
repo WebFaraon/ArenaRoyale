@@ -1,5 +1,6 @@
 // Top-down zombie sprites for the new zombie ideas, in the grammar of the game's own (public/images/zombies): two arms reaching down, a round head
 // (dark rim, lighter face, ink outline 5), exposed bits and stitches, glowing red eyes; each one adds what makes it different.
+const BOSS = require('./sprites-bosses.js');
 const INK = '#0B0F1A';
 const r1 = n => Math.round(n * 10) / 10;
 const wrapZ = (inner, vb = '-70 -52.5 140 140') => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}">${inner}</svg>`;
@@ -92,16 +93,8 @@ const SP = {
   slime: () => Z({ vb: '-70 -78 140 160', c: ['#4E8F1E', '#9EDB5A'], arm: ['#9EDB5A', '#C9F08F'], eye: '#FFF36B', r: 33, armW: 10, armL: [50, 44], cuff: false, stitch: false, spot: '#6BB23A',
     back: [[-26, -50, 16], [8, -62, 22], [34, -46, 14], [-6, -42, 18], [-40, -34, 9], [44, -64, 8]].map(([x, y, r]) => circ(x, y, r, 'rgba(158,219,90,.55)', 2.2, '#4E8F1E')).join(''),
     front: [[-14, -14, 5], [16, -8, 3.4], [6, -22, 2.6]].map(([x, y, r]) => circ(x, y, r, 'rgba(255,255,255,.35)')).join('') + path('M-12 34 q-3 14 0 22 q3 -8 0 -22', '#9EDB5A', 2.2) + path('M14 34 q-3 10 0 16 q3 -6 0 -16', '#9EDB5A', 2.2) }),
-  // Brood Mother: a bloated queen with egg sacs on her back; she lays eggs that must be broken
-  brood: () => Z({ c: ['#5A3F6E', '#A27BB5'], arm: ['#A27BB5', '#C9A8DA'], eye: '#FFE75B', r: 56, vb: '-92 -98 184 206', eyeY: 22, eyeX: 20, eyeR: 6, armW: 18, armX: 38, armL: [50, 54], cuff: false, rim: 7, stitch: false, spot: '#7E5A92',
-    back: [[-58, -28], [-62, 8], [58, -32], [62, 6], [-30, -66], [32, -68]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx="17" ry="21" fill="#F4E8B0" stroke="${INK}" stroke-width="3.6"/><circle cx="${x - 4}" cy="${y - 5}" r="3.6" fill="#E3D07A"/><circle cx="${x + 5}" cy="${y + 6}" r="2.6" fill="#E3D07A"/>`).join(''),
-    front: [-1, 1].map(s => path(`M${s * 12} 40 q${s * 10} 16 ${s * 22} 8 q${s * -6} -8 ${s * -10} -14`, '#F4F1E4', 2.8)).join('') + [[-24, -18, 6], [24, -18, 6], [-10, -32, 4.6], [10, -32, 4.6]].map(([x, y, r]) => circ(x, y, r, '#FFE75B', 2) + circ(x, y, 2, INK)).join('') +
-      poly([[-14, -52], [0, -70], [14, -52]], '#C9A8DA', 3) + poly([[-34, -46], [-30, -66], [-18, -50]], '#C9A8DA', 3) + poly([[34, -46], [30, -66], [18, -50]], '#C9A8DA', 3) }),
-  // Colossus: a giant of stone and lava; every step crushes what is in its way
-  colossus: () => Z({ c: ['#4A4438', '#8C8472'], arm: ['#6E6652', '#A39B86'], eye: '#FF7A1F', r: 52, vb: '-96 -78 192 214', eyeY: 22, eyeX: 20, eyeR: 7, armW: 26, armX: 46, armL: [58, 64], cuff: false, noHand: true, rim: 7, stitch: false, spots: false,
-    mid: [[-30, -20, -12, -4], [8, -34, 16, -14], [-6, 6, 10, 24], [24, 10, 34, 30], [-36, 12, -26, 28]].map(([a, b, c, d]) => path(`M${a} ${b} L${c} ${d}`, 'none', 4.4, '#FF7A1F')).join('') + [[-30, -20, -12, -4], [8, -34, 16, -14]].map(([a, b, c, d]) => line(a, b, c, d, '#FFD34D', 1.6)).join(''),
-    behind: [-1, 1].map(s => poly(Array.from({ length: 8 }, (_, i) => { const a = i * Math.PI / 4 + 0.3, r = 26 + (i % 2) * 5; return [s * 46 + r * Math.cos(a), 6 + (s < 0 ? 58 : 64) + 10 + r * Math.sin(a)]; }), '#8C8472', 4.2) + circ(s * 46, 6 + (s < 0 ? 58 : 64) + 10, 8, '#FF7A1F', 2.6)).join(''),
-    front: [[-40, -34], [-14, -50], [14, -50], [40, -34]].map(([x, y], i) => poly([[x - 12, y + 6], [x, y - 14 - (i % 2) * 6], [x + 12, y + 6]], '#6E6652', 3.4)).join('') }),
+  // The three bosses (Brood Mother, Colossus, Reaper) have their own, more detailed designs: tools/catalog/sprites-bosses.js (they are also in public/images/zombies/boss_*.svg)
+  brood: BOSS.brood, colossus: BOSS.colossus, reaper: BOSS.reaper,
 };
 module.exports = SP;
 if (require.main === module) {

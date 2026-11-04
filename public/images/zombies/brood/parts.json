@@ -1,0 +1,42 @@
+{
+  "view": [
+    -104,
+    -124,
+    208,
+    250
+  ],
+  "order": [
+    "sac",
+    "feelers",
+    "armL",
+    "armR",
+    "head"
+  ],
+  "pivots": {
+    "sac": {
+      "x": 0,
+      "y": -30,
+      "note": "joint behind the head: breathes (scale ~1.0-1.05) and sways a few degrees"
+    },
+    "feelers": {
+      "x": 0,
+      "y": -30,
+      "note": "both horns hinge at the crest: wiggle +-8 degrees, opposite phases"
+    },
+    "armL": {
+      "x": -42,
+      "y": 14,
+      "note": "left shoulder: swings +-25 degrees as she walks"
+    },
+    "armR": {
+      "x": 42,
+      "y": 14,
+      "note": "right shoulder: swings +-25 degrees, opposite phase"
+    },
+    "head": {
+      "x": 0,
+      "y": 0,
+      "note": "centre of the head: bobs 2-3 units, turns +-6 degrees"
+    }
+  }
+}

@@ -178,7 +178,7 @@ const ZT = [
   ['Economia', 'Looter, Mimic', 'Cheltuiește monedele; trage de departe în grămezile suspecte'],
   ['Hoarda însăși', 'Necromancer, Herald', 'Țintește-i primii (Railgun); flăcări și bombe pe cadavre'],
   ['Surprize', 'Mimic, Looter, Leaper, Gargoyle', 'Atenție constantă; nu poți apăra doar un lucru'],
-  ['Boss', 'Brood Mother (val 15), Colossus (val 20)', 'Coordonare: o parte a echipei pe ouă, restul pe regină'],
+  ['Boss', 'Brood Mother, Colossus, Reaper (valul 20, câte unul pe nivel)', 'Coordonare: o parte a echipei pe ouă, restul pe regină; nu te lăsa doborât lângă Reaper'],
 ];
 const zmatrix = `<div class="scroll"><table><thead><tr><th>Ce provoacă</th><th>Zombi</th><th>Cum răspunzi</th></tr></thead><tbody>${ZT.map(r => `<tr><th scope="row">${r[0]}</th><td>${r[1]}</td><td style="white-space:normal;min-width:22em">${r[2]}</td></tr>`).join('')}</tbody></table></div>`;
 const ROUTE = [
@@ -190,8 +190,7 @@ const ROUTE = [
   ['11', 'Jammer', 'Turnurile încetinesc: jucătorii ies în față.'],
   ['12', 'Berserker, Herald', 'Un zombi care se înfurie și unul care face hoarda mai periculoasă.'],
   ['14', 'Necromancer', 'Omori mai mult, vine mai mult: prioritizezi.'],
-  ['15', 'Brood Mother (boss)', 'Primul boss: ouăle sunt un obiectiv nou.'],
-  ['20', 'Colossus (boss final)', 'Strivește tot ce ai construit: valul final cere altă strategie.'],
+  ['20', 'Brood Mother / Colossus / Reaper (boss final, după nivelul ales)', 'Brood Mother aruncă ouă, Colossus strivește construcțiile, Reaper termină jucătorii doborâți cu o lovitură în arc.'],
 ];
 const zroute = `<div class="scroll"><table><thead><tr><th>Valul</th><th>Intră</th><th>Ce se întâmplă</th></tr></thead><tbody>${ROUTE.map(r => `<tr><th scope="row">${r[0]}</th><td>${r[1]}</td><td style="white-space:normal;min-width:24em">${r[2]}</td></tr>`).join('')}</tbody></table></div>`;
 const ideasZ3 = IDEAS3.map(izombie3).join('');
