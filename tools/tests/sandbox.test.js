@@ -119,3 +119,14 @@ test('the Brood Mother: she walks on throwing eggs round her, and an egg left al
         c.s.close();
     });
 });
+
+test('client: the sandbox cards are rebuilt for every match (built once per page they talked to the first match: pick a zombie, click, nothing), and no ammo is spent', () => {
+    const fs = require('node:fs');
+    const client = fs.readFileSync(path.join(__dirname, '../../public/game.js'), 'utf8');
+    assert.match(client, /let _sbxBuilt = false/);
+    assert.match(client, /if \(!_sbxBuilt\) \{\s*_sbxBuilt = true; list\.textContent = '';/);
+    assert.match(client, /if \(!_sandbox\) ARAmmo\.spend\(ammoState, 1\)/);
+    const server = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
+    assert.match(server, /if \(room\.sandbox\) for \(const p of room\._playerArr\) \{ if \(p\.coins < SANDBOX_COINS\)[^\n]*p\.ammo = p\.ammoMax/);
+    assert.match(server, /brood: \{ hp: 9000,/);
+});

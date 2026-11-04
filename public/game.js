@@ -5202,6 +5202,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ['ghoul', 'Ghoul', 'zombi_ghoul'], ['stalker', 'Stalker', 'zombi_stalker'], ['brood', 'Brood Mother', 'boss_brood', 1], ['egg', 'Egg', 'boss_egg', 1], ['hatchling', 'Hatchling', 'zombi_hatchling', 1]];
     const _SBX_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14 };
     const _sbx = { type: null, n: 1, freeze: false };
+    let _sbxBuilt = false;   // the cards are built once PER MATCH: built in an earlier match they would still talk to that match's state (pick a zombie, click the map, nothing happens)
     function _sbxUi() {
         const hud = document.getElementById('pve-top-hud'), el = document.getElementById('sbx');
         if (hud) hud.classList.toggle('is-sandbox', _sandbox);
@@ -5210,7 +5211,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         document.body.classList.toggle('sbx-pick', !!_sbx.type);
         if (!_sandbox) return;
         const list = document.getElementById('sbx-list');
-        if (!list.childElementCount) {
+        if (!_sbxBuilt) {
+            _sbxBuilt = true; list.textContent = '';
             _SBX_TYPES.forEach(([id, name, art, boss]) => {
                 const b = document.createElement('button'); b.type = 'button'; b.className = 'sbx-card' + (boss ? ' is-boss' : ''); b.dataset.t = id; b.setAttribute('aria-label', name);
                 const im = document.createElement('img'); im.src = arAsset('/images/zombies/' + art + '.svg'); im.alt = ''; im.draggable = false;
@@ -7077,7 +7079,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // the server never fired, and miss the ones it did: the "invisible bullets".
             _clientNextShotAt = _shotBase + (_myWdSpawn.shootCd + (_burstCount - 1) * _burstDelay) * 1000;
             // Spend the round locally right away (a shot is one round whatever its pellets); the server confirms it about one RTT later.
-            ARAmmo.spend(ammoState, 1);
+            if (!_sandbox) ARAmmo.spend(ammoState, 1);   // (the sandbox has endless ammo)
             _ammoHoldUntil = _shotNow + Math.max(160, _rttMs() + 100);
             if (_myWdSpawn.fireMode === 'semi') { _shootMustRelease = true; _clientHasReleased = false; isShooting = false; }
         }
@@ -7086,7 +7088,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         while (_pendingBurstShots.length > 0 && _pendingBurstShots[0].spawnAt <= _cbNow) {
             const _pbs = _pendingBurstShots.shift();
             // every bullet of a burst is a round of the magazine; a burst that runs dry stops short, as on the server
-            if (predX !== null && !_selfDead && ARAmmo.spend(ammoState, 1) > 0) {
+            if (predX !== null && !_selfDead && (_sandbox || ARAmmo.spend(ammoState, 1) > 0)) {
                 _ammoHoldUntil = _cbNow + Math.max(160, _rttMs() + 100);
                 const _bm = _myGunFire().muzzleDist;
                 _clientBullets.push(_newClientBullet(predX + _pbs.odx * _bm, predY + _pbs.ody * _bm, _pbs.dx, _pbs.dy, _pbs.life, _cbNow, predX, predY));

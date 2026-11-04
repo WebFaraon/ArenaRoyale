@@ -2410,6 +2410,7 @@ function startRoomLoop(code, room) {
 
                 // Reload (the classic magazine, public/ammo.js): R, or the trigger held on an empty magazine, starts it. It
                 // runs reloadSeconds, then the missing rounds move from the reserve into the magazine. Nothing is fired meanwhile.
+                if (room.sandbox) { player.ammo = player.ammoMax; player.reloading = false; player.reloadProgress = 0; player.reloadReq = false; if (player.reserve < player.reserveStart) player.reserve = player.reserveStart; }   // the sandbox has endless ammo
                 if (player.reloadReq && player.burstRemaining === 0) { player.reloadReq = false; ARAmmo.startReload(player); }
                 if (player.shooting) ARAmmo.autoReload(player, true);
                 if (player.reloading) {
@@ -2938,7 +2939,7 @@ function startRoomLoop(code, room) {
             if (room._turretDirty && now - (room._turretHpAt || 0) >= 100) { room._turretHpAt = now; flushTurretHp(code, room, now); }
             for (let wi = 0; wi < allPlayers.length; wi++) if (allPlayers[wi].work) tickWork(code, room, allPlayers[wi], now);
             if (room.mode === 'pve' && tickDown(code, room, dt, now)) { pveDefeat(code, room); return; }
-            if (room.sandbox) for (const p of room._playerArr) if (p.coins < SANDBOX_COINS) p.coins = SANDBOX_COINS;
+            if (room.sandbox) for (const p of room._playerArr) { if (p.coins < SANDBOX_COINS) p.coins = SANDBOX_COINS; p.ammo = p.ammoMax; p.reloading = false; p.reloadProgress = 0; if (p.reserve < p.reserveStart) p.reserve = p.reserveStart; }   // (endless ammo: full again before the state packet goes out)
             if (PERF) PERF.mark(room, 'zombies');
 
             // Gloante: miscare + coliziune continua (swept). Pe segmentul parcurs in acest tick
