@@ -1112,7 +1112,7 @@ const PVE_ZOMBIE_DEFS = {
     // the Brood Mother (the final boss of the Brood Mother level, wave 20; also in the sandbox): a huge slow queen that walks on to the base like the siege types (it
     // never goes for a player, only walls, turrets and the base) and does not carry her eggs: she throws `count` of them round her (within `range`) every `every`
     // seconds (every `rage` s under `rageAt` of her health), at most `max` of them lying about at once. Her health does not grow with the wave.
-    brood: { hp: 12000, armor: 4, noScale: true, chaseSpd: 25, patrolSpd: 15, dmg: 70, attackR: 96, attackCd: 1.6, coinsMin: 120, coinsMax: 160, baseDmg: 110, r: 56, hunts: false, mass: 30, heavy: true, large: true,
+    brood: { hp: 15000, armor: 4, noScale: true, chaseSpd: 25, patrolSpd: 15, dmg: 70, attackR: 96, attackCd: 1.6, coinsMin: 120, coinsMax: 160, baseDmg: 110, r: 56, hunts: false, mass: 30, heavy: true, large: true,
              brood: { first: 4, every: 12, rage: 8, rageAt: 0.4, count: 4, range: 160, max: 12, flight: 0.7 },
              // her blow is a swing with a wind-up: it starts when something is in reach (attackCd is the whole cycle), she stands and raises her arms for `windup` s and the
              // damage lands at the END of the wind-up, at the moment the arms come down, to whatever is in reach THEN (nothing: it is a miss); `recover` s more to straighten up
@@ -1121,9 +1121,20 @@ const PVE_ZOMBIE_DEFS = {
     // goes for a player, only walls, turrets and the base). Two things set it apart: every footstep (`steps`: one every `stride` units, alternating feet) crushes the barricade
     // or turret under that foot, and its blow is a slow two-fisted slam (`swing`, the same wind-up / hit / recover as the Brood Mother's) that lands on the thing in front AND
     // splashes: the other built things within `splash.r` of the impact take `sdmg` and the players within it `pdmg`. Its health does not grow with the wave.
-    colossus: { hp: 18000, armor: 6, noScale: true, chaseSpd: 22, patrolSpd: 14, dmg: 0, attackR: 100, attackCd: 2.2, coinsMin: 200, coinsMax: 260, baseDmg: 140, r: 60, hunts: false, mass: 40, heavy: true, large: true,
+    colossus: { hp: 30000, armor: 6, noScale: true, chaseSpd: 22, patrolSpd: 14, dmg: 0, attackR: 100, attackCd: 2.2, coinsMin: 200, coinsMax: 260, baseDmg: 140, r: 60, hunts: false, mass: 40, heavy: true, large: true,
                 steps: { stride: 58, r: 40, dmg: 90 },
-                swing: { ev: 'colossus', windup: 0.9, recover: 0.7, splash: { r: 120, sdmg: 70, pdmg: 30 } } },
+                swing: { ev: 'colossus', windup: 0.9, recover: 0.7, splash: { r: 120, sdmg: 45, pdmg: 50 } },
+                // two stages, each once, when its health falls under `at` of the maximum (never in the middle of a normal blow; the first that is due goes first): the QUAKE (under half:
+                // a much bigger slam, `windup` s with the fists over its head, that hurts everything built within `r` of the impact and the players, and SLOWS every turret within
+                // `r` for `slow.ms`: they fire `slow.mul` times as slowly; no stun, that is the screamer's) and the CALL (under a quarter: it roars and `spawn.n` small colossi come)
+                stages: [
+                    { id: 'quake', at: 0.5, windup: 1.4, recover: 1.0, r: 420, sdmg: 90, pdmg: 60, slow: { ms: 10000, mul: 2.2 } },
+                    { id: 'call', at: 0.25, windup: 1.2, recover: 0.8, spawn: { type: 'minicolossus', n: 8, from: 110, to: 200 } },
+                ] },
+    // a small colossus (the Colossus calls eight of them under a quarter of its health): the same stone and lava, much smaller and weaker. It walks on to the base like its mother
+    // (it never goes for a player; it breaks what is in its way) and hits with a short two-fisted slam (20 on a barricade, a turret or the base, no shock)
+    minicolossus: { hp: 500, noScale: true, chaseSpd: 44, patrolSpd: 26, dmg: 0, attackR: 70, attackCd: 1.3, coinsMin: 3, coinsMax: 6, baseDmg: 20, r: 27, hunts: false, mass: 6, heavy: true, large: true,
+                    swing: { ev: 'colossus', windup: 0.5, recover: 0.4 } },
     // an egg: it lies where it landed (a zombie that does not move or hit, so bullets, turrets, bombs and flames all work on it as on any), and if it is not broken
     // in `hatch` seconds `spawn` hatchlings come out of it. Not a kill when it hatches.
     egg: { hp: 150, noScale: true, chaseSpd: 0, patrolSpd: 0, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 0, coinsMax: 0, baseDmg: 0, r: 18, hunts: false, mass: 50, immovable: true,
@@ -1131,7 +1142,7 @@ const PVE_ZOMBIE_DEFS = {
     // what comes out of an egg: small, fast, fragile
     hatchling: { hp: 120, noScale: true, chaseSpd: 150, patrolSpd: 80, dmg: 15, attackR: 56, attackCd: 0.6, coinsMin: 0, coinsMax: 1, baseDmg: 12, r: 13, hunts: true, mass: 0.4 },
 };
-const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14, colossus: 15 };
+const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14, colossus: 15, minicolossus: 16 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
 const PVE_UPGRADE_DEFS = {
     dmg:  { baseCost: 6,  costInc: 4, maxUses: 5, apply: (p, n) => { p.damage  = Math.round(p.baseDamage  * (1 + n * 0.05)); } },
@@ -1398,7 +1409,7 @@ function createPveZombie(type, id, hpMul, atX, atY) {
 
 // Returneaza primul batch de zombi si populeaza room.pveSpawnQueue cu restul
 const PVE_BATCH_SIZE   = 10; // zombi per mini-wave
-const PVE_BATCH_DELAY  = 8;  // secunde intre mini-wave-uri
+const PVE_BATCH_DELAY  = process.env.PVE_BATCH_DELAY ? Math.max(0.1, +process.env.PVE_BATCH_DELAY || 8) : 8;  // secunde intre mini-wave-uri (PVE_BATCH_DELAY: doar teste si harness)
 const PVE_START_GRACE  = 8;  // secunde de la inceputul valului pana apare primul lot: timp sa reparam / upgradam constructiile (la valuri mari nu ajungea)
 
 function prepareAndSpawnWave(room, waveIndex) {
@@ -1416,9 +1427,8 @@ function prepareAndSpawnWave(room, waveIndex) {
         batches.push(types.slice(i, i + bsize));
     }
     const finalBoss = { brood: 'brood', colossus: 'colossus' }[room.pveDiff];   // (the Reaper level has no boss in the game yet)
-    if (waveIndex === PVE_TOTAL_WAVES - 1 && finalBoss) {   // the final boss of the level walks in with the first batch of the last wave
-        if (!batches.length) batches.push([]);
-        batches[0].unshift(finalBoss);
+    if (waveIndex === PVE_TOTAL_WAVES - 1 && finalBoss) {   // the final boss of the level comes last: a sub-wave of its own, after all the others (when the base is busy with the small ones)
+        batches.push([finalBoss]);
     }
     const firstBatch = batches[0] || [];
     room.pveSpawnQueue = batches.slice(1);
@@ -1719,7 +1729,7 @@ function tickTurrets(code, room, dt, now) {
         if (t.cd > 0) continue;
         const z = turretTarget(t.x, t.y, tier.range, room.zombies, t.kd === 'bomb' ? _NO_BLOCKERS : blockers);   // a bomb goes over trees and rocks
         if (!z) { t.cd = 0; continue; }                      // ready for the first that comes
-        t.cd = Math.min(0, t.cd) + tier.cd;
+        t.cd = Math.min(0, t.cd) + tier.cd * (t.slowUntil > now ? t.slowMul || 1 : 1);   // (slowed by the Colossus: it fires slowMul times as slowly)
         t.angle = Math.atan2(z.y - t.y, z.x - t.x);
         if (t.kd === 'bomb') {
             const fly = Math.max(250, Math.hypot(z.x - t.x, z.y - t.y) / kind.speed * 1000);
@@ -1926,6 +1936,53 @@ function eggTick(code, room, zombie, def, dt) {
         room.zombies.push(h);
     }
     io.to(code).emit('egg-hatch', { x: Math.round(zombie.x), y: Math.round(zombie.y) });
+}
+
+// The stages of a boss (def.stages: the Colossus): each once, when its health is under `at` of the maximum. Called every tick from its place in the attack chain; returns true while
+// a stage is going on (or has just begun), so the normal blow waits. The boss stands still for the wind-up (colossus-swing, the same event as a blow: the client raises the fists) and
+// the stage lands at its end (colossus-hit with the radius, so the client draws a shock of that size): the QUAKE hurts what is built and the players within `r` of the impact and slows
+// the turrets there (colossus-quake {id, x, y, r, ms, ids}: the client puts a yellow dusty haze on those turrets), the CALL puts `spawn.n` small colossi round it.
+function stageTick(code, room, zombie, def, dt, now) {
+    let st = zombie._stg;
+    if (st) {
+        st.t += dt;
+        const cfg = st.cfg;
+        if (!st.hit && st.t >= cfg.windup) {
+            st.hit = true;
+            const fx = zombie.x + Math.cos(zombie.angle) * (def.r + 16), fy = zombie.y + Math.sin(zombie.angle) * (def.r + 16);
+            if (cfg.id === 'quake') {
+                const ids = [];
+                for (const q of room.structs.slice()) if (!q._gone && builtDist(fx, fy, q) <= cfg.r) hurtBuilt(code, room, q, cfg.sdmg);
+                for (const q of room.turrets.slice()) {
+                    if (q._gone || builtDist(fx, fy, q) > cfg.r) continue;
+                    q.slowUntil = now + cfg.slow.ms; q.slowMul = cfg.slow.mul; ids.push(q.id);
+                    hurtBuilt(code, room, q, cfg.sdmg);
+                }
+                for (const p of room._playerArr) if (p.alive && Math.hypot(p.x - fx, p.y - fy) <= cfg.r + PLAYER_R) hurtPlayer(code, room, p, cfg.pdmg, now);
+                io.to(code).emit('colossus-hit', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), miss: false, r: cfg.r });
+                io.to(code).emit('colossus-quake', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), r: cfg.r, ms: cfg.slow.ms, ids });
+            } else if (cfg.id === 'call') {
+                const sp = cfg.spawn, mdef = PVE_ZOMBIE_DEFS[sp.type];
+                for (let k = 0; k < sp.n; k++) {
+                    const [x, y] = _freeSpotNear(room, zombie.x, zombie.y, sp.from, sp.to, mdef.r);
+                    room.zombies.push(createPveZombie(sp.type, room.zombies.length, 1, x, y));
+                }
+                io.to(code).emit('colossus-hit', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), miss: false, r: sp.to });
+            }
+        }
+        if (st.t >= cfg.windup + cfg.recover) { zombie._stg = null; zombie.attackCooldown = Math.max(zombie.attackCooldown, 0.8); }
+        return true;
+    }
+    if (!def.stages || zombie._sw) return false;
+    const done = zombie._stgDone || (zombie._stgDone = {});
+    for (const cfg of def.stages) {
+        if (done[cfg.id] || zombie.hp > cfg.at * zombie.maxHp) continue;
+        done[cfg.id] = true;
+        zombie._stg = { t: 0, hit: false, cfg };
+        io.to(code).emit('colossus-swing', { id: zombie.id, ms: Math.round(cfg.windup * 1000), big: 1 });
+        return true;
+    }
+    return false;
 }
 
 // A footstep of a zombie that crushes as it walks (def.steps: the Colossus). `mv` = how far it moved this tick; every `stride` units a foot comes down, alternately left and
@@ -2188,7 +2245,7 @@ function sandboxSupply(p) {
     for (const k of Object.keys(p.pveInv)) if (p.pveInv[k] !== SANDBOX_STOCK) { p.pveInv[k] = SANDBOX_STOCK; changed = true; }
     if (changed) io.to(p.id).emit('pve-inv', invPublic(p));
 }
-function sandboxSpawn(code, room, type, x, y) {
+function sandboxSpawn(code, room, type, x, y, hpFrac) {   // hpFrac (0..1, optional): it comes with that share of its health (to try the stages of a boss without shooting it down)
     if (!SANDBOX_TYPES.includes(type)) return null;
     let alive = 0;
     for (const z of room.zombies) if (z.alive) alive++;
@@ -2197,6 +2254,7 @@ function sandboxSpawn(code, room, type, x, y) {
     const def = PVE_ZOMBIE_DEFS[type];
     const z = createPveZombie(type, room.zombies.length, 1, Math.max(def.r, Math.min(ARENA_W - def.r, x)), Math.max(def.r, Math.min(ARENA_H - def.r, y)));
     if (def.egg) { z.state = 'static'; z._hatch = def.egg.hatch; }
+    if (hpFrac > 0 && hpFrac < 1) z.hp = Math.max(1, Math.round(z.maxHp * hpFrac));
     room.zombies.push(z);
     return z;
 }
@@ -2806,7 +2864,7 @@ function startRoomLoop(code, room) {
                     }
                     const spit = def.ranged ? pickSpitTarget(room, zombie, def.ranged.range, alivePlayers) : null;
                     if (spit) speed = 0;   // something is in range: it stands and throws
-                    if (zombie._sw) speed = 0;   // in the middle of a swing she stands
+                    if (zombie._sw || zombie._stg) speed = 0;   // in the middle of a swing (or a stage) she stands
 
                     let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
                     const dLen = Math.hypot(ddx, ddy);
@@ -2927,7 +2985,8 @@ function startRoomLoop(code, room) {
                             if (room.gameEnded) return;
                         }
                     } else if (def.swing) {
-                        if (swingTick(code, room, zombie, def, dt, tgtStruct, baseD, now)) return;
+                        if (stageTick(code, room, zombie, def, dt, now)) { /* a stage is going on: the normal blow waits */ }
+                        else if (swingTick(code, room, zombie, def, dt, tgtStruct, baseD, now)) return;
                     } else if (def.ranged) {
                         if (spit && zombie.attackCooldown <= 0) { spitAt(code, room, zombie, def.ranged, spit, now); zombie.attackCooldown = def.ranged.cd; }
                     } else if (zombie.attackCooldown <= 0 && !(zombie._scream > 0)) {
@@ -3885,8 +3944,8 @@ io.on('connection', (socket) => {
         if (!room.sandbox || !room.gameStarted || room.countdownActive || typeof data.type !== 'string') return;
         const x = +data.x, y = +data.y;
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-        const n = Math.max(1, Math.min(10, (+data.n) | 0 || 1));
-        for (let i = 0; i < n; i++) sandboxSpawn(code, room, data.type, x + (n > 1 ? (Math.random() - 0.5) * 60 : 0), y + (n > 1 ? (Math.random() - 0.5) * 60 : 0));
+        const n = Math.max(1, Math.min(10, (+data.n) | 0 || 1)), hpf = +data.hp;
+        for (let i = 0; i < n; i++) sandboxSpawn(code, room, data.type, x + (n > 1 ? (Math.random() - 0.5) * 60 : 0), y + (n > 1 ? (Math.random() - 0.5) * 60 : 0), hpf);
     });
     socket.on('sandbox-ctl', (data) => {
         const r = fastGetRoom(socket);

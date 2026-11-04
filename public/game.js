@@ -4875,6 +4875,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 ctx.globalAlpha = 1; ctx.fillStyle = '#FFE27A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
                 for (let k = 0; k < 3; k++) { const a = now * 0.007 + k * 2.094; _star(ctx, t.x + Math.cos(a) * R * 0.62, t.y - R * 0.55 + Math.sin(a) * R * 0.2, 7.5); ctx.fill(); ctx.stroke(); }
             }
+            if (t.slowUntil > now) {   // slowed by the Colossus's quake: a yellow dusty haze over it and puffs of dust drifting round it, thinning out as it wears off
+                const left = t.slowUntil - now, fade = Math.min(1, left / 800), ph = now * 0.0016;
+                ctx.globalAlpha = 0.30 * fade; ctx.fillStyle = '#E6C23A'; ctx.beginPath(); ctx.arc(t.x, t.y, R + 3, 0, TAU); ctx.fill();
+                ctx.globalAlpha = (0.55 + 0.25 * Math.sin(now * 0.006)) * fade; ctx.strokeStyle = '#F2C94C'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.arc(t.x, t.y, R + 3, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+                ctx.fillStyle = '#D9C27A';
+                for (let k = 0; k < 7; k++) {
+                    const a = ph * (k % 2 ? 1 : -1) + k * 0.898, rr = R * (0.45 + 0.4 * (((k * 37) % 10) / 10) + 0.1 * Math.sin(now * 0.004 + k));
+                    ctx.globalAlpha = 0.5 * fade; ctx.beginPath(); ctx.arc(t.x + Math.cos(a) * rr, t.y + Math.sin(a) * rr * 0.8 - 3 - 3 * Math.sin(now * 0.003 + k * 2), 4 + (k % 3) * 1.6, 0, TAU); ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+            }
             if ((t.kd === 'tesla' || t.kd === 'bomb') && now - t.flash < 160) {   // the coil flares as it fires, the mortar flashes
                 const a = 1 - (now - t.flash) / 160;
                 ctx.globalAlpha = 0.55 * a; ctx.fillStyle = t.kd === 'bomb' ? '#FFB54D' : t.t === 2 ? '#E9DBFF' : '#7FF6FF'; ctx.beginPath(); ctx.arc(t.x, t.y, 16 + 8 * a, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
@@ -5306,9 +5317,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // the server decides; CLEAR ZOMBIES / FREEZE / CLEAR BUILT are sandbox-ctl. Desktop: the click places it; Esc (or the same card again) puts it away.
     const _SBX_TYPES = [['normal', 'Normal', 'zombi'], ['runner', 'Runner', 'zombi_rapid'], ['tank', 'Tank', 'zombi_tanc'], ['spitter', 'Spitter', 'zombi_toxic'], ['exploder', 'Exploder', 'zombi_exploder'],
         ['brute', 'Brute', 'zombi_brute'], ['summoner', 'Summoner', 'zombi_summoner'], ['minion', 'Minion', 'zombi_minion'], ['shielded', 'Shielded', 'zombi_shielded'], ['screamer', 'Screamer', 'zombi_screamer'],
-        ['ghoul', 'Ghoul', 'zombi_ghoul'], ['stalker', 'Stalker', 'zombi_stalker'], ['brood', 'Brood Mother', 'boss_brood', 1], ['egg', 'Egg', 'boss_egg', 1], ['hatchling', 'Hatchling', 'zombi_hatchling', 1], ['colossus', 'Colossus', 'boss_colossus', 1]];
-    const _SBX_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14, colossus: 15 };
-    const _sbx = { type: null, n: 1, freeze: false };
+        ['ghoul', 'Ghoul', 'zombi_ghoul'], ['stalker', 'Stalker', 'zombi_stalker'], ['brood', 'Brood Mother', 'boss_brood', 1], ['egg', 'Egg', 'boss_egg', 1], ['hatchling', 'Hatchling', 'zombi_hatchling', 1], ['colossus', 'Colossus', 'boss_colossus', 1], ['minicolossus', 'Mini Colossus', 'zombi_colossus_mini', 1]];
+    const _SBX_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14, colossus: 15, minicolossus: 16 };
+    const _sbx = { type: null, n: 1, hp: 1, freeze: false };
     let _sbxBuilt = false;   // the cards are built once PER MATCH: built in an earlier match they would still talk to that match's state (pick a zombie, click the map, nothing happens)
     function _sbxUi() {
         const hud = document.getElementById('pve-top-hud'), el = document.getElementById('sbx');
@@ -5332,6 +5343,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (hint) hint.textContent = _sbx.type ? (isDesktop ? 'Click the map to spawn: ' + _SBX_TYPES[_SBX_IDX[_sbx.type]][1] + '. Esc cancels.' : _SBX_TYPES[_SBX_IDX[_sbx.type]][1] + ' picked: press SPAWN.') : (isDesktop ? 'Pick a zombie, then click the map. 1-7 build.' : 'Pick a zombie, then press SPAWN.');
         const cnt = document.getElementById('sbx-count');
         for (const b of cnt.children) { b.classList.toggle('is-on', +b.dataset.n === _sbx.n); b.onclick = () => { _sbx.n = +b.dataset.n; _sbxUi(); }; }
+        const hpr = document.getElementById('sbx-hp');   // the share of its health it comes with (50% and 25%: the stages of the Colossus)
+        for (const b of hpr.children) { b.classList.toggle('is-on', +b.dataset.hp === _sbx.hp); b.onclick = () => { _sbx.hp = +b.dataset.hp; _sbxUi(); }; }
         document.getElementById('sbx-clear').onclick = () => socket.emit('sandbox-ctl', { action: 'clear' });
         document.getElementById('sbx-freeze').onclick = () => socket.emit('sandbox-ctl', { action: 'freeze' });
         document.getElementById('sbx-built').onclick = () => socket.emit('sandbox-ctl', { action: 'clear-built' });
@@ -5356,12 +5369,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     function _sbxSpawn() {
         if (!_sbx.type || predX === null) return;
         const [x, y] = _sbxWorld();
-        socket.emit('sandbox-spawn', { type: _sbx.type, x: Math.round(x), y: Math.round(y), n: _sbx.n });
+        socket.emit('sandbox-spawn', { type: _sbx.type, x: Math.round(x), y: Math.round(y), n: _sbx.n, hp: _sbx.hp });
     }
     function _sbxSpawnAhead() {   // touch: ahead of the player, where they face (a fixed distance, a little way off the screen's middle)
         if (!_sbx.type || predX === null) return;
         const D = 230;
-        socket.emit('sandbox-spawn', { type: _sbx.type, x: Math.round(predX - Math.sin(myAngle) * D), y: Math.round(predY + Math.cos(myAngle) * D), n: _sbx.n });
+        socket.emit('sandbox-spawn', { type: _sbx.type, x: Math.round(predX - Math.sin(myAngle) * D), y: Math.round(predY + Math.cos(myAngle) * D), n: _sbx.n, hp: _sbx.hp });
     }
     socket.on('sandbox-state', ({ freeze }) => { _sbx.freeze = !!freeze; _sbxUi(); });
     _sbxUi();
@@ -6390,7 +6403,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const sp = [], ch = [], n = miss ? 6 : 12;
         for (let k = 0; k < n; k++) sp.push({ a: (k / n) * TAU + Math.random() * 0.5, l: 26 + Math.random() * 40 });
         for (let k = 0; k < (miss ? 5 : 11); k++) ch.push({ a: Math.random() * TAU, v: 34 + Math.random() * 56, s: 3 + Math.random() * 4, w: (Math.random() - 0.5) * 8 });
-        _zFxPush({ k: 'slam', x0: x, y0: y, t0: now, sp, ch, miss: !!miss, big: Math.max(1.2, (r || 120) / 80) });
+        _zFxPush({ k: 'slam', x0: x, y0: y, t0: now, sp, ch, miss: !!miss, big: r ? Math.max(1.2, r / 80) : 0.7 });   // (r: the radius of the shock, 0 for a small colossus: a small blow)
+    });
+    // The Colossus's quake (under half its health): every turret within r is SLOWED for ms (not stunned): a yellow dusty haze on it while it lasts (see _drawTurrets)
+    socket.on('colossus-quake', ({ ms, ids }) => {
+        const now = performance.now();
+        for (let i = 0; i < ids.length; i++) { const t = _turrets.find(q => q.id === ids[i]); if (t) t.slowUntil = now + ms; }
     });
     socket.on('colossus-step', ({ id, x, y, s }) => {
         const now = performance.now(), z = _zombies[id];
@@ -7114,10 +7132,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { r: 21, maxHp: 450, bodyColor: '#D9A0A0', innerColor: '#F1C8C4', armColor: '#A8666E', armStroke: '#4A2A2E', ringColor: '#FFD34D', ringFill: 'rgba(255,211,77,0.10)' },   // 9 screamer
         { r: 23, maxHp: 340, bodyColor: '#3E5A38', innerColor: '#5E8050', armColor: '#2F4A2D', armStroke: '#16240F', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },   // 10 ghoul (the dark normal)
         { r: 17, maxHp: 160, bodyColor: '#6E5E1E', innerColor: '#8E7B2C', armColor: '#54471A', armStroke: '#2A2308', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 11 stalker (the dark runner)
-        { r: 56, maxHp: 12000, noScale: true, heavy: true, bigBar: true, warn: 'BROOD MOTHER', bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 12 the Brood Mother
+        { r: 56, maxHp: 15000, noScale: true, heavy: true, bigBar: true, warn: 'BROOD MOTHER', bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 12 the Brood Mother
         { r: 18, maxHp: 150, noScale: true, bodyColor: '#E9DDBB', innerColor: '#F4EAD2', armColor: '#CDBB94', armStroke: '#7C5E2C', ringColor: '#B8FF4D', ringFill: 'rgba(184,255,77,0.10)' },   // 13 an egg
         { r: 13, maxHp: 120, noScale: true, bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 14 a hatchling
-        { r: 60, maxHp: 18000, noScale: true, heavy: true, bigBar: true, warn: 'COLOSSUS', bodyColor: '#6F6757', innerColor: '#A89F88', armColor: '#3E382F', armStroke: '#1F1B15', ringColor: '#FF7A1F', ringFill: 'rgba(255,122,31,0.10)' },   // 15 the Colossus
+        { r: 60, maxHp: 30000, noScale: true, heavy: true, bigBar: true, warn: 'COLOSSUS', bodyColor: '#6F6757', innerColor: '#A89F88', armColor: '#3E382F', armStroke: '#1F1B15', ringColor: '#FF7A1F', ringFill: 'rgba(255,122,31,0.10)' },   // 15 the Colossus
+        { r: 27, maxHp: 500, noScale: true, heavy: true, bodyColor: '#7A705D', innerColor: '#B5AB93', armColor: '#3E382F', armStroke: '#1F1B15', ringColor: '#FF7A1F', ringFill: 'rgba(255,122,31,0.10)' },   // 16 a small colossus
     ];
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)
@@ -7421,6 +7440,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         // (marcajele sunt in dalele din ground-layer.js)
 
+        // --- the marks of a blow on the ground (the cracks and rings of the slam and the footsteps): the last thing on the ground, under everything else ---
+        if (_zFx.length) _drawGroundFx(ctx, performance.now());
+
         // --- OBSTACOLE ---
         const _obsNow = performance.now();
         // (trees drawn from sprites wait for the crown pass, above the players; rocks stay here, under them)
@@ -7440,9 +7462,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         // --- INDICATOR TRAIECTORIE ---
         if ((_aimActive || isShooting || mouseActive) && me && me.alive && !gameEnded) {
-        // --- the marks of a blow on the ground (the cracks and rings of the slam and the footsteps): the last thing on the ground, under everything else ---
-        if (_zFx.length) _drawGroundFx(ctx, performance.now());
-
             const dirX       = -Math.sin(myAngle);
             const dirY       =  Math.cos(myAngle);
             const _trajWd   = _WEAPON_DATA[selectedWeapon] || _WEAPON_DATA[DEFAULT_WEAPON];

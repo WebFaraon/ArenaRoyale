@@ -1,0 +1,36 @@
+{
+  "view": [
+    -64,
+    -64,
+    128,
+    144
+  ],
+  "order": [
+    "crown",
+    "armL",
+    "armR",
+    "head"
+  ],
+  "pivots": {
+    "crown": {
+      "x": 0,
+      "y": -14,
+      "note": "the boulders behind the head: heave a little with each step"
+    },
+    "armL": {
+      "x": -38,
+      "y": 12,
+      "note": "left shoulder: swings with the step, rises for the blow"
+    },
+    "armR": {
+      "x": 38,
+      "y": 12,
+      "note": "right shoulder: opposite phase"
+    },
+    "head": {
+      "x": 0,
+      "y": 0,
+      "note": "centre of the dome: sinks into each step, leans into the blow"
+    }
+  }
+}

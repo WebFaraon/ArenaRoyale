@@ -597,6 +597,7 @@
         { id: 'boss_egg', view: [-30, -36, 60, 72], disc: 24, sh: [5, 9, 24, 22] },                  // 13 an egg she threw
         { id: 'zombi_hatchling', view: [-44, -36, 88, 88], disc: 26, sh: [6, 10, 26, 24] },          // 14 what comes out of an egg
         { id: 'boss_colossus', view: [-104, -104, 208, 232], disc: 61.5, sh: [7, 12, 61.5, 56.6] },  // 15 the Colossus (drawn from its separate pieces, see drawColossusSprite; this whole picture is the fallback)
+        { id: 'zombi_colossus_mini', view: [-64, -64, 128, 144], disc: 32.2, sh: [6, 10, 32.2, 29.6] },  // 16 a small colossus (also in pieces: drawMiniColossusSprite)
     ];
     const zombieImgs = ZOMBIE_ART.map(function (a) {
         const e = { img: new Image(), state: 0 };   // 0 loading, 1 ready, 2 failed
@@ -637,51 +638,62 @@
     // head. Its walk is slow and heavy: the arms swing with the distance it covers, and each footstep (game.js sets zb.stepT / zb.stepS on colossus-step) makes the whole body sink
     // and the head and crown thump down. The blow is a two-fisted slam: a slow wind-up (zb.swingT / swingMs on colossus-swing: it leans back and the fists rise over its head),
     // then at the moment the server says the damage lands (zb.slamT, colossus-hit) the fists come down and the body drops forward, and it straightens up again.
-    const COL_PARTS = ['crown', 'pauL', 'pauR', 'armL', 'armR', 'head'];
-    const COL_PIVOT = { crown: [0, -20], pauL: [-58, 18], pauR: [58, 18], armL: [-58, 20], armR: [58, 20], head: [0, 0] };   // the same as parts.json
-    const colImgs = COL_PARTS.map(function (n) {
-        const e = { img: new Image(), state: 0 };
-        e.img.onload = function () { e.state = e.img.naturalWidth > 0 ? 1 : 2; };
-        e.img.onerror = function () { e.state = 2; console.warn('[colossus] piesa lipsa: ' + n); };
-        e.img.src = window.arAsset ? window.arAsset('/images/zombies/colossus/' + n + '.svg') : '/images/zombies/colossus/' + n + '.svg';
-        return e;
-    });
-    function colReady() { for (let i = 0; i < colImgs.length; i++) if (colImgs[i].state !== 1) return false; return true; }
-    function colPad(def) { const art = ZOMBIE_ART[15], k = def.r / art.disc, v = art.view; return Math.max(-v[0], -v[1], v[0] + v[2], v[1] + v[3]) * k + 2; }
-    function colPaint(i, def) {
-        const art = ZOMBIE_ART[15], k = def.r / art.disc, v = art.view, im = colImgs[i].img;
+    // A set of pieces: the pictures of a boss (or of the small colossus) as separate bitmaps, with the pivots of parts.json. Both colossi are drawn by drawColPieces below.
+    function makePieceSet(dir, parts, pivot, artIdx, prefix, stride, refSpd) {
+        return {
+            dir: dir, parts: parts, pivot: pivot, art: artIdx, prefix: prefix, stride: stride, refSpd: refSpd,   // stride: the distance of a whole walking cycle; refSpd: the speed that counts as "walking fully"
+            imgs: parts.map(function (n) {
+                const e = { img: new Image(), state: 0 };
+                e.img.onload = function () { e.state = e.img.naturalWidth > 0 ? 1 : 2; };
+                e.img.onerror = function () { e.state = 2; console.warn('[' + dir + '] piesa lipsa: ' + n); };
+                e.img.src = window.arAsset ? window.arAsset('/images/zombies/' + dir + '/' + n + '.svg') : '/images/zombies/' + dir + '/' + n + '.svg';
+                return e;
+            }),
+        };
+    }
+    const COL_SET  = makePieceSet('colossus', ['crown', 'pauL', 'pauR', 'armL', 'armR', 'head'], { crown: [0, -20], pauL: [-58, 18], pauR: [58, 18], armL: [-58, 20], armR: [58, 20], head: [0, 0] }, 15, 'col_', 116, 14);   // the pivots: the same as parts.json
+    const MINI_SET = makePieceSet('colossus_mini', ['crown', 'armL', 'armR', 'head'], { crown: [0, -14], armL: [-38, 12], armR: [38, 12], head: [0, 0] }, 16, 'cmi_', 68, 30);
+    function setReady(S) { for (let i = 0; i < S.imgs.length; i++) if (S.imgs[i].state !== 1) return false; return true; }
+    function setPad(S, def) { const art = ZOMBIE_ART[S.art], k = def.r / art.disc, v = art.view; return Math.max(-v[0], -v[1], v[0] + v[2], v[1] + v[3]) * k + 2; }
+    function setPaint(S, i, def) {
+        const art = ZOMBIE_ART[S.art], k = def.r / art.disc, v = art.view, im = S.imgs[i].img;
         return function (g) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(im, v[0] * k, v[1] * k, v[2] * k, v[3] * k); };
     }
-    function warmColossus(def) {
-        if (!colReady()) return colImgs.some(function (e) { return e.state === 0; }) ? 1 : 0;
-        let missing = 0; const pad = colPad(def);
-        for (let i = 0; i < COL_PARTS.length; i++) {
-            const key = 'col_' + COL_PARTS[i], old = zombieSprites.get(key), s = sprite(old, pad, colPaint(i, def));
-            if (s !== old && s) zombieSprites.set(key, s);
-            if (!s) missing++;
+    function warmSet(S, def) {
+        if (!setReady(S)) return S.imgs.some(function (e) { return e.state === 0; }) ? 1 : 0;
+        let missing = 0; const pad = setPad(S, def);
+        for (let i = 0; i < S.parts.length; i++) {
+            const key = S.prefix + S.parts[i], old = zombieSprites.get(key), sp = sprite(old, pad, setPaint(S, i, def));
+            if (sp !== old && sp) zombieSprites.set(key, sp);
+            if (!sp) missing++;
         }
         return missing;
     }
+    function warmColossus(def) { return warmSet(COL_SET, def); }
+    function warmMiniColossus(def) { return warmSet(MINI_SET, def); }
     const smooth01 = function (p) { p = p < 0 ? 0 : p > 1 ? 1 : p; return p * p * (3 - 2 * p); };
-    function drawColossusSprite(ctx, m, zb, def, now, nx, ny) {
-        if (!colReady()) return false;
-        const pad = colPad(def), art = ZOMBIE_ART[15], k = def.r / art.disc;
+    function drawColPieces(S, ctx, m, zb, def, now, nx, ny) {
+        if (!setReady(S)) return false;
+        const pad = setPad(S, def), art = ZOMBIE_ART[S.art], k = def.r / art.disc;
         const sp = [];
-        for (let i = 0; i < COL_PARTS.length; i++) {
-            const key = 'col_' + COL_PARTS[i], old = zombieSprites.get(key), s = sprite(old, pad, colPaint(i, def));
-            if (s !== old && s) zombieSprites.set(key, s);
-            if (!(s || old)) return false;
-            sp.push(s || old);
+        for (let i = 0; i < S.parts.length; i++) {
+            const key = S.prefix + S.parts[i], old = zombieSprites.get(key), sprt = sprite(old, pad, setPaint(S, i, def));
+            if (sprt !== old && sprt) zombieSprites.set(key, sprt);
+            if (!(sprt || old)) return false;
+            sp.push(sprt || old);
         }
-        // the walk: a phase that moves with the distance it covers (a whole cycle = two footsteps of 58 units), and how much it is walking (smoothed)
+        // the walk: a phase that moves with the distance it covers (a whole cycle = S.stride units), and how much it is walking (smoothed)
         const dtS = zb._bl ? Math.min(0.1, Math.max(0.001, (now - zb._bl) / 1000)) : 0.016;
         const moved = zb._bl ? Math.hypot(zb.x - zb._bx, zb.y - zb._by) : 0;
         zb._bl = now; zb._bx = zb.x; zb._by = zb.y;
-        zb._bp = (zb._bp || 0) + moved * (2 * Math.PI / 116);
-        zb._ba = (zb._ba || 0) + (Math.min(1, moved / dtS / 14) - (zb._ba || 0)) * Math.min(1, dtS * 5);
+        zb._bp = (zb._bp || 0) + moved * (2 * Math.PI / S.stride);
+        zb._ba = (zb._ba || 0) + (Math.min(1, moved / dtS / S.refSpd) - (zb._ba || 0)) * Math.min(1, dtS * 5);
         const ph = zb._bp, amp = zb._ba, t = now / 1000, seed = (zb.id || 0) * 1.3;
-        // a footstep: the body sinks a few units and comes back in ~280 ms (the foot that came down leans the head that way a little)
-        const sa = zb.stepT ? (now - zb.stepT) / 300 : 2, sd = sa >= 0 && sa < 1 ? (1 - sa) * (1 - sa) : 0, side = zb.stepS ? 1 : -1;
+        // a footstep: the body sinks a few units and comes back in ~280 ms. The big one gets the server's word for it (zb.stepT / stepS on colossus-step, the foot that came down leans the
+        // head that way a little); the small ones have no such event, so they sink with their own walking phase
+        let sd, side = 1;
+        if (zb.stepT) { const sa = (now - zb.stepT) / 300; sd = sa >= 0 && sa < 1 ? (1 - sa) * (1 - sa) : 0; side = zb.stepS ? 1 : -1; }
+        else { sd = amp * Math.pow(Math.abs(Math.sin(ph)), 6); side = Math.sin(ph) > 0 ? 1 : -1; }
         // the blow (see above): atkA = how far the arms are raised (rad, outward / up = +), atkLean = body shift along the way it faces (units, back = -), atkHead = head shift
         let atkA = 0, atkLean = 0, atkHead = 0, atkShake = 0;
         if (zb.swingT) {
@@ -703,22 +715,24 @@
         const lg = atkLean * k, dip = 3.2 * sd * k;   // the body leans along the way it faces; each footstep sinks it
         const swing = Math.sin(ph) * 0.5 * amp + Math.sin(t * 0.9 + seed) * 0.025;   // the arms, with the walk
         // per piece: [rotation, sx, sy, shift x, shift y] about its pivot
-        const T = [
-            [Math.sin(ph) * 0.03 * amp + Math.sin(t * 0.8 + seed) * 0.01, 1 + 0.02 * sd, 1 + 0.02 * sd, sk, lg * 0.6 + dip * 0.8],                  // the crown: rocks, thumps with each step
-            [(swing + atkA) * 0.3, 1, 1, sk, lg + dip * 0.5],                                                                                       // the pauldrons follow the arms a little
-            [-(swing + atkA) * 0.3, 1, 1, sk, lg + dip * 0.5],
-            [swing + atkA, 1, 1, sk, lg + dip * 0.5],                                                                                               // the arms swing / rise (left outward = +)
-            [-swing - atkA, 1, 1, sk, lg + dip * 0.5],
-            [side * 0.045 * sd + Math.sin(ph) * 0.03 * amp, 1, 1, sk, (atkHead + 2.2 * Math.sin(ph * 2) * amp) * k + lg + dip * 1.4],             // the head sinks into each step, rears back and drops into the blow
-        ];
-        for (let i = 0; i < COL_PARTS.length; i++) {
-            const pv = COL_PIVOT[COL_PARTS[i]], tr = T[i], px = pv[0] * k, py = pv[1] * k;
+        const T = {
+            crown: [Math.sin(ph) * 0.03 * amp + Math.sin(t * 0.8 + seed) * 0.01, 1 + 0.02 * sd, 1 + 0.02 * sd, sk, lg * 0.6 + dip * 0.8],     // the crown: rocks, thumps with each step
+            pauL: [(swing + atkA) * 0.3, 1, 1, sk, lg + dip * 0.5],                                                                              // the pauldrons follow the arms a little
+            pauR: [-(swing + atkA) * 0.3, 1, 1, sk, lg + dip * 0.5],
+            armL: [swing + atkA, 1, 1, sk, lg + dip * 0.5],                                                                                      // the arms swing / rise (left outward = +)
+            armR: [-swing - atkA, 1, 1, sk, lg + dip * 0.5],
+            head: [side * 0.045 * sd + Math.sin(ph) * 0.03 * amp, 1, 1, sk, (atkHead + 2.2 * Math.sin(ph * 2) * amp) * k + lg + dip * 1.4],     // the head sinks into each step, rears back and drops into the blow
+        };
+        for (let i = 0; i < S.parts.length; i++) {
+            const pv = S.pivot[S.parts[i]], tr = T[S.parts[i]], px = pv[0] * k, py = pv[1] * k;
             ctx.setTransform(base[0], base[1], base[2], base[3], base[4], base[5]);
             ctx.translate(px + tr[3], py + tr[4]); ctx.rotate(tr[0]); ctx.scale(tr[1], tr[2]); ctx.translate(-px, -py);
             ctx.drawImage(sp[i].c, -pad, -pad, pad * 2, pad * 2);
         }
         return true;
     }
+    function drawColossusSprite(ctx, m, zb, def, now, nx, ny) { return drawColPieces(COL_SET, ctx, m, zb, def, now, nx, ny); }
+    function drawMiniColossusSprite(ctx, m, zb, def, now, nx, ny) { return drawColPieces(MINI_SET, ctx, m, zb, def, now, nx, ny); }
     // Draws her; false when the pieces are not all in yet (the caller draws the whole picture instead)
     function drawBroodSprite(ctx, m, zb, def, now, nx, ny) {
         if (!broodReady()) return false;
@@ -801,6 +815,7 @@
     function drawZombieSprite(ctx, m, zb, def, typeKey, now, hot, flash, nx, ny) {
         if (typeKey === 12 && drawBroodSprite(ctx, m, zb, def, now, nx, ny)) return;   // the Brood Mother moves in pieces
         if (typeKey === 15 && drawColossusSprite(ctx, m, zb, def, now, nx, ny)) return;   // so does the Colossus
+        if (typeKey === 16 && drawMiniColossusSprite(ctx, m, zb, def, now, nx, ny)) return;   // and the small ones it calls
         let s = null, pad = 0;
         const zp = zombiePainter(def, typeKey);
         if (zp) {
@@ -1092,6 +1107,7 @@
         }
         if (zdefs[12]) missing += warmBrood(zdefs[12]);
         if (zdefs[15]) missing += warmColossus(zdefs[15]);
+        if (zdefs[16]) missing += warmMiniColossus(zdefs[16]);
         if (withBase) for (let st = 0; st < BASE_PAL.length; st++) { const pal = BASE_PAL[st]; need('base' + st, BASE_PAD, function (g) { paintBase(g, pal); }); }
         need('kit', KIT_PAD, kitPainter());
         need('ammo', KIT_PAD, ammoPainter());

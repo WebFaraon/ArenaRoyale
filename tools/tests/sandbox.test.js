@@ -130,7 +130,7 @@ test('client: the sandbox cards are rebuilt for every match (built once per page
     assert.match(client, /if \(!_sandbox\) ARAmmo\.spend\(ammoState, 1\)/);
     const server = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
     assert.match(server, /if \(room\.sandbox\) for \(const p of room\._playerArr\) \{ if \(p\.coins < SANDBOX_COINS\)[^\n]*p\.ammo = p\.ammoMax/);
-    assert.match(server, /brood: \{ hp: 12000,/);
+    assert.match(server, /brood: \{ hp: 15000,/);
 });
 
 test('the Brood Mother\'s blow is a swing: the damage lands at the END of the wind-up (brood-hit), not when she starts to raise her arms (brood-swing)', async () => {

@@ -89,6 +89,42 @@ function brood() { const p = broodPieces(); return svg(BROOD_VIEW, BROOD_ORDER.m
 // one SVG per piece, same viewBox as the whole (public/images/zombies/brood/<piece>.svg) + the manifest with order and pivots
 const broodPartFiles = () => { const p = broodPieces(); const f = {}; BROOD_ORDER.forEach(k => { f[k + '.svg'] = svg(BROOD_VIEW, p[k]); }); f['parts.json'] = JSON.stringify({ view: BROOD_VIEW.split(' ').map(Number), order: BROOD_ORDER, pivots: BROOD_PIVOTS }, null, 2) + '\n'; return f; };
 
+// ---------- A SMALL COLOSSUS: the Colossus calls eight of them when it is down to a quarter of its health. The same stone and lava, but stubby: a round dome of rock plates with a heavy
+// brow and two molten eyes in the lower half (no mouth), a few boulders behind the head, two short stone arms with boulder fists. In pieces (crown, both arms, head) to animate it.
+function colossusMiniPieces() {
+  const D = '#3E382F', M = '#7A705D', M2 = '#5E5644', L = '#B5AB93', LAVA = '#FF7A1F', HOT = '#FFD34D', RED = '#D9421A';
+  const crack = (pts, w = 3) => path('M' + pts.map(p => p.join(' ')).join(' L'), 'none', w, RED) + path('M' + pts.map(p => p.join(' ')).join(' L'), 'none', w - 1.4, LAVA);
+  const bolt = (x, y, r = 1.8) => circ(x, y, r, L, 1.1) + circ(x - r * 0.3, y - r * 0.3, r * 0.35, '#fff', 0, INK, 'opacity=".7"');
+  const crown = [[-30, -22, 12, 6, 0.4], [-14, -36, 13, 6, 1.1], [0, -41, 15, 7, 0.2], [14, -36, 13, 6, 2.2], [30, -22, 12, 6, 0.9]].map(([x, y, r, n, rot]) =>
+    poly(chunk(x, y, r, n, rot, 0.92), M, 3.4) + poly(chunk(x - 1, y - 1, r * 0.68, n, rot, 0.92), L, 0) + path(`M${r1(x - r * 0.5)} ${r1(y + r * 0.2)} q${r1(r * 0.5)} ${r1(r * 0.3)} ${r1(r)} 0`, 'none', 1.2, D)).join('');
+  const arm = s => {
+    const x = s * 38, y0 = 10, L0 = 30, fy = y0 + L0 + 10;
+    return rect(x - 11, y0, 22, L0 + 2, 8, D, 4) + rect(x - 8, y0 + 2, 16, L0 - 3, 6, M) + rect(x - 7, y0 + 4, 5, L0 - 9, 2.5, L, 0, INK, 'opacity=".6"') + crack([[x + 4, y0 + 5], [x + 1, y0 + 13], [x + 5, y0 + 19]], 2.2) +
+      poly([[x - 12, y0 + L0 - 12], [x + 12, y0 + L0 - 12], [x + 13, y0 + L0], [x - 13, y0 + L0]], D, 3) + poly([[x - 9, y0 + L0 - 10], [x + 9, y0 + L0 - 10], [x + 10, y0 + L0 - 2], [x - 10, y0 + L0 - 2]], M2, 0) + line(x - 8, y0 + L0 - 6, x + 8, y0 + L0 - 6, LAVA, 1.8) +
+      poly(chunk(x, fy, 15, 8, s * 0.5, 0.9), D, 4) + poly(chunk(x - 1, fy - 2, 12.5, 8, s * 0.5, 0.9), M) + poly(chunk(x - 4, fy - 6, 6, 6, s * 1.1, 0.9), L, 0, INK, 'opacity=".7"') +
+      crack([[x - 8, fy - 4], [x, fy + 1], [x + 7, fy - 5]], 2.4) + circ(x, fy + 1, 4.2, RED, 1.6) + circ(x, fy + 1, 2.6, LAVA) + circ(x - 0.6, fy + 0.4, 1, HOT);
+  };
+  const head = circ(0, 0, 30, D) + circ(-2, -3, 27.5, M) + circ(-5, -6, 22, L, 0, INK, 'opacity=".4"') +
+    [0, 1, 2, 3, 4].map(i => { const a = i * 2 * PI / 5 + 0.4; return path(`M${r1(8 * Math.cos(a))} ${r1(8 * Math.sin(a))} L${r1(28 * Math.cos(a))} ${r1(28 * Math.sin(a))}`, 'none', 2, D); }).join('') +
+    Array.from({ length: 7 }, (_, i) => { const a = PI + 0.3 + i * (PI - 0.6) / 6; return bolt(26 * Math.cos(a), -2 + 26 * Math.sin(a), 1.7); }).join('') +
+    circ(0, -11, 7, D, 2.6) + circ(0, -11, 5, RED) + circ(0, -11, 3.4, LAVA) + circ(-0.6, -11.6, 1.4, HOT) +
+    crack([[-22, -8], [-17, -12], [-15, -19]], 2.2) + crack([[21, -12], [17, -17], [18, -23]], 2.2) +
+    poly([[-22, 3], [-17, -1], [17, -1], [22, 3], [19, 10], [-19, 10]], D, 3) + poly([[-19, 3], [-16, 1], [16, 1], [19, 3], [17, 7], [-17, 7]], M2, 0) + bolt(-17, 5, 1.5) + bolt(17, 5, 1.5) +
+    [-1, 1].map(sg => circ(sg * 11, 18, 8, LAVA, 0, INK, 'opacity=".3"') + circ(sg * 11, 18, 5.6, RED, 2) + circ(sg * 11, 18, 3.8, LAVA) + circ(sg * 11 - sg * 0.8, 17.2, 1.5, HOT)).join('') +
+    ell(-11, -17, 8, 3, '#fff', 0, INK, 'opacity=".35" transform="rotate(-35 -11 -17)"') + circ(0, 0, 30, 'none', 4.4);
+  return { crown, armL: arm(-1), armR: arm(1), head };
+}
+const COLOSSUS_MINI_VIEW = '-64 -64 128 144';
+const COLOSSUS_MINI_ORDER = ['crown', 'armL', 'armR', 'head'];
+const COLOSSUS_MINI_PIVOTS = {
+  crown: { x: 0, y: -14, note: 'the boulders behind the head: heave a little with each step' },
+  armL: { x: -38, y: 12, note: 'left shoulder: swings with the step, rises for the blow' },
+  armR: { x: 38, y: 12, note: 'right shoulder: opposite phase' },
+  head: { x: 0, y: 0, note: 'centre of the dome: sinks into each step, leans into the blow' },
+};
+function colossusMini() { const p = colossusMiniPieces(); return svg(COLOSSUS_MINI_VIEW, COLOSSUS_MINI_ORDER.map(k => p[k]).join('')); }
+const colossusMiniPartFiles = () => { const p = colossusMiniPieces(); const f = {}; COLOSSUS_MINI_ORDER.forEach(k => { f[k + '.svg'] = svg(COLOSSUS_MINI_VIEW, p[k]); }); f['parts.json'] = JSON.stringify({ view: COLOSSUS_MINI_VIEW.split(' ').map(Number), order: COLOSSUS_MINI_ORDER, pivots: COLOSSUS_MINI_PIVOTS }, null, 2) + '\n'; return f; };
+
 // ---------- COLOSSUS: a giant of stone and lava. A dome of rock plates ringed with bolts and glowing seams, a heavy brow and molten eyes between cheek plates (no mouth: from above
 // only the eyes show), a crown of rounded boulders behind the head with magma glowing between them, layered pauldrons, stone-braced arms and two boulder fists with lava in
 // their cracks. Every step crushes what is in its way.
@@ -212,8 +248,9 @@ const BOSSES = {
   reaper: { svg: reaper, file: 'boss_reaper.svg', view: '-100 -100 200 206' },
   egg: { svg: egg, file: 'boss_egg.svg', view: '-30 -36 60 72' },
   hatchling: { svg: hatchling, file: 'zombi_hatchling.svg', view: '-44 -36 88 88' },
+  colossusMini: { svg: colossusMini, file: 'zombi_colossus_mini.svg', view: '-64 -64 128 144' },
 };
-module.exports = { brood, colossus, reaper, egg, hatchling, BOSSES, broodPieces, broodPartFiles, BROOD_ORDER, BROOD_PIVOTS, BROOD_VIEW, colossusPieces, colossusPartFiles, COLOSSUS_ORDER, COLOSSUS_PIVOTS, COLOSSUS_VIEW };
+module.exports = { brood, colossus, reaper, egg, hatchling, BOSSES, broodPieces, broodPartFiles, BROOD_ORDER, BROOD_PIVOTS, BROOD_VIEW, colossusPieces, colossusPartFiles, COLOSSUS_ORDER, COLOSSUS_PIVOTS, COLOSSUS_VIEW, colossusMini, colossusMiniPieces, colossusMiniPartFiles, COLOSSUS_MINI_ORDER, COLOSSUS_MINI_PIVOTS, COLOSSUS_MINI_VIEW };
 
 if (require.main === module) {
   const fs = require('fs'), path_ = require('path');
@@ -227,5 +264,8 @@ if (require.main === module) {
   const cd = path_.join(out, 'colossus'); fs.mkdirSync(cd, { recursive: true });
   const cf = colossusPartFiles(); for (const n of Object.keys(cf)) fs.writeFileSync(path_.join(cd, n), cf[n]);
   console.log('wrote colossus/' + Object.keys(cf).join(', colossus/'));
+  const md = path_.join(out, 'colossus_mini'); fs.mkdirSync(md, { recursive: true });
+  const mf = colossusMiniPartFiles(); for (const n of Object.keys(mf)) fs.writeFileSync(path_.join(md, n), mf[n]);
+  console.log('wrote colossus_mini/' + Object.keys(mf).join(', colossus_mini/'));
   console.log('wrote', Object.keys(BOSSES).map(k => BOSSES[k].file).join(', '));
 }
