@@ -1468,9 +1468,9 @@ function tickWork(code, room, p, now) {
 // ---------- PLAYER DOWN (PvE) ----------
 // Zero health does not end a player in PvE: they are knocked down for PVE_DOWN_MS and the knock bar drains. A teammate who stands next to them and
 // holds E (standing still) for PVE_REVIVE_MS lifts them back with PVE_REVIVE_HP; while that goes on the bar holds. When the bar is empty the player
-// is out for the rest of the match. Everyone down or out (nobody left to revive anybody) is a defeat. By events, never gs2: player-down {id, x, y, ms},
+// is out for the rest of the match. Alone in the room, or when no teammate is on their feet, there is no knock: the player is out at once (eliminatePlayer). Everyone down or out (nobody left to revive anybody) is a defeat at once (PVE_NOBODY_MS). By events, never gs2: player-down {id, x, y, ms},
 // revive-work {id, by, dur, ms}, revive-end {id, done, ms}, player-up {id, hp}, player-out {id}.
-const PVE_DOWN_MS = 30000, PVE_REVIVE_MS = 5000, PVE_REVIVE_HP = 50, PVE_REVIVE_RANGE = PLAYER_R * 2 + 30, PVE_NOBODY_MS = 2500;
+const PVE_DOWN_MS = 30000, PVE_REVIVE_MS = 5000, PVE_REVIVE_HP = 50, PVE_REVIVE_RANGE = PLAYER_R * 2 + 30, PVE_NOBODY_MS = 300;
 function downPlayer(code, room, p) {
     cancelWork(code, room, p);
     for (const q of room._playerArr) if (q.work && q.work.action === 'revive' && q.work.tid === p.id) cancelWork(code, room, q);
@@ -1479,13 +1479,15 @@ function downPlayer(code, room, p) {
     io.to(code).emit('player-down', { id: p.id, x: Math.round(p.x), y: Math.round(p.y), ms: p.downMs });
 }
 function outPlayer(code, room, p) {
+    cancelWork(code, room, p);
     for (const q of room._playerArr) if (q.work && q.work.action === 'revive' && q.work.tid === p.id) cancelWork(code, room, q);
-    p.down = false; p.out = true; p._revBy = null; p.downMs = 0;
+    p.alive = false; p.hp = 0; p.down = false; p.out = true; p._revBy = null; p.downMs = 0;
+    p.moveDir.x = 0; p.moveDir.y = 0; p.vx = 0; p.vy = 0; p.shooting = false; p.inputQ.length = 0;
     let n = 0;
     for (const q of room._playerArr) if (q.alive || q.down) n++;
     io.to(code).emit('player-out', { id: p.id, x: Math.round(p.x), y: Math.round(p.y) });
     io.to(p.id).emit('eliminated', { placement: n + 1, totalPlayers: room._playerArr.length, killedBy: 'zombie', kills: p.kills });
-    console.log(`[${code}] ${p.name} a murit definitiv (knock epuizat)`);
+    console.log(`[${code}] ${p.name} a murit definitiv`);
 }
 function tickDown(code, room, dt, now) {
     let anyAlive = false, anyDown = false;
@@ -3119,8 +3121,11 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
     if (room.mode === 'pve') {   // not out yet: knocked down (the 'eliminated' event comes with player-out, when the knock bar is empty)
         if (!player.down && !player.out) {
             io.to(code).emit('kill-event', { killerName: 'Zombi', victimName: player.name, byZone: false, victimId: player.id });
-            downPlayer(code, room, player);
-            console.log(`[${code}] ${player.name} la pamant (knock)`);
+            // knocked down only when a teammate on their feet could lift them: alone, or the last one standing, it is the end at once
+            if (room._playerArr.some(q => q !== player && q.alive)) {
+                downPlayer(code, room, player);
+                console.log(`[${code}] ${player.name} la pamant (knock)`);
+            } else outPlayer(code, room, player);
         }
         return;
     }

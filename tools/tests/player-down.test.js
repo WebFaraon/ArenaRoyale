@@ -18,7 +18,7 @@ test('the numbers: 30 s of knock, 5 s to lift, 50 HP back', () => {
 
 test('in PvE zero health knocks a player down instead of eliminating them (BR is untouched)', () => {
     const fn = server.slice(server.indexOf('function eliminatePlayer('), server.indexOf('function eliminatePlayer(') + 2200);
-    assert.match(fn, /room\.mode === 'pve'[\s\S]{0,400}downPlayer\(code, room, player\)/);
+    assert.match(fn, /room\.mode === 'pve'[\s\S]{0,700}downPlayer\(code, room, player\)/);
     // 'eliminated' goes to the client only with player-out in PvE
     assert.match(server, /function outPlayer[\s\S]{0,900}io\.to\(p\.id\)\.emit\('eliminated'/);
     assert.ok(fn.indexOf("room.mode === 'pve'") < fn.indexOf("io.to(player.id).emit('eliminated'"), 'the PvE branch returns before the BR elimination');
@@ -57,4 +57,12 @@ test('the client: events, the banner, the E prompt (REVIVE) and no Romanian in t
     assert.match(client, /socket\.emit\('revive-player'/);
     assert.doesNotMatch(client, /a cazut/);
     assert.doesNotMatch(client, /'ELIMINAT'/);
+});
+
+test('no knock when nobody on their feet could lift you: alone in the room (or the last one standing) a player is out at once', () => {
+    const fn = server.slice(server.indexOf('function eliminatePlayer('), server.indexOf('function eliminatePlayer(') + 2600);
+    assert.match(fn, /room\._playerArr\.some\(q => q !== player && q\.alive\)[\s\S]{0,200}downPlayer\(code, room, player\)[\s\S]{0,200}else outPlayer\(code, room, player\)/);
+    // out at once means out for good, with the same events, and nobody left on their feet ends the match almost at once
+    assert.match(server, /function outPlayer[\s\S]{0,500}p\.alive = false; p\.hp = 0; p\.down = false; p\.out = true/);
+    assert.match(server, /PVE_NOBODY_MS = 300/);
 });

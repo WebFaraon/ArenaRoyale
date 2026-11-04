@@ -41,3 +41,20 @@ test('the end board has real confetti (a victory) and a staged reveal under the 
     assert.match(css, /@keyframes peFall/);
     assert.match(css, /prefers-reduced-motion: reduce\) \{ \.pe-confetti/);
 });
+
+test('the scene behind the end board stops where it was (the canvas is not drawn any more)', () => {
+    assert.match(client, /let _sceneFrozen = false/);
+    assert.match(client, /if \(_sceneFrozen\) return;/);
+    const h = client.slice(client.indexOf("socket.on('pve-end'"), client.indexOf("socket.on('game-rematch'"));
+    assert.match(h, /_sceneFrozen = true/);
+    const r = client.slice(client.indexOf('function resetForNewGame('), client.indexOf('function resetForNewGame(') + 400);
+    assert.match(r, /_sceneFrozen = false/);
+});
+
+test('the lost board is crowded by the real zombies of the game (their SVGs), not drawn circles', () => {
+    const sw = html.slice(html.indexOf('class="pe-swarm"'), html.indexOf('class="pe-swarm"') + 3000);
+    const files = [...sw.matchAll(/src="\/images\/zombies\/(zombi[a-z_]*\.svg)"/g)].map(m => m[1]);
+    assert.ok(files.length >= 8, 'a crowd of sprites');
+    for (const f of files) assert.ok(fs.existsSync(path.join(__dirname, '../../public/images/zombies', f)), f);
+    assert.doesNotMatch(html.slice(html.indexOf('class="pe-swarm"'), html.indexOf('id="pe-base-sym"')), /<circle/);
+});

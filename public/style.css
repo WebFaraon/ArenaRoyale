@@ -5420,7 +5420,9 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
     --pe-halo: rgba(255, 75, 92, .14); --pe-core: #7B2A33; --pe-node: #4A2A2E; --pe-shine: 0; --pe-crack: 1;
     background: radial-gradient(ellipse at 50% 40%, rgba(255, 75, 92, 0) 40%, rgba(255, 75, 92, .3) 100%), rgba(12, 6, 8, .76);
 }
-.pe-swarm { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
+/* the zombies of the game itself (the real sprites, facing the middle) crowd the edges of a lost board */
+.pe-swarm { position: absolute; inset: 0; pointer-events: none; display: none; overflow: hidden; }
+.pe-swarm img { position: absolute; left: var(--x); top: var(--y); width: var(--s); height: auto; transform: rotate(var(--r)); opacity: .96; filter: drop-shadow(0 .6vmin 0 rgba(0, 0, 0, .45)); }
 #pve-end[data-result="lose"] .pe-swarm { display: block; }
 .pe-confetti { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; display: none; }
 #pve-end[data-result="win"] .pe-confetti { display: block; }
@@ -5623,8 +5625,7 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
 :root[data-juice="on"] #pve-end.is-reveal .pe-bar > i { transition-delay: 1.3s; transition-duration: 1.4s; }
 :root[data-juice="on"] #pve-end[data-result="win"] .pe-rays { animation: peRays 60s linear infinite, peFade 1.2s ease-out both; }
 :root[data-juice="on"] #pve-end[data-result="win"] #pe-title { animation: peShine 3.2s ease-in-out 1.2s infinite; }
-:root[data-juice="on"] #pve-end[data-result="lose"] .pe-swarm g { animation: peSwarm 5s ease-in-out infinite alternate; }
-:root[data-juice="on"] #pve-end[data-result="lose"] .pe-swarm g + g { animation-duration: 7s; animation-delay: -2s; }
+:root[data-juice="on"] #pve-end[data-result="lose"] .pe-swarm img { animation: peLurch 2.4s ease-in-out var(--d, 0s) infinite alternate; }
 :root[data-juice="on"] #pve-end[data-result="lose"] .pe-base { animation-name: peWobble, peHeart; animation-duration: 1.1s, 2.4s; animation-delay: .45s, 1.6s; animation-iteration-count: 1, infinite; animation-fill-mode: both, none; }
 .pe-confetti i { position: absolute; top: 0; left: var(--x); width: var(--w); height: var(--h); background: var(--c); border-radius: 2px; opacity: 0;
     animation: peFall var(--t) linear var(--d) infinite; will-change: transform; }
@@ -5641,7 +5642,7 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
 @keyframes peRays { to { transform: rotate(360deg); } }
 @keyframes peFade { from { opacity: 0; } }
 @keyframes peShine { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.22) drop-shadow(0 0 .35em rgba(255, 199, 46, .55)); } }
-@keyframes peSwarm { from { transform: translate(0, 0); } to { transform: translate(.8%, -1.6%); } }
+@keyframes peLurch { from { transform: rotate(var(--r)) translateY(0); } to { transform: rotate(var(--r)) translateY(1.8vmin); } }   /* a step towards the middle (the art faces down) */
 @media (prefers-reduced-motion: reduce) { .pe-confetti, .pe-rays { display: none !important; } }
 
 

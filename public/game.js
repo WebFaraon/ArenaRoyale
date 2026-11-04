@@ -5668,6 +5668,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     function resetForNewGame() {
         _spriteBurst = true;
         gameEnded  = false;
+        _sceneFrozen = false;
         _selfDead  = false;
         _selfDown = false; _selfOut = false; for (const k in _down) delete _down[k]; _downHudMode('');
         _hiddenPlayers.clear();
@@ -6392,6 +6393,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     socket.on('pve-end', (d) => {
         gameEnded = true;
+        _sceneFrozen = true;
         moveDir.x = 0; moveDir.y = 0; isShooting = false;
         hidePvePanel();
         _peData = d; _peNote = undefined;
@@ -6781,11 +6783,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     // ---------- BUCLA DE RANDARE ----------
     let lastTime  = 0;
+    let _sceneFrozen = false;   // PvE: the board of the end (victory / base fallen) is up: the scene behind it stops where it was
     // A display of 200 Hz or more is drawn at about 120 frames a second, the rest skipped (frame-cap.js); ?fps=off draws every one
     const _fcGate = (window.ARFrameCap && !/[?&]fps=off\b/.test(location.search)) ? ARFrameCap.createGate() : null;
     function draw(timestamp) {
         rafId = requestAnimationFrame(draw);
         if (_fcGate && !_fcGate.frame(timestamp)) return;
+        if (_sceneFrozen) return;   // the canvas keeps the last frame: nothing moves behind the end board
         const _drawStart = performance.now();
 
         _rsTick(timestamp, canvas);
