@@ -4008,6 +4008,33 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     ctx.beginPath(); ctx.arc(f.x0 + Math.cos(d.a) * (d.d + d.v * t), f.y0 + Math.sin(d.a) * (d.d + d.v * t) - 24 * u - 14 * t, d.s * (0.5 + 1.1 * u), 0, TAU); ctx.fill();
                 }
                 ctx.globalAlpha = 1;
+            } else if (f.k === 'slam') {   // the Brood Mother's blow lands: a flash, shock rings, cracks in the ground, rubble and dust (smaller when it hits nothing)
+                if (age >= 800) { _zFx.splice(i, 1); continue; }
+                const X = f.x0, Y = f.y0, sc = f.miss ? 0.6 : 1, u = age / 800;
+                if (age < 140) { const w = 1 - age / 140; ctx.globalAlpha = w; ctx.fillStyle = '#FFE2A8'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2; _star(ctx, X, Y, (12 + 30 * (1 - w)) * sc); ctx.fill(); ctx.stroke(); }
+                const q = Math.min(1, age / 420), e = 1 - (1 - q) * (1 - q);
+                ctx.strokeStyle = '#0B0F1A'; ctx.globalAlpha = (1 - q) * 0.85; ctx.lineWidth = 7 * (1 - q) + 2; ctx.beginPath(); ctx.arc(X, Y, (12 + 78 * e) * sc, 0, TAU); ctx.stroke();
+                ctx.strokeStyle = '#FFB04A'; ctx.lineWidth = 4 * (1 - q) + 1; ctx.beginPath(); ctx.arc(X, Y, (12 + 78 * e) * sc, 0, TAU); ctx.stroke();
+                const q2 = Math.min(1, Math.max(0, (age - 70) / 520)); ctx.globalAlpha = (1 - q2) * 0.6; ctx.strokeStyle = '#F4EAD2'; ctx.lineWidth = 3 * (1 - q2) + 1; ctx.beginPath(); ctx.arc(X, Y, (8 + 56 * q2) * sc, 0, TAU); ctx.stroke();
+                // cracks: dark lines out of the point of the blow, they grow fast, then fade
+                const ca = u < 0.5 ? 1 : 1 - (u - 0.5) / 0.5, cg = Math.min(1, age / 160);
+                ctx.lineCap = 'round';
+                for (let k = 0; k < f.sp.length; k++) {
+                    const d = f.sp[k], L = d.l * cg * sc, c = Math.cos(d.a), s2 = Math.sin(d.a), mx = X + c * L * 0.55 + s2 * 4, my = Y + s2 * L * 0.55 - c * 4;
+                    ctx.globalAlpha = ca * 0.9; ctx.strokeStyle = '#2B2016'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(X + c * 8, Y + s2 * 8); ctx.lineTo(mx, my); ctx.lineTo(X + c * L, Y + s2 * L); ctx.stroke();
+                }
+                ctx.lineCap = 'butt';
+                // rubble and dust
+                ctx.fillStyle = '#9A8F7A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6;
+                for (let k = 0; k < f.ch.length; k++) {
+                    const d = f.ch[k], ee = Math.min(1, age / 520), r = d.v * sc * (1 - (1 - ee) * (1 - ee)), x = X + Math.cos(d.a) * r, y = Y + Math.sin(d.a) * r - 22 * Math.sin(ee * Math.PI), sz = d.s * (1 - ee * 0.5), rot = d.a + ee * d.w;
+                    ctx.globalAlpha = 1 - ee * ee; ctx.beginPath();
+                    for (let c = 0; c < 4; c++) { const a2 = rot + c * Math.PI / 2 + 0.4; const px = x + Math.cos(a2) * sz, py = y + Math.sin(a2) * sz; if (c) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+                    ctx.closePath(); ctx.fill(); ctx.stroke();
+                }
+                ctx.fillStyle = '#CFC6A6';
+                for (let k = 0; k < 6; k++) { const a2 = k * 1.05 + 0.3, ee = Math.min(1, age / 700); ctx.globalAlpha = (1 - ee) * 0.5; ctx.beginPath(); ctx.arc(X + Math.cos(a2) * (10 + 34 * ee) * sc, Y + Math.sin(a2) * (8 + 26 * ee) * sc - 12 * ee, (6 + 9 * ee) * sc, 0, TAU); ctx.fill(); }
+                ctx.globalAlpha = 1;
             } else if (f.k === 'hatch') {   // an egg hatches: the shell flies in pieces and a green ring goes out
                 if (age >= 650) { _zFx.splice(i, 1); continue; }
                 const u = age / 650;
@@ -6313,6 +6340,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _zFxPush({ k: 'eggland', x0: d.x1, y0: d.y1, t0: now + d.ms, sp, ch });
         _zFxPush({ k: 'eggland', x0: d.x0, y0: d.y0, t0: now, mini: true, sp: [], ch: [] });
     });
+    // The Brood Mother's blow: brood-swing = the wind-up begins (her arms go up: ARArena.drawBroodSprite reads zb.swingT / swingMs); brood-hit = the damage lands NOW, so the
+    // slam of the arms, the shock on the ground and the server's damage all come at the same moment
+    socket.on('brood-swing', ({ id, ms }) => { const z = _zombies[id]; if (z) { z.swingT = performance.now(); z.swingMs = ms; } });
+    socket.on('brood-hit', ({ id, x, y, miss }) => {
+        const now = performance.now(), z = _zombies[id];
+        if (z) z.slamT = now;
+        const sp = [], ch = [], n = miss ? 4 : 8;
+        for (let k = 0; k < n; k++) sp.push({ a: (k / n) * TAU + Math.random() * 0.5, l: 20 + Math.random() * 30 });
+        for (let k = 0; k < (miss ? 3 : 7); k++) ch.push({ a: Math.random() * TAU, v: 26 + Math.random() * 40, s: 2.4 + Math.random() * 3, w: (Math.random() - 0.5) * 8 });
+        _zFxPush({ k: 'slam', x0: x, y0: y, t0: now, sp, ch, miss: !!miss });
+    });
     socket.on('egg-hatch', ({ x, y }) => {
         const sp = []; for (let k = 0; k < 9; k++) sp.push({ a: Math.random() * TAU, v: 20 + Math.random() * 34, s: 2.6 + Math.random() * 3, w: (Math.random() - 0.5) * 8 });
         _zFxPush({ k: 'hatch', x0: x, y0: y, t0: performance.now(), sp });
@@ -7029,7 +7067,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { r: 21, maxHp: 450, bodyColor: '#D9A0A0', innerColor: '#F1C8C4', armColor: '#A8666E', armStroke: '#4A2A2E', ringColor: '#FFD34D', ringFill: 'rgba(255,211,77,0.10)' },   // 9 screamer
         { r: 23, maxHp: 340, bodyColor: '#3E5A38', innerColor: '#5E8050', armColor: '#2F4A2D', armStroke: '#16240F', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },   // 10 ghoul (the dark normal)
         { r: 17, maxHp: 160, bodyColor: '#6E5E1E', innerColor: '#8E7B2C', armColor: '#54471A', armStroke: '#2A2308', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 11 stalker (the dark runner)
-        { r: 56, maxHp: 9000, noScale: true, heavy: true, bigBar: true, warn: 'BROOD MOTHER', bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 12 the Brood Mother
+        { r: 56, maxHp: 12000, noScale: true, heavy: true, bigBar: true, warn: 'BROOD MOTHER', bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 12 the Brood Mother
         { r: 18, maxHp: 150, noScale: true, bodyColor: '#E9DDBB', innerColor: '#F4EAD2', armColor: '#CDBB94', armStroke: '#7C5E2C', ringColor: '#B8FF4D', ringFill: 'rgba(184,255,77,0.10)' },   // 13 an egg
         { r: 13, maxHp: 120, noScale: true, bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 14 a hatchling
     ];

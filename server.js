@@ -1112,8 +1112,11 @@ const PVE_ZOMBIE_DEFS = {
     // the Brood Mother (the final boss of the Brood Mother level, wave 20; also in the sandbox): a huge slow queen that walks on to the base like the siege types (it
     // never goes for a player, only walls, turrets and the base) and does not carry her eggs: she throws `count` of them round her (within `range`) every `every`
     // seconds (every `rage` s under `rageAt` of her health), at most `max` of them lying about at once. Her health does not grow with the wave.
-    brood: { hp: 9000, armor: 4, noScale: true, chaseSpd: 25, patrolSpd: 15, dmg: 70, attackR: 96, attackCd: 1.6, coinsMin: 120, coinsMax: 160, baseDmg: 90, r: 56, hunts: false, mass: 30, heavy: true, large: true,
-             brood: { first: 4, every: 12, rage: 8, rageAt: 0.4, count: 4, range: 160, max: 12, flight: 0.7 } },
+    brood: { hp: 12000, armor: 4, noScale: true, chaseSpd: 25, patrolSpd: 15, dmg: 70, attackR: 96, attackCd: 1.6, coinsMin: 120, coinsMax: 160, baseDmg: 90, r: 56, hunts: false, mass: 30, heavy: true, large: true,
+             brood: { first: 4, every: 12, rage: 8, rageAt: 0.4, count: 4, range: 160, max: 12, flight: 0.7 },
+             // her blow is a swing with a wind-up: it starts when something is in reach (attackCd is the whole cycle), she stands and raises her arms for `windup` s and the
+             // damage lands at the END of the wind-up, at the moment the arms come down, to whatever is in reach THEN (nothing: it is a miss); `recover` s more to straighten up
+             swing: { windup: 0.7, recover: 0.5 } },
     // an egg: it lies where it landed (a zombie that does not move or hit, so bullets, turrets, bombs and flames all work on it as on any), and if it is not broken
     // in `hatch` seconds `spawn` hatchlings come out of it. Not a kill when it hatches.
     egg: { hp: 150, noScale: true, chaseSpd: 0, patrolSpd: 0, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 0, coinsMax: 0, baseDmg: 0, r: 18, hunts: false, mass: 50, immovable: true,
@@ -1915,6 +1918,37 @@ function eggTick(code, room, zombie, def, dt) {
         room.zombies.push(h);
     }
     io.to(code).emit('egg-hatch', { x: Math.round(zombie.x), y: Math.round(zombie.y) });
+}
+
+// A zombie whose blow is a swing (def.swing: the Brood Mother). Called every tick from its place in the attack chain. It starts a swing when a built thing or the base is in reach
+// and the cycle (attackCd) allows; the client is told (brood-swing {id, ms}) so it can raise her arms; at the end of the wind-up the damage lands (brood-hit {id, x, y, miss}),
+// on the thing it began on if that is still in reach, else on what is in reach now, else nowhere. She does not walk while swinging. Returns true if the base fell (the match is over).
+function swingTick(code, room, zombie, def, dt, tgtStruct, baseD) {
+    const sw = def.swing, reachR = def.r + 14;
+    let st = zombie._sw;
+    if (st) {
+        st.t += dt;
+        if (!st.hit && st.t >= sw.windup) {
+            st.hit = true;
+            let target = st.sid ? findBuilt(room, st.sid) : null;
+            if (target && (target._gone || builtDist(zombie.x, zombie.y, target) > reachR + 10)) target = null;
+            const baseIn = room.base && Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) < room.base.r + def.r + 14;
+            const fx = zombie.x + Math.cos(zombie.angle) * (def.r + 16), fy = zombie.y + Math.sin(zombie.angle) * (def.r + 16);
+            io.to(code).emit('brood-hit', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), miss: !target && !baseIn });
+            if (target) hurtBuilt(code, room, target, def.baseDmg);
+            else if (baseIn) { hurtBase(code, room, def.baseDmg); if (room.gameEnded) return true; }
+        }
+        if (st.t >= sw.windup + sw.recover) zombie._sw = null;
+        return false;
+    }
+    if (zombie.attackCooldown > 0) return false;
+    const sReach = tgtStruct && !tgtStruct._gone && builtDist(zombie.x, zombie.y, tgtStruct) <= reachR;
+    const bReach = zombie.targetingBase && room.base && baseD < room.base.r + def.r + 8;
+    if (!sReach && !bReach) return false;
+    zombie._sw = { t: 0, hit: false, sid: sReach ? tgtStruct.id : 0 };
+    zombie.attackCooldown = def.attackCd;
+    io.to(code).emit('brood-swing', { id: zombie.id, ms: Math.round(sw.windup * 1000) });
+    return false;
 }
 
 // ---------- PvE: the zombies' map (zombie-nav.js) ----------
@@ -2738,6 +2772,7 @@ function startRoomLoop(code, room) {
                     }
                     const spit = def.ranged ? pickSpitTarget(room, zombie, def.ranged.range, alivePlayers) : null;
                     if (spit) speed = 0;   // something is in range: it stands and throws
+                    if (zombie._sw) speed = 0;   // in the middle of a swing she stands
 
                     let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
                     const dLen = Math.hypot(ddx, ddy);
@@ -2856,6 +2891,8 @@ function startRoomLoop(code, room) {
                             explodeZombie(code, room, zombie, def.explode, now, alivePlayers);
                             if (room.gameEnded) return;
                         }
+                    } else if (def.swing) {
+                        if (swingTick(code, room, zombie, def, dt, tgtStruct, baseD)) return;
                     } else if (def.ranged) {
                         if (spit && zombie.attackCooldown <= 0) { spitAt(code, room, zombie, def.ranged, spit, now); zombie.attackCooldown = def.ranged.cd; }
                     } else if (zombie.attackCooldown <= 0 && !(zombie._scream > 0)) {

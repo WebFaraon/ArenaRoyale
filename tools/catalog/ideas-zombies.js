@@ -51,7 +51,7 @@ module.exports = [
     counter: 'Flamethrower și Bomb Tower ard dâra. Nu te lupta în dâră: Frost Tower nu o curăță, dar încetinește slime-ul.' },
   { key: 'brood', name: 'Brood Mother', tag: 'Boss', role: 'bad', boss: true, tests: 'Un obiectiv nou: ouăle',
     desc: 'O regină umflată cu un sac de ouă pe spate. Nu poartă ouăle la vedere: le aruncă în jurul ei cât merge spre bază, iar dacă nu sunt sparte la timp ies din ele roiuri de zombi fragili și rapizi. Ouăle sunt o țintă pe care turnurile și jucătorii trebuie s-o prioritizeze.',
-    rows: [['Viață', 9000, 'fixă; armură 4'], ['Viteză', 25, 'foarte lentă'], ['Ouă', '4 la 12 s', 'aruncate în rază 160; 8 s sub 40% viață'], ['Un ou', '150 viață', 'ecloziune în 8 s'], ['Ies din ou', '2 pui', 'viață 120, viteză 150, daună 15 (12 pe construcții)'], ['Valul', '20, boss final', 'al nivelului Brood Mother'], ['Premiu', '120–160 monede + 1 diamant']],
+    rows: [['Viață', 12000, 'fixă; armură 4'], ['Viteză', 25, 'foarte lentă'], ['Ouă', '4 la 12 s', 'aruncate în rază 160; 8 s sub 40% viață'], ['Un ou', '150 viață', 'ecloziune în 8 s'], ['Ies din ou', '2 pui', 'viață 120, viteză 150, daună 15 (12 pe construcții)'], ['Valul', '20, boss final', 'al nivelului Brood Mother'], ['Premiu', '120–160 monede + 1 diamant']],
     counter: 'Ouăle se sparg ușor: Bomb Tower și Flamethrower le curăță, Railgun nu. Echipa se împarte între regină și ouă.' },
   { key: 'colossus', name: 'Colossus', tag: 'Boss final', role: 'bad', boss: true, tests: 'Tot ce ai construit: pașii lui strivesc',
     desc: 'Un gigant de piatră și lavă. Nu atacă zidurile: pur și simplu merge, iar ce e în drum, baricadă sau turn, e strivit. La intervale lovește pământul. Sub jumătate din viață cheamă un val de runneri de la margini.',

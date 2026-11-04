@@ -651,16 +651,34 @@
         zb._ba = (zb._ba || 0) + (Math.min(1, moved / dtS / 18) - (zb._ba || 0)) * Math.min(1, dtS * 6);
         const ph = zb._bp, amp = zb._ba, t = now / 1000, seed = (zb.id || 0) * 1.7;
         const tu = zb.throwT ? (now - zb.throwT) / 650 : 2, th = tu >= 0 && tu < 1 ? Math.sin(tu * Math.PI) : 0;   // the heave of a throw
+        // The blow: a wind-up (game.js sets zb.swingT / zb.swingMs on brood-swing: the arms go up and out, the head rears back, the sac swells), then the slam at the moment
+        // the server says the damage lands (zb.slamT, on brood-hit): the arms come down crossing in front, head and body lunge, then she straightens up. If the hit event
+        // is lost the slam is taken to come when the wind-up ends.
+        let atkA = 0, atkHead = 0, atkLunge = 0, atkSwell = 0, atkShake = 0;
+        if (zb.swingT) {
+            const W = zb.swingMs || 700, swAge = now - zb.swingT;
+            let slamAge = zb.slamT && zb.slamT >= zb.swingT ? now - zb.slamT : (swAge > W + 120 ? swAge - W : -1);
+            if (slamAge < 0 && swAge >= 0 && swAge < W + 120) {   // the wind-up
+                const p = Math.min(1, swAge / W), e = 1 - Math.pow(1 - p, 3);
+                atkA = 2.3 * e; atkHead = -7 * p; atkSwell = 0.12 * p; atkShake = p * p;
+            } else if (slamAge >= 0 && slamAge < 700) {   // the slam, the hold, the recovery
+                const STRIKE = 110;
+                if (slamAge < STRIKE) { const p = slamAge / STRIKE, e = p * p; atkA = 2.3 + (-0.45 - 2.3) * e; atkHead = -7 + 18 * e; atkLunge = 10 * e; atkSwell = 0.12 * (1 - e) - 0.05 * e; }
+                else { const p = Math.min(1, (slamAge - STRIKE) / 590), e = p * p * (3 - 2 * p); atkA = -0.45 * (1 - e); atkHead = 11 * (1 - e); atkLunge = 10 * (1 - e); atkSwell = -0.05 * (1 - e); }
+            }
+        }
+        const sk = atkShake ? Math.sin(now / 22) * 0.9 * atkShake * k : 0;
         const a = (zb.angle || 0) - Math.PI / 2, cs = Math.cos(a), sn = Math.sin(a);
         const zx = nx ? zb.x + nx : zb.x, zy = ny ? zb.y + ny : zb.y;
         const base = [m.a * cs + m.c * sn, m.b * cs + m.d * sn, m.c * cs - m.a * sn, m.d * cs - m.b * sn, m.a * zx + m.c * zy + m.e, m.b * zx + m.d * zy + m.f];
+        const lg = atkLunge * k;   // the whole body lunges forward (towards where she faces, +y of the picture)
         // per piece: [rotation, sx, sy, shift x, shift y] about its pivot
         const T = [
-            [Math.sin(ph) * 0.045 * amp + Math.sin(t * 1.3 + seed) * 0.012, 1 + 0.03 * Math.sin(t * 2.2 + seed) + 0.17 * th, 1 + 0.03 * Math.sin(t * 2.2 + seed) + 0.17 * th, 0, 0],   // sac: breathes, sways, heaves
-            [Math.sin(t * 3.1 + seed) * 0.09 + Math.sin(ph) * 0.05 * amp, 1, 1, 0, 0],                                                                                                      // feelers wave
-            [Math.sin(ph) * 0.5 * amp + Math.sin(t * 1.1 + seed) * 0.03 - 0.25 * th, 1, 1, 0, 0],                                                                                           // arms swing
-            [-Math.sin(ph) * 0.5 * amp - Math.sin(t * 1.1 + seed) * 0.03 + 0.25 * th, 1, 1, 0, 0],
-            [Math.sin(ph) * 0.07 * amp, 1, 1, 0, (Math.sin(ph * 2) * 1.8 * amp - 6 * th) * k],                                                                                              // head bobs, rears back on a throw
+            [Math.sin(ph) * 0.045 * amp + Math.sin(t * 1.3 + seed) * 0.012, 1 + 0.03 * Math.sin(t * 2.2 + seed) + 0.17 * th + atkSwell, 1 + 0.03 * Math.sin(t * 2.2 + seed) + 0.17 * th + atkSwell, sk, lg],   // sac: breathes, sways, heaves, swells in the wind-up
+            [Math.sin(t * 3.1 + seed) * 0.09 + Math.sin(ph) * 0.05 * amp, 1, 1, sk, lg],                                                                                                      // feelers wave
+            [Math.sin(ph) * 0.5 * amp + Math.sin(t * 1.1 + seed) * 0.03 - 0.25 * th + atkA, 1, 1, sk, lg],                                                                                    // arms swing (and rise for the blow: left outward = +)
+            [-Math.sin(ph) * 0.5 * amp - Math.sin(t * 1.1 + seed) * 0.03 + 0.25 * th - atkA, 1, 1, sk, lg],
+            [Math.sin(ph) * 0.07 * amp, 1, 1, sk, (Math.sin(ph * 2) * 1.8 * amp - 6 * th + atkHead) * k + lg],                                                                                  // head bobs, rears back on a throw and for a blow, lunges on the slam
         ];
         for (let i = 0; i < BROOD_PARTS.length; i++) {
             const pv = BROOD_PIVOT[BROOD_PARTS[i]], tr = T[i], px = pv[0] * k, py = pv[1] * k;

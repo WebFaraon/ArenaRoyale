@@ -29,13 +29,14 @@ async function sandboxClient(base, nick, opts = {}) {
     const s = Client(base, { parser: msgpackParser, transports: ['websocket'], forceNew: true, reconnection: false });
     await new Promise(r => s.on('connect', r));
     s.emit('authenticate', { nickname: nick, token: lj.token });
-    const c = { s, ev: {}, zombies: [], start: null };
-    for (const name of ['pve-wave-start', 'pve-inv', 'sandbox-state', 'egg-throw', 'egg-hatch', 'countdown-start', 'pve-vote-start']) s.on(name, (d) => { (c.ev[name] = c.ev[name] || []).push(d); });
+    const c = { s, ev: {}, at: {}, baseAt: {}, baseHp: null, zombies: [], start: null };
+    for (const name of ['pve-wave-start', 'pve-inv', 'sandbox-state', 'egg-throw', 'egg-hatch', 'countdown-start', 'pve-vote-start', 'brood-swing', 'brood-hit']) s.on(name, (d) => { (c.ev[name] = c.ev[name] || []).push(d); (c.at[name] = c.at[name] || []).push(Date.now()); if ((name === 'brood-swing' || name === 'brood-hit') && c.baseAt[name] === undefined) c.baseAt[name] = c.baseHp; });
     s.on('game-start', (d) => { c.start = d; });
     s.on('gs2', (d) => {
         const z = d[3], out = [];
         for (let i = 0; i + 5 < z.length; i += 6) out.push([z[i], z[i + 5]]);
         c.zombies = out;
+        if (d[6]) c.baseHp = d[6][0];
         s.emit('input', { seq: 1, dx: 0, dy: 0, angle: 0, shooting: false });
     });
     s.emit('create-room', { skin: 'rookie', stats: { hp: 3, dmg: 4, spd: 3 }, weapon: 'smg', mode: 'pve', sandbox: opts.sandbox !== false, xp: 0, proto: ARNet.PROTO });
@@ -128,5 +129,25 @@ test('client: the sandbox cards are rebuilt for every match (built once per page
     assert.match(client, /if \(!_sandbox\) ARAmmo\.spend\(ammoState, 1\)/);
     const server = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
     assert.match(server, /if \(room\.sandbox\) for \(const p of room\._playerArr\) \{ if \(p\.coins < SANDBOX_COINS\)[^\n]*p\.ammo = p\.ammoMax/);
-    assert.match(server, /brood: \{ hp: 9000,/);
+    assert.match(server, /brood: \{ hp: 12000,/);
+});
+
+test('the Brood Mother\'s blow is a swing: the damage lands at the END of the wind-up (brood-hit), not when she starts to raise her arms (brood-swing)', async () => {
+    await withServer(async (base) => {
+        const c = await sandboxClient(base, 'sbx_sw');
+        // right next to the base (its radius 85 + hers 56): she is in reach at once
+        c.s.emit('sandbox-spawn', { type: 'brood', x: 1300 + 150, y: 1300 });
+        for (let i = 0; i < 60 && !(c.ev['brood-hit'] && c.ev['brood-hit'].length >= 2); i++) await sleep(100);
+        const sw = c.ev['brood-swing'] || [], ht = c.ev['brood-hit'] || [];
+        assert.ok(sw.length >= 1 && ht.length >= 2, 'she swings and the blows land: ' + sw.length + ' swings, ' + ht.length + ' hits');
+        assert.equal(sw[0].ms, 700, 'the client is told the length of the wind-up');
+        const gap = c.at['brood-hit'][0] - c.at['brood-swing'][0];
+        assert.ok(gap >= 640 && gap <= 850, 'the hit comes about one wind-up (700 ms) after the swing began: ' + gap + ' ms');
+        assert.equal(c.baseAt['brood-swing'], 1500, 'at the start of the swing the base is whole');
+        await sleep(300);
+        assert.ok(c.baseHp <= 1500 - 90, 'after the hit the base lost her blow (90): ' + c.baseHp);
+        const gap2 = c.at['brood-swing'][1] - c.at['brood-swing'][0];
+        assert.ok(gap2 >= 1500 && gap2 <= 1800, 'a swing every attackCd (1.6 s): ' + gap2 + ' ms');
+        c.s.close();
+    });
 });
