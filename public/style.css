@@ -5855,3 +5855,29 @@ body:has(#pve-top-hud[style*="flex"]) #hud-bottom { left: 92px; transform: none;
     .pv-chip2 { padding: .35em .1em .4em; }
     .pv-up { display: none; }
 }
+
+/* ---------- Sandbox (PvE test room): the mode card in the lobby and the panel of zombies in the match ---------- */
+.gm-sandbox { --c: var(--c-sky); --cl: var(--l-sky); }
+.gm-sandbox.gm-selected { background: var(--c-sky); }
+.gm-sandbox .gm-lane { background: var(--c-sky); color: var(--ink); }
+.gm-sandbox .gm-icon { color: var(--c-sky); }
+#sbx { left: max(12px, var(--safe-l)); top: calc(max(12px, var(--safe-t)) + 168px); width: 218px; padding: 8px 10px 10px; pointer-events: auto; max-height: calc(100vh - 190px); overflow-y: auto; }
+.sbx-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; font-size: .85rem; }
+.sbx-head span { font-size: .68rem; color: var(--c-gold); }
+.sbx-hint { font-size: .64rem; font-weight: 700; opacity: .85; margin-bottom: 6px; line-height: 1.25; }
+#sbx-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.sbx-card { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 54px; padding: 3px 2px 2px; background: #1B252C; border: 2.5px solid var(--ink-line); border-radius: 9px; color: #fff; cursor: pointer; font: inherit; box-sizing: border-box; overflow: hidden; box-shadow: inset 0 -3px 0 rgba(255,255,255,.07); }
+.sbx-card img { position: absolute; left: 50%; top: 3px; height: 31px; width: auto; max-width: 90%; transform: translateX(-50%); object-fit: contain; pointer-events: none; }
+.sbx-card b { position: relative; font-size: .56rem; text-shadow: var(--stroke-sm); letter-spacing: .02em; line-height: 1; }
+.sbx-card.is-boss { border-color: #B070FF; }
+.sbx-card:hover { border-color: #fff; }
+.sbx-card.is-on { background: var(--c-orange); border-color: #fff; }
+.sbx-row { display: flex; gap: 5px; margin-top: 7px; }
+.sbx-row button { flex: 1; font: inherit; font-size: .62rem; font-weight: 800; color: #fff; text-shadow: var(--stroke-sm); background: #2C3A44; border: 2.5px solid var(--ink-line); border-radius: 8px; padding: 5px 3px; cursor: pointer; box-shadow: inset 0 -3px 0 rgba(0,0,0,.3); }
+.sbx-row button.is-on { background: var(--c-green); }
+.sbx-ctl button { font-size: .54rem; }
+.sbx-row button:hover { border-color: #fff; }
+body.sbx-pick #gameCanvas { cursor: crosshair; }
+#pve-top-hud.is-sandbox #pve-wave, #pve-top-hud.is-sandbox #pve-grace, #pve-top-hud.is-sandbox #pve-warn { display: none !important; }
+@media (max-height: 560px) { #sbx { top: calc(max(8px, var(--safe-t)) + 150px); max-height: calc(100vh - 170px); } .sbx-hint { display: none; } }
+#sbx { zoom: var(--hk, 1); }

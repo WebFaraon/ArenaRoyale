@@ -401,6 +401,15 @@
                 </span>
                 <svg class="ic gm-check" aria-hidden="true"><use href="#check"/></svg>
             </button>
+            <button class="gm-card gm-sandbox" id="gm-sandbox" onclick="selectGamemode('sandbox')">
+                <span class="gm-lane">3</span>
+                <img class="pic gm-icon" src="/images/ui/survival_pve.svg" alt="" aria-hidden="true" draggable="false">
+                <span class="gm-info">
+                    <span class="gm-name">SANDBOX</span>
+                    <span class="gm-desc">Test zombies and towers, no waves</span>
+                </span>
+                <svg class="ic gm-check" aria-hidden="true"><use href="#check"/></svg>
+            </button>
             <button class="btn-play" id="btn-play" onclick="startCreate()">
                 <svg class="ic" aria-hidden="true"><use href="#play"/></svg><span>PLAY</span>
             </button>
@@ -678,6 +687,19 @@
         <div id="pve-warn">
             <svg class="ic" aria-hidden="true"><use href="#triangle-alert"/></svg>
             <b id="pve-warn-type">TANK</b><span id="pve-warn-dir">approaching</span>
+        </div>
+        <div id="sbx" class="pve-blk" style="display:none">
+            <div class="sbx-head"><b>SANDBOX</b><span id="sbx-state"></span></div>
+            <div class="sbx-hint" id="sbx-hint">Pick a zombie, then click the map. Esc cancels.</div>
+            <div id="sbx-list"></div>
+            <div class="sbx-row" id="sbx-count" role="group" aria-label="How many">
+                <button type="button" data-n="1" class="is-on">x1</button><button type="button" data-n="5">x5</button><button type="button" data-n="10">x10</button>
+            </div>
+            <div class="sbx-row sbx-ctl">
+                <button type="button" id="sbx-clear">CLEAR ZOMBIES</button>
+                <button type="button" id="sbx-freeze">FREEZE</button>
+                <button type="button" id="sbx-built">CLEAR BUILT</button>
+            </div>
         </div>
         <div id="pve-grace">
             <svg class="ic" aria-hidden="true"><use href="#wrench"/></svg>

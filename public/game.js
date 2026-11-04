@@ -1613,6 +1613,7 @@ function selectGamemode(mode) {
     selectedGamemode = mode;
     const brCard  = document.getElementById('gm-br');
     const pveCard = document.getElementById('gm-pve');
+    const sbxCard = document.getElementById('gm-sandbox');
     const lobby   = document.getElementById('screen-lobby');
     const playBtn = document.getElementById('btn-play');
     const noSel   = document.getElementById('rc-no-sel');
@@ -1626,7 +1627,8 @@ function selectGamemode(mode) {
 
     if (brCard)  { brCard.classList.toggle('gm-selected', mode === 'br');  brCard.classList.toggle('gm-deselected', mode !== 'br'); }
     if (pveCard) { pveCard.classList.toggle('gm-selected', mode === 'pve'); pveCard.classList.toggle('gm-deselected', mode !== 'pve'); }
-    if (lobby) { lobby.classList.toggle('mode-br', mode === 'br'); lobby.classList.toggle('mode-pve', mode === 'pve'); }
+    if (sbxCard) { sbxCard.classList.toggle('gm-selected', mode === 'sandbox'); sbxCard.classList.toggle('gm-deselected', mode !== 'sandbox'); }
+    if (lobby) { lobby.classList.toggle('mode-br', mode === 'br'); lobby.classList.toggle('mode-pve', mode === 'pve' || mode === 'sandbox'); }
 
     if (playBtn) playBtn.disabled = false;
     if (noSel)   noSel.style.display   = 'none';
@@ -1634,10 +1636,11 @@ function selectGamemode(mode) {
 
     const isBr = mode === 'br';
     if (bigIcon)  bigIcon.innerHTML  = ico(isBr ? 'swords' : 'biohazard');
-    if (bigName)  bigName.textContent  = isBr ? 'BATTLE ROYALE' : 'SURVIVAL PvE';
-    if (bigBadge) bigBadge.textContent = isBr ? 'PvP' : 'CO-OP';
-    if (bigDesc)  bigDesc.textContent  = isBr ? 'Be the last player standing' : 'Team up against the horde';
-    if (feat1)    feat1.innerHTML      = isBr ? ico('users') + 'Up to 20 players' : ico('handshake') + 'Teams of 2–4 players';
+    const isSbx = mode === 'sandbox';
+    if (bigName)  bigName.textContent  = isBr ? 'BATTLE ROYALE' : isSbx ? 'SANDBOX' : 'SURVIVAL PvE';
+    if (bigBadge) bigBadge.textContent = isBr ? 'PvP' : isSbx ? 'TEST' : 'CO-OP';
+    if (bigDesc)  bigDesc.textContent  = isBr ? 'Be the last player standing' : isSbx ? 'Unlimited coins, any zombie, no waves' : 'Team up against the horde';
+    if (feat1)    feat1.innerHTML      = isBr ? ico('users') + 'Up to 20 players' : isSbx ? ico('wrench') + 'Place anything, spawn anything' : ico('handshake') + 'Teams of 2–4 players';
     if (feat2)    feat2.innerHTML      = isBr ? ico('timer') + '~10 min / match' : ico('biohazard') + 'Zombie hordes';
 }
 
@@ -3148,7 +3151,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     const socket = _sessionSocket || _watchBuild(io(_ioFallbackOpts));
     _sessionSocket = null;
 
-    const playerData = { name: playerName, skin: playerSkin, stats: playerStats, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode || 'br', proto: ARNet.PROTO, loader: 1 };   // loader: this client has a loading screen: the server waits for match-ready before the 3-2-1
+    const playerData = { name: playerName, skin: playerSkin, stats: playerStats, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode === 'sandbox' ? 'pve' : (selectedGamemode || 'br'), sandbox: selectedGamemode === 'sandbox', proto: ARNet.PROTO, loader: 1 };   // loader: this client has a loading screen: the server waits for match-ready before the 3-2-1
 
     if (roomAction.action === 'create') {
         socket.emit('create-room', playerData);
@@ -3292,6 +3295,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
         if (data && data.playersMeta)  { gameControl.pendingMeta = data.playersMeta; gameControl.matchMeta = data.playersMeta; }   // (matchMeta stays for the vote: names and slots)
         if (data && data.obstacles)    gameControl.pendingObstacles = data.obstacles;
         if (data && data.mode)         gameControl.mode             = data.mode;
+        gameControl.sandbox = !!(data && data.sandbox);
         if (data && data.season)       gameControl.pendingSeason    = data.season;
         stopLobbyBackground();
         document.getElementById('screen-waiting').style.display = 'none';
@@ -3513,6 +3517,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // The look of the trees and rocks for this match (server.js MAP SEASON; summer when the server sends none)
     ARArena.setMapSeason(gameControl.pendingSeason || 'vara'); ARGround.setTheme(gameControl.pendingSeason || 'vara'); delete gameControl.pendingSeason;
     const _gameMode = gameControl.mode || 'br'; delete gameControl.mode;
+    const _sandbox = _gameMode === 'pve' && !!gameControl.sandbox; delete gameControl.sandbox;   // the PvE test room: no waves, anything built, any zombie on click
     let _zone = { cx: ARENA_W / 2, cy: ARENA_H / 2, r: 1650, waitTimer: 30 };
     let _zoneTimerAlpha = 0;
     const _vig = { c: null, w: 0, h: 0, dpr: 0 };   // the cached red vignette (the zone in BR, low health)
@@ -3782,7 +3787,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     // Collision constants mirrored from the server (server.js: PLAYER_SIZE / 2, PVE_ZOMBIE_DEFS.r, PVE_BASE_R)
     const PLAYER_HIT_R   = 30;
-    const _PVE_ZB_RADIUS = [20, 16, 28]; // normal, runner, tank
+    const _PVE_ZB_RADIUS = [20, 16, 28, 20, 18, 34, 30, 15, 24, 21, 23, 17, 56, 18, 13]; // by type index (the same as the server's PVE_ZOMBIE_DEFS)
     const _PVE_BASE_R    = 85;
     const _PVE_BASE      = { x: ARENA_W / 2, y: ARENA_H / 2, r: _PVE_BASE_R };   // a solid circle for bullets and players
     const _solidOut      = { x: 0, y: 0 };
@@ -3863,7 +3868,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // ---- the new zombies' effects (events acid / boom / summon, not in gs2): acid thrown by a spitter, an exploder going off, a summoner calling ----
     // Each effect gets its random numbers once, when the event comes (parts); what is drawn each frame is worked out from the age only.
     const TAU = Math.PI * 2;
-    const _zFx = [];   // { k: 'acid'|'boom'|'summon', x0, y0, x1, y1, r, dur, t0, parts }
+    const _zFx = [];   // { k: 'acid'|'boom'|'summon'|'hatch'|'eggland', x0, y0, x1, y1, r, dur, t0, parts }
+    const _eggFx = [];   // the eggs the Brood Mother throws, in the air: { x0, y0, x1, y1, t0, dur }
     function _zFxPush(f) { if (_zFx.length >= 60) _zFx.shift(); _zFx.push(f); }
     const _rnd = Math.random;
     function _acidFx(a) {
@@ -4002,6 +4008,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     ctx.beginPath(); ctx.arc(f.x0 + Math.cos(d.a) * (d.d + d.v * t), f.y0 + Math.sin(d.a) * (d.d + d.v * t) - 24 * u - 14 * t, d.s * (0.5 + 1.1 * u), 0, TAU); ctx.fill();
                 }
                 ctx.globalAlpha = 1;
+            } else if (f.k === 'hatch') {   // an egg hatches: the shell flies in pieces and a green ring goes out
+                if (age >= 650) { _zFx.splice(i, 1); continue; }
+                const u = age / 650;
+                ctx.globalAlpha = (1 - u) * 0.85; ctx.strokeStyle = '#B8FF4D'; ctx.lineWidth = 4 * (1 - u) + 1; ctx.beginPath(); ctx.arc(f.x0, f.y0, 12 + 50 * u, 0, TAU); ctx.stroke();
+                ctx.fillStyle = '#F4EAD2'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.8; ctx.globalAlpha = 1 - u * u;
+                for (let k = 0; k < f.sp.length; k++) {
+                    const d = f.sp[k], r = d.v * (1 - (1 - u) * (1 - u)), x = f.x0 + Math.cos(d.a) * r, y = f.y0 + Math.sin(d.a) * r - 14 * Math.sin(u * Math.PI), sz = d.s * (1 - u * 0.5), rot = d.a + u * d.w;
+                    ctx.beginPath();
+                    for (let c = 0; c < 4; c++) { const q = rot + c * Math.PI / 2 + 0.4; const px = x + Math.cos(q) * sz, py = y + Math.sin(q) * sz; if (c) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+                    ctx.closePath(); ctx.fill(); ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            } else if (f.k === 'eggland') {   // an egg lands: a small ring of dust
+                if (age < 0) continue;
+                if (age >= 380) { _zFx.splice(i, 1); continue; }
+                const u = age / 380;
+                ctx.globalAlpha = (1 - u) * 0.7; ctx.strokeStyle = '#E9DDBB'; ctx.lineWidth = 3 * (1 - u) + 1; ctx.beginPath(); ctx.arc(f.x0, f.y0, 8 + 26 * u, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
             } else if (f.k === 'clang') {
                 if (age >= 260) { _zFx.splice(i, 1); continue; }
                 const u = age / 260, px = f.x0 + Math.cos(f.a) * 31, py = f.y0 + Math.sin(f.a) * 31;
@@ -4107,6 +4130,19 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(x - 2.2, y - lift - 2.4, 1.9, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = (Math.floor(now / 60) & 1) ? '#FFD34D' : '#FF7A1F'; ctx.beginPath(); ctx.arc(x + 3.6, y - lift - 6.6, 2.3, 0, Math.PI * 2); ctx.fill();   // the fuse sparks
             ctx.globalAlpha = 1;
+        }
+    }
+    function _drawEggFx(ctx, now) {
+        for (let i = _eggFx.length - 1; i >= 0; i--) {
+            const f = _eggFx[i], age = now - f.t0;
+            if (age >= f.dur) { _eggFx.splice(i, 1); continue; }
+            const u = age / f.dur, x = f.x0 + (f.x1 - f.x0) * u, y = f.y0 + (f.y1 - f.y0) * u, lift = Math.sin(u * Math.PI) * (46 + Math.hypot(f.x1 - f.x0, f.y1 - f.y0) * 0.22);
+            ctx.globalAlpha = 0.16 + 0.12 * u; ctx.strokeStyle = '#B8FF4D'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+            ctx.beginPath(); ctx.arc(f.x1, f.y1, 17, 0, TAU); ctx.stroke(); ctx.setLineDash([]);   // where it will come down
+            ctx.globalAlpha = 0.26; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(x + 4, y + 5, 8, 6, 0, 0, TAU); ctx.fill();   // its shadow
+            ctx.globalAlpha = 1; ctx.fillStyle = '#F4EAD2'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 2.4;
+            ctx.beginPath(); ctx.ellipse(x, y - lift, 9, 12, u * 7, 0, TAU); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.ellipse(x - 3, y - lift - 4, 2.6, 4, u * 7, 0, TAU); ctx.fill();
         }
     }
     // The Flamethrower's fire. It is made of many separate pieces of flame, each with its own place in the world: every frame, while the server keeps sending
@@ -4404,11 +4440,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_bar.kind !== 'b') {
             _bar.g.kd = _BAR_KINDS[_bar.kind].kd;
             ARStructs.turretPlacement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g, mouseActive ? _mouseOff / zoom : undefined);
-            _bar.why = ARStructs.checkPlaceTurret(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, roomPlayers: Math.max(1, Object.keys(players).length) });
+            _bar.why = ARStructs.checkPlaceTurret(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, roomPlayers: _sandbox ? 99 : Math.max(1, Object.keys(players).length) });
             return;
         }
         ARStructs.placement(predX, predY, -Math.sin(myAngle), Math.cos(myAngle), _bar.g, mouseActive ? _mouseOff / zoom : undefined);
-        _bar.why = ARStructs.checkPlace(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, count: _structs.length });
+        _bar.why = ARStructs.checkPlace(_bar.g, { w: ARENA_W, h: ARENA_H, obstacles: _obstacles, base: _PVE_BASE, structs: _structs, turrets: _turrets, players: pl, playerR: PLAYER_HIT_R, count: _sandbox ? 0 : _structs.length });
     }
     // The barricade within reach of you, and what E would do to it (the prompt changes only when that does)
     function _barUseTick() {
@@ -5158,9 +5194,64 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _reloadHoldUntil = performance.now() + Math.max(300, _rttMs() + 150);
         _reloadWanted = true;
     }
+    // ---------- SANDBOX (the PvE test room): a panel with every zombie; pick one, click the map and it appears there ----------
+    // [server type name, label, picture in public/images/zombies, boss/new]; the index in gs2 is the position in this list. Spawning is a request (sandbox-spawn {type, x, y, n}),
+    // the server decides; CLEAR ZOMBIES / FREEZE / CLEAR BUILT are sandbox-ctl. Desktop: the click places it; Esc (or the same card again) puts it away.
+    const _SBX_TYPES = [['normal', 'Normal', 'zombi'], ['runner', 'Runner', 'zombi_rapid'], ['tank', 'Tank', 'zombi_tanc'], ['spitter', 'Spitter', 'zombi_toxic'], ['exploder', 'Exploder', 'zombi_exploder'],
+        ['brute', 'Brute', 'zombi_brute'], ['summoner', 'Summoner', 'zombi_summoner'], ['minion', 'Minion', 'zombi_minion'], ['shielded', 'Shielded', 'zombi_shielded'], ['screamer', 'Screamer', 'zombi_screamer'],
+        ['ghoul', 'Ghoul', 'zombi_ghoul'], ['stalker', 'Stalker', 'zombi_stalker'], ['brood', 'Brood Mother', 'boss_brood', 1], ['egg', 'Egg', 'boss_egg', 1], ['hatchling', 'Hatchling', 'zombi_hatchling', 1]];
+    const _SBX_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14 };
+    const _sbx = { type: null, n: 1, freeze: false };
+    function _sbxUi() {
+        const hud = document.getElementById('pve-top-hud'), el = document.getElementById('sbx');
+        if (hud) hud.classList.toggle('is-sandbox', _sandbox);
+        if (!el) return;
+        el.style.display = _sandbox ? 'block' : 'none';
+        document.body.classList.toggle('sbx-pick', !!_sbx.type);
+        if (!_sandbox) return;
+        const list = document.getElementById('sbx-list');
+        if (!list.childElementCount) {
+            _SBX_TYPES.forEach(([id, name, art, boss]) => {
+                const b = document.createElement('button'); b.type = 'button'; b.className = 'sbx-card' + (boss ? ' is-boss' : ''); b.dataset.t = id; b.setAttribute('aria-label', name);
+                const im = document.createElement('img'); im.src = arAsset('/images/zombies/' + art + '.svg'); im.alt = ''; im.draggable = false;
+                const nm = document.createElement('b'); nm.textContent = name;
+                b.append(im, nm); b.onclick = () => _sbxSelect(_sbx.type === id ? null : id); list.appendChild(b);
+            });
+        }
+        for (const b of list.children) b.classList.toggle('is-on', b.dataset.t === _sbx.type);
+        const hint = document.getElementById('sbx-hint');
+        if (hint) hint.textContent = _sbx.type ? 'Click the map to spawn: ' + _SBX_TYPES[_SBX_IDX[_sbx.type]][1] + '. Esc cancels.' : 'Pick a zombie, then click the map. 1-7 build.';
+        const cnt = document.getElementById('sbx-count');
+        for (const b of cnt.children) { b.classList.toggle('is-on', +b.dataset.n === _sbx.n); b.onclick = () => { _sbx.n = +b.dataset.n; _sbxUi(); }; }
+        document.getElementById('sbx-clear').onclick = () => socket.emit('sandbox-ctl', { action: 'clear' });
+        document.getElementById('sbx-freeze').onclick = () => socket.emit('sandbox-ctl', { action: 'freeze' });
+        document.getElementById('sbx-built').onclick = () => socket.emit('sandbox-ctl', { action: 'clear-built' });
+        const st = document.getElementById('sbx-state'); if (st) st.textContent = _sbx.freeze ? 'FROZEN' : '';
+        const fz = document.getElementById('sbx-freeze'); if (fz) fz.textContent = _sbx.freeze ? 'RESUME' : 'FREEZE';
+    }
+    function _sbxSelect(type) {
+        if (!_sandbox) return;
+        _sbx.type = type || null;
+        if (type && _bar.place) _barPlaceMode(false);
+        if (type) { isShooting = false; aimStartTime = null; }
+        _sbxUi();
+    }
+    function _sbxWorld() {   // where the mouse is, in the world
+        const W = canvas.width / _rsDpr(), H = canvas.height / _rsDpr();
+        const dx = (_mcx - _mrL) - (W / 2 - _lookX * _zoomCss), dy = (_mcy - _mrT) - (H / 2 - _lookY * _zoomCss);
+        return [predX + dx / _zoomCss, predY + dy / _zoomCss];
+    }
+    function _sbxSpawn() {
+        if (!_sbx.type || predX === null) return;
+        const [x, y] = _sbxWorld();
+        socket.emit('sandbox-spawn', { type: _sbx.type, x: Math.round(x), y: Math.round(y), n: _sbx.n });
+    }
+    socket.on('sandbox-state', ({ freeze }) => { _sbx.freeze = !!freeze; _sbxUi(); });
+    _sbxUi();
     const onKeyDown = (e) => {
         if (gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
         const k = e.key.toLowerCase();
+        if (_sandbox && _sbx.type && (k === 'escape' || (k >= '1' && k <= '7'))) { _sbxSelect(null); if (k === 'escape') return; }
         if (k === 'r' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { _tryReload(); return; }
         if (_gameMode === 'pve' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
             if (k === '1') { _barPlaceMode(undefined, 'b'); return; }
@@ -5201,6 +5292,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const onPointerDown = (e) => {
         if (e.pointerType !== 'mouse' || e.button !== 0 || gameEnded || gameControl.countdownActive || _pveState.waveBreak) return;
         if (_bar.place) { _barPlace(); return; }   // the ghost is out: the click places it, nothing is fired
+        if (_sandbox && _sbx.type) { const rc = canvas.getBoundingClientRect(); _mrL = rc.left; _mrT = rc.top; _mcx = e.clientX; _mcy = e.clientY; _sbxSpawn(); return; }   // a zombie is picked: the click puts it on the map
         _aimActive = true;
         _clientHasReleased = ammoState.ammo > 0 ? false : _clientHasReleased;
         if (ammoState.ammo > 0) _shootMustRelease = false;
@@ -5825,7 +5917,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (const k in _obsShake) delete _obsShake[k];
         gameControl.countdownEndTime = null;
         _pveHudReset();
-        _zFx.length = 0; _zHpMul = 1; _structs.length = 0; _turrets.length = 0; _turretFx.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.invT = 0; _bar.invE = 0; _bar.invH = 0; _bar.invO = 0; _bar.invF = 0; _bar.invS = 0; _zapFx.length = 0; _bombFx.length = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
+        _zFx.length = 0; _eggFx.length = 0; _zHpMul = 1; _structs.length = 0; _turrets.length = 0; _turretFx.length = 0; _structDying.length = 0; _structFx.length = 0; _bar.work.clear(); _bar.inv = 0; _bar.invT = 0; _bar.invE = 0; _bar.invH = 0; _bar.invO = 0; _bar.invF = 0; _bar.invS = 0; _zapFx.length = 0; _bombFx.length = 0; _bar.place = false; _bar.use = null; _bar.useKey = '-'; _barUi();
         _footsteps.length = 0;
         for (const k in _footTimers) delete _footTimers[k];
         for (const k in _footSide)   delete _footSide[k];
@@ -6150,6 +6242,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     socket.on('boom', ({ x, y, r }) => { _zFxPush(_boomFx(x, y, r)); });
     socket.on('shield-block', (a) => { _zFxPush(_clangFx(a[0], a[1], a[2] / 100)); });
     socket.on('summon', ({ x, y }) => { _zFxPush({ k: 'summon', x0: x, y0: y, t0: performance.now() }); });
+    socket.on('egg-throw', (d) => {   // the Brood Mother throws an egg: she heaves (her pieces move, see ARArena.drawBroodSprite) and it flies to where it lands
+        const now = performance.now(), z = _zombies[d.from];
+        if (z) z.throwT = now;
+        _eggFx.push({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, t0: now, dur: d.ms });
+        if (_eggFx.length > 40) _eggFx.splice(0, _eggFx.length - 40);
+        _zFxPush({ k: 'eggland', x0: d.x1, y0: d.y1, t0: now + d.ms });
+    });
+    socket.on('egg-hatch', ({ x, y }) => {
+        const sp = []; for (let k = 0; k < 9; k++) sp.push({ a: Math.random() * TAU, v: 20 + Math.random() * 34, s: 2.6 + Math.random() * 3, w: (Math.random() - 0.5) * 8 });
+        _zFxPush({ k: 'hatch', x0: x, y0: y, t0: performance.now(), sp });
+    });
     // A screamer has screamed (x, y, r its range, ms how long the turrets are stunned, ids the turrets it got): rings of sound go out from it, and the turrets look dazed
     socket.on('scream', ({ x, y, r, ms, ids }) => {
         const now = performance.now();
@@ -6862,6 +6965,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         { r: 21, maxHp: 450, bodyColor: '#D9A0A0', innerColor: '#F1C8C4', armColor: '#A8666E', armStroke: '#4A2A2E', ringColor: '#FFD34D', ringFill: 'rgba(255,211,77,0.10)' },   // 9 screamer
         { r: 23, maxHp: 340, bodyColor: '#3E5A38', innerColor: '#5E8050', armColor: '#2F4A2D', armStroke: '#16240F', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },   // 10 ghoul (the dark normal)
         { r: 17, maxHp: 160, bodyColor: '#6E5E1E', innerColor: '#8E7B2C', armColor: '#54471A', armStroke: '#2A2308', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 11 stalker (the dark runner)
+        { r: 56, maxHp: 3500, noScale: true, heavy: true, bigBar: true, warn: 'BROOD MOTHER', bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 12 the Brood Mother
+        { r: 18, maxHp: 80, noScale: true, bodyColor: '#E9DDBB', innerColor: '#F4EAD2', armColor: '#CDBB94', armStroke: '#7C5E2C', ringColor: '#B8FF4D', ringFill: 'rgba(184,255,77,0.10)' },   // 13 an egg
+        { r: 13, maxHp: 40, noScale: true, bodyColor: '#7C58A0', innerColor: '#B994D6', armColor: '#4B3260', armStroke: '#2A1236', ringColor: '#FFE75B', ringFill: 'rgba(255,231,91,0.10)' },   // 14 a hatchling
     ];
     const FOOT_STEPS     = 10;
     const DN_MS          = 820; // damage popup life // footprint fade steps (2.5 s / 10 = one step every 250 ms)
@@ -7515,6 +7621,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (_turretFx.length) _drawTurretFx(ctx, _zNow);
         if (_zapFx.length) _drawZapFx(ctx, _zNow);
         if (_bombFx.length) _drawBombFx(ctx, _zNow);
+        if (_eggFx.length) _drawEggFx(ctx, _zNow);
+        if (_sandbox && _sbx.type && mouseActive) {   // the spawn ghost: a ring where the click would put the zombie
+            const [gx, gy] = _sbxWorld(), gr = _ZB_DEFS[_SBX_IDX[_sbx.type]].r;
+            ctx.globalAlpha = 0.75; ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2.4; ctx.setLineDash([7, 6]); ctx.beginPath(); ctx.arc(gx, gy, gr, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+            ctx.globalAlpha = 0.18; ctx.fillStyle = '#FFFFFF'; ctx.fill(); ctx.globalAlpha = 1;
+        }
         _drawFlameFx(ctx, _zNow);
         if (_zFx.length) _drawZombieFx(ctx, _zNow);
 

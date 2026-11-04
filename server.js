@@ -1109,8 +1109,19 @@ const PVE_ZOMBIE_DEFS = {
     ghoul: { hp: 340, chaseSpd: 66, patrolSpd: 34, dmg: 34, attackR: 58, attackCd: 1.0, coinsMin: 5, coinsMax: 8, baseDmg: 26, r: 23, hunts: true, mass: 2 },
     stalker: { hp: 160, chaseSpd: 138, patrolSpd: 70, dmg: 20, attackR: 52, attackCd: 0.7, coinsMin: 6, coinsMax: 9, baseDmg: 15, r: 17, hunts: true, mass: 1 },
     minion: { hp: 250, noScale: true, chaseSpd: 74, patrolSpd: 40, dmg: 14, attackR: 48, attackCd: 0.9, coinsMin: 2, coinsMax: 4, baseDmg: 9, r: 15, hunts: true, mass: 0.6 },
+    // the Brood Mother (the final boss of the Brood Mother level, wave 20; also in the sandbox): a huge slow queen that walks on to the base like the siege types (it
+    // never goes for a player, only walls, turrets and the base) and does not carry her eggs: she throws `count` of them round her (within `range`) every `every`
+    // seconds (every `rage` s under `rageAt` of her health), at most `max` of them lying about at once. Her health does not grow with the wave.
+    brood: { hp: 3500, armor: 4, noScale: true, chaseSpd: 25, patrolSpd: 15, dmg: 70, attackR: 96, attackCd: 1.6, coinsMin: 120, coinsMax: 160, baseDmg: 90, r: 56, hunts: false, mass: 30, heavy: true, large: true,
+             brood: { first: 4, every: 12, rage: 8, rageAt: 0.4, count: 4, range: 160, max: 12, flight: 0.7 } },
+    // an egg: it lies where it landed (a zombie that does not move or hit, so bullets, turrets, bombs and flames all work on it as on any), and if it is not broken
+    // in `hatch` seconds `spawn` hatchlings come out of it. Not a kill when it hatches.
+    egg: { hp: 80, noScale: true, chaseSpd: 0, patrolSpd: 0, dmg: 0, attackR: 0, attackCd: 99, coinsMin: 0, coinsMax: 0, baseDmg: 0, r: 18, hunts: false, mass: 50, immovable: true,
+           egg: { hatch: 8, spawn: 2 } },
+    // what comes out of an egg: small, fast, fragile
+    hatchling: { hp: 40, noScale: true, chaseSpd: 150, patrolSpd: 80, dmg: 12, attackR: 40, attackCd: 0.6, coinsMin: 0, coinsMax: 1, baseDmg: 6, r: 13, hunts: true, mass: 0.4 },
 };
-const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11 };
+const PVE_TYPE_IDX = { normal: 0, runner: 1, tank: 2, spitter: 3, exploder: 4, brute: 5, summoner: 6, minion: 7, shielded: 8, screamer: 9, ghoul: 10, stalker: 11, brood: 12, egg: 13, hatchling: 14 };
 // Fiecare upgrade: cost = baseCost + count * costInc, max = maxUses
 const PVE_UPGRADE_DEFS = {
     dmg:  { baseCost: 6,  costInc: 4, maxUses: 5, apply: (p, n) => { p.damage  = Math.round(p.baseDamage  * (1 + n * 0.05)); } },
@@ -1393,6 +1404,10 @@ function prepareAndSpawnWave(room, waveIndex) {
     const batches = [], bsize = Math.max(PVE_BATCH_SIZE, Math.ceil(types.length / 10));
     for (let i = 0; i < types.length; i += bsize) {
         batches.push(types.slice(i, i + bsize));
+    }
+    if (waveIndex === PVE_TOTAL_WAVES - 1 && room.pveDiff === 'brood') {   // the final boss of the level: the Brood Mother walks in with the first batch
+        if (!batches.length) batches.push([]);
+        batches[0].unshift('brood');
     }
     const firstBatch = batches[0] || [];
     room.pveSpawnQueue = batches.slice(1);
@@ -1849,6 +1864,58 @@ function summonTick(code, room, zombie, def, dt) {
     }
     io.to(code).emit('summon', { x: Math.round(zombie.x), y: Math.round(zombie.y) });
 }
+// A free spot for something small near (cx, cy): off the trees, the rocks and the base, inside the arena
+function _freeSpotNear(room, cx, cy, rMin, rMax, rad) {
+    let x = cx, y = cy;
+    for (let tries = 0; tries < 12; tries++) {
+        const a = Math.random() * Math.PI * 2, d = rMin + Math.random() * (rMax - rMin);
+        x = Math.max(rad + 4, Math.min(ARENA_W - rad - 4, cx + Math.cos(a) * d)); y = Math.max(rad + 4, Math.min(ARENA_H - rad - 4, cy + Math.sin(a) * d));
+        let ok = !room.base || Math.hypot(x - room.base.x, y - room.base.y) > room.base.r + rad;
+        for (let o = 0; ok && o < room.obstacles.length; o++) { const ob = room.obstacles[o]; if (Math.hypot(x - ob.x, y - ob.y) < ob.r + rad) ok = false; }
+        if (ok) break;
+    }
+    return [x, y];
+}
+// The Brood Mother throws her eggs round her while she walks on: they fly for def.flight s (event egg-throw, drawn by the client) and land as egg zombies
+function broodTick(code, room, zombie, def, dt, now) {
+    const b = def.brood;
+    zombie._brT = (zombie._brT === undefined ? b.first : zombie._brT) - dt;
+    if (zombie._brT > 0) return;
+    const raging = zombie.hp < zombie.maxHp * b.rageAt;
+    zombie._brT = raging ? b.rage : b.every;
+    let eggs = room._eggFlights.length;
+    for (const z of room.zombies) if (z.alive && z.type === 'egg') eggs++;
+    const n = Math.min(b.count, b.max - eggs);
+    const edef = PVE_ZOMBIE_DEFS.egg;
+    for (let k = 0; k < n; k++) {
+        const [x, y] = _freeSpotNear(room, zombie.x, zombie.y, def.r + 24, b.range, edef.r);
+        room._eggFlights.push({ at: now + b.flight * 1000, x, y, owner: zombie.id });
+        io.to(code).emit('egg-throw', { from: zombie.id, x0: Math.round(zombie.x), y0: Math.round(zombie.y), x1: Math.round(x), y1: Math.round(y), ms: Math.round(b.flight * 1000) });
+    }
+}
+function tickEggFlights(code, room, now) {
+    for (let i = room._eggFlights.length - 1; i >= 0; i--) {
+        const f = room._eggFlights[i];
+        if (now < f.at) continue;
+        room._eggFlights.splice(i, 1);
+        const e = createPveZombie('egg', room.zombies.length, 1, f.x, f.y);
+        e.owner = f.owner; e.state = 'static'; e._hatch = PVE_ZOMBIE_DEFS.egg.egg.hatch;
+        room.zombies.push(e);
+    }
+}
+// An egg: counts down and hatches (it goes without a kill: no coins, nothing in the counters) into `spawn` hatchlings
+function eggTick(code, room, zombie, def, dt) {
+    zombie._hatch -= dt;
+    if (zombie._hatch > 0) return;
+    zombie.hp = 0; zombie.alive = false;
+    const hdef = PVE_ZOMBIE_DEFS.hatchling;
+    for (let k = 0; k < def.egg.spawn; k++) {
+        const [x, y] = _freeSpotNear(room, zombie.x, zombie.y, 6, 26, hdef.r);
+        const h = createPveZombie('hatchling', room.zombies.length, 1, x, y);
+        room.zombies.push(h);
+    }
+    io.to(code).emit('egg-hatch', { x: Math.round(zombie.x), y: Math.round(zombie.y) });
+}
 
 // ---------- PvE: the zombies' map (zombie-nav.js) ----------
 // One per room: the solid things (trees, rocks, the base) once, the walls the players built every 250 ms, and four distance fields: to the players
@@ -1978,7 +2045,7 @@ function startPveWave(code, room) {
     // so the players can walk to what they built and repair or upgrade it before the first zombie. The HUD counts the queued ones as "left".
     const first = prepareAndSpawnWave(room, room.pveWave - 1);
     room.pveSpawnQueue.unshift(first.map(z => z.type));
-    room.zombies = [];
+    room.zombies = []; room._eggFlights = [];
     room.pveSpawnTimer = PVE_START_GRACE;
     // zombies = how many this wave brings in all, queued = the ones that have not come yet (the HUD shows "left / total": the ones on the map + queued)
     io.to(code).emit('pve-wave-start', { wave: room.pveWave, total: PVE_TOTAL_WAVES, hpMul: room.pveHpMul, batches: room.pveSpawnQueue.length,
@@ -2002,6 +2069,7 @@ function pveEndBoard(room, victory) {
 }
 function pveFinish(code, room, victory) {
     if (room.gameEnded) return;
+    if (room.sandbox) { if (room.base) room.base.hp = room.base.maxHp; return; }   // the sandbox has no end: a base that falls is whole again
     room.gameEnded = true;
     OPS.endRoom(room);
     if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
@@ -2039,10 +2107,35 @@ const MAP_SEASON = (() => {
     if (missing.length) console.warn('[Map] Lipsesc sprite-uri pentru sezonul "' + MAP_SEASON + '": ' + missing.join(', ') + ' (se deseneaza varianta veche)');
 }
 
-function newRoom(hostId, mode = 'br') {
+// ---------- PvE SANDBOX ----------
+// A room to test things in: no waves, no vote, no end, as many coins as you like and every building in stock without the usual limits; the zombies come when you
+// say so (sandbox-spawn {type, x, y}) and the rest (sandbox-ctl {action}) clears them, holds them still or clears what is built. Players do not go down (they heal)
+// and a base that falls is whole again. Created by create-room with sandbox: true; the PvE code is otherwise the same.
+const SANDBOX_COINS = 99999, SANDBOX_STOCK = 99, SANDBOX_MAX_ZOMBIES = 300;
+const SANDBOX_TYPES = Object.keys(PVE_ZOMBIE_DEFS);
+function sandboxSupply(p) {
+    p.coins = SANDBOX_COINS;
+    if (!p.pveInv) p.pveInv = newInv();
+    let changed = false;
+    for (const k of Object.keys(p.pveInv)) if (p.pveInv[k] !== SANDBOX_STOCK) { p.pveInv[k] = SANDBOX_STOCK; changed = true; }
+    if (changed) io.to(p.id).emit('pve-inv', invPublic(p));
+}
+function sandboxSpawn(code, room, type, x, y) {
+    if (!SANDBOX_TYPES.includes(type)) return null;
+    let alive = 0;
+    for (const z of room.zombies) if (z.alive) alive++;
+    if (alive >= SANDBOX_MAX_ZOMBIES) return null;
+    if (!alive && room.zombies.length > 400) room.zombies = [];   // nothing alive: the list starts again (the ids too)
+    const def = PVE_ZOMBIE_DEFS[type];
+    const z = createPveZombie(type, room.zombies.length, 1, Math.max(def.r, Math.min(ARENA_W - def.r, x)), Math.max(def.r, Math.min(ARENA_H - def.r, y)));
+    if (def.egg) { z.state = 'static'; z._hatch = def.egg.hatch; }
+    room.zombies.push(z);
+    return z;
+}
+function newRoom(hostId, mode = 'br', sandbox = false) {
     const _obs = generateObstacles(mode);
     return {
-        hostId, mode, season: MAP_SEASON,
+        hostId, mode, season: MAP_SEASON, sandbox: mode === 'pve' && !!sandbox, sandboxFreeze: false, _eggFlights: [],
         players:     {},
         _playerArr:  [],
         bullets:     [],
@@ -2556,13 +2649,17 @@ function startRoomLoop(code, room) {
             // Zombi AI — PvE
             if (room.mode === 'pve' && !room.countdownActive) {
                 const nst = navUpdate(room, alivePlayers, now);
+                if (room._eggFlights.length) tickEggFlights(code, room, now);
                 for (let zi = 0; zi < room.zombies.length; zi++) {   // (not for-of: a summoner adds to the list as it goes)
                     const zombie = room.zombies[zi];
                     if (!zombie.alive) continue;
                     zombie.attackCooldown = Math.max(0, zombie.attackCooldown - dt);
                     const def = PVE_ZOMBIE_DEFS[zombie.type] || PVE_ZOMBIE_DEFS.normal;
                     const large = !!def.large;
+                    if (room.sandboxFreeze) continue;   // sandbox: the zombies are held still (to look at them)
+                    if (def.egg) { eggTick(code, room, zombie, def, dt); continue; }   // an egg lies where it landed
                     if (def.summon && alivePlayers.length) summonTick(code, room, zombie, def, dt);
+                    if (def.brood) broodTick(code, room, zombie, def, dt, now);
 
                     let nearestPlayer = null, nearestDist = Infinity;
                     for (const p of alivePlayers) {
@@ -2729,6 +2826,7 @@ function startRoomLoop(code, room) {
                     for (const z2 of room.zombies) {
                         if (!z2.alive || z2 === zombie) continue;
                         const def2 = PVE_ZOMBIE_DEFS[z2.type] || PVE_ZOMBIE_DEFS.normal;
+                        if (def2.egg) continue;   // an egg is not in the way of anybody
                         const _sdx = zombie.x - z2.x, _sdy = zombie.y - z2.y;
                         const minSD = (def.r + def2.r) * 0.9;
                         if (_sdx*_sdx + _sdy*_sdy >= minSD*minSD) continue;
@@ -2840,6 +2938,7 @@ function startRoomLoop(code, room) {
             if (room._turretDirty && now - (room._turretHpAt || 0) >= 100) { room._turretHpAt = now; flushTurretHp(code, room, now); }
             for (let wi = 0; wi < allPlayers.length; wi++) if (allPlayers[wi].work) tickWork(code, room, allPlayers[wi], now);
             if (room.mode === 'pve' && tickDown(code, room, dt, now)) { pveDefeat(code, room); return; }
+            if (room.sandbox) for (const p of room._playerArr) if (p.coins < SANDBOX_COINS) p.coins = SANDBOX_COINS;
             if (PERF) PERF.mark(room, 'zombies');
 
             // Gloante: miscare + coliziune continua (swept). Pe segmentul parcurs in acest tick
@@ -3111,6 +3210,7 @@ function startRoomLoop(code, room) {
 
 // weaponId: the weapon of the bullet that made the kill (credited in the killer's weapon stats)
 function eliminatePlayer(code, room, player, killerId, weaponId) {
+    if (room.sandbox) { player.hp = player.maxHp; return; }   // the sandbox: nobody goes down, they just heal
     player.alive = false;
     player.hp    = 0;
 
@@ -3192,14 +3292,15 @@ function beginMatchCountdown(code, room) {
     if (!rooms.has(code) || room._cdStarted || !room.gameStarted) return;
     room._cdStarted = true;
     clearTimeout(room._loadTimer);
-    if (room.mode === 'pve' && PVE_VOTE_MS > 0) beginPveVote(code, room); else runMatchCountdown(code, room);
+    if (room.mode === 'pve' && !room.sandbox && PVE_VOTE_MS > 0) beginPveVote(code, room); else runMatchCountdown(code, room);
 }
 function runMatchCountdown(code, room) {
     if (!rooms.has(code) || !room.gameStarted) return;
     io.to(code).emit('countdown-start', { ms: 3700 });
+    if (room.sandbox) for (const p of room._playerArr) io.to(p.id).emit('pve-inv', invPublic(p));   // the stock, once the match screen is there to take it
     setTimeout(() => {
         if (rooms.has(code)) room.countdownActive = false;
-        if (rooms.has(code) && room.mode === 'pve') startPveWave(code, room);
+        if (rooms.has(code) && room.mode === 'pve' && !room.sandbox) startPveWave(code, room);
     }, 3700);
 }
 function beginPveVote(code, room) {
@@ -3356,7 +3457,7 @@ io.on('connection', (socket) => {
         data = { ...data, name: socket._nickname };
         const mode = data.mode === 'pve' ? 'pve' : 'br';
         const code = generateCode();
-        const room = newRoom(socket.id, mode);
+        const room = newRoom(socket.id, mode, data.sandbox === true);
         rooms.set(code, room);
         socket.join(code);
         socket._roomCode = code;
@@ -3408,6 +3509,7 @@ io.on('connection', (socket) => {
             room.pveKinds = PveRewards.newKinds(); room.pveT0 = 0;
             room.pveDiff = PveDiff.DEFAULT_ID; clearTimeout(room.pveVote && room.pveVote.timer); room.pveVote = null;
             room.structs = []; room.turrets = []; room._hits.length = 0; room.nextStructId = 0; room._structDirty = false;
+            room._eggFlights = []; room.sandboxFreeze = false;
         } else {
             assignSpawnPositions(room._playerArr, room.obstacles);
             room.zombies = generateZombies(room.obstacles, room._playerArr);
@@ -3419,6 +3521,7 @@ io.on('connection', (socket) => {
             p.lastAckSeq = 0; p.pendingAckSeq = 0; p.coins = 0; p.lastInputAt = 0; p.stalled = false;
             p.pveInv = newInv(); p.work = null; p.pveTot = { dmg: 0, coins: 0 };
             p.down = false; p.out = false; p.downMs = 0; p._revBy = null;
+            if (room.sandbox) sandboxSupply(p);
         });
 
         const playersMeta = {};
@@ -3426,7 +3529,7 @@ io.on('connection', (socket) => {
             p.weaponSkin = equippedWeaponSkin(p.name, p.weapon); // may have been equipped while waiting
             playersMeta[p.id] = { slot: p.slot, speed: p.speed, maxHp: p.maxHp, name: p.name, weapon: p.weapon || DEFAULT_WEAPON, weaponSkin: p.weaponSkin };
         });
-        io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles, mode: room.mode, season: room.season });
+        io.to(code).emit('game-start', { playersMeta, obstacles: room.obstacles, mode: room.mode, season: room.season, sandbox: !!room.sandbox });
         console.log(`[${code}] Joc pornit cu ${room._playerArr.length} jucatori (${room.mode})`);
 
         // The 3-2-1 starts when every client that has a loading screen has said it is gone (match-ready), not before: the players see the
@@ -3579,11 +3682,11 @@ io.on('connection', (socket) => {
         const s = { id: room.nextStructId, x: Math.round(x), y: Math.round(y), o, t: 0, hp: ARStructs.BARRICADE.tiers[0].hp, maxHp: ARStructs.BARRICADE.tiers[0].hp, by: p.name, _sentHp: ARStructs.BARRICADE.tiers[0].hp };
         if (ARStructs.distToRect(p.x, p.y, s) > ARStructs.BARRICADE.placeRange) return fail('far');
         const alive = room._playerArr.filter(q => q.alive);
-        const why = ARStructs.checkPlace(s, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, turrets: room.turrets, players: alive, playerR: PLAYER_R, count: room.structs.length });
+        const why = ARStructs.checkPlace(s, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, turrets: room.turrets, players: alive, playerR: PLAYER_R, count: room.sandbox ? 0 : room.structs.length });
         if (why) return fail(why);
         room.nextStructId++;
         room.structs.push(s);
-        p.pveInv.barricade--;
+        p.pveInv.barricade--; if (room.sandbox) sandboxSupply(p);
         io.to(code).emit('struct-add', structPublic(s));
         socket.emit('pve-inv', invPublic(p));
         socket.emit('struct-result', { ok: true, action: 'place' });
@@ -3608,11 +3711,11 @@ io.on('connection', (socket) => {
                     angle: Math.atan2(y - PVE_BASE_Y, x - PVE_BASE_X), cd: 0.4, _sentHp: kind.tiers[0].hp };   // it looks away from the base until it has a target
         if (Math.hypot(p.x - t.x, p.y - t.y) > T.placeRange) return fail('far');
         const alive = room._playerArr.filter(q => q.alive);
-        const why = ARStructs.checkPlaceTurret(t, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, turrets: room.turrets, players: alive, playerR: PLAYER_R, roomPlayers: room._playerArr.length });
+        const why = ARStructs.checkPlaceTurret(t, { w: ARENA_W, h: ARENA_H, obstacles: room.obstacles, base: room.base, structs: room.structs, turrets: room.turrets, players: alive, playerR: PLAYER_R, roomPlayers: room.sandbox ? 99 : room._playerArr.length });
         if (why) return fail(why);
         room.nextStructId++;
         room.turrets.push(t);
-        p.pveInv[kind.inv]--;
+        p.pveInv[kind.inv]--; if (room.sandbox) sandboxSupply(p);
         io.to(code).emit('turret-add', turretPublic(t));
         socket.emit('pve-inv', invPublic(p));
         socket.emit('struct-result', { ok: true, action: 'place' });

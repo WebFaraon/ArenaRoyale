@@ -593,6 +593,9 @@
         { id: 'zombi_screamer', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },  // screamer (from the artifact "Turnuri si zombi noi": pink, a wide fanged grin)
         { id: 'zombi_ghoul', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },     // ghoul: the dark normal
         { id: 'zombi_stalker', view: [-60, -45, 120, 120], disc: 29.95, sh: [7, 12, 33, 30] },      // stalker: the dark runner
+        { id: 'boss_brood', view: [-104, -124, 208, 250], disc: 61.5, sh: [7, 12, 61.5, 56.6] },    // 12 the Brood Mother (drawn from its separate pieces, see drawBroodSprite; this whole picture is the fallback)
+        { id: 'boss_egg', view: [-30, -36, 60, 72], disc: 24, sh: [5, 9, 24, 22] },                  // 13 an egg she threw
+        { id: 'zombi_hatchling', view: [-44, -36, 88, 88], disc: 26, sh: [6, 10, 26, 24] },          // 14 what comes out of an egg
     ];
     const zombieImgs = ZOMBIE_ART.map(function (a) {
         const e = { img: new Image(), state: 0 };   // 0 loading, 1 ready, 2 failed
@@ -601,6 +604,72 @@
         e.img.src = window.arAsset ? window.arAsset('/images/zombies/' + a.id + '.svg') : '/images/zombies/' + a.id + '.svg';
         return e;
     });
+    // The Brood Mother is made of separate pieces (public/images/zombies/brood/*.svg, same view as the whole, pivots in parts.json) so she can move: the arms swing as she
+    // walks, the head bobs and turns, the sac breathes and heaves when she throws an egg, the feelers wave. Each piece is a cached bitmap like any zombie's; only the
+    // transform changes per frame. The per-zombie state (zb._bp phase, zb._ba how much she is walking) lives on the zombie object; zb.throwT is set by game.js.
+    const BROOD_PARTS = ['sac', 'feelers', 'armL', 'armR', 'head'];
+    const BROOD_PIVOT = { sac: [0, -30], feelers: [0, -30], armL: [-42, 14], armR: [42, 14], head: [0, 0] };   // the same as parts.json
+    const broodImgs = BROOD_PARTS.map(function (n) {
+        const e = { img: new Image(), state: 0 };
+        e.img.onload = function () { e.state = e.img.naturalWidth > 0 ? 1 : 2; };
+        e.img.onerror = function () { e.state = 2; console.warn('[brood] piesa lipsa: ' + n); };
+        e.img.src = window.arAsset ? window.arAsset('/images/zombies/brood/' + n + '.svg') : '/images/zombies/brood/' + n + '.svg';
+        return e;
+    });
+    function broodReady() { for (let i = 0; i < broodImgs.length; i++) if (broodImgs[i].state !== 1) return false; return true; }
+    function broodPad(def) { const art = ZOMBIE_ART[12], k = def.r / art.disc, v = art.view; return Math.max(-v[0], -v[1], v[0] + v[2], v[1] + v[3]) * k + 2; }
+    function broodPaint(i, def) {
+        const art = ZOMBIE_ART[12], k = def.r / art.disc, v = art.view, im = broodImgs[i].img;
+        return function (g) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(im, v[0] * k, v[1] * k, v[2] * k, v[3] * k); };
+    }
+    function warmBrood(def) {
+        if (!broodReady()) return broodImgs.some(function (e) { return e.state === 0; }) ? 1 : 0;
+        let missing = 0; const pad = broodPad(def);
+        for (let i = 0; i < BROOD_PARTS.length; i++) {
+            const key = 'brood_' + BROOD_PARTS[i], old = zombieSprites.get(key), s = sprite(old, pad, broodPaint(i, def));
+            if (s !== old && s) zombieSprites.set(key, s);
+            if (!s) missing++;
+        }
+        return missing;
+    }
+    // Draws her; false when the pieces are not all in yet (the caller draws the whole picture instead)
+    function drawBroodSprite(ctx, m, zb, def, now, nx, ny) {
+        if (!broodReady()) return false;
+        const pad = broodPad(def), art = ZOMBIE_ART[12], k = def.r / art.disc;
+        const sp = [];
+        for (let i = 0; i < BROOD_PARTS.length; i++) {
+            const key = 'brood_' + BROOD_PARTS[i], old = zombieSprites.get(key), s = sprite(old, pad, broodPaint(i, def));
+            if (s !== old && s) zombieSprites.set(key, s);
+            if (!(s || old)) return false;
+            sp.push(s || old);
+        }
+        // the walk: a phase that moves with the distance she covers, and how much she is walking (smoothed)
+        const dtS = zb._bl ? Math.min(0.1, Math.max(0.001, (now - zb._bl) / 1000)) : 0.016;
+        const moved = zb._bl ? Math.hypot(zb.x - zb._bx, zb.y - zb._by) : 0;
+        zb._bl = now; zb._bx = zb.x; zb._by = zb.y;
+        zb._bp = (zb._bp || 0) + moved * 0.157;
+        zb._ba = (zb._ba || 0) + (Math.min(1, moved / dtS / 18) - (zb._ba || 0)) * Math.min(1, dtS * 6);
+        const ph = zb._bp, amp = zb._ba, t = now / 1000, seed = (zb.id || 0) * 1.7;
+        const tu = zb.throwT ? (now - zb.throwT) / 650 : 2, th = tu >= 0 && tu < 1 ? Math.sin(tu * Math.PI) : 0;   // the heave of a throw
+        const a = (zb.angle || 0) - Math.PI / 2, cs = Math.cos(a), sn = Math.sin(a);
+        const zx = nx ? zb.x + nx : zb.x, zy = ny ? zb.y + ny : zb.y;
+        const base = [m.a * cs + m.c * sn, m.b * cs + m.d * sn, m.c * cs - m.a * sn, m.d * cs - m.b * sn, m.a * zx + m.c * zy + m.e, m.b * zx + m.d * zy + m.f];
+        // per piece: [rotation, sx, sy, shift x, shift y] about its pivot
+        const T = [
+            [Math.sin(ph) * 0.045 * amp + Math.sin(t * 1.3 + seed) * 0.012, 1 + 0.03 * Math.sin(t * 2.2 + seed) + 0.17 * th, 1 + 0.03 * Math.sin(t * 2.2 + seed) + 0.17 * th, 0, 0],   // sac: breathes, sways, heaves
+            [Math.sin(t * 3.1 + seed) * 0.09 + Math.sin(ph) * 0.05 * amp, 1, 1, 0, 0],                                                                                                      // feelers wave
+            [Math.sin(ph) * 0.5 * amp + Math.sin(t * 1.1 + seed) * 0.03 - 0.25 * th, 1, 1, 0, 0],                                                                                           // arms swing
+            [-Math.sin(ph) * 0.5 * amp - Math.sin(t * 1.1 + seed) * 0.03 + 0.25 * th, 1, 1, 0, 0],
+            [Math.sin(ph) * 0.07 * amp, 1, 1, 0, (Math.sin(ph * 2) * 1.8 * amp - 6 * th) * k],                                                                                              // head bobs, rears back on a throw
+        ];
+        for (let i = 0; i < BROOD_PARTS.length; i++) {
+            const pv = BROOD_PIVOT[BROOD_PARTS[i]], tr = T[i], px = pv[0] * k, py = pv[1] * k;
+            ctx.setTransform(base[0], base[1], base[2], base[3], base[4], base[5]);
+            ctx.translate(px + tr[3], py + tr[4]); ctx.rotate(tr[0]); ctx.scale(tr[1], tr[2]); ctx.translate(-px, -py);
+            ctx.drawImage(sp[i].c, -pad, -pad, pad * 2, pad * 2);
+        }
+        return true;
+    }
     // The shadow stays down and to the right whichever way the zombie faces (the trees' is the same), so it is
     // not part of the turning picture. Adds one ellipse to the current path; the caller fills them all at once.
     function addZombieShadow(ctx, zb, def, typeKey) {
@@ -625,6 +694,7 @@
     }
     // flash 0..1: a white wash over the body for a hit (a few frames); nx, ny: a small shove in world units drawn on top of the position
     function drawZombieSprite(ctx, m, zb, def, typeKey, now, hot, flash, nx, ny) {
+        if (typeKey === 12 && drawBroodSprite(ctx, m, zb, def, now, nx, ny)) return;   // the Brood Mother moves in pieces
         let s = null, pad = 0;
         const zp = zombiePainter(def, typeKey);
         if (zp) {
@@ -914,6 +984,7 @@
             const zp = zombiePainter(zdefs[t] || zdefs[0], t);
             if (zp) need(t, zp.pad, zp.paint); else if (zombieImgs[t].state === 0) missing++;
         }
+        if (zdefs[12]) missing += warmBrood(zdefs[12]);
         if (withBase) for (let st = 0; st < BASE_PAL.length; st++) { const pal = BASE_PAL[st]; need('base' + st, BASE_PAD, function (g) { paintBase(g, pal); }); }
         need('kit', KIT_PAD, kitPainter());
         need('ammo', KIT_PAD, ammoPainter());
