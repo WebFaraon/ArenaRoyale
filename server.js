@@ -1112,7 +1112,7 @@ const PVE_ZOMBIE_DEFS = {
     // the Brood Mother (the final boss of the Brood Mother level, wave 20; also in the sandbox): a huge slow queen that walks on to the base like the siege types (it
     // never goes for a player, only walls, turrets and the base) and does not carry her eggs: she throws `count` of them round her (within `range`) every `every`
     // seconds (every `rage` s under `rageAt` of her health), at most `max` of them lying about at once. Her health does not grow with the wave.
-    brood: { hp: 12000, armor: 4, noScale: true, chaseSpd: 25, patrolSpd: 15, dmg: 70, attackR: 96, attackCd: 1.6, coinsMin: 120, coinsMax: 160, baseDmg: 90, r: 56, hunts: false, mass: 30, heavy: true, large: true,
+    brood: { hp: 12000, armor: 4, noScale: true, chaseSpd: 25, patrolSpd: 15, dmg: 70, attackR: 96, attackCd: 1.6, coinsMin: 120, coinsMax: 160, baseDmg: 110, r: 56, hunts: false, mass: 30, heavy: true, large: true,
              brood: { first: 4, every: 12, rage: 8, rageAt: 0.4, count: 4, range: 160, max: 12, flight: 0.7 },
              // her blow is a swing with a wind-up: it starts when something is in reach (attackCd is the whole cycle), she stands and raises her arms for `windup` s and the
              // damage lands at the END of the wind-up, at the moment the arms come down, to whatever is in reach THEN (nothing: it is a miss); `recover` s more to straighten up

@@ -146,7 +146,7 @@ test('the Brood Mother\'s blow is a swing: the damage lands at the END of the wi
         assert.ok(gap >= 640 && gap <= 850, 'the hit comes about one wind-up (700 ms) after the swing began: ' + gap + ' ms');
         assert.equal(c.baseAt['brood-swing'], 1500, 'at the start of the swing the base is whole');
         await sleep(300);
-        assert.ok(c.baseHp <= 1500 - 90, 'after the hit the base lost her blow (90): ' + c.baseHp);
+        assert.ok(c.baseHp <= 1500 - 110, 'after the hit the base lost her blow (110): ' + c.baseHp);
         const gap2 = c.at['brood-swing'][1] - c.at['brood-swing'][0];
         assert.ok(gap2 >= 1500 && gap2 <= 1800, 'a swing every attackCd (1.6 s): ' + gap2 + ' ms');
         c.s.close();
@@ -164,8 +164,8 @@ test('the Brood Mother hits the FIRST barricade built (id 0) too, and a hatchlin
             if (c.ev['struct-add']) { wy = py + dy; break; }
         }
         assert.equal(c.ev['struct-add'] && c.ev['struct-add'][0].id, 0, 'the first barricade has id 0');
-        c.s.emit('sandbox-spawn', { type: 'brood', x: px + 330, y: wy });
-        for (let i = 0; i < 100 && !(c.ev['struct-hp'] && c.ev['struct-hp'].length); i++) await sleep(100);
+        c.s.emit('sandbox-spawn', { type: 'brood', x: px + 130 + 17 + 56 + 6, y: wy });   // right up against the wall (she would otherwise be free to walk round it)
+        for (let i = 0; i < 80 && !(c.ev['struct-hp'] && c.ev['struct-hp'].length); i++) await sleep(100);
         assert.ok(c.ev['struct-hp'] && c.ev['struct-hp'].some(rows => rows.some(r => r[0] === 0 && r[1] < 300)), 'barricade 0 lost health to her blow');
         c.s.emit('sandbox-ctl', { action: 'clear' });
         await sleep(300);
