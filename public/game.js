@@ -3902,14 +3902,112 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let i = 0; i < 6; i++) f.sp.push({ a: a + (_rnd() * 2 - 1) * 1.5, v: 70 + _rnd() * 90, l: 7 + _rnd() * 8 });
         return f;
     }
+    // The Colossus's QUAKE (under half its health): the ground splits. The crack network is built once, when the event comes (jagged main cracks that wander, side branches, and broken
+    // rings that open as the shock passes): a flat Float32Array of segments x1, y1, x2, y2, distance from the impact (0..1 of R), width bucket (0 wide, 1 middle, 2 thin).
+    // It grows with the shock front, glows like lava for a moment, cools and fades; dust puffs and flying rocks (the `dp`, `ck`) are drawn above, in _drawZombieFx.
+    const _QUAKE_LIFE = 2000, _QUAKE_FRONT = 520;
+    let _qShake = { t0: 0, ms: 0, amp: 0 };   // the screen shakes a little while the ground splits (world units, whole device pixels in the end)
+    function _quakeFx(x, y, R) {
+        const seg = [], cap = 560;
+        const push = (x1, y1, x2, y2, bk) => {
+            if (seg.length >= cap * 6) return;
+            const d = Math.hypot((x1 + x2) / 2 - x, (y1 + y2) / 2 - y) / R;
+            seg.push(x1, y1, x2, y2, d, bk < 0 ? (d < 0.3 ? 0 : d < 0.62 ? 1 : 2) : bk);
+        };
+        const crack = (px, py, ang, len, depth) => {
+            let a = ang, cx = px, cy = py, run = 0;
+            while (run < len && seg.length < cap * 6) {
+                const st = 16 + _rnd() * 20;
+                a += (_rnd() - 0.5) * 0.8 - (a - ang) * 0.25;   // wanders, but keeps its way
+                const nx = cx + Math.cos(a) * st, ny = cy + Math.sin(a) * st;
+                push(cx, cy, nx, ny, depth ? 2 : -1);
+                if (depth < 2 && run > 40 && _rnd() < (depth ? 0.14 : 0.3)) crack(nx, ny, a + (_rnd() < 0.5 ? -1 : 1) * (0.55 + _rnd() * 0.7), len * (0.22 + _rnd() * 0.28), depth + 1);
+                cx = nx; cy = ny; run += st;
+            }
+        };
+        const nMain = 15;
+        for (let k = 0; k < nMain; k++) {
+            const a = (k / nMain) * TAU + (_rnd() - 0.5) * 0.35, r0 = 22 + _rnd() * 14;
+            crack(x + Math.cos(a) * r0, y + Math.sin(a) * r0, a, R * (0.45 + _rnd() * 0.55), 0);
+        }
+        for (const rf of [0.32, 0.58, 0.82]) {   // broken rings: arcs with gaps, a little ragged
+            let a = _rnd() * TAU;
+            const end = a + TAU;
+            while (a < end) {
+                const span = 0.35 + _rnd() * 0.7, gap = 0.2 + _rnd() * 0.5;
+                const m = Math.max(2, Math.round(span * rf * R / 26));
+                let pa = a, pr = rf * R + (_rnd() - 0.5) * 10;
+                for (let j = 1; j <= m; j++) {
+                    const na = a + span * j / m, nr = rf * R + (_rnd() - 0.5) * 12;
+                    push(x + Math.cos(pa) * pr, y + Math.sin(pa) * pr, x + Math.cos(na) * nr, y + Math.sin(na) * nr, 2);
+                    pa = na; pr = nr;
+                }
+                a += span + gap;
+            }
+        }
+        const dp = [], ck = [], n = seg.length / 6;
+        for (let k = 0; k < 34; k++) { const a = _rnd() * TAU, d = 0.12 + _rnd() * 0.88; dp.push({ x: x + Math.cos(a) * d * R, y: y + Math.sin(a) * d * R, d, s: 9 + _rnd() * 14 }); }   // dust that heaves as the front passes
+        for (let k = 0; k < 26 && n; k++) { const j = Math.floor(_rnd() * n) * 6; ck.push({ x: (seg[j] + seg[j + 2]) / 2, y: (seg[j + 1] + seg[j + 3]) / 2, d: seg[j + 4], s: 2.6 + _rnd() * 3.6, h: 18 + _rnd() * 34, w: (_rnd() - 0.5) * 9 }); }   // rocks thrown up out of the cracks
+        return { k: 'quake', x0: x, y0: y, t0: performance.now(), R, seg: new Float32Array(seg), dp, ck };
+    }
     // The marks a blow or a footstep leaves ON the ground (the rings and the cracks of 'slam' and 'stomp'): drawn right over the grass, UNDER everything that stands on it
     // (the base, the barricades, the turrets, the trees and rocks, the players, the zombies). The flash, the flying chips and the dust stay in _drawZombieFx, above.
+    function _drawQuakeGround(ctx, f, age) {
+        const X = f.x0, Y = f.y0, R = f.R, q = Math.min(1, age / _QUAKE_FRONT), e = 1 - (1 - q) * (1 - q), front = e * 1.04, S = f.seg;
+        // the ground heaves: a pale disc that follows the front and fades, then the shock rings
+        ctx.globalAlpha = (1 - q) * 0.14; ctx.fillStyle = '#E8D9A8'; ctx.beginPath(); ctx.arc(X, Y, R * front, 0, TAU); ctx.fill();
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.globalAlpha = (1 - q * q) * 0.8; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 12 * (1 - q) + 2; ctx.beginPath(); ctx.arc(X, Y, R * front, 0, TAU); ctx.stroke();
+        ctx.strokeStyle = '#FFB04A'; ctx.lineWidth = 5 * (1 - q) + 1; ctx.beginPath(); ctx.arc(X, Y, R * front, 0, TAU); ctx.stroke();
+        const q2 = Math.min(1, Math.max(0, (age - 110) / 640)); if (q2 > 0 && q2 < 1) { ctx.globalAlpha = (1 - q2) * 0.6; ctx.strokeStyle = '#F4EAD2'; ctx.lineWidth = 4 * (1 - q2) + 1; ctx.setLineDash([26, 18]); ctx.beginPath(); ctx.arc(X, Y, R * 0.92 * e * Math.min(1, q2 * 1.3 + 0.1), 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
+        // the cracks: they open with the front, glow, cool and fade
+        const fade = age < 1300 ? 1 : 1 - (age - 1300) / (_QUAKE_LIFE - 1300), lava = Math.max(0, 1 - age / 1500), pulse = 0.85 + 0.15 * Math.sin(age * 0.018);
+        const W0 = [9, 6, 3.4];
+        // passes: a pale raised lip of earth, the ink edge, the dark chasm, then the lava glow and its white-hot core while it is fresh
+        for (let pass = 0; pass < 5; pass++) {
+            if (pass >= 3 && lava <= 0.04) break;
+            ctx.strokeStyle = pass === 0 ? '#D9CBA2' : pass === 1 ? '#0B0F1A' : pass === 2 ? '#1E140D' : pass === 3 ? '#FF7A1F' : '#FFE08A';
+            ctx.globalAlpha = (pass === 0 ? 0.5 : pass === 1 ? 0.92 : pass === 2 ? 0.97 : pass === 3 ? 0.95 * Math.min(1, lava * 1.6) * pulse : 0.95 * lava * lava) * fade;
+            if (ctx.globalAlpha <= 0.01) continue;
+            for (let bk = 0; bk < 3; bk++) {
+                const w = W0[bk];
+                ctx.lineWidth = pass === 0 ? w + 7 : pass === 1 ? w + 3 : pass === 2 ? w : pass === 3 ? w * 0.62 : w * 0.24;
+                ctx.beginPath(); let any = false;
+                for (let j = 0; j < S.length; j += 6) {
+                    if (S[j + 5] !== bk || S[j + 4] > front) continue;
+                    ctx.moveTo(S[j], S[j + 1]); ctx.lineTo(S[j + 2], S[j + 3]); any = true;
+                }
+                if (any) ctx.stroke();
+            }
+        }
+        ctx.lineCap = 'butt'; ctx.lineJoin = 'miter'; ctx.globalAlpha = 1;
+    }
+    function _drawQuakeAbove(ctx, f, age) {
+        const R = f.R, q = Math.min(1, age / _QUAKE_FRONT), e = 1 - (1 - q) * (1 - q), front = e * 1.04;
+        if (age < 160) { const w = 1 - age / 160; ctx.globalAlpha = w * 0.7; ctx.fillStyle = '#FFE2A8'; ctx.beginPath(); ctx.arc(f.x0, f.y0, 40 + 120 * (1 - w), 0, TAU); ctx.fill(); }
+        ctx.fillStyle = '#CFC6A6';
+        for (let k = 0; k < f.dp.length; k++) {   // dust: puffs that swell and rise a little after the front has gone by
+            const d = f.dp[k], t = (age - d.d * _QUAKE_FRONT * 0.7) / 1000; if (t <= 0 || t >= 1) continue;
+            ctx.globalAlpha = 0.42 * (1 - t) * Math.min(1, t * 6); ctx.beginPath(); ctx.arc(d.x, d.y - 26 * t, d.s * (0.6 + 1.3 * t), 0, TAU); ctx.fill();
+        }
+        ctx.fillStyle = '#8A7D66'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.6;
+        for (let k = 0; k < f.ck.length; k++) {   // rocks that jump out of the cracks
+            const c = f.ck[k], t = (age - c.d * _QUAKE_FRONT * 0.7) / 900; if (t <= 0 || t >= 1) continue;
+            const x = c.x, y = c.y - c.h * Math.sin(t * Math.PI), sz = c.s * (1 - t * 0.4), rot = c.w * t;
+            ctx.globalAlpha = Math.min(1, (1 - t) * 3); ctx.beginPath();
+            for (let j = 0; j < 4; j++) { const a2 = rot + j * Math.PI / 2 + 0.4; const px = x + Math.cos(a2) * sz, py = y + Math.sin(a2) * sz; if (j) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+    }
     function _drawGroundFx(ctx, now) {
         for (let i = 0; i < _zFx.length; i++) {
             const f = _zFx[i], age = now - f.t0;
-            if (age < 0 || (f.k !== 'slam' && f.k !== 'stomp')) continue;
+            if (age < 0 || (f.k !== 'slam' && f.k !== 'stomp' && f.k !== 'quake')) continue;
             const X = f.x0, Y = f.y0;
-            if (f.k === 'slam') {
+            if (f.k === 'quake') {
+                if (age < _QUAKE_LIFE) _drawQuakeGround(ctx, f, age);
+            } else if (f.k === 'slam') {
                 if (age >= 800) continue;
                 const sc = (f.miss ? 0.6 : 1) * (f.big || 1), u = age / 800;
                 const q = Math.min(1, age / 420), e = 1 - (1 - q) * (1 - q);
@@ -4044,6 +4142,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     ctx.beginPath(); ctx.arc(f.x0 + Math.cos(d.a) * (d.d + d.v * t), f.y0 + Math.sin(d.a) * (d.d + d.v * t) - 24 * u - 14 * t, d.s * (0.5 + 1.1 * u), 0, TAU); ctx.fill();
                 }
                 ctx.globalAlpha = 1;
+            } else if (f.k === 'quake') {   // the Colossus's quake: the cracks are on the ground (_drawQuakeGround); here the flash, the dust and the rocks thrown up
+                if (age >= _QUAKE_LIFE) { _zFx.splice(i, 1); continue; }
+                _drawQuakeAbove(ctx, f, age);
             } else if (f.k === 'slam') {   // the Brood Mother's blow lands: a flash, shock rings, cracks in the ground, rubble and dust (smaller when it hits nothing)
                 if (age >= 800) { _zFx.splice(i, 1); continue; }
                 const X = f.x0, Y = f.y0, sc = (f.miss ? 0.6 : 1) * (f.big || 1), u = age / 800;
@@ -6400,14 +6501,19 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     socket.on('colossus-hit', ({ id, x, y, miss, r }) => {
         const now = performance.now(), z = _zombies[id];
         if (z) z.slamT = now;
+        const stage = r >= 300;   // the quake and the call (a stage blow: the shock is drawn by the quake effect below, not by straight cracks)
         const sp = [], ch = [], n = miss ? 6 : 12;
-        for (let k = 0; k < n; k++) sp.push({ a: (k / n) * TAU + Math.random() * 0.5, l: 26 + Math.random() * 40 });
+        if (!stage) for (let k = 0; k < n; k++) sp.push({ a: (k / n) * TAU + Math.random() * 0.5, l: 26 + Math.random() * 40 });
         for (let k = 0; k < (miss ? 5 : 11); k++) ch.push({ a: Math.random() * TAU, v: 34 + Math.random() * 56, s: 3 + Math.random() * 4, w: (Math.random() - 0.5) * 8 });
-        _zFxPush({ k: 'slam', x0: x, y0: y, t0: now, sp, ch, miss: !!miss, big: r ? Math.max(1.2, r / 80) : 0.7 });   // (r: the radius of the shock, 0 for a small colossus: a small blow)
+        _zFxPush({ k: 'slam', x0: x, y0: y, t0: now, sp, ch, miss: !!miss, big: r ? (stage ? 2.4 : Math.max(1.2, r / 80)) : 0.7 });   // (r: the radius of the shock, 0 for a small colossus: a small blow)
     });
     // The Colossus's quake (under half its health): every turret within r is SLOWED for ms (not stunned): a yellow dusty haze on it while it lasts (see _drawTurrets)
-    socket.on('colossus-quake', ({ ms, ids }) => {
+    socket.on('colossus-quake', ({ x, y, r, ms, ids }) => {
         const now = performance.now();
+        if (typeof x === 'number' && r > 0) {
+            _zFxPush(_quakeFx(x, y, r));
+            if (!window.ARJuice || ARJuice.on()) _qShake = { t0: now, ms: 1100, amp: 5 };
+        }
         for (let i = 0; i < ids.length; i++) { const t = _turrets.find(q => q.id === ids[i]); if (t) t.slowUntil = now + ms; }
     });
     socket.on('colossus-step', ({ id, x, y, s }) => {
@@ -7369,7 +7475,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         // The camera sits on whole device pixels: _ox/_oy are where world (0, 0) lands, so everything static blits at the same
         // sub-pixel phase, and the ground can blit 1:1. Moving things are still drawn at their exact (fractional) positions.
-        const _ox = Math.round(canvas.width / 2 - camX * _sq), _oy = Math.round(canvas.height / 2 - camY * _sq);
+        let _shx = 0, _shy = 0;   // the Colossus's quake shakes the picture a little (whole device pixels, so the ground still blits 1:1)
+        if (_qShake.ms) {
+            const a = performance.now() - _qShake.t0;
+            if (a < _qShake.ms) { const k = 1 - a / _qShake.ms; _shx = Math.round((Math.sin(a * 0.13) + Math.sin(a * 0.051 + 1)) * 0.5 * _qShake.amp * k * _sq); _shy = Math.round((Math.cos(a * 0.11) + Math.sin(a * 0.067 + 2)) * 0.5 * _qShake.amp * k * _sq); }
+            else _qShake.ms = 0;
+        }
+        const _ox = Math.round(canvas.width / 2 - camX * _sq) + _shx, _oy = Math.round(canvas.height / 2 - camY * _sq) + _shy;
         ctx.save();
         ctx.setTransform(_sq, 0, 0, _sq, _ox, _oy);
 
