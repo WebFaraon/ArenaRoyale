@@ -35,7 +35,7 @@ async function client(base, nick, opts = {}) {
     if (opts.vote) s.on('pve-vote-start', () => s.emit('pve-vote', { id: opts.vote }));
     s.on('gs2', (d) => {
         const z = d[3], out = [];
-        for (let i = 0; i + 5 < z.length; i += 6) out.push([z[i], z[i + 5]]);
+        for (let i = 0; i + 5 < z.length; i += 6) out.push([z[i], z[i + 5], z[i + 1] / 4, z[i + 2] / 4]);   // id, type, x, y
         c.zombies = out;
         if (d[1].length >= 6) { c.me = { x: d[1][1] / 4, y: d[1][2] / 4 }; c.hp = d[1][4]; }
         s.emit('input', { seq: 1, dx: 0, dy: 0, angle: 0, shooting: false });
@@ -118,14 +118,22 @@ test('under half its health the Colossus shakes the ground: a 1.4 s wind-up, the
     });
 });
 
-test('under a quarter of its health the Colossus calls eight small colossi (500 health each)', async () => {
+test('under a quarter of its health the Colossus calls eight small colossi: from the edge of the map, from different sides, not beside it', async () => {
     await withServer(async (base) => {
         const c = await client(base, 'col_call');
         c.s.emit('sandbox-spawn', { type: 'colossus', x: c.me.x + 400, y: c.me.y, hp: 0.2 });   // under a quarter: the quake first, then the call
         for (let i = 0; i < 80 && countOf(c, T.mini) < 8; i++) await sleep(100);
-        assert.equal(countOf(c, T.mini), 8, 'eight small colossi');
-        assert.equal(countOf(c, T.colossus), 1);
+        const minis = c.zombies.filter(z => z[1] === T.mini), boss = c.zombies.find(z => z[1] === T.colossus);
+        assert.equal(minis.length, 8, 'eight small colossi');
+        assert.ok(boss, 'and the Colossus');
         assert.ok((c.ev['colossus-quake'] || []).length === 1, 'the quake came first, once');
+        // the base is at (1300, 1300): they stand far from it (the edge), far from the Colossus, and on every side of it (an angle round the base for each, no two in the same slice of 45 degrees)
+        const slices = new Set();
+        for (const m of minis) {
+            assert.ok(Math.hypot(m[2] - 1300, m[3] - 1300) > 800, 'from the edge, not beside the boss: ' + Math.round(Math.hypot(m[2] - 1300, m[3] - 1300)));
+            slices.add(Math.floor(((Math.atan2(m[3] - 1300, m[2] - 1300) + Math.PI) / (Math.PI * 2)) * 8));
+        }
+        assert.ok(slices.size >= 6, 'from different sides of the map: ' + slices.size + ' of 8 slices');
         c.s.close();
     });
 });

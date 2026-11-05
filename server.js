@@ -1129,7 +1129,7 @@ const PVE_ZOMBIE_DEFS = {
                 // `r` for `slow.ms`: they fire `slow.mul` times as slowly; no stun, that is the screamer's) and the CALL (under a quarter: it roars and `spawn.n` small colossi come)
                 stages: [
                     { id: 'quake', at: 0.5, windup: 1.4, recover: 1.0, r: 420, sdmg: 90, pdmg: 60, slow: { ms: 10000, mul: 2.2 } },
-                    { id: 'call', at: 0.25, windup: 1.2, recover: 0.8, spawn: { type: 'minicolossus', n: 8, from: 110, to: 200 } },
+                    { id: 'call', at: 0.25, windup: 1.2, recover: 0.8, spawn: { type: 'minicolossus', n: 8, from: 1050, to: 1200 } },   // (from / to: how far from the base they come in, as the ordinary zombies do)
                 ] },
     // a small colossus (the Colossus calls eight of them under a quarter of its health): the same stone and lava, much smaller and weaker. It walks on to the base like its mother
     // (it never goes for a player; it breaks what is in its way) and hits with a short two-fisted slam (20 on a barricade, a turret or the base, no shock)
@@ -1941,7 +1941,7 @@ function eggTick(code, room, zombie, def, dt) {
 // The stages of a boss (def.stages: the Colossus): each once, when its health is under `at` of the maximum. Called every tick from its place in the attack chain; returns true while
 // a stage is going on (or has just begun), so the normal blow waits. The boss stands still for the wind-up (colossus-swing, the same event as a blow: the client raises the fists) and
 // the stage lands at its end (colossus-hit with the radius, so the client draws a shock of that size): the QUAKE hurts what is built and the players within `r` of the impact and slows
-// the turrets there (colossus-quake {id, x, y, r, ms, ids}: the client puts a yellow dusty haze on those turrets), the CALL puts `spawn.n` small colossi round it.
+// the turrets there (colossus-quake {id, x, y, r, ms, ids}: the client puts a yellow dusty haze on those turrets), the CALL sends `spawn.n` small colossi in from the edge of the map, each from a different side.
 function stageTick(code, room, zombie, def, dt, now) {
     let st = zombie._stg;
     if (st) {
@@ -1962,9 +1962,12 @@ function stageTick(code, room, zombie, def, dt, now) {
                 io.to(code).emit('colossus-hit', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), miss: false, r: cfg.r });
                 io.to(code).emit('colossus-quake', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), r: cfg.r, ms: cfg.slow.ms, ids });
             } else if (cfg.id === 'call') {
-                const sp = cfg.spawn, mdef = PVE_ZOMBIE_DEFS[sp.type];
+                // they do not appear beside it (that looked odd and they piled up): they come in from the edge of the map like any other zombie, each from a different side
+                // (the circle of spawns round the base cut in `n` slices, one in each, a little off centre), and take a while to walk in
+                const sp = cfg.spawn, mdef = PVE_ZOMBIE_DEFS[sp.type], a0 = Math.random() * Math.PI * 2;
                 for (let k = 0; k < sp.n; k++) {
-                    const [x, y] = _freeSpotNear(room, zombie.x, zombie.y, sp.from, sp.to, mdef.r);
+                    const a = a0 + (k + 0.2 + Math.random() * 0.6) * (Math.PI * 2 / sp.n), d = sp.from + Math.random() * (sp.to - sp.from);
+                    const x = Math.max(mdef.r + 20, Math.min(ARENA_W - mdef.r - 20, PVE_BASE_X + Math.cos(a) * d)), y = Math.max(mdef.r + 20, Math.min(ARENA_H - mdef.r - 20, PVE_BASE_Y + Math.sin(a) * d));
                     room.zombies.push(createPveZombie(sp.type, room.zombies.length, 1, x, y));
                 }
                 io.to(code).emit('colossus-hit', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), miss: false, r: sp.to });
