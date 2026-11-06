@@ -4994,6 +4994,23 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
         }
     }
+    // The health bars of everything that is built (walls and turrets). They are drawn with the names, in the last layer of the world (see NUME + HP), not with the structures: a bar is never
+    // under a turret or a barricade next to it, and never under a zombie, a player or a crown that stands in front of it.
+    function _drawBuiltBars(ctx, visL, visT, visR, visB) {
+        for (let i = 0; i < _structs.length; i++) {
+            const s = _structs[i];
+            if (s.hp >= s.maxHp) continue;
+            const hh = ARStructs.halfH(s);
+            if (s.x + 60 < visL || s.x - 60 > visR || s.y + hh + 14 < visT || s.y - hh - 24 > visB) continue;
+            _drawHpBar(ctx, s.x - 24, s.y - hh - 15, 48, 7, Math.max(0, s.hp / s.maxHp), 1.6);
+        }
+        for (let i = 0; i < _turrets.length; i++) {
+            const t = _turrets[i], R = ARStructs.TURRET.r;
+            if (t.hp >= t.maxHp) continue;
+            if (t.x + R + 24 < visL || t.x - R - 24 > visR || t.y + R + 24 < visT || t.y - R - 24 > visB) continue;
+            _drawHpBar(ctx, t.x - 24, t.y - R - 17, 48, 7, Math.max(0, t.hp / t.maxHp), 1.6);
+        }
+    }
     function _drawStructs(ctx, scale, zoom, visL, visT, visR, visB, now) {
         for (let i = 0; i < _structs.length; i++) {
             const s = _structs[i];
@@ -5019,20 +5036,6 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.globalAlpha = 1;
         }
         _drawDrones(ctx, scale, now, visL, visT, visR, visB);   // over the turrets (it flies)
-        // The health bars of everything that is built, last of all the walls and the turrets: a bar is never under a turret or a barricade next to it
-        for (let i = 0; i < _structs.length; i++) {
-            const s = _structs[i];
-            if (s.hp >= s.maxHp) continue;
-            const hh = ARStructs.halfH(s);
-            if (s.x + 60 < visL || s.x - 60 > visR || s.y + hh + 14 < visT || s.y - hh - 24 > visB) continue;
-            _drawHpBar(ctx, s.x - 24, s.y - hh - 15, 48, 7, Math.max(0, s.hp / s.maxHp), 1.6);
-        }
-        for (let i = 0; i < _turrets.length; i++) {
-            const t = _turrets[i], R = ARStructs.TURRET.r;
-            if (t.hp >= t.maxHp) continue;
-            if (t.x + R + 24 < visL || t.x - R - 24 > visR || t.y + R + 24 < visT || t.y - R - 24 > visB) continue;
-            _drawHpBar(ctx, t.x - 24, t.y - R - 17, 48, 7, Math.max(0, t.hp / t.maxHp), 1.6);
-        }
         _drawStructFx(ctx, now);
         _drawWorkRings(ctx, now, visL, visT, visR, visB);
         // what E would work on is outlined, in the colour of the job (green repair, gold upgrade, red when the coins are short, white when
@@ -8042,6 +8045,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // --- NUME + HP --- (above the crowns, so a tag is never hidden)
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
+        if (_gameMode === 'pve') _drawBuiltBars(ctx, visLeft, visTop, visRight, visBottom);   // the bars of the walls and the turrets: over the zombies too
         if (_gameMode === 'pve') {   // the base's bar: the player's, made bigger, over the fort
             const _bBarW = 150, _bBarH = 20, _bBarX = _PVE_BASE.x - _bBarW / 2, _bBarY = _PVE_BASE.y - _PVE_BASE_R - 52;
             const _bRatio = Math.max(0, Math.min(1, _pveState.baseHp / (_pveState.baseMaxHp || 1000)));
