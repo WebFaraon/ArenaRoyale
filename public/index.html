@@ -256,6 +256,9 @@
             <button class="lti-btn" id="tab-right" onclick="switchLobbyTab('right')"><img class="pic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false"><span>Missions</span></button>
         </nav>
         <div class="lb-topbar-right">
+            <button class="lb-btn missions-nav-btn" onclick="openMissions()" id="missions-nav-btn" aria-label="Missions">
+                <img class="pic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false"><span class="lb-btn-text">MISSIONS</span>
+            </button>
             <button class="lb-btn friends-nav-btn" onclick="openFriendsPanel()" id="friends-nav-btn">
                 <img class="pic" src="/images/ui/prieteni.svg" alt="" aria-hidden="true" draggable="false"><span class="lb-btn-text">FRIENDS</span>
                 <span id="friends-nav-badge" class="friends-nav-badge" style="display:none"></span>
@@ -295,10 +298,10 @@
         <section class="lp-card lp-results">
             <h2 class="lp-card-title">STATS</h2>
             <div class="lp-stats-grid">
-                <div class="lp-stat-box lp-stat-wins"><span class="lp-stat-val" id="lp-wins">0</span><span class="lp-stat-lbl"><img class="pic lp-stat-icon" src="/images/ui/victorii.svg" alt="" aria-hidden="true" draggable="false">WINS</span></div>
-                <div class="lp-stat-box lp-stat-kills"><span class="lp-stat-val" id="lp-kills">0</span><span class="lp-stat-lbl"><img class="pic lp-stat-icon" src="/images/ui/eliminari.svg" alt="" aria-hidden="true" draggable="false">ELIMINATIONS</span></div>
-                <div class="lp-stat-box lp-stat-games"><span class="lp-stat-val" id="lp-games">0</span><span class="lp-stat-lbl"><img class="pic lp-stat-icon" src="/images/ui/meciuri.svg" alt="" aria-hidden="true" draggable="false">MATCHES</span></div>
-                <div class="lp-stat-box lp-stat-winrate"><span class="lp-stat-val" id="lp-winrate">0%</span><span class="lp-stat-lbl"><img class="pic lp-stat-icon" src="/images/ui/win_rate.svg" alt="" aria-hidden="true" draggable="false">WIN RATE</span></div>
+                <div class="lp-stat-box lp-stat-wins"><span class="lp-stat-val" id="lp-wins">0</span><img class="pic lp-stat-icon" src="/images/ui/victorii.svg" alt="" aria-hidden="true" draggable="false"><span class="lp-stat-lbl">WINS</span></div>
+                <div class="lp-stat-box lp-stat-kills"><span class="lp-stat-val" id="lp-kills">0</span><img class="pic lp-stat-icon" src="/images/ui/eliminari.svg" alt="" aria-hidden="true" draggable="false"><span class="lp-stat-lbl">ELIMINATIONS</span></div>
+                <div class="lp-stat-box lp-stat-games"><span class="lp-stat-val" id="lp-games">0</span><img class="pic lp-stat-icon" src="/images/ui/meciuri.svg" alt="" aria-hidden="true" draggable="false"><span class="lp-stat-lbl">MATCHES</span></div>
+                <div class="lp-stat-box lp-stat-winrate"><span class="lp-stat-val" id="lp-winrate">0%</span><img class="pic lp-stat-icon" src="/images/ui/win_rate.svg" alt="" aria-hidden="true" draggable="false"><span class="lp-stat-lbl">WIN RATE</span></div>
             </div>
         </section>
 
@@ -428,7 +431,6 @@
         <section class="lp-card missions-card">
             <div class="mc-head">
                 <h2 class="lp-card-title"><img class="pic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false">DAILY MISSIONS</h2>
-                <button type="button" class="mc-all" onclick="openMissions()">All <b id="mc-count">6</b></button>
             </div>
             <div id="lp-missions"></div>
         </section>
