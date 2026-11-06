@@ -1,0 +1,36 @@
+{
+  "view": [
+    -70,
+    -52.5,
+    140,
+    140
+  ],
+  "order": [
+    "armL",
+    "armR",
+    "head",
+    "shield"
+  ],
+  "pivots": {
+    "armL": {
+      "x": -28,
+      "y": 8,
+      "note": "left shoulder (inside the head): the arm stretches with the shield and swings a little with the walk"
+    },
+    "armR": {
+      "x": 28,
+      "y": 8,
+      "note": "right shoulder: the other side"
+    },
+    "head": {
+      "x": 0,
+      "y": 0,
+      "note": "centre of the head: sways with the steps, lunges into the bash"
+    },
+    "shield": {
+      "x": 0,
+      "y": 46,
+      "note": "the middle of the shield: it is pulled back for the wind-up, thrust forward for the bash, and sways with the walk"
+    }
+  }
+}

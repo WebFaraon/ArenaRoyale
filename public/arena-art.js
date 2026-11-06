@@ -653,6 +653,7 @@
     }
     const COL_SET  = makePieceSet('colossus', ['crown', 'pauL', 'pauR', 'armL', 'armR', 'head'], { crown: [0, -20], pauL: [-58, 18], pauR: [58, 18], armL: [-58, 20], armR: [58, 20], head: [0, 0] }, 15, 'col_', 116, 14);   // the pivots: the same as parts.json
     const MINI_SET = makePieceSet('colossus_mini', ['crown', 'armL', 'armR', 'head'], { crown: [0, -14], armL: [-38, 12], armR: [38, 12], head: [0, 0] }, 16, 'cmi_', 68, 30);
+    const SHD_SET  = makePieceSet('shielded', ['armL', 'armR', 'head', 'shield'], { armL: [-28, 8], armR: [28, 8], head: [0, 0], shield: [0, 46] }, 8, 'shd_', 44, 48);   // the shielded zombie (the pivots: the same as parts.json)
     function setReady(S) { for (let i = 0; i < S.imgs.length; i++) if (S.imgs[i].state !== 1) return false; return true; }
     function setPad(S, def) { const art = ZOMBIE_ART[S.art], k = def.r / art.disc, v = art.view; return Math.max(-v[0], -v[1], v[0] + v[2], v[1] + v[3]) * k + 2; }
     function setPaint(S, i, def) {
@@ -671,6 +672,7 @@
     }
     function warmColossus(def) { return warmSet(COL_SET, def); }
     function warmMiniColossus(def) { return warmSet(MINI_SET, def); }
+    function warmShielded(def) { return warmSet(SHD_SET, def); }
     const smooth01 = function (p) { p = p < 0 ? 0 : p > 1 ? 1 : p; return p * p * (3 - 2 * p); };
     function drawColPieces(S, ctx, m, zb, def, now, nx, ny) {
         if (!setReady(S)) return false;
@@ -733,6 +735,79 @@
     }
     function drawColossusSprite(ctx, m, zb, def, now, nx, ny) { return drawColPieces(COL_SET, ctx, m, zb, def, now, nx, ny); }
     function drawMiniColossusSprite(ctx, m, zb, def, now, nx, ny) { return drawColPieces(MINI_SET, ctx, m, zb, def, now, nx, ny); }
+    // The shielded zombie (public/images/zombies/shielded/*.svg: both arms, the head, the shield with the hands that grip it) walks and bashes with its pieces. It faces the way it walks, so
+    // "forward" is +y of the picture. THE WALK (zb._bp phase with the distance covered, zb._ba how much it is walking): the head sways with the steps, the shield rocks the other way and
+    // bobs forward and back, and the arms follow the shield (they stretch and shorten, they are fixed to the shoulders). THE BASH (the server's swing: shielded-swing starts it, zb.swingT /
+    // swingMs; shielded-hit lands it, zb.slamT): in the wind-up the shield is pulled back and raised towards the camera (it gets bigger), the arms shorten, the head draws back and the
+    // whole thing trembles; at the moment of the blow the shield is thrust forward (the arms stretch out, the head lunges) and then it all settles. A round that the shield stops
+    // (zb.blockT, set on shield-block) pushes it back a little. A hit (flash) and burning (hot) are washed over each piece, so they follow the pose.
+    function washedPiece(S, i, def, kind) {
+        const key = S.prefix + S.parts[i] + kind, old = zombieSprites.get(key), pad = setPad(S, def), paint = setPaint(S, i, def);
+        const sp = sprite(old, pad, function (g) { paint(g); g.globalCompositeOperation = 'source-atop'; g.fillStyle = kind === 'F' ? 'rgba(255,255,255,0.85)' : 'rgba(255,70,24,0.45)'; g.fillRect(-pad, -pad, pad * 2, pad * 2); g.globalCompositeOperation = 'source-over'; });
+        if (sp !== old && sp) zombieSprites.set(key, sp);
+        return sp || old;
+    }
+    function drawShieldedSprite(ctx, m, zb, def, now, hot, flash, nx, ny) {
+        const S = SHD_SET;
+        if (!setReady(S)) return false;
+        const pad = setPad(S, def), art = ZOMBIE_ART[S.art], k = def.r / art.disc;
+        const sp = [];
+        for (let i = 0; i < S.parts.length; i++) {
+            const key = S.prefix + S.parts[i], old = zombieSprites.get(key), sprt = sprite(old, pad, setPaint(S, i, def));
+            if (sprt !== old && sprt) zombieSprites.set(key, sprt);
+            if (!(sprt || old)) return false;
+            sp.push(sprt || old);
+        }
+        // the walk
+        const dtS = zb._bl ? Math.min(0.1, Math.max(0.001, (now - zb._bl) / 1000)) : 0.016;
+        const moved = zb._bl ? Math.hypot(zb.x - zb._bx, zb.y - zb._by) : 0;
+        zb._bl = now; zb._bx = zb.x; zb._by = zb.y;
+        zb._bp = (zb._bp || 0) + moved * (2 * Math.PI / S.stride);
+        zb._ba = (zb._ba || 0) + (Math.min(1, moved / dtS / S.refSpd) - (zb._ba || 0)) * Math.min(1, dtS * 5);
+        const ph = zb._bp, amp = zb._ba, t = now / 1000, seed = (zb.id || 0) * 1.3, sn1 = Math.sin(ph), cs1 = Math.cos(ph);
+        // the bash: shDy = how far the shield is from its place (+ = forward, units), shSc = how big it is (raised = bigger), hdDy = the head's shift, shake = the tremble of the wind-up
+        let shDy = 0, shSc = 1, hdDy = 0, shake = 0, shRot = 0;
+        if (zb.swingT) {
+            const W = zb.swingMs || 500, swAge = now - zb.swingT;
+            const slamAge = zb.slamT && zb.slamT >= zb.swingT ? now - zb.slamT : (swAge > W + 120 ? swAge - W : -1);
+            if (slamAge < 0 && swAge >= 0 && swAge < W + 120) {   // the wind-up: pulled back and raised
+                const p = smooth01(swAge / W);
+                shDy = -11 * p; shSc = 1 + 0.09 * p; hdDy = -3.2 * p; shake = p * p; shRot = -0.1 * p;
+            } else if (slamAge >= 0 && slamAge < 700) {   // the thrust, then it settles
+                const STRIKE = 100;
+                if (slamAge < STRIKE) { const p = slamAge / STRIKE, e = 1 - (1 - p) * (1 - p); shDy = -11 + 33 * e; shSc = 1.09 - 0.05 * e; hdDy = -3.2 + 9.7 * e; shRot = -0.1 + 0.2 * e; }
+                else { const e = smooth01((slamAge - STRIKE) / 600); shDy = 22 * (1 - e); shSc = 1.04 - 0.04 * e; hdDy = 6.5 * (1 - e); shRot = 0.1 * (1 - e); }
+            }
+        }
+        // a round stopped by the shield: it is pushed back and wobbles for ~160 ms
+        if (zb.blockT) { const ba = (now - zb.blockT) / 160; if (ba >= 0 && ba < 1) { const q = (1 - ba) * (1 - ba); shDy -= 2.8 * q; shRot += 0.06 * q * Math.sin(ba * 14); } }
+        const sk = shake ? Math.sin(now / 21) * 0.7 * shake * k : 0;
+        // the step: the body dips a little as each foot comes down
+        const sd = amp * Math.pow(Math.abs(sn1), 6);
+        const idle = Math.sin(t * 1.4 + seed) * 0.012;
+        const shWalkDy = 2.4 * cs1 * amp, shWalkDx = 1.8 * sn1 * amp;   // the shield bobs forward and back and a little sideways with the steps
+        const shY = shDy + shWalkDy;
+        const stretch = (shY + 0.0) / 42;                               // the arms reach from the shoulder (y 8) to the hand (y 50): 42 units
+        const a = (zb.angle || 0) - Math.PI / 2, cs = Math.cos(a), sn = Math.sin(a);
+        const zx = nx ? zb.x + nx : zb.x, zy = ny ? zb.y + ny : zb.y;
+        const base = [m.a * cs + m.c * sn, m.b * cs + m.d * sn, m.c * cs - m.a * sn, m.d * cs - m.b * sn, m.a * zx + m.c * zy + m.e, m.b * zx + m.d * zy + m.f];
+        // per piece: [rotation, sx, sy, shift x, shift y] about its pivot
+        const T = {
+            armL: [-sn1 * 0.09 * amp + shRot * 0.5 + idle, 1, 1 + stretch, sk + shWalkDx * k * 0.5, 0],
+            armR: [-sn1 * 0.09 * amp + shRot * 0.5 - idle, 1, 1 + stretch, sk + shWalkDx * k * 0.5, 0],
+            head: [sn1 * 0.09 * amp + idle, 1 + 0.02 * sd, 1 + 0.02 * sd, sk, (hdDy + 1.1 * Math.sin(ph * 2) * amp + 0.8 * sd) * k],
+            shield: [-sn1 * 0.07 * amp + shRot - idle, shSc, shSc, sk + shWalkDx * k, shY * k],
+        };
+        for (let i = 0; i < S.parts.length; i++) {
+            const pv = S.pivot[S.parts[i]], tr = T[S.parts[i]], px = pv[0] * k, py = pv[1] * k;
+            ctx.setTransform(base[0], base[1], base[2], base[3], base[4], base[5]);
+            ctx.translate(px + tr[3], py + tr[4]); ctx.rotate(tr[0]); ctx.scale(tr[1], tr[2]); ctx.translate(-px, -py);
+            ctx.drawImage(sp[i].c, -pad, -pad, pad * 2, pad * 2);
+            if (flash > 0.02) { const w = washedPiece(S, i, def, 'F'); if (w) { ctx.globalAlpha = flash; ctx.drawImage(w.c, -pad, -pad, pad * 2, pad * 2); ctx.globalAlpha = 1; } }
+            if (hot > 0.02) { const w = washedPiece(S, i, def, 'H'); if (w) { ctx.globalAlpha = hot; ctx.drawImage(w.c, -pad, -pad, pad * 2, pad * 2); ctx.globalAlpha = 1; } }
+        }
+        return true;
+    }
     // Draws her; false when the pieces are not all in yet (the caller draws the whole picture instead)
     function drawBroodSprite(ctx, m, zb, def, now, nx, ny) {
         if (!broodReady()) return false;
@@ -816,6 +891,7 @@
         if (typeKey === 12 && drawBroodSprite(ctx, m, zb, def, now, nx, ny)) return;   // the Brood Mother moves in pieces
         if (typeKey === 15 && drawColossusSprite(ctx, m, zb, def, now, nx, ny)) return;   // so does the Colossus
         if (typeKey === 16 && drawMiniColossusSprite(ctx, m, zb, def, now, nx, ny)) return;   // and the small ones it calls
+        if (typeKey === 8 && drawShieldedSprite(ctx, m, zb, def, now, hot, flash, nx, ny)) return;   // the shielded zombie moves in pieces too
         let s = null, pad = 0;
         const zp = zombiePainter(def, typeKey);
         if (zp) {
@@ -1108,6 +1184,7 @@
         if (zdefs[12]) missing += warmBrood(zdefs[12]);
         if (zdefs[15]) missing += warmColossus(zdefs[15]);
         if (zdefs[16]) missing += warmMiniColossus(zdefs[16]);
+        if (zdefs[8]) missing += warmShielded(zdefs[8]);
         if (withBase) for (let st = 0; st < BASE_PAL.length; st++) { const pal = BASE_PAL[st]; need('base' + st, BASE_PAD, function (g) { paintBase(g, pal); }); }
         need('kit', KIT_PAD, kitPainter());
         need('ammo', KIT_PAD, ammoPainter());

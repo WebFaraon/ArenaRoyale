@@ -6471,7 +6471,24 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     socket.on('acid', ({ a }) => { _zFxPush(_acidFx(a)); });
     socket.on('boom', ({ x, y, r }) => { _zFxPush(_boomFx(x, y, r)); });
-    socket.on('shield-block', (a) => { _zFxPush(_clangFx(a[0], a[1], a[2] / 100)); });
+    socket.on('shield-block', (a) => {
+        _zFxPush(_clangFx(a[0], a[1], a[2] / 100));
+        // the shield that stopped it is pushed back a little (ARArena.drawShieldedSprite reads zb.blockT): the nearest shielded zombie to where it was
+        let best = null, bd = 70 * 70;
+        for (let i = 0; i < _zombies.length; i++) { const z = _zombies[i]; if (!z || z.type !== 8 || !(z.hp > 0)) continue; const d = (z.x - a[0]) * (z.x - a[0]) + (z.y - a[1]) * (z.y - a[1]); if (d < bd) { bd = d; best = z; } }
+        if (best) best.blockT = performance.now();
+    });
+    // The shielded zombie's bash: shielded-swing = the wind-up begins (it pulls the shield back: ARArena.drawShieldedSprite reads zb.swingT / swingMs), shielded-hit = the damage lands NOW:
+    // the shield is thrust forward at that moment and a small shock marks the ground where it hit
+    socket.on('shielded-swing', ({ id, ms }) => { const z = _zombies[id]; if (z) { z.swingT = performance.now(); z.swingMs = ms; } });
+    socket.on('shielded-hit', ({ id, x, y, miss }) => {
+        const now = performance.now(), z = _zombies[id];
+        if (z) z.slamT = now;
+        const sp = [], ch = [], n = miss ? 3 : 5;
+        for (let k = 0; k < n; k++) sp.push({ a: (k / n) * TAU + Math.random() * 0.6, l: 22 + Math.random() * 24 });
+        for (let k = 0; k < (miss ? 3 : 5); k++) ch.push({ a: Math.random() * TAU, v: 26 + Math.random() * 34, s: 2 + Math.random() * 2.4, w: (Math.random() - 0.5) * 8 });
+        _zFxPush({ k: 'slam', x0: x, y0: y, t0: now, sp, ch, miss: !!miss, big: 0.5 });
+    });
     socket.on('summon', ({ x, y }) => { _zFxPush({ k: 'summon', x0: x, y0: y, t0: performance.now() }); });
     socket.on('egg-throw', (d) => {   // the Brood Mother throws an egg: she heaves (her pieces move, see ARArena.drawBroodSprite) and it flies to where it lands
         const now = performance.now(), z = _zombies[d.from];

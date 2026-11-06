@@ -1099,7 +1099,8 @@ const PVE_ZOMBIE_DEFS = {
     // what comes at its front (within `half` radians of where it faces) is stopped, a player's bullet or a machine gun turret's round; from the side or
     // the back it is hurt as any. The Tesla bolt, the bombs and the flames go over the shield. See shieldBlocks in zombie-steer.js.
     shielded: { hp: 520, chaseSpd: 48, patrolSpd: 28, dmg: 0, attackR: 62, attackCd: 1.2, coinsMin: 10, coinsMax: 16, baseDmg: 50, r: 24, hunts: false, mass: 3,
-                shield: { half: 1.25 } },
+                shield: { half: 1.25 },
+                swing: { ev: 'shielded', windup: 0.45, recover: 0.45 } },   // the bash with the shield: it draws it back for 0.45 s, the damage lands as it is thrust forward (see swingTick)
     // the screamer: fast and hard-hitting. It goes for the nearest player from the moment it spawns (no detection range): when it gets within `near` of one it stops
     // for a moment and screams, and every turret of any kind within `range` of IT is stunned for `stun` seconds (it does not fire, flame or heal); then it
     // goes on after the player. Once only. So a player can draw it away from the turrets and nothing is stunned, or stay by them and risk it.
