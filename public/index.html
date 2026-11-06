@@ -1025,9 +1025,16 @@
             <div class="settings-row">
                 <div class="settings-label">
                     <img class="pic" id="set-sound-ic" src="/images/ui/sunet.svg" alt="" aria-hidden="true" draggable="false">
-                    <div><div class="settings-name">Sound</div><div class="settings-hint">Button, selection, and match start effects</div></div>
+                    <div><div class="settings-name">Sound</div><div class="settings-hint">Weapons, buttons and match effects (off also silences the music)</div></div>
                 </div>
                 <button class="switch" id="set-sound" role="switch" aria-checked="true" aria-label="Sound"><span class="switch-knob"></span><span class="switch-text">ON</span></button>
+            </div>
+            <div class="settings-row" id="set-row-music">
+                <div class="settings-label">
+                    <img class="pic" src="/images/ui/sunet.svg" alt="" aria-hidden="true" draggable="false">
+                    <div><div class="settings-name">Music</div><div class="settings-hint">The loop behind the lobby and the match</div></div>
+                </div>
+                <button class="switch" id="set-music" role="switch" aria-checked="true" aria-label="Music"><span class="switch-knob"></span><span class="switch-text">ON</span></button>
             </div>
             <div class="settings-row" id="set-row-skinfx">
                 <div class="settings-label">
@@ -1124,6 +1131,7 @@
 <script src="pve-coins.js"></script>
 <script src="skin-fx.js"></script>
 <script src="impact-fx.js"></script>
+<script src="shell-fx.js"></script>
 <script src="ui-fx.js"></script>
 <script src="blackbox.js"></script>
 <script src="arena-art.js"></script>

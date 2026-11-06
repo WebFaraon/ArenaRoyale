@@ -735,7 +735,7 @@ function _arsRenderMain() {
         </div>`;
     if (_ars.inHand) {
         const c = document.getElementById('ars-hand');
-        c.addEventListener('pointerdown', () => _shotKick(_ars.fx, performance.now()));
+        c.addEventListener('pointerdown', () => { if (_shotKick(_ars.fx, performance.now())) _shotSfx(_ars.weapon, 0.8); });
         if (!_ars.raf) _ars.raf = requestAnimationFrame(_arsHandLoop);
     } else _arsFitGun(false);
 }
@@ -2825,11 +2825,37 @@ function _shotRecoil(fx, now) {
     const u = 1 - (t - RECOIL_UP_MS) / RECOIL_BACK_MS;
     return u * u;
 }
+// Returns true when this call starts a new shot (false for the other pellets of the same shot), so the caller can add the sound once.
 function _shotKick(fx, now) {
-    if (now - fx.flash < 25) return; // the other pellets of the same shot
+    if (now - fx.flash < 25) return false; // the other pellets of the same shot
     const cur = _shotRecoil(fx, now);
     fx.kick = now - RECOIL_UP_MS * (1 - Math.sqrt(1 - Math.min(1, cur)));
     fx.flash = now;
+    return true;
+}
+// The sound of a shot (ui-fx.js, ARSound): the kind of gun picks the recordings (three each, one at random), the gun its own pitch, so the five
+// rifle-class guns share recordings but do not sound alike; every shot also wobbles a little in pitch (ui-fx.js, `jitter`). vol 0..1, pan -1..1.
+const _GUN_SFX = {
+    pistol: ['gun_pistol', 1], smg: ['gun_smg', 1], shotgun: ['gun_shotgun', 1], sniper: ['gun_sniper', 1],
+    assault: ['gun_rifle', 1], burst: ['gun_rifle', 1.1], ar_grizzly: ['gun_rifle', 0.9], ar_falcon: ['gun_rifle', 1.04], ar_titan: ['gun_rifle', 0.84],
+};
+function _shotSfx(weaponId, vol, pan) {
+    const g = _GUN_SFX[weaponId] || _GUN_SFX.assault;
+    if (window.ARSound) window.ARSound.play(g[0], { vol: vol === undefined ? 1 : vol, rate: g[1], pan: pan || 0 });
+}
+// The casing a shot throws (public/shell-fx.js, part of Fine effects): from the shooter's centre (cx, cy), aiming (dx, dy); the kind of casing by the gun.
+const _SHELL_OF = { pistol: 'pistol', smg: 'smg', shotgun: 'shell', sniper: 'long', assault: 'rifle', burst: 'rifle', ar_grizzly: 'rifle', ar_falcon: 'rifle', ar_titan: 'rifle' };
+function _ejectShell(weaponId, cx, cy, dx, dy) {
+    if (!window.ARJuice.on()) return;
+    const q = _RS.idx === 0 ? 1 : _RS.idx === 1 ? 0.75 : _RS.idx === 2 ? 0.5 : _RS.idx === 3 ? 0.3 : 0;
+    const len = Math.hypot(dx, dy) || 1;
+    if (q > 0) ARShells.eject(_SHELL_OF[weaponId] || 'rifle', cx + dx / len * 14, cy + dy / len * 14, dx, dy, q);
+}
+// Someone else's shot at (x, y), heard from (lx, ly): quieter with distance (silent past ~1200 units) and panned by how far to the side it is
+function _shotSfxAt(weaponId, x, y, lx, ly) {
+    const d = Math.hypot(x - lx, y - ly), f = 1 - d / 1200;
+    if (f <= 0.04) return;
+    _shotSfx(weaponId, 0.85 * f * f, Math.max(-0.8, Math.min(0.8, (x - lx) / 700)));
 }
 
 // Muzzle flash: a star stretched along the shot (+y here, the aim), the gun's accent with a white core
@@ -3555,7 +3581,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _kitPickupFx  = [];        // { x, y, amount, startTime }
     const _coinFloats   = [];        // { x, y, amount, startTime } — coin earn popup
     const _coinDrops    = new Map(); // PvE coins on the ground: id -> { x, y, ox, oy, t0 } (ox/oy: where the zombie died)
-    const _coinFx       = [];        // coins just taken: { x, y, t0 }, a short hop and fade
+    const _coinFx       = [];        // coins just taken: { x, y, t0 }, a short hop and fade (mine: flies to the counter, see _coinClaim)
+    // The coin counters (the badge in the HUD and the box in the break panel). disp is what they show: it follows the real number (_pveState.myCoins) down at once
+    // (spending), but up only as the coins land (each coin you pick up flies to the counter and adds itself when it arrives); a rise nothing claimed (a sale, a pile over
+    // the cap of flying coins) shows after a beat. Fine effects off: disp is always the real number. flights = how many of my coins are in the air.
+    const _coinHud = { disp: -1, flights: 0, revealAt: 0, instant: 0, popN: 0, popT: 0, tAt: -1e9, ok: false, sx: 0, sy: 0 };
     const COIN_LAND_MS = ARPveCoins.LAND_MS, COIN_TTL_MS = ARPveCoins.TTL_MS, COIN_BLINK_MS = ARPveCoins.BLINK_MS;   // pve-coins.js: the server uses the same life
     const _kitDropAnim  = new Map(); // id → dropStartTime (animatie de cadere la spawn)
     const _obsShake     = {};   // obstacle index → shake start ms
@@ -3716,7 +3746,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 _clientBullets.push(g);
                 _ownLinked.set(b.id, g);
                 _bDiag.ghosts++;
-                _shotKick(_fxFor(myId), now);
+                if (_shotKick(_fxFor(myId), now)) { _shotSfx(selectedWeapon); if (predX !== null) _ejectShell(selectedWeapon, predX, predY, b.dx, b.dy); }
                 if (_bDiag.ghostLog) {
                     const cands = _clientBullets.filter(c => c !== g).map(c => ({ age: Math.round(now - c.spawnTime), sid: c.sid, dead: c.dead, ghost: !!c.ghost,
                         dot: +((c.dx * ux + c.dy * uy) / (Math.hypot(c.dx, c.dy) || 1)).toFixed(3) }));
@@ -3768,7 +3798,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // x, y: the muzzle; ox, oy: the shooter's centre, where the first swept hit test starts (server.js sx, sy)
     function _newClientBullet(x, y, dx, dy, life, now, ox, oy) {
         _bDiag.predicted++;
-        _shotKick(_fxFor(socket.id), now);
+        if (_shotKick(_fxFor(socket.id), now)) { _shotSfx(selectedWeapon); _ejectShell(selectedWeapon, ox, oy, dx, dy); }
         if (_bDiag.spawnLog && _bDiag.spawnLog.length < 300) { _bDiag.spawnLog.push(Math.round(now)); _bDiag.spawnPos.push([+x.toFixed(2), +y.toFixed(2), +ox.toFixed(2), +oy.toFixed(2), +(dx / Math.hypot(dx, dy)).toFixed(4), +(dy / Math.hypot(dx, dy)).toFixed(4)]); }
         return { x, y, dx, dy, life, spawnTime: now, sid: null, seenGen: 0, px: ox, py: oy, hiddenAt: 0, dead: false, noPredict: false, fx: false };
     }
@@ -3802,6 +3832,44 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _zapFx       = [];   // the bolts of the Tesla Towers: { t0, segs: [{ pts: flat [x, y, ...], t0 }], hits: [{ x, y, t0 }] }
     const _structDying = [];   // broken ones, drawn as pieces for a second: { s, t0 }
     const _bar = { inv: 0, invT: 0, invE: 0, invH: 0, invO: 0, invF: 0, invS: 0, kind: 'b', act: null, can: true, place: false, g: { x: 0, y: 0, o: 0 }, why: null, use: null, useKey: '-', imgs: new Map(), pl: [], els: null, work: new Map() };   // work: id -> { t0, dur, action } (a repair / upgrade under way)
+    // The placement ghost's own motion (drawing only: _bar.g stays exact, it is what is checked and sent). It eases toward where it should stand, pops in when the
+    // placement mode starts, gives a little bump and a ring when the spot turns valid, and shakes in red when a click is refused (_barPlace).
+    const _gh = { on: false, kind: '', x: 0, y: 0, t: 0, born: -1e9, ok: true, okAt: -1e9, shake: -1e9 };
+    function _ghostBegin(ctx, g, ok, kind, now) {
+        const jc = window.ARJuice.on(), dt = Math.min(0.05, Math.max(0, (now - _gh.t) / 1000)); _gh.t = now;
+        const fresh = !_gh.on || _gh.kind !== kind;
+        if (fresh || !jc || Math.abs(g.x - _gh.x) + Math.abs(g.y - _gh.y) > 160) { _gh.x = g.x; _gh.y = g.y; }
+        else { const k = 1 - Math.exp(-dt / 0.045); _gh.x += (g.x - _gh.x) * k; _gh.y += (g.y - _gh.y) * k; }
+        if (fresh) { _gh.born = now; _gh.okAt = -1e9; _gh.shake = -1e9; _gh.ok = ok; }
+        else if (ok !== _gh.ok) { _gh.ok = ok; _gh.okAt = now; }
+        _gh.on = true; _gh.kind = kind;
+        ctx.save();
+        if (!jc) return;
+        let sc = 1;
+        const age = now - _gh.born;
+        if (age < 170) { const u = age / 170 - 1; sc = 0.8 + 0.2 * (1 + 2.70158 * u * u * u + 1.70158 * u * u); }   // pops in with a little overshoot
+        const lit = now - _gh.okAt;
+        if (ok && lit >= 0 && lit < 240) sc *= 1 + 0.07 * Math.sin(Math.PI * lit / 240);                           // a bump when the spot turns valid
+        const sh = now - _gh.shake;
+        const sx = sh >= 0 && sh < 320 ? Math.sin(sh * 0.085) * 7 * (1 - sh / 320) : 0;                             // the shake of a refused click
+        ctx.translate(_gh.x - g.x + sx, _gh.y - g.y);
+        if (sc !== 1) { ctx.translate(g.x, g.y); ctx.scale(sc, sc); ctx.translate(-g.x, -g.y); }
+    }
+    function _ghostEnd(ctx, g, ok, rad, now) {
+        if (window.ARJuice.on()) {
+            const lit = now - _gh.okAt, sh = now - _gh.shake;
+            if (ok && lit >= 0 && lit < 300) {   // it lit up: a green ring spreads from the edge
+                const u = lit / 300;
+                ctx.lineWidth = 4 * (1 - u) + 0.8; ctx.strokeStyle = 'rgba(70,212,106,' + (0.85 * (1 - u)).toFixed(3) + ')';
+                ctx.beginPath(); ctx.arc(g.x, g.y, rad + 4 + 22 * (1 - (1 - u) * (1 - u)), 0, Math.PI * 2); ctx.stroke();
+            }
+            if (sh >= 0 && sh < 320) {   // refused: the whole shape flushes red and fades
+                ctx.fillStyle = 'rgba(255,75,92,' + (0.38 * (1 - sh / 320)).toFixed(3) + ')';
+                ctx.beginPath(); ctx.arc(g.x, g.y, rad + 3, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+        ctx.restore();
+    }
     const _structFx = [];      // the effects: break, repair, upgrade { k, x, y, o, t0, parts }
     // colours of the chips by material (wood, stone, metal, obsidian): light, dark, highlight
     const _BAR_PAL = [['#D9A24E', '#8F5A1E', '#F4D48A'], ['#A39B8E', '#6B655B', '#D2CBBF'], ['#9AA7B4', '#5E6B78', '#D3DCE5'], ['#6A52B0', '#241C42', '#B79CF5']];
@@ -3836,7 +3904,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (!im) return null;
         return _labelSprite('TUR|' + part + tier, scale, 100, 100, g => g.drawImage(im, 0, 0, 100, 100));
     }
-    function _drawTurret(ctx, t, scale, alpha, ang, k) {
+    function _drawTurret(ctx, t, scale, alpha, ang, k, kick) {
         ctx.globalAlpha = alpha;
         ctx.save(); ctx.translate(t.x, t.y); if (k !== 1) ctx.scale(k, k);
         if (t.kd === 'tesla' || t.kd === 'heal' || t.kd === 'bomb' || t.kd === 'support') {   // one picture, nothing turns: the Tesla Tower, the Bomb Tower (its mortar points up), the Health Station and the Support Tower (its pad: the drone is another picture, _drawDrones)
@@ -3845,7 +3913,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         } else {
             const fl = t.kd === 'flame', b = _turSprite(fl ? 'flame_base' : 'base', t.t, scale), h = _turSprite(fl ? 'flame_head' : 'head', t.t, scale);   // (the Flamethrower has its own pair)
             if (b) ctx.drawImage(b.c, -b.w / 2, -b.h / 2, b.w, b.h);
-            if (h) { ctx.rotate(ang - Math.PI / 2); ctx.drawImage(h.c, -h.w / 2, -h.h / 2, h.w, h.h); }   // the barrel is drawn pointing down: 0 deg is +y
+            if (h) { ctx.rotate(ang - Math.PI / 2); ctx.drawImage(h.c, -h.w / 2, -h.h / 2 - (kick || 0), h.w, h.h); }   // the barrel is drawn pointing down: 0 deg is +y (kick: the head slides back along it for a shot)
         }
         ctx.restore();
         ctx.globalAlpha = 1;
@@ -3871,6 +3939,42 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _zFx = [];   // { k: 'acid'|'boom'|'summon'|'hatch'|'eggland', x0, y0, x1, y1, r, dur, t0, parts }
     const _eggFx = [];   // the eggs the Brood Mother throws, in the air: { x0, y0, x1, y1, t0, dur }
     function _zFxPush(f) { if (_zFx.length >= 60) _zFx.shift(); _zFx.push(f); }
+    // The warning before a batch of zombies comes in (event spawn-warn, ~0.9 s ahead, not in gs2): the ground ripples where each one will appear.
+    const _spawnFx = [];   // { x, y, r, t0, ms, ph }
+    function _drawSpawnFx(ctx, now) {
+        for (let i = _spawnFx.length - 1; i >= 0; i--) {
+            const f = _spawnFx[i], age = now - f.t0;
+            if (age >= f.ms + 480) { _spawnFx.splice(i, 1); continue; }
+            const X = f.x, Y = f.y, R = f.r, u = Math.min(1, age / Math.max(60, f.ms)), fin = Math.min(1, age / 160);
+            if (age < f.ms + 120) {
+                // the ground darkens where it will come up, and rings spread out of the spot (three, one after another)
+                ctx.globalAlpha = 0.3 * fin * (age > f.ms ? 1 - (age - f.ms) / 120 : 1); ctx.fillStyle = '#1A1410';
+                ctx.beginPath(); ctx.ellipse(X, Y + 2, R * (0.7 + 0.5 * u), R * (0.55 + 0.4 * u), 0, 0, TAU); ctx.fill();
+                for (let j = 0; j < 3; j++) {
+                    const ph = ((age / 540) + j / 3) % 1, rr = R * 0.5 + R * 2.2 * ph, a = (1 - ph) * 0.85 * fin;
+                    ctx.globalAlpha = a; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 3.6 * (1 - ph) + 1.4;
+                    ctx.beginPath(); ctx.arc(X, Y, rr, 0, TAU); ctx.stroke();
+                    ctx.strokeStyle = '#FF7A52'; ctx.lineWidth = 1.8 * (1 - ph) + 0.6;
+                    ctx.beginPath(); ctx.arc(X, Y, rr, 0, TAU); ctx.stroke();
+                }
+                // a ring that closes in on the spot and lands exactly when it comes up
+                const cr = R * 0.6 + R * 2.4 * (1 - u) * (1 - u);
+                ctx.globalAlpha = Math.min(1, u * 1.6) * 0.9; ctx.strokeStyle = '#FFD9C8'; ctx.lineWidth = 2.4;
+                ctx.beginPath(); ctx.arc(X, Y, cr, 0, TAU); ctx.stroke();
+            }
+            if (age >= f.ms) {   // it comes up: a burst ring and a few puffs of dust
+                const q = (age - f.ms) / 480, e = 1 - (1 - q) * (1 - q);
+                ctx.globalAlpha = (1 - q) * 0.8; ctx.strokeStyle = '#FFB59C'; ctx.lineWidth = 3.6 * (1 - q) + 0.8;
+                ctx.beginPath(); ctx.arc(X, Y, R * (0.8 + 1.9 * e), 0, TAU); ctx.stroke();
+                ctx.fillStyle = '#C9B48E';
+                for (let k = 0; k < 5; k++) {
+                    const a = f.ph * TAU + k * 1.2566, d = R * (0.5 + 1.1 * e);
+                    ctx.globalAlpha = (1 - q) * 0.45; ctx.beginPath(); ctx.arc(X + Math.cos(a) * d, Y + Math.sin(a) * d * 0.8 - 6 * e, R * (0.22 + 0.2 * e), 0, TAU); ctx.fill();
+                }
+            }
+        }
+        ctx.globalAlpha = 1;
+    }
     const _rnd = Math.random;
     function _acidFx(a) {
         const f = { k: 'acid', x0: a[0], y0: a[1], x1: a[2], y1: a[3], dur: a[4], r: 44, t0: performance.now(), drops: [], bub: [], puff: [] };
@@ -4001,6 +4105,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ctx.globalAlpha = 1;
     }
     function _drawGroundFx(ctx, now) {
+        if (_spawnFx.length) _drawSpawnFx(ctx, now);
         for (let i = 0; i < _zFx.length; i++) {
             const f = _zFx[i], age = now - f.t0;
             if (age < 0 || (f.k !== 'slam' && f.k !== 'stomp' && f.k !== 'quake')) continue;
@@ -4626,14 +4731,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     function _barPlace() {
         if (!_bar.place || predX === null) return;
-        if (_bar.why) return;   // the ghost is red: nothing to say
+        if (_bar.why) { _gh.shake = performance.now(); return; }   // the ghost is red: it shakes (_ghostBegin)
         if (_bar.kind !== 'b') socket.emit('place-turret', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), kd: _BAR_KINDS[_bar.kind].kd });
         else socket.emit('place-struct', { x: Math.round(_bar.g.x), y: Math.round(_bar.g.y), o: _bar.g.o });
     }
     function _barUse() {
         if (_bar.place) return;
         if (_bar.revive) { socket.emit('revive-player', { id: _bar.revive }); return; }   // a teammate is down next to you: lift them
-        if (_bar.use) socket.emit('use-struct', { id: _bar.use.id });
+        if (_bar.use) {
+            if (_bar.act && !_bar.can) { const e = _bar.els || _barEls(); _shakeEl(e.use); _coinKick('j-deny'); }   // not enough coins: the button shakes (the server decides anyway)
+            socket.emit('use-struct', { id: _bar.use.id });
+        }
     }
     // The knock bar's time left (ms): it holds while somebody lifts them and in the break between waves (the server holds it too)
     function _downLeft(d, now) { return Math.max(0, (d.rev || _pveState.waveBreak) ? d.ms : d.ms - (now - d.t0)); }
@@ -4723,9 +4831,12 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ctx.lineTo(x, y + r); ctx.lineTo(x - r * 0.3, y + r * 0.3); ctx.lineTo(x - r, y); ctx.lineTo(x - r * 0.3, y - r * 0.3);
         ctx.closePath();
     }
+    // What an upgrade looks like by the level it reaches (1: stone / gun level 2, 2: metal, 3: obsidian): the colour of the ring and of the sparkles
+    const _UPG_COL = [null, { ring: '255,199,46', star: '#FFD84A' }, { ring: '190,226,255', star: '#E6F3FF' }, { ring: '190,140,255', star: '#D3B8FF' }];
+    const _UPG_CHIP = ['#9AA7B5', '#B8C3CF', '#7B8794'];
     function _drawStructFx(ctx, now) {
         for (let i = _structFx.length - 1; i >= 0; i--) {
-            const f = _structFx[i], dur = f.k === 'break' ? 1100 : f.k === 'sold' ? 1000 : f.k === 'upgrade' ? 1000 : f.k === 'place' ? 750 : 900, t = (now - f.t0) / dur;
+            const f = _structFx[i], dur = f.k === 'break' ? 1100 : f.k === 'sold' ? 1000 : f.k === 'upgrade' ? (f.t >= 3 ? 1300 : 1000) : f.k === 'place' ? 750 : 900, t = (now - f.t0) / dur;
             if (t >= 1) { _structFx.splice(i, 1); continue; }
             const e = 1 - (1 - t) * (1 - t);     // ease out
             const hw = f.round ? ARStructs.TURRET.r : f.o ? 17 : 54, hh = f.round ? ARStructs.TURRET.r : f.o ? 54 : 17;
@@ -4822,12 +4933,54 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     ctx.beginPath(); ctx.moveTo(px - sz, py); ctx.lineTo(px + sz, py); ctx.moveTo(px, py - sz); ctx.lineTo(px, py + sz); ctx.stroke();
                 }
             } else {
-                // upgrade: a flash, a golden ring spreading out, sparkles bursting
+                // upgrade: a flash, a ring spreading out, sparkles bursting; each level it reaches has its own flourish.
+                //   1: warm gold, a puff of dust and chips of stone that drop   2: cold silver, a sheen sweeps over it and sparks fly
+                //   3: violet, a dark pulse, a second ring, a pillar of light and violet sparkles
+                const lv = f.t >= 3 ? 3 : f.t === 2 ? 2 : 1, UC = _UPG_COL[lv];
+                if (lv === 3 && t < 0.5) { ctx.fillStyle = 'rgba(52,20,98,' + (0.6 * (1 - t / 0.5)).toFixed(3) + ')'; _fxShape(ctx, f, hw, hh); ctx.fill(); }
                 if (t < 0.4) { ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - t / 0.4)).toFixed(3) + ')'; _fxShape(ctx, f, hw, hh); ctx.fill(); }
-                ctx.lineWidth = 5 * (1 - t) + 1; ctx.strokeStyle = 'rgba(255,199,46,' + (0.9 * (1 - t)).toFixed(3) + ')';
+                ctx.lineWidth = 5 * (1 - t) + 1; ctx.strokeStyle = 'rgba(' + UC.ring + ',' + (0.9 * (1 - t)).toFixed(3) + ')';
                 ctx.beginPath(); ctx.arc(f.x, f.y, 16 + (f.len + 16) * e, 0, Math.PI * 2); ctx.stroke();
-                ctx.globalAlpha = 1 - t * t; ctx.lineWidth = 1.6; ctx.strokeStyle = '#0B0F1A'; ctx.fillStyle = '#FFD84A';
-                for (let k = 0; k < f.parts.length; k++) {
+                if (lv === 3 && t > 0.16) {   // a second, wider ring that follows
+                    const t2 = (t - 0.16) / 0.84, e2 = 1 - (1 - t2) * (1 - t2);
+                    ctx.lineWidth = 3.5 * (1 - t2) + 0.8; ctx.strokeStyle = 'rgba(' + UC.ring + ',' + (0.8 * (1 - t2)).toFixed(3) + ')';
+                    ctx.beginPath(); ctx.arc(f.x, f.y, 20 + (f.len + 40) * e2, 0, Math.PI * 2); ctx.stroke();
+                    ctx.globalAlpha = 0.5 * (1 - t2); ctx.fillStyle = '#E9DBFF';   // a pillar of light that rises and thins
+                    const ph = 70 * Math.min(1, t2 * 2.2), pw = 12 * (1 - t2);
+                    ctx.beginPath(); ctx.rect(f.x - pw, f.y - ph, pw * 2, ph + 6); ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+                if (lv === 1) {   // dust and chips of stone
+                    for (let k = 0; k < f.parts.length; k++) {
+                        const p = f.parts[k], d = (10 + 38 * p.v) * e;
+                        ctx.fillStyle = 'rgba(214,206,190,' + (0.5 * (1 - t) * (1 - t)).toFixed(3) + ')';
+                        ctx.beginPath(); ctx.arc(f.x + p.ox * 0.7 + Math.cos(p.a) * d, f.y + p.oy * 0.7 + Math.sin(p.a) * d, 6 + 10 * e * p.v, 0, Math.PI * 2); ctx.fill();
+                    }
+                    ctx.globalAlpha = 1 - Math.max(0, (t - 0.5) / 0.5); ctx.lineWidth = 1.4; ctx.strokeStyle = '#0B0F1A';
+                    for (let k = 0; k < f.parts.length; k += 2) {
+                        const p = f.parts[k], dd = (20 + 44 * p.v) * e, drop = 26 * t * t;
+                        ctx.save(); ctx.translate(f.x + p.ox * 0.6 + Math.cos(p.a) * dd, f.y + p.oy * 0.6 + Math.sin(p.a) * dd * 0.6 - 16 * Math.sin(Math.PI * Math.min(1, t * 1.4)) + drop); ctx.rotate(p.rot + p.rs * t);
+                        ctx.fillStyle = _UPG_CHIP[p.c]; ctx.beginPath(); ctx.rect(-p.sz * 0.7, -p.sz * 0.5, p.sz * 1.4, p.sz); ctx.fill(); ctx.stroke(); ctx.restore();
+                    }
+                    ctx.globalAlpha = 1;
+                } else if (lv === 2) {   // a band of light sweeps across the shape, and sparks with tails shoot out
+                    const span = Math.max(hw, hh) + 14, bx = f.x - span + 2 * span * Math.min(1, t * 1.7);
+                    if (t < 0.6) {
+                        ctx.save(); _fxShape(ctx, f, hw, hh); ctx.clip();
+                        ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - t / 0.6)).toFixed(3) + ')';
+                        ctx.beginPath(); ctx.moveTo(bx - 4, f.y - span); ctx.lineTo(bx + 11, f.y - span); ctx.lineTo(bx + 1, f.y + span); ctx.lineTo(bx - 14, f.y + span); ctx.closePath(); ctx.fill();
+                        ctx.restore();
+                    }
+                    ctx.lineCap = 'round'; ctx.strokeStyle = '#EAF6FF';
+                    for (let k = 0; k < f.parts.length; k++) {
+                        const p = f.parts[k], d = (24 + 78 * p.v) * e, d0 = Math.max(0, d - 8 - 6 * p.v);
+                        ctx.globalAlpha = 1 - t; ctx.lineWidth = 2.2;
+                        ctx.beginPath(); ctx.moveTo(f.x + Math.cos(p.a) * d0, f.y + Math.sin(p.a) * d0); ctx.lineTo(f.x + Math.cos(p.a) * d, f.y + Math.sin(p.a) * d); ctx.stroke();
+                    }
+                    ctx.globalAlpha = 1;
+                }
+                ctx.globalAlpha = 1 - t * t; ctx.lineWidth = 1.6; ctx.strokeStyle = '#0B0F1A'; ctx.fillStyle = UC.star;
+                for (let k = 0; k < f.parts.length; k += lv === 2 ? 2 : 1) {
                     const p = f.parts[k], d = (30 + 60 * p.v) * e;
                     _star(ctx, f.x + p.ox * 0.5 + Math.cos(p.a) * d, f.y + p.oy * 0.5 + Math.sin(p.a) * d - 12 * e, 4 + p.sz * 0.9 * (1 - t * 0.5));
                     ctx.fill(); ctx.stroke();
@@ -4936,7 +5089,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     const _ring = { id: -1, a: 0, t: 0 };   // the one range ring on show (see _drawTurrets)
     function _drawTurrets(ctx, scale, zoom, visL, visT, visR, visB, now) {
-        const R = ARStructs.TURRET.r;
+        const R = ARStructs.TURRET.r, jc = window.ARJuice.on();
         // The reach of a turret shows only for the one E would work on (the highlighted one, so you are right by it), never two at once;
         // it fades in and out over a fifth of a second
         const hi = _bar.use && _bar.use.k === 't' && _bar.use.kd !== 'heal' ? _bar.use : null, rdt = Math.min(0.1, Math.max(0, (now - (_ring.t || now)) / 1000)); _ring.t = now;
@@ -4969,9 +5122,26 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             // the head turns towards what it was last fired at (at most 12 rad/s), it does not jump
             const dt = Math.min(0.1, Math.max(0, (now - (t._ft || now)) / 1000)); t._ft = now;
             let da = t.tang - t.ang; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
-            const step = 12 * dt; t.ang += Math.abs(da) <= step ? da : Math.sign(da) * step;
+            const headed = t.kd !== 'tesla' && t.kd !== 'heal' && t.kd !== 'bomb' && t.kd !== 'support';   // the ones with a head that turns
+            if (headed && jc) {
+                // a spring: the head swings past the target a little (about 13% of the turn) and settles back; capped at 16 rad/s
+                let rem = dt, av = t.av || 0;
+                while (rem > 1e-6) {
+                    const h = Math.min(rem, 0.008); rem -= h;
+                    av += (da * 380 - av * 21) * h; if (av > 16) av = 16; else if (av < -16) av = -16;
+                    t.ang += av * h; da = t.tang - t.ang; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+                }
+                if (Math.abs(da) < 0.003 && Math.abs(av) < 0.06) { t.ang = t.tang; av = 0; }
+                t.av = av;
+            } else {
+                const step = 12 * dt; t.ang += Math.abs(da) <= step ? da : Math.sign(da) * step; t.av = 0;
+            }
             const pop = t.pop ? Math.max(0, 1 - (now - t.pop) / 380) : 0;
-            _drawTurret(ctx, t, scale, 1, t.ang, 1 + (t.popA || 0.2) * pop * pop);
+            // the barrel slides back along its axis for each shot (not the Flamethrower, which burns without a beat), and the whole turret shudders when it is hit
+            let kick = 0;
+            if (jc && headed && t.kd !== 'flame') { const u = (now - t.flash) / 130; if (u >= 0 && u < 1) { const w = u < 0.2 ? u / 0.2 : 1 - (u - 0.2) / 0.8; kick = (4.5 + 1.2 * t.t) * w * w; } }
+            const twob = jc && t.hitT ? Math.max(0, 1 - (now - t.hitT) / 260) : 0;
+            _drawTurret(ctx, t, scale, 1, t.ang, (1 + (t.popA || 0.2) * pop * pop) * (twob > 0 ? 1 + 0.045 * twob * Math.sin((now - t.hitT) * 0.07) : 1), kick);
             if (t.stunUntil > now) {   // stunned by a screamer: dimmed, with stars going round it
                 ctx.globalAlpha = 0.42; ctx.fillStyle = '#141B2B'; ctx.beginPath(); ctx.arc(t.x, t.y, R + 1, 0, TAU); ctx.fill();
                 ctx.globalAlpha = 1; ctx.fillStyle = '#FFE27A'; ctx.strokeStyle = '#0B0F1A'; ctx.lineWidth = 1.4;
@@ -4994,6 +5164,35 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             }
         }
     }
+    // The base was hit: it shudders (by how much it lost) and a red flash lights the side the blow came from. The server does not say where from, so it is read
+    // off the zombies standing around the base (the near ones, nearer ones count more); with none close (or all round) the whole edge flashes.
+    const _baseFx = { hp: -1, hitT: -1e9, ang: 0, dir: false, mag: 2 };
+    function _baseHit(lost, now) {
+        _baseFx.hitT = now; _baseFx.mag = Math.max(2, Math.min(7, 1.6 + lost / 18));
+        let sx = 0, sy = 0, n = 0;
+        const reach = _PVE_BASE_R + 260;
+        for (let i = 0; i < _zombies.length; i++) {
+            const z = _zombies[i];
+            if (!z || z.hp <= 0) continue;
+            const dx = z.sx - _PVE_BASE.x, dy = z.sy - _PVE_BASE.y, d = Math.hypot(dx, dy);
+            if (!(d >= 1) || d > reach) continue;
+            const w = 1 / (d + 40);
+            sx += dx / d * w; sy += dy / d * w; n++;
+        }
+        _baseFx.dir = n > 0; _baseFx.ang = Math.atan2(sy, sx);
+    }
+    function _drawBaseHit(ctx, age) {
+        const u = 1 - age / 460, R = _PVE_BASE_R, bx = _PVE_BASE.x, by = _PVE_BASE.y;
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,50,50,' + (0.16 * u).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(bx, by, R + 4, 0, Math.PI * 2); ctx.fill();
+        ctx.lineCap = 'round';
+        const a0 = _baseFx.dir ? _baseFx.ang - 0.8 : 0, a1 = _baseFx.dir ? _baseFx.ang + 0.8 : Math.PI * 2;
+        ctx.lineWidth = 16 * u + 4; ctx.strokeStyle = 'rgba(255,40,40,' + (0.28 * u).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(bx, by, R + 6, a0, a1); ctx.stroke();
+        ctx.lineWidth = 6 * u + 2; ctx.strokeStyle = 'rgba(255,214,200,' + (0.85 * u).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(bx, by, R + 6, a0, a1); ctx.stroke();
+        ctx.restore();
+    }
     // The health bars of everything that is built (walls and turrets). They are drawn with the names, in the last layer of the world (see NUME + HP), not with the structures: a bar is never
     // under a turret or a barricade next to it, and never under a zombie, a player or a crown that stands in front of it.
     function _drawBuiltBars(ctx, visL, visT, visR, visB) {
@@ -5012,15 +5211,20 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
     }
     function _drawStructs(ctx, scale, zoom, visL, visT, visR, visB, now) {
+        const jc = window.ARJuice.on();
         for (let i = 0; i < _structs.length; i++) {
             const s = _structs[i];
             const hw = ARStructs.halfW(s), hh = ARStructs.halfH(s);
             if (s.x + hw + 14 < visL || s.x - hw - 14 > visR || s.y + hh + 14 < visT || s.y - hh - 24 > visB) continue;
             const sp = _barSprite(s.t, ARStructs.state(s), s.o, scale);
             const pop = s.pop ? Math.max(0, 1 - (now - s.pop) / 380) : 0;   // an upgraded one swells and settles
-            if (sp && pop > 0) {
-                const k = 1 + (s.popA || 0.2) * pop * pop;
-                ctx.save(); ctx.translate(s.x, s.y); ctx.scale(k, k); ctx.drawImage(sp.c, -sp.w / 2, -sp.h / 2, sp.w, sp.h); ctx.restore();
+            const wob = jc && s.hitT ? Math.max(0, 1 - (now - s.hitT) / 320) : 0;   // a hit one shakes: a quick rock and a shove across its length that die away
+            if (sp && (pop > 0 || wob > 0)) {
+                const k = pop > 0 ? 1 + (s.popA || 0.2) * pop * pop : 1;
+                ctx.save(); ctx.translate(s.x, s.y);
+                if (wob > 0) { const w = Math.sin((now - s.hitT) * 0.055) * wob * wob; ctx.rotate(w * 0.06); if (s.o) ctx.translate(w * 2.6, 0); else ctx.translate(0, w * 2.6); }
+                if (k !== 1) ctx.scale(k, k);
+                ctx.drawImage(sp.c, -sp.w / 2, -sp.h / 2, sp.w, sp.h); ctx.restore();
             } else if (sp) ctx.drawImage(sp.c, s.x - sp.w / 2, s.y - sp.h / 2, sp.w, sp.h);
         }
         _drawTurrets(ctx, scale, zoom, visL, visT, visR, visB, now);   // over the barricades (a turret stands behind a wall and looks over it)
@@ -5055,6 +5259,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.restore();
         }
         // the ghost
+        const _gOn = _bar.place && predX !== null;
+        if (_gOn) _ghostBegin(ctx, _bar.g, !_bar.why, _bar.kind, now); else _gh.on = false;
         if (_bar.place && predX !== null && _bar.kind !== 'b') {
             const g = _bar.g, ok = !_bar.why, R = ARStructs.TURRET.r;
             ctx.save();
@@ -5082,6 +5288,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             ctx.restore();
             if (!ok) { ctx.fillStyle = 'rgba(255,75,92,.28)'; ctx.beginPath(); ctx.roundRect(g.x - hw, g.y - hh, hw * 2, hh * 2, 6); ctx.fill(); }
         }
+        if (_gOn) _ghostEnd(ctx, _bar.g, !_bar.why, _bar.kind === 'b' ? ARStructs.halfW(_bar.g) : ARStructs.TURRET.r, now);
     }
     // Same slide-out the server applies to a player after moving (obstacles, then the PvE base)
     function _pushOutOfSolids(x, y) {
@@ -5176,6 +5383,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             window.__arStructs = () => _structs.map(s => ({ ...s }));   // PvE barricades as the client has them
             window.__arTurrets = () => _turrets.map(s => ({ ...s }));   // and the turrets
             window.__arBar = () => ({ inv: _bar.inv, invT: _bar.invT, invE: _bar.invE, invH: _bar.invH, invO: _bar.invO, invF: _bar.invF, invS: _bar.invS, kind: _bar.kind, place: _bar.place, why: _bar.why, use: _bar.use && _bar.use.id, ghost: { ..._bar.g }, coins: _pveState.myCoins, work: [..._bar.work.keys()], fx: _structFx.length });
+            // diagnosis of the coin counter (tests): __arCoinFly(n) sends n coins from beside you to the counter as if you had just taken them; __arCoinHud() reads its state
+            window.__arCoinFly = (n) => { const now = performance.now(); for (let i = 0; i < n; i++) _coinFx.push({ x: predX + 24 + i * 7, y: predY - 12, t0: now }); _pveState.myCoins += n; _coinClaim(n, predX, predY); updatePveHud(); return _coinHud.flights; };
+            window.__arCoinHud = () => ({ disp: _coinHud.disp, flights: _coinHud.flights, myCoins: _pveState.myCoins });
             window.__arObs = () => _obstacles; // the obstacles as the client has them (map sprites tests)
             window.__arIS = () => _IS; // the other players as last rendered (interpolation)
             window.__arBullets = () => { const o = [], bl = _IS.bullets, age = _IS.bulletAge || 0; if (bl) for (const b of bl) { if (b.ownerId !== socket.id) o.push(b.id, b.x + b.dx * age, b.y + b.dy * age); } return o; }; // enemy bullets as drawn (id, x, y)
@@ -5696,7 +5906,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 // sx, sy, sa: where the server has it now. What is drawn (x, y, angle) is blended between two
                 // snapshots in getInterpolatedState; a zombie seen for the first time starts at its server place.
                 _zb.sx = zArr[_zi + 1] / ARNet.PQ; _zb.sy = zArr[_zi + 2] / ARNet.PQ; _zb.sa = zArr[_zi + 3] / ARNet.ZAQ;
-                if (_zPrevHp < 0) { _zb.x = _zb.sx; _zb.y = _zb.sy; _zb.angle = _zb.sa; }
+                if (_zPrevHp < 0) { _zb.x = _zb.sx; _zb.y = _zb.sy; _zb.angle = _zb.sa; _zb.bornT = performance.now(); }   // bornT: it fades in (see the zombie draw)
                 _zb.hp = zArr[_zi + 4];
                 _zb.type = zArr[_zi + 5] || 0;
                 const _zHeavy = _gameMode === 'pve' && _ZB_DEFS[_zb.type] && _ZB_DEFS[_zb.type].heavy;   // the ones a player cannot push (tank, brute, summoner)
@@ -6106,7 +6316,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _clock.reset();
         _inputSeq = 0; _lastInputSend = 0;
         _pendingInputs.length = 0; _resetMoveV();
-        _clientBullets.length = 0; ARImpact.reset();
+        _clientBullets.length = 0; ARImpact.reset(); ARShells.reset();
         _clientNextShotAt = 0; _ammoHoldUntil = 0;
         _pendingBurstShots.length = 0;
         _ownLinked.clear(); _ownUnmatched.clear(); _srvBulletSeen.clear();
@@ -6140,6 +6350,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _pp.style.transition = ''; _pp.style.opacity = '1'; _pp.style.display = 'none';
         document.getElementById('pve-top-hud').style.display = 'none';
         _pveState.baseHp = 1000; _pveState.wave = 0; _pveState.waveBreak = false; _pveState.myCoins = 0;
+        _coinHud.disp = -1; _coinHud.flights = 0; _coinHud.revealAt = 0; _coinHud.popN = 0;
         Object.keys(_pveUpgCounts).forEach(k => _pveUpgCounts[k] = 0);
         _pbkGoReset(); _pbk.res = null;
         _playerDeathFx.length = 0;
@@ -6177,16 +6388,87 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const s = String(v);
         if (el.textContent !== s) el.textContent = s; // compared with the DOM: other code writes these too
     }
+    function _shakeEl(el) {   // a short side-to-side shake of a button (css: .j-shake)
+        if (!el || !window.ARJuice.on()) return;
+        el.classList.remove('j-shake'); void el.offsetWidth; el.classList.add('j-shake');
+        el.addEventListener('animationend', function f(ev) { if (ev.animationName !== 'jShake') return; el.classList.remove('j-shake'); el.removeEventListener('animationend', f); });
+    }
+    function _coinHudEls() { return [document.getElementById('pve-coins-badge'), document.querySelector('#pve-upgrade-panel .pbk-coins')]; }
+    function _coinKick(cls) {   // j-gain: a bump and a green flash of the number; j-spend: it dips and flashes red; j-deny: shakes (not enough coins)
+        if (!window.ARJuice.on()) return;
+        for (const el of _coinHudEls()) { if (!el) continue; el.classList.remove('j-gain', 'j-spend', 'j-deny'); void el.offsetWidth; el.classList.add(cls); }
+    }
+    function _coinPopFlush() {
+        const n = _coinHud.popN; _coinHud.popN = 0; _coinHud.popT = 0;
+        if (!n) return;
+        for (const el of _coinHudEls()) {
+            if (!el || !el.offsetParent) continue;
+            const t = document.createElement('i'); t.className = 'coin-pop' + (n < 0 ? ' is-spend' : ''); t.textContent = (n > 0 ? '+' : '') + n;
+            t.addEventListener('animationend', () => t.remove()); el.appendChild(t);
+        }
+    }
+    function _coinPop(n) {   // a short +N / -N under the counter; several in a row add up into one
+        if (!window.ARJuice.on() || !n) return;
+        if (_coinHud.popN && (_coinHud.popN > 0) !== (n > 0)) { clearTimeout(_coinHud.popT); _coinPopFlush(); }
+        _coinHud.popN += n;
+        clearTimeout(_coinHud.popT); _coinHud.popT = setTimeout(_coinPopFlush, 240);
+    }
+    function _coinShow() { _setHudText('pve-coins-num', _coinHud.disp); _setHudText('pve-upgrade-coins', _coinHud.disp); }
+    function _coinLand() {   // one of my coins reached the counter
+        const ch = _coinHud;
+        if (ch.flights > 0) ch.flights--;
+        if (ch.disp < _pveState.myCoins) { ch.disp++; _coinShow(); }
+        _coinKick('j-gain'); _coinPop(1);
+    }
+    function _coinHudTick(now) {   // every frame: a rise nobody claimed shows once its beat is up and no coin of mine is still in the air
+        const ch = _coinHud;
+        if (ch.disp >= 0 && ch.disp < _pveState.myCoins && ch.revealAt && now >= ch.revealAt && ch.flights <= 0) {
+            const n = _pveState.myCoins - ch.disp; ch.disp = _pveState.myCoins; ch.revealAt = 0; _coinShow(); _coinKick('j-gain'); _coinPop(n);
+        }
+        if (ch.disp >= _pveState.myCoins) ch.revealAt = 0;
+    }
+    // The coins you just took (the pve-coins event, `earned` of them, taken at x, y): of the ones that vanished in this same instant (coin-taken, for everybody), the nearest
+    // ones to you are yours; they fly to the counter, one after another, at most 16
+    function _coinClaim(earned, x, y) {
+        const now = performance.now(), cand = [];
+        for (let i = 0; i < _coinFx.length; i++) { const e = _coinFx[i]; if (!e.mine && now - e.t0 < 160 && e.t0 <= now) cand.push(e); }
+        cand.sort((a, b) => ((a.x - x) * (a.x - x) + (a.y - y) * (a.y - y)) - ((b.x - x) * (b.x - x) + (b.y - y) * (b.y - y)));
+        const n = Math.min(earned, 16, cand.length);
+        for (let i = 0; i < n; i++) { const e = cand[i]; e.mine = true; e.t0 = now + i * 34; e.dur = 560; }
+        _coinHud.flights += n;
+        return n;
+    }
+    // Where the counter is, in the world (the canvas is under the HUD): its place on screen turned back through the camera. The page is read a few times a second only.
+    function _coinTarget(now, wm, out) {
+        const ch = _coinHud;
+        if (now - ch.tAt > 120) {
+            ch.tAt = now; ch.ok = false;
+            const b = document.getElementById('pve-coins-badge');
+            if (b && canvas) {
+                const r = b.getBoundingClientRect(), cr = canvas.getBoundingClientRect();
+                if (r.width > 0 && cr.width > 0) { ch.sx = (r.left + r.width * 0.3 - cr.left) * canvas.width / cr.width; ch.sy = (r.top + r.height * 0.5 - cr.top) * canvas.height / cr.height; ch.ok = true; }
+            }
+        }
+        if (!ch.ok) return false;
+        out.x = (ch.sx - wm.e) / wm.a; out.y = (ch.sy - wm.f) / wm.d;
+        return true;
+    }
+    const _cTgt = { x: 0, y: 0 };
     function updatePveHud() {
         if (_gameMode !== 'pve') return;
         _setHudText('pve-wave-num', _pveState.wave);
-        _setHudText('pve-coins-num', _pveState.myCoins);
+        {
+            const mc = _pveState.myCoins, ch = _coinHud;
+            if (ch.disp < 0 || !window.ARJuice.on()) ch.disp = mc;
+            else if (mc < ch.disp) { _coinKick('j-spend'); _coinPop(mc - ch.disp); ch.disp = mc; }
+            else if (mc > ch.disp && !ch.revealAt) { const t = performance.now(); ch.revealAt = t + (t < ch.instant ? 0 : 160); }
+        }
         const ratio = _pveState.baseMaxHp > 0 ? Math.max(0, _pveState.baseHp / _pveState.baseMaxHp) : 0;
         const w = (ratio * 100).toFixed(1) + '%';
         const bar = _pveHudEls.bar || (_pveHudEls.bar = document.getElementById('pve-base-bar-inner'));
         if (bar && bar.__w !== w) { bar.style.width = w; bar.__w = w; } // only written here
         _setHudText('pve-base-hp-text', _pveState.baseHp);
-        _setHudText('pve-upgrade-coins', _pveState.myCoins);
+        _coinShow();
     }
 
     // ---------- PvE between-waves panel (#pve-upgrade-panel): results + team | shop | next wave ----------
@@ -6239,6 +6521,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                       `<button class="pbk-buy" type="button"><img class="pic" src="${_COIN_IMG}" alt="" aria-hidden="true" draggable="false"><b></b></button>`);
             const buy = el.querySelector('.pbk-buy');
             if (buy) buy.addEventListener('click', () => window.buyUpgrade(c.id));
+            // not enough coins: the price button is dead (pointer-events off in css), so the tap lands on the card: the button shakes and the counter flashes red
+            el.addEventListener('click', () => { if (buy && buy.classList.contains('is-poor') && !el.classList.contains('is-done')) { _shakeEl(buy); _coinKick('j-deny'); } });
             host.appendChild(el);
             _pbk.cards.set(c.id, { c, el, buy, cost: buy && buy.querySelector('b'), tag: el.querySelector('.pbk-c-tag'), segs: el.querySelector('.pbk-segs'),
                 lvlN: el.querySelector('.pbk-lvl-n'), lvlV: el.querySelector('.pbk-lvl-v'), buyKey: '', segKey: -1, txt: '' });
@@ -6424,6 +6708,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     socket.on('pve-coins', ({ coins, earned, x, y }) => {
         _pveState.myCoins = coins;
+        if (earned && x !== undefined && window.ARJuice.on()) _coinClaim(earned, x, y);   // the coins fly to the counter and add themselves as they land
         updatePveHud();
         if (_pveState.waveBreak && _pbk.cards) updateUpgradeButtons();
         if (earned && x !== undefined && y !== undefined) {
@@ -6473,6 +6758,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         }
     });
 
+    socket.on('spawn-warn', ({ ms, rows }) => {   // [x, y, type] per zombie of the batch that is about to come in
+        const now = performance.now();
+        for (let i = 0; i + 2 < rows.length; i += 3) {
+            const d = _ZB_DEFS[rows[i + 2]];
+            _spawnFx.push({ x: rows[i], y: rows[i + 1], r: d ? d.r : 22, t0: now, ms: Math.max(60, ms), ph: Math.random() });
+        }
+        if (_spawnFx.length > 90) _spawnFx.splice(0, _spawnFx.length - 90);
+    });
     socket.on('acid', ({ a }) => { _zFxPush(_acidFx(a)); });
     socket.on('boom', ({ x, y, r }) => { _zFxPush(_boomFx(x, y, r)); });
     socket.on('shield-block', (a) => {
@@ -6565,6 +6858,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _pveState.wave = wave;
         hidePvePanel();
         document.getElementById('pve-wave-num').textContent = wave;
+        { const _wn = document.querySelector('#pve-wave .pw-num'); if (_wn) { _wn.classList.remove('j-punch'); void _wn.offsetWidth; _wn.classList.add('j-punch'); } }   // the number punches in (css: Fine effects only)
         // (nobody comes back with a new wave any more: only player-up lifts a player who is down)
         { const _n = performance.now(); for (const id in _down) _down[id].t0 = _n; }   // the bars ran again from here (the break held them)
         if (_selfDead && !_selfDown && !_selfOut) {
@@ -6614,7 +6908,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         t.dr = { ph: 3, t0: now, ms, fx: pose.x, fy: pose.y, tx: t.x, ty: t.y, tk: 's', tid: -1, dock: false, fxT: 0 };
     });
     socket.on('turret-hp', (rows) => {
-        for (let i = 0; i < rows.length; i++) { const t = _turrets.find(q => q.id === rows[i][0]); if (t) t.hp = rows[i][1]; }
+        const now = performance.now();
+        for (let i = 0; i < rows.length; i++) { const t = _turrets.find(q => q.id === rows[i][0]); if (t) { if (rows[i][1] < t.hp) t.hitT = now; t.hp = rows[i][1]; } }
     });
     socket.on('turret-upd', (u) => {
         const t = _turrets.find(q => q.id === u.id);
@@ -6630,7 +6925,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const i = _turrets.findIndex(q => q.id === id);
         if (i === -1) return;
         const now = performance.now();
-        if (sold) _fxSpawn('sold', Object.assign({}, _turrets[i], { sold }), now);
+        if (sold) { _fxSpawn('sold', Object.assign({}, _turrets[i], { sold }), now); _coinHud.instant = now + 900; }   // the refund shows at once
         if (broke) { _structDying.push({ s: _turrets[i], t0: now }); _fxSpawn('break', _turrets[i], now); }
         _bar.work.delete(id);
         _turrets.splice(i, 1);
@@ -6698,7 +6993,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         _pveFeed(`${s.by} placed a barricade`);
     });
     socket.on('struct-hp', (rows) => {
-        for (let i = 0; i < rows.length; i++) { const s = _structs.find(q => q.id === rows[i][0]); if (s) s.hp = rows[i][1]; }
+        const now = performance.now();
+        for (let i = 0; i < rows.length; i++) { const s = _structs.find(q => q.id === rows[i][0]); if (s) { if (rows[i][1] < s.hp) s.hitT = now; s.hp = rows[i][1]; } }
     });
     socket.on('struct-upd', (u) => {
         const s = _structs.find(q => q.id === u.id);
@@ -6716,7 +7012,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const i = _structs.findIndex(q => q.id === id);
         if (i === -1) return;
         const now = performance.now();
-        if (sold) _fxSpawn('sold', Object.assign({}, _structs[i], { sold }), now);
+        if (sold) { _fxSpawn('sold', Object.assign({}, _structs[i], { sold }), now); _coinHud.instant = now + 900; }
         if (broke) { _structDying.push({ s: _structs[i], t0: now }); _fxSpawn('break', _structs[i], now); }
         _bar.work.delete(id);
         _structs.splice(i, 1);
@@ -6751,7 +7047,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (_BB.on) ARBlackBox.event('pve-panel', wave);
             _setHudText('pbk-done-title', 'WAVE ' + wave);
             _setHudText('pbk-next-lbl', 'WAVE ' + nextWave + ' STARTS IN');
-            _setHudText('pve-upgrade-coins', _pveState.myCoins);
+            _coinShow();
             _pbkNext(next, nextWave);
             updateUpgradeButtons();
             showPvePanel();
@@ -7121,6 +7417,18 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             const tank = z.type === 2;
             g.fillStyle = tank ? '#FF8A1F' : '#FF4B5C';
             g.beginPath(); g.arc(z.x * k, z.y * k, tank ? 6.5 : 4.2, 0, Math.PI * 2); g.fill(); g.stroke();
+        }
+        // where a batch is about to come in: a small red ring that pulses on the edge
+        if (_spawnFx.length) {
+            const mn = performance.now();
+            g.lineWidth = 2; g.strokeStyle = 'rgba(255,122,82,.95)';
+            for (let i = 0; i < _spawnFx.length; i++) {
+                const f = _spawnFx[i], age = mn - f.t0;
+                if (age > f.ms + 200) continue;
+                g.globalAlpha = 1 - Math.max(0, (age - f.ms) / 200);
+                g.beginPath(); g.arc(f.x * k, f.y * k, 3 + 7 * ((age / 420) % 1), 0, Math.PI * 2); g.stroke();
+            }
+            g.globalAlpha = 1;
         }
         let n = 0;
         for (const id in players) {
@@ -7573,8 +7881,13 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
         // (marcajele sunt in dalele din ground-layer.js)
 
-        // --- the marks of a blow on the ground (the cracks and rings of the slam and the footsteps): the last thing on the ground, under everything else ---
-        if (_zFx.length) _drawGroundFx(ctx, performance.now());
+        // --- spent casings (public/shell-fx.js): they land on the ground, under the players and everything else ---
+        ARShells.step(Math.min(dtSec, 0.05));
+        ARShells.draw(ctx, visLeft, visTop, visRight, visBottom);
+        ARShells.beginFrame();
+
+        // --- the marks of a blow on the ground (the cracks and rings of the slam and the footsteps, the ripples before zombies come in): the last thing on the ground, under everything else ---
+        if (_zFx.length || _spawnFx.length) _drawGroundFx(ctx, performance.now());
 
         // --- OBSTACOLE ---
         const _obsNow = performance.now();
@@ -7659,7 +7972,14 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (_bulletAge > 0 && _enemyBulletBlocked(b.x, b.y, _bx, _by, b.ownerId, rState)) continue;
             const _seen = _srvBulletSeen.get(b.id);
             // the shot's flash and the trail start when the bullet is first drawn (it is drawn a little behind the packet)
-            if (_seen && !_seen.drawn) { _seen.drawn = true; _seen.t = _bulletNow; _shotKick(_fxFor(b.ownerId), _bulletNow); }
+            if (_seen && !_seen.drawn) {
+                _seen.drawn = true; _seen.t = _bulletNow;
+                if (_shotKick(_fxFor(b.ownerId), _bulletNow)) {
+                    const _sw = _playerWeapons.get(b.ownerId) || DEFAULT_WEAPON, _sg = WEAPON_ART.byId[_sw], _sl = Math.hypot(b.dx, b.dy) || 1, _md = _sg ? _sg.muzzleDist : 44;
+                    _shotSfxAt(_sw, b.x, b.y, predX !== null ? predX : camX, predY !== null ? predY : camY);
+                    _ejectShell(_sw, b.x - b.dx / _sl * _md, b.y - b.dy / _sl * _md, b.dx, b.dy);   // the shooter's centre: the muzzle is muzzleDist ahead of it
+                }
+            }
             const _bAge = _seen ? (_bulletNow - _seen.t) / 1000 : 0;
             const _trail = Math.min(_bAge * 480, 110);
             const _bw = _playerWeapons.get(b.ownerId) || DEFAULT_WEAPON;
@@ -7789,14 +8109,34 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                 if (_cd.rx !== undefined) { _cx = _cd.rx; _cy = _cd.ry; }
                 ARArena.drawCoin(ctx, _cx, _cy, _cq < 1 ? 0.55 + 0.45 * _cq : 1);
             }
+            let _cMine = 0;
             for (let _cfi = _coinFx.length - 1; _cfi >= 0; _cfi--) {
-                const _cf = _coinFx[_cfi], _cfT = (_cNow - _cf.t0) / 280;
+                const _cf = _coinFx[_cfi];
+                if (_cf.mine) {
+                    // one of mine: it waits its turn where it lay, then flies in an arc to the counter (faster at the end) and shrinks a little; landing adds it
+                    const _u = (_cNow - _cf.t0) / _cf.dur;
+                    _cMine++;
+                    if (_u >= 1) { _coinFx.splice(_cfi, 1); _coinLand(); continue; }
+                    if (_u < 0) { ctx.globalAlpha = 1; ARArena.drawCoin(ctx, _cf.x, _cf.y, 1); continue; }
+                    if (!_coinTarget(_cNow, _wm, _cTgt)) { _coinFx.splice(_cfi, 1); _coinLand(); continue; }
+                    const _dx = _cTgt.x - _cf.x, _cx = _cf.x + _dx * 0.3, _cy = Math.min(_cf.y, _cTgt.y) - 26 - Math.abs(_dx) * 0.05;   // up first, then sweeping in to the counter from its left (not from above: that is the minimap)
+                    for (let _tr = 2; _tr >= 0; _tr--) {   // a short tail behind it: two fainter, smaller copies a moment back
+                        const _uu = Math.max(0, _u - _tr * 0.045), _e = _uu * _uu * (3 - 2 * _uu), _q = 1 - _e;
+                        ctx.globalAlpha = _tr === 0 ? 1 : _tr === 1 ? 0.35 : 0.16;
+                        ARArena.drawCoin(ctx, _q * _q * _cf.x + 2 * _q * _e * _cx + _e * _e * _cTgt.x, _q * _q * _cf.y + 2 * _q * _e * _cy + _e * _e * _cTgt.y, (1 - 0.4 * _e) * (1 - _tr * 0.12));
+                    }
+                    ctx.globalAlpha = 1;
+                    continue;
+                }
+                const _cfT = (_cNow - _cf.t0) / 280;
                 if (_cfT >= 1) { _coinFx.splice(_cfi, 1); continue; }
                 ctx.globalAlpha = 1 - _cfT;
                 ARArena.drawCoin(ctx, _cf.x, _cf.y - 22 * _cfT, 1 + 0.25 * _cfT);
             }
             ctx.globalAlpha = 1;
+            if (_cMine === 0 && _coinHud.flights > 0) _coinHud.flights = 0;   // none left in the air: nothing is owed
         }
+        if (_gameMode === 'pve') _coinHudTick(performance.now());
 
         // --- PLAYER DEATH FX ---
         const _pdfNow = performance.now();
@@ -7862,7 +8202,17 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         ctx.globalAlpha = 1;
 
         // --- BAZA PvE --- (ARArena.drawBase: the fort; its HP bar is drawn with the names, above the crowns)
-        if (_gameMode === 'pve') ARArena.drawBase(ctx, _PVE_BASE.x, _PVE_BASE.y, Math.max(0, _pveState.baseHp / (_pveState.baseMaxHp || 1000)), Date.now() / 1000);
+        if (_gameMode === 'pve') {
+            const _bNow = performance.now(), _bJc = window.ARJuice.on();
+            if (_baseFx.hp >= 0 && _pveState.baseHp < _baseFx.hp - 0.5) _baseHit(_baseFx.hp - _pveState.baseHp, _bNow);
+            _baseFx.hp = _pveState.baseHp;
+            const _bAge = _bNow - _baseFx.hitT;
+            ctx.save();
+            if (_bJc && _bAge < 380) { const u = 1 - _bAge / 380, amp = _baseFx.mag * u * u; ctx.translate(Math.sin(_bAge * 0.09) * amp, Math.cos(_bAge * 0.11) * amp * 0.7); }   // the fort shudders and settles
+            ARArena.drawBase(ctx, _PVE_BASE.x, _PVE_BASE.y, Math.max(0, _pveState.baseHp / (_pveState.baseMaxHp || 1000)), Date.now() / 1000);
+            ctx.restore();
+            if (_bJc && _bAge < 460) _drawBaseHit(ctx, _bAge);
+        }
 
         // --- ZOMBI ---
         // The art is a cached bitmap per type (ARArena.drawZombieSprite); the shadows of all the zombies are one fill
@@ -7913,7 +8263,11 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
                     _zNx = -Math.cos(_za) * _sh; _zNy = -Math.sin(_za) * _sh;
                 }
             }
+            // one that has just come in is not there all at once: it fades in over 300 ms (the ground has been rippling there, see spawn-warn)
+            const _zBorn = _zb.bornT && _juiceOn ? (_zNow - _zb.bornT) / 300 : 1;
+            if (_zBorn < 1) ctx.globalAlpha = Math.max(0.05, _zBorn * _zBorn);
             ARArena.drawZombieSprite(ctx, _wm, _zb, _zDef, _zType, _zNow, _zb.burnT ? Math.max(0, 1 - (_zNow - _zb.burnT) / 600) : 0, _zFl, _zNx, _zNy);
+            if (_zBorn < 1) ctx.globalAlpha = 1;
             if (_zType === 4 && _gameMode === 'pve') { ctx.setTransform(_wm); _drawExploderFuse(ctx, _zb, _zDef, _zNow); }
         }
         // HP bars: only on the zombies that are hurt (see _drawZombieBars)

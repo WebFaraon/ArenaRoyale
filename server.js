@@ -1411,6 +1411,7 @@ function createPveZombie(type, id, hpMul, atX, atY) {
 // Returneaza primul batch de zombi si populeaza room.pveSpawnQueue cu restul
 const PVE_BATCH_SIZE   = 10; // zombi per mini-wave
 const PVE_BATCH_DELAY  = process.env.PVE_BATCH_DELAY ? Math.max(0.1, +process.env.PVE_BATCH_DELAY || 8) : 8;  // secunde intre mini-wave-uri (PVE_BATCH_DELAY: doar teste si harness)
+const PVE_SPAWN_WARN   = 0.9;  // seconds before a batch of zombies comes in that the clients are told where (spawn-warn: the ground ripples there)
 const PVE_START_GRACE  = 8;  // secunde de la inceputul valului pana apare primul lot: timp sa reparam / upgradam constructiile (la valuri mari nu ajungea)
 
 function prepareAndSpawnWave(room, waveIndex) {
@@ -3033,10 +3034,22 @@ function startRoomLoop(code, room) {
                 // Sub-wave spawning (urmatoarele batch-uri)
                 if (room.pveWaveActive && !room.pveWaveBreak && room.pveSpawnQueue.length > 0) {
                     room.pveSpawnTimer -= dt;
+                    // A warning goes out PVE_SPAWN_WARN s before a batch comes in: the places are chosen then (the zombies are made, ids and all, and wait in
+                    // room._spawnPre), and the clients ripple the ground there. The batch still comes at the same moment as before.
+                    if (room.pveSpawnTimer <= PVE_SPAWN_WARN && (!room._spawnPre || room._spawnPre.batch !== room.pveSpawnQueue[0])) {
+                        const head = room.pveSpawnQueue[0];
+                        const pre = head.map(type => createPveZombie(type, -1, room.pveHpMul));
+                        room._spawnPre = { batch: head, zombies: pre };
+                        const rows = [];
+                        for (const z of pre) rows.push(Math.round(z.x), Math.round(z.y), PVE_TYPE_IDX[z.type]);
+                        io.to(code).emit('spawn-warn', { ms: Math.round(Math.max(0, room.pveSpawnTimer) * 1000), rows });
+                    }
                     if (room.pveSpawnTimer <= 0) {
                         const nextBatch = room.pveSpawnQueue.shift();
                         const startId   = room.zombies.length;
-                        nextBatch.forEach((type, i) => room.zombies.push(createPveZombie(type, startId + i, room.pveHpMul)));
+                        const pre = room._spawnPre && room._spawnPre.batch === nextBatch ? room._spawnPre.zombies : null;
+                        room._spawnPre = null;
+                        nextBatch.forEach((type, i) => { const z = pre ? pre[i] : createPveZombie(type, startId + i, room.pveHpMul); z.id = startId + i; room.zombies.push(z); });
                         room.pveSpawnTimer = PVE_BATCH_DELAY;
                         io.to(code).emit('pve-subwave', { remaining: room.pveSpawnQueue.length, queued: pveQueuedCount(room) });
                     }
@@ -3478,7 +3491,7 @@ function triggerRematch(code, room) {
     room.nextCoinId = 0;
     room.countdownActive = true;
     room.pveSkipVotes.clear();
-    room.pveSpawnQueue = []; room.pveSpawnTimer = 0;
+    room.pveSpawnQueue = []; room.pveSpawnTimer = 0; room._spawnPre = null;
     room.pveWave = PVE_FIRST_WAVE - 1; room.pveWaveActive = false; room.pveWaveBreak = false; room.pveBreakTimer = 0; room._acid = [];
     room.pveKinds = PveRewards.newKinds(); room.pveT0 = 0;
     room.pveDiff = PveDiff.DEFAULT_ID; clearTimeout(room.pveVote && room.pveVote.timer); room.pveVote = null;

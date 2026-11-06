@@ -5047,7 +5047,7 @@ button:disabled { cursor: not-allowed; }
 #pve-right { position: absolute; right: max(12px, var(--safe-r)); top: calc(max(12px, var(--safe-t)) + 60px); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 #pve-minimap { position: relative; width: 150px; height: 150px; padding: 0; overflow: hidden; border-radius: 14px; zoom: var(--hk-mm, 1); }
 #pve-minimap canvas { display: block; width: 100%; height: 100%; }
-#pve-right #pve-coins-badge { position: static; }
+#pve-right #pve-coins-badge { position: relative; }
 #pve-feed { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; max-width: 280px; }
 .pf-item { padding: 4px 11px 6px; border: 2.5px solid var(--ink-line); border-radius: 10px; background: var(--c-slate); box-shadow: inset 0 -3px 0 var(--l-slate), 0 3px 0 rgba(0, 0, 0, .4); font-size: .78rem; font-weight: 800; text-shadow: var(--stroke-sm); color: #fff; animation: pfLife 6s forwards; }
 .pf-item.is-bad { background: #6D2B35; box-shadow: inset 0 -3px 0 #4D1B24, 0 3px 0 rgba(0, 0, 0, .4); }
@@ -5920,3 +5920,60 @@ body.sbx-pick #gameCanvas { cursor: crosshair; }
     .season-pill .sp-text { min-width: 0; overflow: hidden; }
     .season-pill .sp-name { overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* ==========================================================================
+   PUNCH (2026-11-06): the countdown, the warning and "get ready" pills and the wave number come in with a hard scale
+   (big, slammed down below size, a small rebound, settled). Fine effects only; the ordinary entrances above stay as they are when it is off.
+   ========================================================================== */
+:root[data-juice="on"] #countdown-overlay #countdown-number { animation: countPunch .52s cubic-bezier(.2, .85, .3, 1.15); }
+:root[data-juice="on"] #countdown-overlay #countdown-number.cd-first { animation-delay: .3s; animation-fill-mode: backwards; }
+@keyframes countPunch {
+    0%   { opacity: 0; transform: scale(2.2) rotate(-9deg); }
+    34%  { opacity: 1; transform: scale(.86) rotate(2deg); }
+    58%  { transform: scale(1.1) rotate(-1.5deg); }
+    80%  { transform: scale(.98) rotate(.5deg); }
+    100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+:root[data-juice="on"] #pve-warn.is-on,
+:root[data-juice="on"] #pve-grace.is-on { animation: pvePillPunch .5s cubic-bezier(.2, .85, .3, 1.15); }
+@keyframes pvePillPunch {
+    0%   { opacity: 0; transform: translateX(-50%) scale(1.9); }
+    38%  { opacity: 1; transform: translateX(-50%) scale(.88); }
+    62%  { transform: translateX(-50%) scale(1.07); }
+    100% { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+:root[data-juice="on"] #pve-wave .pw-num.j-punch { animation: wavePunch .6s cubic-bezier(.2, .85, .3, 1.15); transform-origin: 50% 60%; }
+@keyframes wavePunch {
+    0%   { transform: scale(1); }
+    22%  { transform: scale(1.5); }
+    52%  { transform: scale(.92); }
+    76%  { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+
+/* ==========================================================================
+   COIN COUNTERS (2026-11-06), the HUD badge and the box in the break panel: they bump and flash green when coins land, dip and flash red when spent,
+   shake with a red flash when there are not enough; a short +N / -N floats off them. Fine effects only (the classes are only added then).
+   ========================================================================== */
+.pbk-coins { position: relative; }
+.pbk-buy.is-poor:disabled { pointer-events: none; }   /* a tap on a price you cannot pay goes to the card, which shakes the button */
+:root[data-juice="on"] .j-gain  { animation: coinGain .42s cubic-bezier(.2, .85, .3, 1.25); }
+:root[data-juice="on"] .j-spend { animation: coinSpend .4s ease-out; }
+:root[data-juice="on"] .j-deny  { animation: coinDeny .4s ease-out; }
+:root[data-juice="on"] .j-shake { animation: jShake .34s ease-out; }
+:root[data-juice="on"] .j-gain  #pve-coins-num, :root[data-juice="on"] .j-gain  .pbk-coins-txt b { animation: numGain .5s ease-out; }
+:root[data-juice="on"] .j-spend #pve-coins-num, :root[data-juice="on"] .j-spend .pbk-coins-txt b,
+:root[data-juice="on"] .j-deny  #pve-coins-num, :root[data-juice="on"] .j-deny  .pbk-coins-txt b { animation: numSpend .5s ease-out; }
+@keyframes coinGain  { 0% { transform: scale(1); } 28% { transform: scale(1.18); filter: brightness(1.2); } 100% { transform: scale(1); } }
+@keyframes coinSpend { 0% { transform: scale(1); } 30% { transform: scale(.92) translateY(1px); } 100% { transform: scale(1); } }
+@keyframes coinDeny  { 0%, 100% { transform: translateX(0); } 15% { transform: translateX(-5px); } 35% { transform: translateX(5px); } 55% { transform: translateX(-3px); } 75% { transform: translateX(2px); } }
+@keyframes jShake    { 0%, 100% { transform: translateX(0); } 14% { transform: translateX(-6px); } 34% { transform: translateX(6px); } 54% { transform: translateX(-4px); } 74% { transform: translateX(3px); } }
+@keyframes numGain   { 0% { color: #fff; } 25% { color: #8DFF9A; text-shadow: 0 0 .5em rgba(120, 255, 140, .95), var(--stroke); } 100% { color: #fff; } }
+@keyframes numSpend  { 0% { color: #fff; } 25% { color: #FF6B76; text-shadow: 0 0 .5em rgba(255, 90, 100, .9), var(--stroke); } 100% { color: #fff; } }
+.coin-pop {
+    position: absolute; left: 50%; top: 100%; margin-top: .1em; transform: translateX(-50%); pointer-events: none; z-index: 5;
+    font-style: normal; font-weight: 800; font-size: 1.05em; white-space: nowrap; color: #8DFF9A; text-shadow: var(--stroke);
+    animation: coinPop .95s ease-out forwards;
+}
+.coin-pop.is-spend { color: #FF7480; }
+@keyframes coinPop { 0% { opacity: 0; transform: translate(-50%, -6px) scale(.7); } 15% { opacity: 1; transform: translate(-50%, 2px) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, 26px) scale(1); } }

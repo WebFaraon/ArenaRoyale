@@ -151,12 +151,26 @@
         // building in PvE (only placing has a sound for now)
         placeBarricade: { file: 'PlaceBarricadeSFX.mp3', gain: 0.8 },
         placeTurret:    { file: 'PlaceTurretSFX.mp3',    gain: 0.8 },
+        // gun shots: three recordings per kind (one is picked at random, never the same twice in a row) and a pitch that wobbles a little
+        // on every shot (jitter = +-fraction of the playback rate); maxVoices keeps a fast gun from stacking up
+        gun_pistol:  { files: ['Gun_pistol_1.mp3',  'Gun_pistol_2.mp3',  'Gun_pistol_3.mp3'],  gain: 0.55, jitter: 0.06, maxVoices: 6 },
+        gun_smg:     { files: ['Gun_smg_1.mp3',     'Gun_smg_2.mp3',     'Gun_smg_3.mp3'],     gain: 0.42, jitter: 0.07, maxVoices: 8 },
+        gun_rifle:   { files: ['Gun_rifle_1.mp3',   'Gun_rifle_2.mp3',   'Gun_rifle_3.mp3'],   gain: 0.5,  jitter: 0.05, maxVoices: 6 },
+        gun_shotgun: { files: ['Gun_shotgun_1.mp3', 'Gun_shotgun_2.mp3', 'Gun_shotgun_3.mp3'], gain: 0.6,  jitter: 0.05, maxVoices: 4 },
+        gun_sniper:  { files: ['Gun_sniper_1.mp3',  'Gun_sniper_2.mp3',  'Gun_sniper_3.mp3'],  gain: 0.65, jitter: 0.04, maxVoices: 3 },
+    };
+    // The music that loops behind the lobby and behind a match (60 s each, decoded when first wanted, one at a time). Quiet on purpose.
+    const MUSIC = {
+        lobby: { file: 'LobbyLoop.mp3', gain: 0.30 },
+        match: { file: 'MatchLoop.mp3', gain: 0.26 },
     };
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     let actx = null;
     let sfxMuted = false;
+    let musicOff = false;
     let unlocked = false;
     try { sfxMuted = localStorage.getItem('ar_ui_muted') === '1'; } catch (e) { /* storage may be blocked */ }
+    try { musicOff = localStorage.getItem('ar_music_off') === '1'; } catch (e) { /* storage may be blocked */ }
 
     function decode(ctx, data) {
         return new Promise(function (resolve, reject) {
@@ -167,19 +181,24 @@
     function loadSfx() {
         Object.keys(SFX).forEach(function (k) {
             const s = SFX[k];
+            const files = s.files || [s.file];
+            s.buffers = [];
+            s.voices = 0; s.last = -1;
             // HTML audio is the fallback when Web Audio or decoding is missing
-            s.el = new Audio(arAsset(SFX_BASE + s.file));
+            s.el = new Audio(arAsset(SFX_BASE + files[0]));
             s.el.preload = 'auto';
             if (!AudioCtx) return;
-            fetch(arAsset(SFX_BASE + s.file))
-                .then(function (r) { return r.arrayBuffer(); })
-                .then(function (buf) {
-                    actx = actx || new AudioCtx();
-                    watchCtx();
-                    return decode(actx, buf);
-                })
-                .then(function (audio) { s.buffer = audio; })
-                .catch(function () { /* keep the HTML audio fallback */ });
+            files.forEach(function (f) {
+                fetch(arAsset(SFX_BASE + f))
+                    .then(function (r) { return r.arrayBuffer(); })
+                    .then(function (buf) {
+                        actx = actx || new AudioCtx();
+                        watchCtx();
+                        return decode(actx, buf);
+                    })
+                    .then(function (audio) { s.buffers.push(audio); s.buffer = s.buffers[0]; })
+                    .catch(function () { /* keep the HTML audio fallback */ });
+            });
         });
     }
     // A sound that comes after a quiet spell used to start late (a few tens of ms): the browser / the operating system puts the audio output to sleep when nothing has
@@ -210,19 +229,20 @@
     function watchCtx() {
         if (!actx || actx.__arWatched) return;
         actx.__arWatched = true;
-        actx.onstatechange = function () { if (actx.state === 'running') startKeepAlive(); else stopKeepAlive(); };
+        actx.onstatechange = function () { if (actx.state === 'running') startKeepAlive(); else stopKeepAlive(); applyMusic(); };
     }
     document.addEventListener('visibilitychange', function () {
-        if (document.hidden) { stopKeepAlive(); return; }
+        if (document.hidden) { stopKeepAlive(); applyMusic(); return; }
         if (actx && actx.state !== 'running' && unlocked) { try { actx.resume(); } catch (e) { /* ignore */ } }
         startKeepAlive();
+        applyMusic();
     });
     function unlockAudio() {
         if (unlocked && actx && actx.state === 'running') return;
         try {
             actx = actx || (AudioCtx ? new AudioCtx() : null);
             watchCtx();
-            if (actx && actx.state !== 'running') { const rp = actx.resume(); if (rp && rp.then) rp.then(startKeepAlive, function () {}); }
+            if (actx && actx.state !== 'running') { const rp = actx.resume(); if (rp && rp.then) rp.then(function () { startKeepAlive(); applyMusic(); }, function () {}); }
             else startKeepAlive();
             if (actx && !unlocked) {
                 const b = actx.createBuffer(1, 1, 22050);
@@ -232,46 +252,116 @@
         } catch (e) { /* ignore */ }
         if (!unlocked) {
             unlocked = true;
+            applyMusic();
             try {
                 const silent = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
                 silent.play().catch(function () {});
             } catch (e) { /* ignore */ }
         }
     }
-    function playBuffer(s) {
+    // o (optional): { vol: 0..1 times the sound's own gain, rate: playback rate (pitch) on top of the random wobble, pan: -1..1 }
+    function playBuffer(s, o) {
+        const n = s.buffers.length;
+        if (!n) return;
+        if (s.maxVoices && s.voices >= s.maxVoices) return;
+        let i = 0;
+        if (n > 1) { i = Math.floor(Math.random() * (n - 1)); if (i >= s.last) i++; }   // a different recording than the last shot
+        s.last = i;
         const src = actx.createBufferSource();
         const g = actx.createGain();
-        g.gain.value = s.gain;
-        src.buffer = s.buffer;
-        src.connect(g); g.connect(actx.destination);
+        g.gain.value = s.gain * (o && o.vol !== undefined ? o.vol : 1);
+        src.buffer = s.buffers[i];
+        let rate = (o && o.rate) || 1;
+        if (s.jitter) rate *= 1 + (Math.random() * 2 - 1) * s.jitter;
+        if (rate !== 1) src.playbackRate.value = rate;
+        src.connect(g);
+        if (o && o.pan && actx.createStereoPanner) {
+            const pn = actx.createStereoPanner();
+            pn.pan.value = Math.max(-1, Math.min(1, o.pan));
+            g.connect(pn); pn.connect(actx.destination);
+        } else g.connect(actx.destination);
+        if (s.maxVoices) { s.voices++; src.onended = function () { s.voices--; }; }
         src.start(0);
     }
-    function playHtml(s) {
+    function playHtml(s, o) {
         if (!s.el) return;
         try {
             const el = s.el.cloneNode();
-            el.volume = s.gain;
+            el.volume = Math.max(0, Math.min(1, s.gain * (o && o.vol !== undefined ? o.vol : 1)));
+            if (s.jitter || (o && o.rate)) el.playbackRate = ((o && o.rate) || 1) * (1 + (Math.random() * 2 - 1) * (s.jitter || 0));
             el.play().catch(function () {});
         } catch (e) { /* ignore */ }
     }
-    function playSfx(name) {
+    function playSfx(name, o) {
         const s = SFX[name];
         if (!s || sfxMuted) return;
-        if (actx && s.buffer) {
-            if (actx.state === 'running') { playBuffer(s); startKeepAlive(); return; }
+        if (actx && s.buffers && s.buffers.length) {
+            if (actx.state === 'running') { playBuffer(s, o); startKeepAlive(); return; }
             // asleep (suspended / interrupted): wake it and play from the buffer as soon as it runs; the HTML audio (slow to start) only if waking it fails
             try {
                 const rp = actx.resume();
-                if (rp && rp.then) { rp.then(function () { if (actx.state === 'running') { playBuffer(s); startKeepAlive(); } else playHtml(s); }, function () { playHtml(s); }); return; }
+                if (rp && rp.then) { rp.then(function () { if (actx.state === 'running') { playBuffer(s, o); startKeepAlive(); } else playHtml(s, o); }, function () { playHtml(s, o); }); return; }
             } catch (e) { /* fall through */ }
         }
-        playHtml(s);
+        playHtml(s, o);
     }
+
+    // ---------- music ----------
+    // One loop at a time, started only once the audio is unlocked and the page is visible, cross-faded when the scene changes (lobby <-> match).
+    // The buffer of the track that is not playing is dropped (60 s of stereo is ~20 MB decoded).
+    let musicWant = null, musicCur = null;
+    function musicBuffer(name) {
+        const m = MUSIC[name];
+        if (m.buffer) return Promise.resolve(m.buffer);
+        if (!m.loading) {
+            m.loading = fetch(arAsset(SFX_BASE + m.file))
+                .then(function (r) { return r.arrayBuffer(); })
+                .then(function (buf) { actx = actx || new AudioCtx(); watchCtx(); return decode(actx, buf); })
+                .then(function (b) { m.buffer = b; m.loading = null; return b; }, function (e) { m.loading = null; throw e; });
+        }
+        return m.loading;
+    }
+    function fadeOutMusic(cur, sec) {
+        try {
+            const t = actx.currentTime;
+            cur.gain.gain.cancelScheduledValues(t);
+            cur.gain.gain.setValueAtTime(cur.gain.gain.value, t);
+            cur.gain.gain.linearRampToValueAtTime(0, t + sec);
+            cur.src.stop(t + sec + 0.05);
+            cur.src.onended = function () { try { cur.src.disconnect(); cur.gain.disconnect(); } catch (e) { /* ignore */ } if (MUSIC[cur.name] && !(musicCur && musicCur.name === cur.name)) MUSIC[cur.name].buffer = null; };
+        } catch (e) { /* ignore */ }
+    }
+    function applyMusic() {
+        const can = AudioCtx && actx && actx.state === 'running' && unlocked && !sfxMuted && !musicOff && !document.hidden && musicWant && MUSIC[musicWant];
+        if (!can) {
+            if (musicCur) { fadeOutMusic(musicCur, 0.4); musicCur = null; }
+            return;
+        }
+        if (musicCur && musicCur.name === musicWant) return;
+        const name = musicWant;
+        if (musicCur) { fadeOutMusic(musicCur, 1.2); musicCur = null; }
+        musicCur = { name: name, pending: true };
+        const mine = musicCur;
+        musicBuffer(name).then(function (buf) {
+            if (musicCur !== mine || !actx || actx.state !== 'running') return;
+            const src = actx.createBufferSource(), g = actx.createGain();
+            src.buffer = buf; src.loop = true;
+            g.gain.value = 0;
+            src.connect(g); g.connect(actx.destination);
+            src.start(0);
+            g.gain.linearRampToValueAtTime(MUSIC[name].gain, actx.currentTime + 1.5);
+            mine.src = src; mine.gain = g; mine.pending = false;
+        }).catch(function () { if (musicCur === mine) musicCur = null; });
+    }
+    function setMusic(name) { musicWant = name && MUSIC[name] ? name : null; applyMusic(); }
     window.ARSound = {
         play: playSfx,
-        setMuted: function (m) { sfxMuted = !!m; if (sfxMuted) stopKeepAlive(); else startKeepAlive(); },
+        music: setMusic,
+        setMuted: function (m) { sfxMuted = !!m; if (sfxMuted) stopKeepAlive(); else startKeepAlive(); applyMusic(); },
         isMuted: function () { return sfxMuted; },
-        state: function () { return { ctx: actx ? actx.state : 'none', keepAlive: !!keepSrc }; },   // for diagnosis (the console, the tests)
+        setMusicOff: function (v) { musicOff = !!v; try { localStorage.setItem('ar_music_off', musicOff ? '1' : '0'); } catch (e) { /* ignore */ } applyMusic(); },
+        isMusicOff: function () { return musicOff; },
+        state: function () { return { ctx: actx ? actx.state : 'none', keepAlive: !!keepSrc, music: musicCur ? musicCur.name : null }; },   // for diagnosis (the console, the tests)
     };
     loadSfx();
     ['pointerdown', 'touchend', 'pointerup', 'click', 'keydown'].forEach(function (ev) {
@@ -388,6 +478,25 @@
             });
         }
         paintSound();
+
+        // ---------- settings: music (its own switch; the Sound switch above silences everything) ----------
+        const swMusic = document.getElementById('set-music');
+        if (swMusic) {
+            const paintMusic = function () {
+                const off = window.ARSound.isMusicOff();
+                swMusic.setAttribute('aria-checked', off ? 'false' : 'true');
+                const t = swMusic.querySelector('.switch-text'); if (t) t.textContent = off ? 'OFF' : 'ON';
+            };
+            swMusic.addEventListener('click', function () { window.ARSound.setMusicOff(!window.ARSound.isMusicOff()); paintMusic(); });
+            paintMusic();
+        }
+        // the loop follows the screen: the match track while the game screen is up, the lobby track everywhere else (login, lobby, waiting room)
+        const gameScr = document.getElementById('screen-game');
+        if (gameScr) {
+            const syncMusic = function () { window.ARSound.music(getComputedStyle(gameScr).display !== 'none' ? 'match' : 'lobby'); };
+            new MutationObserver(syncMusic).observe(gameScr, { attributes: true, attributeFilter: ['style', 'class'] });
+            syncMusic();
+        } else window.ARSound.music('lobby');
 
         // ---------- bars that trail: the XP bar of the lobby, the health under the gun, the base in the PvE HUD ----------
         ['lp-xp-fill', 'hb-hpfill', 'pve-base-bar-inner'].forEach(function (id) { window.ARJuice.trail(document.getElementById(id)); });
