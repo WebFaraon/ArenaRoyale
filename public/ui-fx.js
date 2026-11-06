@@ -175,17 +175,55 @@
                 .then(function (r) { return r.arrayBuffer(); })
                 .then(function (buf) {
                     actx = actx || new AudioCtx();
+                    watchCtx();
                     return decode(actx, buf);
                 })
                 .then(function (audio) { s.buffer = audio; })
                 .catch(function () { /* keep the HTML audio fallback */ });
         });
     }
+    // A sound that comes after a quiet spell used to start late (a few tens of ms): the browser / the operating system puts the audio output to sleep when nothing has
+    // been played for a while, and the first sound has to wake it. So while the page is visible and the sounds are not muted, the context plays a looped noise far
+    // below what anyone can hear (about -76 dB, a few LSB of a 16-bit output): the output never counts as silent and never sleeps, and a click is instant at any time.
+    const KEEP_AMP = 1.5e-4;
+    let keepSrc = null, noiseBuf = null;
+    function startKeepAlive() {
+        if (keepSrc || !actx || actx.state !== 'running' || sfxMuted || document.hidden) return;
+        try {
+            if (!noiseBuf) {
+                noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
+                const d = noiseBuf.getChannelData(0);
+                for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * KEEP_AMP;
+            }
+            keepSrc = actx.createBufferSource();
+            keepSrc.buffer = noiseBuf; keepSrc.loop = true;
+            keepSrc.connect(actx.destination);
+            keepSrc.start(0);
+        } catch (e) { keepSrc = null; }
+    }
+    function stopKeepAlive() {
+        if (!keepSrc) return;
+        try { keepSrc.stop(); keepSrc.disconnect(); } catch (e) { /* ignore */ }
+        keepSrc = null;
+    }
+    // the context's own state changes (a resume that came through, the system took the output away: iOS "interrupted"): keep the keep-alive in step
+    function watchCtx() {
+        if (!actx || actx.__arWatched) return;
+        actx.__arWatched = true;
+        actx.onstatechange = function () { if (actx.state === 'running') startKeepAlive(); else stopKeepAlive(); };
+    }
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) { stopKeepAlive(); return; }
+        if (actx && actx.state !== 'running' && unlocked) { try { actx.resume(); } catch (e) { /* ignore */ } }
+        startKeepAlive();
+    });
     function unlockAudio() {
         if (unlocked && actx && actx.state === 'running') return;
         try {
             actx = actx || (AudioCtx ? new AudioCtx() : null);
-            if (actx && actx.state !== 'running') actx.resume();
+            watchCtx();
+            if (actx && actx.state !== 'running') { const rp = actx.resume(); if (rp && rp.then) rp.then(startKeepAlive, function () {}); }
+            else startKeepAlive();
             if (actx && !unlocked) {
                 const b = actx.createBuffer(1, 1, 22050);
                 const src = actx.createBufferSource();
@@ -200,30 +238,40 @@
             } catch (e) { /* ignore */ }
         }
     }
+    function playBuffer(s) {
+        const src = actx.createBufferSource();
+        const g = actx.createGain();
+        g.gain.value = s.gain;
+        src.buffer = s.buffer;
+        src.connect(g); g.connect(actx.destination);
+        src.start(0);
+    }
+    function playHtml(s) {
+        if (!s.el) return;
+        try {
+            const el = s.el.cloneNode();
+            el.volume = s.gain;
+            el.play().catch(function () {});
+        } catch (e) { /* ignore */ }
+    }
     function playSfx(name) {
         const s = SFX[name];
         if (!s || sfxMuted) return;
-        if (actx && s.buffer && actx.state === 'running') {
-            const src = actx.createBufferSource();
-            const g = actx.createGain();
-            g.gain.value = s.gain;
-            src.buffer = s.buffer;
-            src.connect(g); g.connect(actx.destination);
-            src.start(0);
-            return;
-        }
-        if (s.el) {
+        if (actx && s.buffer) {
+            if (actx.state === 'running') { playBuffer(s); startKeepAlive(); return; }
+            // asleep (suspended / interrupted): wake it and play from the buffer as soon as it runs; the HTML audio (slow to start) only if waking it fails
             try {
-                const el = s.el.cloneNode();
-                el.volume = s.gain;
-                el.play().catch(function () {});
-            } catch (e) { /* ignore */ }
+                const rp = actx.resume();
+                if (rp && rp.then) { rp.then(function () { if (actx.state === 'running') { playBuffer(s); startKeepAlive(); } else playHtml(s); }, function () { playHtml(s); }); return; }
+            } catch (e) { /* fall through */ }
         }
+        playHtml(s);
     }
     window.ARSound = {
         play: playSfx,
-        setMuted: function (m) { sfxMuted = !!m; },
+        setMuted: function (m) { sfxMuted = !!m; if (sfxMuted) stopKeepAlive(); else startKeepAlive(); },
         isMuted: function () { return sfxMuted; },
+        state: function () { return { ctx: actx ? actx.state : 'none', keepAlive: !!keepSrc }; },   // for diagnosis (the console, the tests)
     };
     loadSfx();
     ['pointerdown', 'touchend', 'pointerup', 'click', 'keydown'].forEach(function (ev) {
