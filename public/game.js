@@ -3962,7 +3962,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         const q2 = Math.min(1, Math.max(0, (age - 110) / 640)); if (q2 > 0 && q2 < 1) { ctx.globalAlpha = (1 - q2) * 0.6; ctx.strokeStyle = '#F4EAD2'; ctx.lineWidth = 4 * (1 - q2) + 1; ctx.setLineDash([26, 18]); ctx.beginPath(); ctx.arc(X, Y, R * 0.92 * e * Math.min(1, q2 * 1.3 + 0.1), 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
         // the cracks: they open with the front, glow, cool and fade
         const fade = age < 1300 ? 1 : 1 - (age - 1300) / (_QUAKE_LIFE - 1300), lava = Math.max(0, 1 - age / 1500), pulse = 0.85 + 0.15 * Math.sin(age * 0.018);
-        const W0 = [9, 6, 3.4];
+        const W0 = [3.4, 2.4, 1.6];   // as thin as the straight cracks they replace: a net of fine lines, not roots
         // passes: a pale raised lip of earth, the ink edge, the dark chasm, then the lava glow and its white-hot core while it is fresh
         for (let pass = 0; pass < 5; pass++) {
             if (pass >= 3 && lava <= 0.04) break;
@@ -3971,7 +3971,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
             if (ctx.globalAlpha <= 0.01) continue;
             for (let bk = 0; bk < 3; bk++) {
                 const w = W0[bk];
-                ctx.lineWidth = pass === 0 ? w + 7 : pass === 1 ? w + 3 : pass === 2 ? w : pass === 3 ? w * 0.62 : w * 0.24;
+                ctx.lineWidth = pass === 0 ? w + 3 : pass === 1 ? w + 1.6 : pass === 2 ? w : pass === 3 ? w * 0.6 : w * 0.25;
                 ctx.beginPath(); let any = false;
                 for (let j = 0; j < S.length; j += 6) {
                     if (S[j + 5] !== bk || S[j + 4] > front) continue;
