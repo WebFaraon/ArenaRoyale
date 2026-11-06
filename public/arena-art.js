@@ -585,7 +585,7 @@
         { id: 'zombi_rapid', view: [-60, -45, 120, 120],   disc: 29.95, sh: [7, 12, 33, 30] },     // runner
         { id: 'zombi_tanc',  view: [-90, -67.5, 180, 180], disc: 49.2,  sh: [7, 12, 49.5, 45] },   // tank
         { id: 'zombi_toxic', view: [-72, -54, 144, 144],   disc: 38.5,  sh: [7, 12, 39.6, 36] },    // spitter (its dashed acid ring is part of the picture)
-        { id: 'zombi_exploder', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },  // exploder
+        { id: 'zombi_exploder', view: [-70, -52.5, 140, 180], disc: 38.5, sh: [7, 12, 38.5, 35] },  // exploder (a stick of dynamite in each hand reaches further than the hands did; in pieces: drawExploderSprite)
         { id: 'zombi_brute', view: [-90, -67.5, 180, 180], disc: 49.2,  sh: [7, 12, 49.5, 45] },    // brute (the spikes are inside the picture's frame)
         { id: 'zombi_summoner', view: [-90, -67.5, 180, 180], disc: 49.2, sh: [7, 12, 49.5, 45] }, // summoner
         { id: 'zombi_minion', view: [-70, -52.5, 140, 140], disc: 38.5, sh: [7, 12, 38.5, 35] },    // minion
@@ -654,6 +654,8 @@
     const COL_SET  = makePieceSet('colossus', ['crown', 'pauL', 'pauR', 'armL', 'armR', 'head'], { crown: [0, -20], pauL: [-58, 18], pauR: [58, 18], armL: [-58, 20], armR: [58, 20], head: [0, 0] }, 15, 'col_', 116, 14);   // the pivots: the same as parts.json
     const MINI_SET = makePieceSet('colossus_mini', ['crown', 'armL', 'armR', 'head'], { crown: [0, -14], armL: [-38, 12], armR: [38, 12], head: [0, 0] }, 16, 'cmi_', 68, 30);
     const SHD_SET  = makePieceSet('shielded', ['armL', 'armR', 'head', 'shield'], { armL: [-28, 8], armR: [28, 8], head: [0, 0], shield: [0, 46] }, 8, 'shd_', 44, 48);   // the shielded zombie (the pivots: the same as parts.json)
+    const EXP_SET  = makePieceSet('exploder', ['armL', 'armR', 'head', 'bundle', 'face'], { armL: [-17, 6], armR: [17, 6], head: [0, 0], bundle: [0, 0], face: [0, 0] }, 4, 'exp_', 64, 120);   // the exploder (the pivots: the same as parts.json)
+    const EXP_FUSE = { armL: [-20.3, 110.9], armR: [20.3, 116.9], head: [-26.4, -19.9] };   // where each lit fuse is in the picture's units (parts.json: fuses)
     function setReady(S) { for (let i = 0; i < S.imgs.length; i++) if (S.imgs[i].state !== 1) return false; return true; }
     function setPad(S, def) { const art = ZOMBIE_ART[S.art], k = def.r / art.disc, v = art.view; return Math.max(-v[0], -v[1], v[0] + v[2], v[1] + v[3]) * k + 2; }
     function setPaint(S, i, def) {
@@ -673,6 +675,7 @@
     function warmColossus(def) { return warmSet(COL_SET, def); }
     function warmMiniColossus(def) { return warmSet(MINI_SET, def); }
     function warmShielded(def) { return warmSet(SHD_SET, def); }
+    function warmExploder(def) { return warmSet(EXP_SET, def); }
     const smooth01 = function (p) { p = p < 0 ? 0 : p > 1 ? 1 : p; return p * p * (3 - 2 * p); };
     function drawColPieces(S, ctx, m, zb, def, now, nx, ny) {
         if (!setReady(S)) return false;
@@ -746,6 +749,70 @@
         const sp = sprite(old, pad, function (g) { paint(g); g.globalCompositeOperation = 'source-atop'; g.fillStyle = kind === 'F' ? 'rgba(255,255,255,0.85)' : 'rgba(255,70,24,0.45)'; g.fillRect(-pad, -pad, pad * 2, pad * 2); g.globalCompositeOperation = 'source-over'; });
         if (sp !== old && sp) zombieSprites.set(key, sp);
         return sp || old;
+    }
+    // The exploder (public/images/zombies/exploder/*.svg: both arms, each with a stick of dynamite in the fist, the head, the bundle strapped to it and the face) runs with its pieces.
+    // It has no attack (it goes off on touch), so only the walk: the arms reach and draw back in turn (they are fixed to the shoulders: they stretch and swing, the dynamite in the fist
+    // with them), the body sways and dips with the steps, the bundle on its head jiggles a little on its own. Every lit fuse flickers (a glow and a spark; drawn here, on the piece, so
+    // it follows the pose); the one of the bundle is left for _drawExploderFuse, which also makes the red glow that beats near a target: this function tells it where the fuse is now
+    // (zb._fuse, world units). A hit (flash) and burning (hot) are washed over each piece, as for the shielded one.
+    function drawExploderSprite(ctx, m, zb, def, now, hot, flash, nx, ny) {
+        const S = EXP_SET;
+        if (!setReady(S)) return false;
+        const pad = setPad(S, def), art = ZOMBIE_ART[S.art], k = def.r / art.disc;
+        const sp = [];
+        for (let i = 0; i < S.parts.length; i++) {
+            const key = S.prefix + S.parts[i], old = zombieSprites.get(key), sprt = sprite(old, pad, setPaint(S, i, def));
+            if (sprt !== old && sprt) zombieSprites.set(key, sprt);
+            if (!(sprt || old)) return false;
+            sp.push(sprt || old);
+        }
+        const dtS = zb._bl ? Math.min(0.1, Math.max(0.001, (now - zb._bl) / 1000)) : 0.016;
+        const moved = zb._bl ? Math.hypot(zb.x - zb._bx, zb.y - zb._by) : 0;
+        zb._bl = now; zb._bx = zb.x; zb._by = zb.y;
+        zb._bp = (zb._bp || 0) + moved * (2 * Math.PI / S.stride);
+        zb._ba = (zb._ba || 0) + (Math.min(1, moved / dtS / S.refSpd) - (zb._ba || 0)) * Math.min(1, dtS * 5);
+        const ph = zb._bp, amp = zb._ba, t = now / 1000, seed = (zb.id || 0) * 1.3, sn1 = Math.sin(ph), cs1 = Math.cos(ph);
+        const sd = amp * Math.pow(Math.abs(sn1), 6), idle = Math.sin(t * 1.9 + seed) * 0.014;
+        const a = (zb.angle || 0) - Math.PI / 2, cs = Math.cos(a), sn = Math.sin(a);
+        const zx = nx ? zb.x + nx : zb.x, zy = ny ? zb.y + ny : zb.y;
+        const base = [m.a * cs + m.c * sn, m.b * cs + m.d * sn, m.c * cs - m.a * sn, m.d * cs - m.b * sn, m.a * zx + m.c * zy + m.e, m.b * zx + m.d * zy + m.f];
+        const reach = 0.1 * cs1 * amp;   // one arm reaches as the other draws back
+        const hdRot = sn1 * 0.07 * amp + idle, hdDy = (1.3 * Math.abs(sn1) * amp + 0.8 * sd) * k, hdSc = 1 + 0.018 * sd;
+        const bnRot = Math.sin(ph * 2 + 1.2) * 0.06 * amp, bnDy = -1.5 * Math.cos(ph * 2) * amp * k;
+        // per piece: [rotation, sx, sy, shift x, shift y] about its pivot
+        const T = {
+            armL: [-sn1 * 0.12 * amp + idle, 1, 1 + reach, 0, 0],
+            armR: [-sn1 * 0.12 * amp - idle, 1, 1 - reach, 0, 0],
+            head: [hdRot, hdSc, hdSc, 0, hdDy],
+            bundle: [hdRot + bnRot, hdSc, hdSc, 0, hdDy + bnDy],
+            face: [hdRot, hdSc, hdSc, 0, hdDy],
+        };
+        const fl = 0.6 + 0.4 * Math.sin(now * 0.05 + (zb.id || 0) * 1.7);
+        for (let i = 0; i < S.parts.length; i++) {
+            const nm = S.parts[i], pv = S.pivot[nm], tr = T[nm], px = pv[0] * k, py = pv[1] * k;
+            ctx.setTransform(base[0], base[1], base[2], base[3], base[4], base[5]);
+            ctx.translate(px + tr[3], py + tr[4]); ctx.rotate(tr[0]); ctx.scale(tr[1], tr[2]); ctx.translate(-px, -py);
+            ctx.drawImage(sp[i].c, -pad, -pad, pad * 2, pad * 2);
+            if (flash > 0.02) { const w = washedPiece(S, i, def, 'F'); if (w) { ctx.globalAlpha = flash; ctx.drawImage(w.c, -pad, -pad, pad * 2, pad * 2); ctx.globalAlpha = 1; } }
+            if (hot > 0.02) { const w = washedPiece(S, i, def, 'H'); if (w) { ctx.globalAlpha = hot; ctx.drawImage(w.c, -pad, -pad, pad * 2, pad * 2); ctx.globalAlpha = 1; } }
+            const fz = EXP_FUSE[nm];
+            if (fz && nm !== 'bundle') {   // the lit fuse of the stick in this hand: a flickering glow, a white-hot point and two sparks (drawn in the piece's own frame, so they go with it)
+                const fx = fz[0] * k, fy = fz[1] * k, ph2 = (zb.id || 0) * 0.37 + (nm === 'armL' ? 0 : 0.5);
+                ctx.fillStyle = 'rgba(255,200,60,' + (0.4 * fl).toFixed(2) + ')'; ctx.beginPath(); ctx.arc(fx, fy, (6 + 3 * fl) * k * 1.6, 0, 6.2832); ctx.fill();
+                ctx.fillStyle = '#FFF3C4'; ctx.beginPath(); ctx.arc(fx, fy, (2 + fl) * k * 1.4, 0, 6.2832); ctx.fill();
+                for (let q = 0; q < 2; q++) {
+                    const pp = ((now / 420) + q * 0.5 + ph2) % 1, ang = (seed * 2.3 + q * 2.6 + Math.floor((now / 420) + q * 0.5 + ph2) * 1.3) % 6.2832, rr = (3 + 11 * pp) * k * 1.4;
+                    ctx.globalAlpha = 1 - pp; ctx.fillStyle = q ? '#FFC72E' : '#FF8A1F';
+                    ctx.beginPath(); ctx.arc(fx + Math.cos(ang) * rr, fy + Math.sin(ang) * rr, (1.5 * (1 - pp) + 0.4) * k * 1.6, 0, 6.2832); ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+            }
+        }
+        // where the fuse of the bundle is now (world units): the bundle's own transform applied to its point
+        const bf = EXP_FUSE.head, q = T.bundle, bx = bf[0] * k, by = bf[1] * k, cr = Math.cos(q[0]), sr = Math.sin(q[0]);
+        const lx = (bx * cr - by * sr) * q[1] + q[3], ly = (bx * sr + by * cr) * q[2] + q[4];
+        zb._fuse = [zb.x + (lx * cs - ly * sn), zb.y + (lx * sn + ly * cs)];
+        return true;
     }
     function drawShieldedSprite(ctx, m, zb, def, now, hot, flash, nx, ny) {
         const S = SHD_SET;
@@ -892,6 +959,7 @@
         if (typeKey === 15 && drawColossusSprite(ctx, m, zb, def, now, nx, ny)) return;   // so does the Colossus
         if (typeKey === 16 && drawMiniColossusSprite(ctx, m, zb, def, now, nx, ny)) return;   // and the small ones it calls
         if (typeKey === 8 && drawShieldedSprite(ctx, m, zb, def, now, hot, flash, nx, ny)) return;   // the shielded zombie moves in pieces too
+        if (typeKey === 4 && drawExploderSprite(ctx, m, zb, def, now, hot, flash, nx, ny)) return;   // and the exploder
         let s = null, pad = 0;
         const zp = zombiePainter(def, typeKey);
         if (zp) {
@@ -1185,6 +1253,7 @@
         if (zdefs[15]) missing += warmColossus(zdefs[15]);
         if (zdefs[16]) missing += warmMiniColossus(zdefs[16]);
         if (zdefs[8]) missing += warmShielded(zdefs[8]);
+        if (zdefs[4]) missing += warmExploder(zdefs[4]);
         if (withBase) for (let st = 0; st < BASE_PAL.length; st++) { const pal = BASE_PAL[st]; need('base' + st, BASE_PAD, function (g) { paintBase(g, pal); }); }
         need('kit', KIT_PAD, kitPainter());
         need('ammo', KIT_PAD, ammoPainter());

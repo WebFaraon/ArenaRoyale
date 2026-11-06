@@ -1,0 +1,56 @@
+{
+  "view": [
+    -70,
+    -52.5,
+    140,
+    180
+  ],
+  "order": [
+    "armL",
+    "armR",
+    "head",
+    "bundle",
+    "face"
+  ],
+  "pivots": {
+    "armL": {
+      "x": -17,
+      "y": 6,
+      "note": "left shoulder: the arm reaches and draws back with the steps, the dynamite in its hand with it"
+    },
+    "armR": {
+      "x": 17,
+      "y": 6,
+      "note": "right shoulder: the other way round"
+    },
+    "head": {
+      "x": 0,
+      "y": 0,
+      "note": "centre of the body: sways with the steps"
+    },
+    "bundle": {
+      "x": 0,
+      "y": 0,
+      "note": "the dynamite strapped to the head: follows the head and jiggles a little on its own"
+    },
+    "face": {
+      "x": 0,
+      "y": 0,
+      "note": "the highlight, the outline and the eyes: exactly the head, drawn over the bundle"
+    }
+  },
+  "fuses": {
+    "armL": [
+      -20.3,
+      110.9
+    ],
+    "armR": [
+      20.3,
+      116.9
+    ],
+    "head": [
+      -26.4,
+      -19.9
+    ]
+  }
+}

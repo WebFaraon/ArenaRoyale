@@ -4287,7 +4287,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     const _FUSE_PX = -26.4, _FUSE_PY = -19.9;   // in the picture's units, y towards where it looks
     function _drawExploderFuse(ctx, z, def, now) {
         const k = def.r / 38.5, a = (z.angle || 0) - Math.PI / 2, cs = Math.cos(a), sn = Math.sin(a);
-        const fx = z.x + (_FUSE_PX * cs - _FUSE_PY * sn) * k, fy = z.y + (_FUSE_PX * sn + _FUSE_PY * cs) * k;
+        let fx = z.x + (_FUSE_PX * cs - _FUSE_PY * sn) * k, fy = z.y + (_FUSE_PX * sn + _FUSE_PY * cs) * k;
+        if (z._fuse) { fx = z._fuse[0]; fy = z._fuse[1]; }   // the pose of the picture says where it is now (ARArena.drawExploderSprite)
         // the nearest thing to blow up
         let nd = 1e9;
         if (predX !== null && !_selfDead) nd = Math.hypot(predX - z.x, predY - z.y);
