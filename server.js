@@ -1080,9 +1080,16 @@ const PVE_ZOMBIE_DEFS = {
     // hunts: goes for a player in range first (then a barricade, then the base); false = never goes for a player or hits one, only barricades and the base
     // mass: how the zombies shove each other apart (the heavier one gives way less); heavy: a player cannot push it, it pushes the player (it is a wall to them)
     // large: keeps further from the trees on its way (zombie-nav.js); armor: taken off every hit (never below a fifth of it); noScale: does not grow with the wave
-    normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 2, coinsMax: 4, baseDmg: 15, r: 20, hunts: true, mass: 1 },
-    runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 3, coinsMax: 5, baseDmg: 8,  r: 16, hunts: true, mass: 0.8 },
-    tank:   { hp: 500, armor: 3, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 7, coinsMax: 10, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true },   // the siege type: walks to the base, breaks what is in the way
+    // normal, runner and tank (the first three) hit with a swing too (`swing`, see swingTick): the blow starts when something is in reach, the zombie raises its arms for `windup` s, and
+    // the damage lands at the END of the wind-up (on a player within attackR + slack, else a barricade / turret, else the base), then `recover` s to straighten up. They are told to
+    // the clients in one `melee` event a tick (`batch`). `players`: it can hit a player (the ones that hunt); `walk`: it keeps walking while it swings (the tank stands, as it does against a wall).
+    // attackCd is still the whole cycle, so they hit as often as before; only the damage comes `windup` s after the blow starts.
+    normal: { hp: 100, chaseSpd: 62,  patrolSpd: 30, dmg: 20, attackR: 55, attackCd: 1.0, coinsMin: 2, coinsMax: 4, baseDmg: 15, r: 20, hunts: true, mass: 1,
+              swing: { ev: 'melee', batch: true, windup: 0.28, recover: 0.32, players: true, walk: true, slack: 14 } },
+    runner: { hp: 50,  chaseSpd: 130, patrolSpd: 60, dmg: 10, attackR: 50, attackCd: 0.7, coinsMin: 3, coinsMax: 5, baseDmg: 8,  r: 16, hunts: true, mass: 0.8,
+              swing: { ev: 'melee', batch: true, windup: 0.2, recover: 0.24, players: true, walk: true, slack: 14 } },
+    tank:   { hp: 500, armor: 3, chaseSpd: 35,  patrolSpd: 20, dmg: 40, attackR: 65, attackCd: 1.5, coinsMin: 7, coinsMax: 10, baseDmg: 35, r: 28, hunts: false, mass: 8, heavy: true, large: true,
+            swing: { ev: 'melee', batch: true, windup: 0.55, recover: 0.55 } },   // the siege type: walks to the base, breaks what is in the way
     // the spitter: walks on to the base and stops as soon as something is within range (a turret first, then a player, a barricade, the base) and
     // spits acid at it, a splash that hurts what is built and the players; its range is longer than the first two turret levels (the third reaches it)
     spitter: { hp: 160, chaseSpd: 52, patrolSpd: 30, dmg: 0, attackR: 0, attackCd: 2.4, coinsMin: 6, coinsMax: 9, baseDmg: 0, r: 20, hunts: false, mass: 1,
@@ -2008,24 +2015,34 @@ function stepTick(code, room, zombie, def, mv) {
 // A zombie whose blow is a swing (def.swing: the Brood Mother). Called every tick from its place in the attack chain. It starts a swing when a built thing or the base is in reach
 // and the cycle (attackCd) allows; the client is told (brood-swing {id, ms}) so it can raise her arms; at the end of the wind-up the damage lands (brood-hit {id, x, y, miss}),
 // on the thing it began on if that is still in reach, else on what is in reach now, else nowhere. She does not walk while swinging. Returns true if the base fell (the match is over).
-function swingTick(code, room, zombie, def, dt, tgtStruct, baseD, now) {
+function swingTick(code, room, zombie, def, dt, tgtStruct, baseD, now, tgtPlayer, tgtPDist) {
     const sw = def.swing, reachR = def.r + 14, ev = sw.ev || 'brood';   // ev: the prefix of the two events (brood-swing / brood-hit, colossus-swing / colossus-hit)
     let st = zombie._sw;
     if (st) {
         st.t += dt;
         if (!st.hit && st.t >= sw.windup) {
             st.hit = true;
-            let target = st.sid !== null ? findBuilt(room, st.sid) : null;   // (ids start at 0: 0 is a thing, null is none)
+            // a player (only the types with sw.players): the one the blow began on if they are still in reach (attackR + slack: a step away during the wind-up does not dodge it),
+            // else whoever is in reach now; a player takes the blow before anything built does, as before
+            let victim = null;
+            if (sw.players) {
+                const keep = st.p && st.p.alive && Math.hypot(st.p.x - zombie.x, st.p.y - zombie.y) < def.attackR + (sw.slack || 0);
+                if (keep) victim = st.p;
+                else { let vd = def.attackR; for (const p of room._playerArr) { if (!p.alive) continue; const d = Math.hypot(p.x - zombie.x, p.y - zombie.y); if (d < vd) { vd = d; victim = p; } } }
+            }
+            let target = !victim && st.sid !== null ? findBuilt(room, st.sid) : null;   // (ids start at 0: 0 is a thing, null is none)
             if (target && (target._gone || builtDist(zombie.x, zombie.y, target) > reachR + 10)) target = null;
-            if (!target) {   // the one she began on is gone or out of reach: whatever else is in reach now takes the blow
+            if (!victim && !target) {   // the one she began on is gone or out of reach: whatever else is in reach now takes the blow
                 let bd = reachR + 10;
                 for (const q of room.structs) { const d = builtDist(zombie.x, zombie.y, q); if (d < bd) { bd = d; target = q; } }
                 for (const q of room.turrets) { const d = builtDist(zombie.x, zombie.y, q); if (d < bd) { bd = d; target = q; } }
             }
-            const baseIn = room.base && Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) < room.base.r + def.r + 14;
+            const baseIn = !victim && room.base && Math.hypot(zombie.x - room.base.x, zombie.y - room.base.y) < room.base.r + def.r + 14;
             const fx = zombie.x + Math.cos(zombie.angle) * (def.r + 16), fy = zombie.y + Math.sin(zombie.angle) * (def.r + 16);
-            io.to(code).emit(ev + '-hit', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), miss: !target && !baseIn, r: sw.splash ? sw.splash.r : 0 });
-            if (target) hurtBuilt(code, room, target, def.baseDmg);
+            if (sw.batch) (room._mq || (room._mq = { sw: [], hit: [] })).hit.push(zombie.id, victim ? 1 : target ? 2 : baseIn ? 3 : 0);   // 0 a miss, 1 a player, 2 something built, 3 the base
+            else io.to(code).emit(ev + '-hit', { id: zombie.id, x: Math.round(fx), y: Math.round(fy), miss: !target && !baseIn, r: sw.splash ? sw.splash.r : 0 });
+            if (victim) hurtPlayer(code, room, victim, def.dmg, now);
+            else if (target) hurtBuilt(code, room, target, def.baseDmg);
             else if (baseIn) { hurtBase(code, room, def.baseDmg); if (room.gameEnded) return true; }
             if (sw.splash && (target || baseIn)) {   // the slam throws the shock out: the rest of what is built round the impact, and the players
                 const sp = sw.splash;
@@ -2038,13 +2055,24 @@ function swingTick(code, room, zombie, def, dt, tgtStruct, baseD, now) {
         return false;
     }
     if (zombie.attackCooldown > 0) return false;
-    const sReach = tgtStruct && !tgtStruct._gone && builtDist(zombie.x, zombie.y, tgtStruct) <= reachR;
-    const bReach = zombie.targetingBase && room.base && baseD < room.base.r + def.r + 8;
-    if (!sReach && !bReach) return false;
-    zombie._sw = { t: 0, hit: false, sid: sReach ? tgtStruct.id : null };
+    const pReach = sw.players && tgtPlayer && tgtPDist < def.attackR;   // a player in reach comes first, as for the old instant blow
+    const sReach = !pReach && tgtStruct && !tgtStruct._gone && builtDist(zombie.x, zombie.y, tgtStruct) <= reachR;
+    const bReach = !pReach && zombie.targetingBase && room.base && baseD < room.base.r + def.r + 8;
+    if (!pReach && !sReach && !bReach) return false;
+    zombie._sw = { t: 0, hit: false, sid: sReach ? tgtStruct.id : null, p: pReach ? tgtPlayer : null };
     zombie.attackCooldown = def.attackCd;
-    io.to(code).emit(ev + '-swing', { id: zombie.id, ms: Math.round(sw.windup * 1000) });
+    if (sw.batch) (room._mq || (room._mq = { sw: [], hit: [] })).sw.push(zombie.id);
+    else io.to(code).emit(ev + '-swing', { id: zombie.id, ms: Math.round(sw.windup * 1000) });
     return false;
+}
+
+// The blows of the zombies with a batched swing (normal, runner, tank), told to the clients once a tick: melee { sw: [zombie id, ...] (a wind-up began), hit: [zombie id, what, ...] (the
+// damage landed: 0 a miss, 1 a player, 2 something built, 3 the base) }. The length of the wind-up is a client constant (public/game.js _ZB_DEFS, kept equal to def.swing.windup by a test).
+function flushMelee(code, room) {
+    const q = room._mq;
+    if (!q || (!q.sw.length && !q.hit.length)) return;
+    io.to(code).emit('melee', { sw: q.sw, hit: q.hit });
+    q.sw = []; q.hit = [];
 }
 
 // ---------- PvE: the zombies' map (zombie-nav.js) ----------
@@ -2869,7 +2897,7 @@ function startRoomLoop(code, room) {
                     }
                     const spit = def.ranged ? pickSpitTarget(room, zombie, def.ranged.range, alivePlayers) : null;
                     if (spit) speed = 0;   // something is in range: it stands and throws
-                    if (zombie._sw || zombie._stg) speed = 0;   // in the middle of a swing (or a stage) she stands
+                    if ((zombie._sw && !(def.swing && def.swing.walk)) || zombie._stg) speed = 0;   // in the middle of a swing (or a stage) she stands (the ones with swing.walk keep walking)
 
                     let ddx = targetX - zombie.x, ddy = targetY - zombie.y;
                     const dLen = Math.hypot(ddx, ddy);
@@ -2991,7 +3019,7 @@ function startRoomLoop(code, room) {
                         }
                     } else if (def.swing) {
                         if (stageTick(code, room, zombie, def, dt, now)) { /* a stage is going on: the normal blow waits */ }
-                        else if (swingTick(code, room, zombie, def, dt, tgtStruct, baseD, now)) return;
+                        else if (swingTick(code, room, zombie, def, dt, tgtStruct, baseD, now, hunts ? nearestPlayer : null, nearestDist)) return;
                     } else if (def.ranged) {
                         if (spit && zombie.attackCooldown <= 0) { spitAt(code, room, zombie, def.ranged, spit, now); zombie.attackCooldown = def.ranged.cd; }
                     } else if (zombie.attackCooldown <= 0 && !(zombie._scream > 0)) {
@@ -3021,6 +3049,7 @@ function startRoomLoop(code, room) {
                     }
                 }
                 tickAcid(code, room, now, alivePlayers);
+                flushMelee(code, room);
                 if (room.gameEnded) return;
 
                 // Wave break countdown

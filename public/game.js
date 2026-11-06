@@ -6775,6 +6775,31 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         for (let i = 0; i < _zombies.length; i++) { const z = _zombies[i]; if (!z || z.type !== 8 || !(z.hp > 0)) continue; const d = (z.x - a[0]) * (z.x - a[0]) + (z.y - a[1]) * (z.y - a[1]); if (d < bd) { bd = d; best = z; } }
         if (best) best.blockT = performance.now();
     });
+    // The blows of the normal zombie, the runner and the tank (the server's batched swing, once a tick): sw = [zombie id, ...] a wind-up began (the arms go up: ARArena.drawBasicSprite reads zb.swingT /
+    // swingMs; the runner alternates the arm it swipes with, zb._sd); hit = [zombie id, what, ...] the damage landed NOW (0 a miss, 1 a player, 2 something built, 3 the base): the arms come down at
+    // this moment (zb.slamT), and a few chunks fly off what was hit (a small slam for the tank). The wind-up lasts what the table _ZB_DEFS says (equal to the server's, a test checks it).
+    socket.on('melee', ({ sw, hit }) => {
+        const now = performance.now();
+        for (let i = 0; i < sw.length; i++) {
+            const z = _zombies[sw[i]];
+            if (!z) continue;
+            const d = _ZB_DEFS[z.type || 0];
+            z.swingT = now; z.swingMs = d && d.swing ? d.swing.windup : 300; z._sd = z._sd === 1 ? 0 : 1;
+        }
+        for (let i = 0; i + 1 < hit.length; i += 2) {
+            const z = _zombies[hit[i]], kind = hit[i + 1];
+            if (!z || z.hp < 0) continue;
+            z.slamT = now;
+            if (!kind) continue;
+            const d = _ZB_DEFS[z.type || 0] || _ZB_DEFS[0], ang = z.angle || 0, ca = Math.cos(ang), sa = Math.sin(ang), hx = z.x + ca * (d.r + 10), hy = z.y + sa * (d.r + 10);
+            _spawnImpact(kind === 1 ? 'player' : kind === 3 ? 'metal' : 'spark', hx, hy, -ca, -sa);   // (the pieces fly back against the blow, as a bullet's do)
+            if (z.type === 2) {   // the tank's blow shakes the ground a little (the shielded zombie's small slam, a bit bigger)
+                const sp = [], ch = [];
+                for (let k = 0; k < 5; k++) { sp.push({ a: (k / 5) * TAU + Math.random() * 0.6, l: 22 + Math.random() * 24 }); ch.push({ a: Math.random() * TAU, v: 26 + Math.random() * 34, s: 2 + Math.random() * 2.4, w: (Math.random() - 0.5) * 8 }); }
+                _zFxPush({ k: 'slam', x0: hx, y0: hy, t0: now, sp, ch, miss: false, big: 0.55 });
+            }
+        }
+    });
     // The shielded zombie's bash: shielded-swing = the wind-up begins (it pulls the shield back: ARArena.drawShieldedSprite reads zb.swingT / swingMs), shielded-hit = the damage lands NOW:
     // the shield is thrust forward at that moment and a small shock marks the ground where it hit
     socket.on('shielded-swing', ({ id, ms }) => { const z = _zombies[id]; if (z) { z.swingT = performance.now(); z.swingMs = ms; } });
@@ -7555,9 +7580,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     // are all the first type): the new art is scaled to it (ARArena.drawZombieSprite), so the body you see is what
     // a bullet hits. The colours are for the old vector drawing, used only until the pictures are in.
     const _ZB_DEFS = [
-        { r: 20, maxHp: 100, bodyColor: '#5E9253', innerColor: '#7DB26A', armColor: '#4A7A42', armStroke: '#25422A', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },
-        { r: 16, maxHp: 50,  bodyColor: '#C27A33', innerColor: '#E39A4D', armColor: '#9D5F26', armStroke: '#4C2D10', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },
-        { r: 28, maxHp: 500, heavy: true, bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
+        { r: 20, maxHp: 100, swing: { windup: 280, recover: 320 }, bodyColor: '#5E9253', innerColor: '#7DB26A', armColor: '#4A7A42', armStroke: '#25422A', ringColor: '#FF4155', ringFill: 'rgba(255,65,85,0.10)' },   // 0 normal (swing: the server's def.swing, in ms)
+        { r: 16, maxHp: 50,  swing: { windup: 200, recover: 240 }, bodyColor: '#C27A33', innerColor: '#E39A4D', armColor: '#9D5F26', armStroke: '#4C2D10', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },
+        { r: 28, maxHp: 500, heavy: true, swing: { windup: 550, recover: 550 }, bodyColor: '#4F6A99', innerColor: '#6F8CBD', armColor: '#3E557D', armStroke: '#1D2B45', ringColor: '#52B6F0', ringFill: 'rgba(82,182,240,0.10)' },
         { r: 20, maxHp: 160, bodyColor: '#8BC34A', innerColor: '#B9E36B', armColor: '#6D9A38', armStroke: '#2D4A12', ringColor: '#9DFF2E', ringFill: 'rgba(157,255,46,0.10)' },   // 3 spitter
         { r: 18, maxHp: 110, bodyColor: '#E2773A', innerColor: '#F7A862', armColor: '#B85A22', armStroke: '#5A2A0E', ringColor: '#FF6A1A', ringFill: 'rgba(255,106,26,0.12)' },   // 4 exploder
         { r: 34, maxHp: 900, heavy: true, warn: 'BRUTA', bodyColor: '#7B8493', innerColor: '#A5AEBD', armColor: '#59616E', armStroke: '#262B34', ringColor: '#C0C6D0', ringFill: 'rgba(192,198,208,0.10)' },   // 5 brute

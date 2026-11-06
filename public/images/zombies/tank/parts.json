@@ -1,0 +1,30 @@
+{
+  "view": [
+    -90,
+    -67.5,
+    180,
+    180
+  ],
+  "order": [
+    "armL",
+    "armR",
+    "head"
+  ],
+  "pivots": {
+    "armL": {
+      "x": -24,
+      "y": 10,
+      "note": "left shoulder (under the head)"
+    },
+    "armR": {
+      "x": 24,
+      "y": 10,
+      "note": "right shoulder"
+    },
+    "head": {
+      "x": 0,
+      "y": 0,
+      "note": "centre of the head"
+    }
+  }
+}
