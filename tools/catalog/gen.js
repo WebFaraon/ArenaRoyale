@@ -9,58 +9,135 @@ const f = (n, d = 1) => { const v = Math.round(n * 10 ** d) / 10 ** d; return St
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 const img = (src, alt, cls = '') => `<img class="${cls}" src="${src}" alt="${esc(alt)}" loading="lazy" decoding="async">`;
 
+// ---------------- emoji: one for every characteristic ----------------
+// The first rule that matches the label gives the emoji (so every number on the page has one, the ideas' too); lab() puts it before the label.
+const EMOJI_RULES = [
+  [/^daună jucător|^daună$|jucători în dâră|^anti-jucător/i, '🗡️'],
+  [/^daună (per|pe|la|fiecărui|a)\b/i, '💥'],
+  [/ridică|revine|refacere|viața la revenire|se vindecă/i, '💚'],
+  [/^de gândit|^notă/i, '🤔'],
+  [/dacă îl omori|la moarte|fură|suflete/i, '💀'],
+  [/folosiri|capacitate|gloanțe pe secundă|reîncărcare|supraîncălzire/i, '🔋'],
+  [/lame|fascicule|tragere|împingere|dâră|atracției|puls|amorțire|încărcare|teleportați|turetele/i, '🌀'],
+  [/baricade|bază|construcții|structuri/i, '🧱'],
+  [/^upgrade/i, '⬆️'],
+  [/preț|cost/i, '💰'],
+  [/dps/i, '🔥'],
+  [/splash|rază explozie|explozie/i, '💣'],
+  [/^con\b/i, '📐'],
+  [/damage|lovitur|fulger|mușcătur|aterizare|șoc/i, '💥'],
+  [/vindec/i, '💚'],
+  [/repar/i, '🔧'],
+  [/viață|viata|drenează/i, '❤️'],
+  [/viteză|viteza/i, '💨'],
+  [/avânt/i, '⏳'],
+  [/cadență|răcire|pregătire|amorțit|durează|trâmbiță|rămân|sub pământ|în aer|săritură|timp/i, '⏱️'],
+  [/rază|distanță|declanșare|cârlig|iese|aură/i, '🎯'],
+  [/armur/i, '🛡️'],
+  [/monede|premiu/i, '🪙'],
+  [/greutate/i, '⚖️'],
+  [/valul|de la val|apare/i, '🌊'],
+  [/limită|max/i, '🔒'],
+  [/încetinire|efect|zonă|nu e lovit|e lovit/i, '✨'],
+];
+const emFor = label => { for (const [re, e] of EMOJI_RULES) if (re.test(label)) return e; return '🔹'; };
+const lab = label => `<span class="em" aria-hidden="true">${emFor(String(label))}</span>${esc(label)}`;
+
 // ---------------- zombies ----------------
-const NAMES = { normal: 'Normal', runner: 'Runner', tank: 'Tank', spitter: 'Scuipător', exploder: 'Exploziv', brute: 'Brută', summoner: 'Summoner', minion: 'Minion', shielded: 'Shielded', screamer: 'Screamer', ghoul: 'Ghoul', stalker: 'Stalker' };
+const NAMES = { normal: 'Normal', runner: 'Runner', tank: 'Tank', spitter: 'Scuipător', exploder: 'Exploziv', brute: 'Brută', summoner: 'Summoner', minion: 'Minion', shielded: 'Shielded', screamer: 'Screamer', ghoul: 'Ghoul', stalker: 'Stalker',
+  brood: 'Brood Mother', egg: 'Ou', hatchling: 'Pui', colossus: 'Colossus', minicolossus: 'Mini Colossus' };
 const ORDER = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'shielded', 'screamer', 'summoner', 'minion', 'ghoul', 'stalker'];
-const ROLE = { normal: ['Vânează', 'go'], runner: ['Vânează', 'go'], tank: ['Asediu', 'build'], spitter: ['Distanță', 'sky'], exploder: ['Kamikaze', 'bad'], brute: ['Vânează', 'go'], summoner: ['Suport', 'sky'], minion: ['Vânează', 'go'], shielded: ['Asediu', 'build'], screamer: ['Vânează', 'go'], ghoul: ['Vânează · val 13+', 'go'], stalker: ['Vânează · val 13+', 'go'] };
+const BOSSES = ['brood', 'egg', 'hatchling', 'colossus', 'minicolossus'];
+const ROLE = { normal: ['Vânează', 'go'], runner: ['Vânează', 'go'], tank: ['Asediu', 'build'], spitter: ['Distanță', 'sky'], exploder: ['Kamikaze', 'bad'], brute: ['Vânează', 'go'], summoner: ['Suport', 'sky'], minion: ['Vânează', 'go'], shielded: ['Asediu', 'build'], screamer: ['Vânează', 'go'], ghoul: ['Vânează · val 13+', 'go'], stalker: ['Vânează · val 13+', 'go'],
+  brood: ['Boss · asediu', 'bad'], egg: ['Capcană', 'warn'], hatchling: ['Vânează', 'go'], colossus: ['Boss · asediu', 'bad'], minicolossus: ['Asediu', 'build'] };
 const d = D.defs;
+const PD = require('../../public/pve-difficulty.js'), PR = require('../../pve-rewards.js');
+const pc = n => Math.round(n * 100);
+const swingTxt = z => { const s = d[z].swing; return `Lovitura e un avânt: ridică brațele ${f(s.windup, 2)} s, iar damage-ul cade exact când le coboară (apoi ${f(s.recover, 2)} s să se așeze); ciclul rămâne ${f(d[z].attackCd)} s.`; };
 const SPECIAL = {
-  normal: 'Cel mai simplu zombi: merge spre cel mai apropiat jucător. De la valul 13 îl înlocuiește Ghoul.',
-  runner: 'Rapid și fragil. De la valul 13 îl înlocuiește Stalker.',
-  tank: 'Tip de asediu: merge la baricade, turete și bază și le sparge. Nu poate fi împins de jucători (e un zid pentru ei). Armură ' + d.tank.armor + '.',
+  normal: `Cel mai simplu zombi: merge spre cel mai apropiat jucător, cu ambele brațe întinse. ${swingTxt('normal')} Merge mai departe cât lovește; un jucător care face un pas înapoi tot e lovit (toleranță ${d.normal.swing.slack}), unul care fuge de tot poate scăpa. De la valul 13 îl înlocuiește Ghoul.`,
+  runner: `Rapid și fragil, lovește cu un braț pe rând. ${swingTxt('runner')} Merge mai departe cât lovește (toleranță ${d.runner.swing.slack}). De la valul 13 îl înlocuiește Stalker.`,
+  tank: `Tip de asediu: merge la baricade, turete și bază și le sparge. Nu poate fi împins de jucători (e un zid pentru ei) și nu lovește jucători. Armură ${d.tank.armor}. ${swingTxt('tank')} Stă pe loc cât lovește și lasă un șoc mic pe pământ.`,
   spitter: `Merge spre bază și se oprește când ceva e la ${d.spitter.ranged.range} de el (întâi o turetă, apoi jucător, baricadă, bază). Scuipă acid la ${f(d.spitter.ranged.cd)} s; stropul (rază ${d.spitter.ranged.splash}) rănește construcțiile cu ${d.spitter.ranged.sdmg}, jucătorii cu ${d.spitter.ranged.pdmg}, baza cu ${d.spitter.ranged.bdmg}.`,
-  exploder: `Caută cea mai apropiată construcție sau jucător în ${d.exploder.explode.seek} și explodează la atingere: rază ${d.exploder.explode.r}, construcții ${d.exploder.explode.sdmg}, jucători ${d.exploder.explode.pdmg}, bază ${d.exploder.explode.bdmg}. Ucis pe drum nu explodează și nu lasă monede.`,
+  exploder: `Caută cea mai apropiată construcție sau jucător în ${d.exploder.explode.seek} și explodează la atingere: rază ${d.exploder.explode.r}, construcții ${d.exploder.explode.sdmg}, jucători ${d.exploder.explode.pdmg}, bază ${d.exploder.explode.bdmg}. Ucis pe drum nu explodează și nu lasă monede. Ține câte o dinamită în fiecare mână.`,
   brute: `Lentă și grea, armură ${d.brute.armor}: din fiecare lovitură se scad ${d.brute.armor}, dar niciodată mai mult de patru cincimi din ea. Nu poate fi împinsă de jucători.`,
   summoner: `Nu urmărește și nu lovește. La ${d.summoner.summon.first} s, apoi la fiecare ${d.summoner.summon.every} s cheamă ${d.summoner.summon.count} minioni, cel mult ${d.summoner.summon.max} vii deodată. Minionii rămân după moartea lui.`,
   minion: 'Chemat de Summoner. Nu crește cu valul (viața rămâne fixă).',
-  shielded: `Scut în față (±${Math.round(d.shielded.shield.half * 180 / Math.PI)}°): gloanțele jucătorilor și loviturile turetelor cu mitralieră din față nu trec. Din lateral sau din spate se rănește ca oricare. Tesla, Bomb Tower și Flamethrower trec peste scut. Nu urmărește jucători.`,
+  shielded: `Scut în față (±${Math.round(d.shielded.shield.half * 180 / Math.PI)}°): gloanțele jucătorilor și loviturile turetelor cu mitralieră din față nu trec. Din lateral sau din spate se rănește ca oricare. Tesla, Bomb Tower și Flamethrower trec peste scut. Nu urmărește jucători. Lovește cu scutul: îl trage înapoi ${f(d.shielded.swing.windup, 2)} s și damage-ul cade când țâșnește înainte.`,
   screamer: `Aleargă la cel mai apropiat jucător de la apariție. La ${d.screamer.scream.near} de el se oprește ${f(d.screamer.scream.windup)} s și țipă, o singură dată: orice turetă din ${d.screamer.scream.range} de zombi e amețită ${d.screamer.scream.stun} s (nu trage, nu arde, nu vindecă). Poate fi atras departe de turete.`,
   ghoul: 'Versiunea întunecată a zombiului normal, de la valul 13, în locul lui.',
   stalker: 'Versiunea întunecată a runner-ului, de la valul 13, în locul lui. (Nu are legătură cu ideea „Stalker" de mai jos.)',
+  brood: `Regina. Nu urmărește jucători: merge spre bază și sparge ce-i iese în cale. Nu poartă ouăle, le aruncă: ${d.brood.brood.count} la ${d.brood.brood.every} s (la ${d.brood.brood.rage} s sub ${pc(d.brood.brood.rageAt)}% viață), în rază ${d.brood.brood.range}, cel mult ${d.brood.brood.max} pe hartă. ${swingTxt('brood')} Viața nu crește cu valul.`,
+  egg: `Stă unde a aterizat: un zombi care nu se mișcă și nu lovește, deci gloanțele, turetele, bombele și focul îl lovesc ca pe oricare. Dacă nu e spart în ${d.egg.egg.hatch} s dispare fără kill și scoate ${d.egg.egg.spawn} pui.`,
+  hatchling: 'Iese dintr-un ou: mic, rapid, fragil. Vânează jucători. Viața nu crește cu valul.',
+  colossus: `Gigant de piatră și lavă. Nu urmărește jucători: merge spre bază. Fiecare pas (la ${d.colossus.steps.stride} de unități) strivește ${d.colossus.steps.dmg} la orice baricadă sau turn la ${d.colossus.steps.r} de picior. ${swingTxt('colossus')} Lovește pământul cu ambii pumni: ${d.colossus.baseDmg} în țintă, ${d.colossus.swing.splash.sdmg} construcțiilor și ${d.colossus.swing.splash.pdmg} jucătorilor la ${d.colossus.swing.splash.r} de impact. Două etape, o dată fiecare: sub ${pc(d.colossus.stages[0].at)}% viață zguduirea (avânt ${f(d.colossus.stages[0].windup)} s, rază ${d.colossus.stages[0].r}: ${d.colossus.stages[0].sdmg} construcțiilor, ${d.colossus.stages[0].pdmg} jucătorilor, turnurile din rază încetinite ${d.colossus.stages[0].slow.ms / 1000} s: trag de ${d.colossus.stages[0].slow.mul} ori mai rar); sub ${pc(d.colossus.stages[1].at)}% cheamă ${d.colossus.stages[1].spawn.n} colosi mici.`,
+  minicolossus: `Chemat de Colossus (8 odată, intră de la marginea hărții). Nu urmărește jucători: merge spre bază și sparge ce-i iese în cale. ${swingTxt('minicolossus')}`,
 };
 const TARGET = z => {
   if (z === 'spitter') return 'Ținta o alege singur: turetă, apoi jucător, baricadă, bază (de la distanță)';
   if (z === 'exploder') return 'Cea mai apropiată construcție sau jucător (în ' + d.exploder.explode.seek + ')';
   if (z === 'summoner') return 'Merge spre bază; nu atacă';
   if (z === 'screamer') return 'Jucătorii, de oriunde; apoi construcții și baza';
+  if (z === 'egg') return 'Nimic: nu se mișcă';
+  if (z === 'colossus') return 'Doar baricade, turete și baza; jucătorii sunt răniți doar de șocul loviturii';
+  if (z === 'brood' || z === 'minicolossus') return 'Doar baricade, turete și baza; nu lovește jucătorii';
   return d[z].hunts ? 'Jucători (în 320), apoi baricade și turete (în 130), apoi baza' : 'Doar baricade, turete și baza; nu lovește jucătorii';
 };
+const WHEN = { minion: 'Chemat de Summoner', egg: 'Aruncat de Brood Mother', hatchling: 'Iese dintr-un ou', brood: 'Boss final · valul 20 al nivelului Brood Mother (și în Sandbox)', colossus: 'Boss final · valul 20 al nivelului Colossus (și în Sandbox)', minicolossus: 'Chemat de Colossus sub 25% viață' };
 const speedWord = s => s >= 120 ? 'foarte rapid' : s >= 80 ? 'rapid' : s >= 55 ? 'mediu' : s >= 40 ? 'lent' : 'foarte lent';
-const stat = (k, v, sub = '') => `<div><dt>${k}</dt><dd>${v}${sub ? `<small>${sub}</small>` : ''}</dd></div>`;
+const stat = (k, v, sub = '', em) => `<div><dt>${em ? `<span class="em" aria-hidden="true">${em}</span>${esc(k)}` : lab(k)}</dt><dd>${v}${sub ? `<small>${sub}</small>` : ''}</dd></div>`;
 function zcard(z) {
-  const q = d[z], w = D.waves[z], role = ROLE[z];
-  const hit = q.dmg ? `${q.dmg}` : '—';
-  const dps = q.dmg ? `${f(q.dmg / q.attackCd)} pe secundă (la ${f(q.attackCd)} s)` : '';
-  const when = z === 'minion' ? 'Chemat de Summoner' : `De la valul ${w.first} · până la ${w.max} pe val (solo)`;
-  const coins = `${q.coinsMin}–${q.coinsMax}`;
-  return `<article class="zc" id="z-${z}"><div class="zt">${img(D.zimg[z], NAMES[z] + ', vedere de sus')}</div>
-  <div class="zb"><header><h3>${NAMES[z]}</h3><span class="pill ${role[1]}">${role[0]}</span></header><p class="when">${when}</p>
+  const q = d[z], w = D.waves[z], role = ROLE[z], sw = q.swing;
+  const hitP = z === 'colossus' ? sw.splash.pdmg : (q.hunts && q.dmg ? q.dmg : null);
+  const dps = z === 'colossus' ? `doar prin șocul loviturii (rază ${sw.splash.r})` : hitP ? `${f(hitP / q.attackCd)} pe secundă (la ${f(q.attackCd)} s)` : '';
+  const when = WHEN[z] || `De la valul ${w.first} · până la ${w.max} pe val (nivelul Colossus)`;
+  const coins = q.coinsMax ? `${q.coinsMin}–${q.coinsMax}` : '—';
+  const pieces = D.zparts[z] ? `<div class="pieces"><span class="pp2">🧩 Animat pe bucăți</span><div class="pr">${D.zparts[z].map(p => `<figure><div class="pt">${img(p.img, p.name)}</div><figcaption>${p.name}</figcaption></figure>`).join('')}</div></div>` : '';
+  return `<article class="zc${z === 'brood' || z === 'colossus' ? ' boss' : ''}" id="z-${z}"><div class="zt">${img(D.zimg[z], NAMES[z] + ', vedere de sus')}</div>
+  <div class="zb"><header><h3>${NAMES[z]}</h3><span class="pill ${role[1]}">${role[0]}</span></header><p class="when">🌊 ${when}</p>
   <dl class="stats">
-   ${stat('Viață', q.hp, q.noScale ? 'nu crește cu valul' : 'crește cu valul')}
-   ${stat('Viteză', `${q.chaseSpd}`, `${speedWord(q.chaseSpd)} · patrulare ${q.patrolSpd}`)}
-   ${stat('Daună jucător', hit, dps)}
-   ${stat('Daună baricade / bază', q.baseDmg || '—', q.baseDmg ? 'pe lovitură' : '')}
-   ${stat('Rază atac', q.attackR || '—', q.ranged ? 'scuipă de la ' + q.ranged.range : '')}
-   ${stat('Armură', q.armor || '—')}
-   ${stat('Monede', coins, 'la moarte')}
-   ${stat('Greutate', q.mass, q.heavy ? 'jucătorii nu îl pot împinge' : '')}
+   ${stat('Viață', q.hp, q.noScale ? 'nu crește cu valul' : 'crește cu valul', '❤️')}
+   ${stat('Viteză', `${q.chaseSpd}`, q.patrolSpd ? `${speedWord(q.chaseSpd)} · patrulare ${q.patrolSpd}` : speedWord(q.chaseSpd), '💨')}
+   ${stat('Daună jucător', hitP || '—', dps, '🗡️')}
+   ${stat('Daună baricade / bază', q.baseDmg || '—', q.baseDmg ? 'pe lovitură' : '', '🧱')}
+   ${stat('Rază atac', q.attackR || '—', q.ranged ? 'scuipă de la ' + q.ranged.range : '', '🎯')}
+   ${stat('Armură', q.armor || '—', '', '🛡️')}
+   ${sw ? stat('Avânt', `${f(sw.windup, 2)} s`, `damage-ul cade la sfârșit · +${f(sw.recover, 2)} s revenire`, '⏳') : ''}
+   ${stat('Monede', coins, 'la moarte', '🪙')}
+   ${stat('Greutate', q.mass, q.heavy ? 'jucătorii nu îl pot împinge' : '', '⚖️')}
   </dl>
-  <p class="tg"><b>Ce atacă:</b> ${esc(TARGET(z))}</p><p class="sp">${esc(SPECIAL[z])}</p></div></article>`;
+  <p class="tg"><b>🎯 Ce atacă:</b> ${esc(TARGET(z))}</p><p class="sp"><b class="gold">✨ Special:</b> ${esc(SPECIAL[z])}</p>${pieces}</div></article>`;
 }
-const ztable = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'shielded', 'screamer', 'brute', 'summoner', 'ghoul', 'stalker'].sort((a, b) => D.waves[a].first - D.waves[b].first).map(z => {
+const ZT_ORDER = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'shielded', 'screamer', 'brute', 'summoner', 'ghoul', 'stalker'];
+const ztable = ZT_ORDER.slice().sort((a, b) => D.waves[a].first - D.waves[b].first).map(z => {
   const q = d[z], w = D.waves[z];
   return `<tr><th scope="row"><span class="mini">${img(D.zimg[z], '')}</span>${NAMES[z]}</th><td>${w.first}</td><td>${q.hp}</td><td>${q.chaseSpd}</td><td>${q.dmg || '—'}</td><td>${q.baseDmg || '—'}</td><td>${q.armor || '—'}</td><td>${q.coinsMin}–${q.coinsMax}</td></tr>`;
 }).join('');
+
+// the three levels (the vote at the start of a match): what changes and what the match pays at most
+const WCOLS = ['normal', 'runner', 'tank', 'spitter', 'exploder', 'brute', 'summoner', 'shielded', 'screamer', 'ghoul', 'stalker'];
+const zTotal = m => { let n = 0; for (let i = 0; i < D.totalWaves; i++) for (const t of WCOLS) n += m === 1 ? D.waves[t].per[i] : Math.round(D.waves[t].per[i] * m); return n; };
+const x1 = n => '×' + String(n).replace('.', ',');
+const levels = D.diffs.map(x => {
+  const tot = zTotal(x.count), mx = PR.maxReward(x.id, tot), r = x.rewards, inGame = x.id !== 'reaper';
+  return `<article class="zc lvl" id="n-${x.id}"><div class="zt">${img(D.zimg[x.id], x.name + ', bossul final')}</div>
+  <div class="zb"><header><h3>Nivel ${x.level} · ${x.name}</h3><span class="pill ${x.level === 1 ? 'go' : x.level === 2 ? 'sky' : 'bad'}">${x.level === 1 ? 'Ușor' : x.level === 2 ? 'Mediu' : 'Greu'}</span></header><p class="when">👑 Boss final: ${x.name}${inGame ? '' : ' (încă nu e în joc)'}</p>
+  <dl class="stats">
+   ${stat('Zombi pe meci', tot, x1(x.count) + ' față de tabelul de valuri', '👥')}
+   ${stat('Viață zombi', x1(x.hp), 'peste creșterea pe val', '❤️')}
+   ${stat('Monede', `până la ${mx.coins}`, `${r.coinsPerWave} pe val · 1 la ${r.killsPerCoin} eliminări · ${r.winCoins} la victorie`, '🪙')}
+   ${stat('XP', `până la ${mx.xp}`, `${r.xpPerWave} pe val · 1 la ${r.killsPerXp} eliminări · ${r.winXp} la victorie`, '⭐')}
+   ${stat('Diamante', mx.gems ? `până la ${mx.gems}` : 'niciunul', r.gems.length ? r.gems.map(g => `${g.gems} la valul ${g.wave}`).join(' · ') : 'nivelul ușor nu dă diamante', '💎')}
+  </dl></div></article>`;
+}).join('');
+
+// the waves of the Colossus level (the table of the game), one row each
+const hpMul = w => w <= 6 ? 1 : Math.round((1 + (w - 6) * 0.06) * 100) / 100;
+const wrows = Array.from({ length: D.totalWaves }, (_, i) => {
+  const cells = WCOLS.map(t => D.waves[t].per[i]), tot = cells.reduce((a, b) => a + b, 0);
+  return `<tr><th scope="row">${i + 1}</th>${cells.map(c => `<td${c ? '' : ' class="zz"'}>${c || '·'}</td>`).join('')}<td><b>${tot}</b></td><td>${x1(f(hpMul(i + 1), 2))}</td></tr>`;
+}).join('');
+const whead = WCOLS.map(t => `<th scope="col" title="${NAMES[t]}"><span class="mini">${img(D.zimg[t], NAMES[t])}</span></th>`).join('');
 
 // ---------------- turrets ----------------
 const K = D.turret.kinds, KEYS = { mg: 2, tesla: 3, heal: 4, bomb: 5, flame: 6, support: 7 };
@@ -81,7 +158,7 @@ function sprite(k, i) {
 }
 function rowsFor(k) {
   const T = K[k].tiers, r = [];
-  const row = (label, fn, unit = '') => r.push(`<tr><th scope="row">${label}</th>${T.map((t, i) => `<td>${fn(t, i)}${unit}</td>`).join('')}</tr>`);
+  const row = (label, fn, unit = '') => r.push(`<tr><th scope="row">${lab(label)}</th>${T.map((t, i) => `<td>${fn(t, i)}${unit}</td>`).join('')}</tr>`);
   row('Viață', t => t.hp);
   row('Preț total', t => t.total);
   row('Upgrade în nivel', (t, i) => i ? `${t.up} monede · ${f(t.ms / 1000)} s` : '—');
@@ -100,29 +177,29 @@ function rowsFor(k) {
 function tblock(k) {
   const q = K[k];
   const T = q.tiers;
-  return `<section class="tb" id="t-${k}"><header><div><h3>${q.name}</h3><p>${esc(KDESC[k])}</p></div><div class="chips"><span class="chip">tasta ${KEYS[k]}</span><span class="chip">${kmax(k)}</span></div></header>
+  return `<section class="tb" id="t-${k}"><header><div><h3>${q.name}</h3><p>${esc(KDESC[k])}</p></div><div class="chips"><span class="chip">⌨️ tasta ${KEYS[k]}</span><span class="chip">🔒 ${kmax(k)}</span></div></header>
   <div class="lv">${T.map((t, i) => `<figure><div class="tile">${sprite(k, i)}</div><figcaption><b>${t.name}</b><span>${t.total} monede</span></figcaption></figure>`).join('')}</div>
   <div class="scroll"><table><thead><tr><th></th>${T.map(t => `<th scope="col">${t.name}</th>`).join('')}</tr></thead><tbody>${rowsFor(k)}</tbody></table></div></section>`;
 }
 const B = D.barricade;
-const bblock = `<section class="tb" id="t-barricade"><header><div><h3>Baricadă</h3><p>Zid ${B.long}×${B.short} (culcat sau în picioare). Oprește jucătorii și zombii; gloanțele trec. Zombii o sparg când nu au un jucător la sub 320, apoi merg la bază. Reparare 1 s pentru jumătate din prețul nivelului, proporțional cu ce lipsește; upgrade pe loc.</p></div><div class="chips"><span class="chip">tasta 1</span><span class="chip">max ${B.maxPerRoom}</span></div></header>
+const bblock = `<section class="tb" id="t-barricade"><header><div><h3>Baricadă</h3><p>Zid ${B.long}×${B.short} (culcat sau în picioare). Oprește jucătorii și zombii; gloanțele trec. Zombii o sparg când nu au un jucător la sub 320, apoi merg la bază. Reparare 1 s pentru jumătate din prețul nivelului, proporțional cu ce lipsește; upgrade pe loc.</p></div><div class="chips"><span class="chip">⌨️ tasta 1</span><span class="chip">🔒 max ${B.maxPerRoom}</span></div></header>
   <div class="lv four">${B.tiers.map((t, i) => `<figure><div class="tile bt">${img(D.bimg[i], t.name)}</div><figcaption><b>${t.name}</b><span>${t.total} monede</span></figcaption></figure>`).join('')}</div>
   <div class="scroll"><table><thead><tr><th></th>${B.tiers.map(t => `<th scope="col">${t.name}</th>`).join('')}</tr></thead><tbody>
-  <tr><th scope="row">Viață</th>${B.tiers.map(t => `<td>${t.hp}</td>`).join('')}</tr>
-  <tr><th scope="row">Preț total</th>${B.tiers.map(t => `<td>${t.total}</td>`).join('')}</tr>
-  <tr><th scope="row">Upgrade în nivel</th>${B.tiers.map((t, i) => `<td>${i ? t.up + ' monede · ' + f(t.ms / 1000) + ' s' : '—'}</td>`).join('')}</tr></tbody></table></div></section>`;
+  <tr><th scope="row">${lab('Viață')}</th>${B.tiers.map(t => `<td>${t.hp}</td>`).join('')}</tr>
+  <tr><th scope="row">${lab('Preț total')}</th>${B.tiers.map(t => `<td>${t.total}</td>`).join('')}</tr>
+  <tr><th scope="row">${lab('Upgrade în nivel')}</th>${B.tiers.map((t, i) => `<td>${i ? t.up + ' monede · ' + f(t.ms / 1000) + ' s' : '—'}</td>`).join('')}</tr></tbody></table></div></section>`;
 const mgLimit = [1, 2, 3, 4].map(n => `${n} ${n === 1 ? 'jucător' : 'jucători'}: ${K.mg.maxPerRoom + K.mg.perExtraPlayer * (n - 1)}`).join(' · ');
 
 // ---------------- ideas ----------------
 const IT = D.idea.towers, IZ = D.idea.zombies;
-const prop = rows => `<div class="prop"><span class="pp">Propunere de valori · nu e în joc</span><dl class="stats">${rows.map(([a, b, c]) => stat(a, b, c || '')).join('')}</dl></div>`;
+const prop = rows => `<div class="prop"><span class="pp">💡 Propunere de valori · nu e în joc</span><dl class="stats">${rows.map(([a, b, c]) => stat(a, b, c || '')).join('')}</dl></div>`;
 function itower(name, key, desc, rows) {
   const cards = IT[name];
-  return `<section class="tb idea" id="i-${key}"><header><div><h3>${name}</h3><p>${esc(desc)}</p></div><div class="chips"><span class="chip warn">idee</span></div></header>
+  return `<section class="tb idea" id="i-${key}"><header><div><h3>${name}</h3><p>${esc(desc)}</p></div><div class="chips"><span class="chip warn">💡 idee</span></div></header>
   <div class="lv">${cards.map((c, i) => `<figure><div class="tile"><div class="pair">${c.map((u, j) => img(u, name + ' nivel ' + (i + 1), j ? 'head' : '')).join('')}</div></div><figcaption><b>Nivel ${i + 1}</b></figcaption></figure>`).join('')}</div>${prop(rows)}</section>`;
 }
 function izombie(name, key, desc, rows) {
-  return `<article class="zc idea" id="i-${key}"><div class="zt">${img(IZ[name], name + ', vedere de sus')}</div><div class="zb"><header><h3>${name}</h3><span class="pill warn">idee</span></header><p class="sp">${esc(desc)}</p>${prop(rows)}</div></article>`;
+  return `<article class="zc idea" id="i-${key}"><div class="zt">${img(IZ[name], name + ', vedere de sus')}</div><div class="zb"><header><h3>${name}</h3><span class="pill warn">💡 idee</span></header><p class="sp">${esc(desc)}</p>${prop(rows)}</div></article>`;
 }
 const ideasT = [
   itower('Frost Tower', 'frost', 'Încetinește zombii din rază. Merge bine cu Bomb Tower și Tesla: zombii încetiniți stau mai mult grupați.', [
@@ -145,11 +222,11 @@ const ideasZ = [
 const STYLES = ['Trăgător', 'Acțiune', 'Constructor', 'Tactician', 'Apărător', 'Explorator', 'Economist', 'Echipă', 'Apărare apropiată', 'Trăgător de elită'];
 function itower2(t) {
   const hdr = `<th></th>` + [1, 2, 3].map(n => `<th scope="col">Nivel ${n}</th>`).join('');
-  const body = t.rows.map(r => r.length === 2 ? `<tr><th scope="row">${esc(r[0])}</th><td colspan="3">${esc(r[1])}</td></tr>` : `<tr><th scope="row">${esc(r[0])}</th>${r.slice(1).map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('');
-  return `<section class="tb idea" id="i-${t.key}"><header><div><h3>${t.name}</h3><p>${esc(t.desc)}</p></div><div class="chips"><span class="chip warn">idee</span><span class="chip">${esc(t.style)}</span><span class="chip">${t.limit}</span></div></header>
+  const body = t.rows.map(r => r.length === 2 ? `<tr><th scope="row">${lab(r[0])}</th><td colspan="3">${esc(r[1])}</td></tr>` : `<tr><th scope="row">${lab(r[0])}</th>${r.slice(1).map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('');
+  return `<section class="tb idea" id="i-${t.key}"><header><div><h3>${t.name}</h3><p>${esc(t.desc)}</p></div><div class="chips"><span class="chip warn">💡 idee</span><span class="chip">🎮 ${esc(t.style)}</span><span class="chip">🔒 ${t.limit}</span></div></header>
   <div class="lv">${[1, 2, 3].map(n => `<figure><div class="tile"><div class="pair">${img(svgUri(SPR[t.key](n)), t.name + ' nivel ' + n)}</div></div><figcaption><b>Nivel ${n}</b></figcaption></figure>`).join('')}</div>
-  <div class="prop"><span class="pp">Propunere de valori · nu e în joc</span><div class="scroll"><table><thead><tr>${hdr}</tr></thead><tbody>${body}</tbody></table></div></div>
-  <ul class="why"><li>${esc(t.who)}</li><li><b>Merge bine cu:</b> ${esc(t.pairs)}</li><li><b>Slăbiciune:</b> ${esc(t.weak)}</li></ul></section>`;
+  <div class="prop"><span class="pp">💡 Propunere de valori · nu e în joc</span><div class="scroll"><table><thead><tr>${hdr}</tr></thead><tbody>${body}</tbody></table></div></div>
+  <ul class="why"><li>${esc(t.who)}</li><li><b>🤝 Merge bine cu:</b> ${esc(t.pairs)}</li><li><b>⚠️ Slăbiciune:</b> ${esc(t.weak)}</li></ul></section>`;
 }
 const MATRIX = [
   ['Trăgător', 'Mitralieră', 'War Banner, Railgun'],
@@ -162,15 +239,16 @@ const MATRIX = [
 ];
 const matrix = `<div class="scroll"><table><thead><tr><th>Stil de joc</th><th>Ce există acum</th><th>Idei noi</th></tr></thead><tbody>${MATRIX.map(r => `<tr><th scope="row">${r[0]}</th><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</tbody></table></div>`;
 const ideasT2 = IDEAS2.map(itower2).join('');
+const IT_N = Object.keys(IT).length, IZ_N = Object.keys(IZ).length;
 
 
 // third list: new zombies
 function izombie3(z) {
   const stats = z.rows.map(r => stat(r[0], r[1], r[2] || '')).join('');
   return `<article class="zc idea${z.boss ? ' boss' : ''}" id="i-${z.key}"><div class="zt">${img(svgUri(ZSPR[z.key]()), z.name + ', vedere de sus')}</div><div class="zb"><header><h3>${z.name}</h3><span class="pill ${z.role}">${z.tag}</span></header>
-  <p class="sp">${esc(z.desc)}</p><p class="tg"><b>Ce testează:</b> ${esc(z.tests)}</p>
-  <div class="prop"><span class="pp">Propunere de valori · nu e în joc</span><dl class="stats">${stats}</dl></div>
-  <p class="sp"><b class="gold">Cum răspunzi:</b> ${esc(z.counter)}</p></div></article>`;
+  <p class="sp">${esc(z.desc)}</p><p class="tg"><b>🧪 Ce testează:</b> ${esc(z.tests)}</p>
+  <div class="prop"><span class="pp">💡 Propunere de valori · nu e în joc</span><dl class="stats">${stats}</dl></div>
+  <p class="sp"><b class="gold">🛠️ Cum răspunzi:</b> ${esc(z.counter)}</p></div></article>`;
 }
 const ZT = [
   ['Turnurile', 'Jammer, Leech, Leaper, Gargoyle, Ram', 'Support Tower, Shield Dome, jucători lângă turnuri, Mitralieră și Tesla contra celor din aer'],
@@ -178,7 +256,7 @@ const ZT = [
   ['Economia', 'Looter, Mimic', 'Cheltuiește monedele; trage de departe în grămezile suspecte'],
   ['Hoarda însăși', 'Necromancer, Herald', 'Țintește-i primii (Railgun); flăcări și bombe pe cadavre'],
   ['Surprize', 'Mimic, Looter, Leaper, Gargoyle', 'Atenție constantă; nu poți apăra doar un lucru'],
-  ['Boss', 'Brood Mother, Colossus, Reaper (valul 20, câte unul pe nivel)', 'Coordonare: o parte a echipei pe ouă, restul pe regină; nu te lăsa doborât lângă Reaper'],
+  ['Boss', 'Reaper (valul 20 al nivelului greu; Brood Mother și Colossus sunt deja în joc)', 'Nu te lăsa doborât lângă Reaper: termină jucătorii căzuți cu o lovitură în arc'],
 ];
 const zmatrix = `<div class="scroll"><table><thead><tr><th>Ce provoacă</th><th>Zombi</th><th>Cum răspunzi</th></tr></thead><tbody>${ZT.map(r => `<tr><th scope="row">${r[0]}</th><td>${r[1]}</td><td style="white-space:normal;min-width:22em">${r[2]}</td></tr>`).join('')}</tbody></table></div>`;
 const ROUTE = [
@@ -190,13 +268,13 @@ const ROUTE = [
   ['11', 'Jammer', 'Turnurile încetinesc: jucătorii ies în față.'],
   ['12', 'Berserker, Herald', 'Un zombi care se înfurie și unul care face hoarda mai periculoasă.'],
   ['14', 'Necromancer', 'Omori mai mult, vine mai mult: prioritizezi.'],
-  ['20', 'Brood Mother / Colossus / Reaper (boss final, după nivelul ales)', 'Brood Mother aruncă ouă, Colossus strivește construcțiile, Reaper termină jucătorii doborâți cu o lovitură în arc.'],
+  ['20', 'Reaper (boss final al nivelului greu; Brood Mother și Colossus sunt deja în joc)', 'Reaper termină jucătorii doborâți cu o lovitură în arc.'],
 ];
 const zroute = `<div class="scroll"><table><thead><tr><th>Valul</th><th>Intră</th><th>Ce se întâmplă</th></tr></thead><tbody>${ROUTE.map(r => `<tr><th scope="row">${r[0]}</th><td>${r[1]}</td><td style="white-space:normal;min-width:24em">${r[2]}</td></tr>`).join('')}</tbody></table></div>`;
 const ideasZ3 = IDEAS3.map(izombie3).join('');
 
 // ---------------- page ----------------
-const html = `<title>Blastridge PvE Catalog</title>
+const html = `<title>Catalog PvE Arena Royale</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sen:wght@400..800&display=swap">
@@ -215,8 +293,8 @@ h1 { font-size:clamp(2rem,5vw,3rem); line-height:1.05; }
 .meta { display:flex; flex-wrap:wrap; gap:8px; }
 .chip { display:inline-block; padding:3px 11px 4px; border:2px solid var(--ink); border-radius:999px; background:var(--panel); color:var(--text); font-size:.8rem; font-weight:700; letter-spacing:.02em; white-space:nowrap; }
 .chip.warn, .pill.warn { background:var(--gold); color:#1A1205; }
-nav { position:sticky; top:env(safe-area-inset-top,0px); z-index:5; display:flex; flex-wrap:wrap; gap:8px; padding:10px 0; background:linear-gradient(var(--bg) 78%, transparent); }
-nav a { padding:7px 16px 9px; border:2px solid var(--ink); border-radius:12px; background:var(--panel); color:var(--text); text-decoration:none; font-weight:800; letter-spacing:.04em; box-shadow:inset 0 -4px 0 rgba(0,0,0,.3), 0 3px 0 rgba(0,0,0,.45); }
+nav { position:sticky; top:env(safe-area-inset-top,0px); z-index:5; display:flex; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; gap:8px; padding:10px 0; background:linear-gradient(var(--bg) 78%, transparent); }
+nav a { flex:none; padding:7px 14px 9px; border:2px solid var(--ink); border-radius:12px; background:var(--panel); color:var(--text); text-decoration:none; font-weight:800; letter-spacing:.04em; box-shadow:inset 0 -4px 0 rgba(0,0,0,.3), 0 3px 0 rgba(0,0,0,.45); }
 nav a:hover { background:#2A3B48; } nav a:focus-visible, a:focus-visible { outline:3px solid var(--gold); outline-offset:2px; }
 h2 { font-size:clamp(1.5rem,3.4vw,2rem); }
 .sec { display:flex; flex-direction:column; gap:20px; scroll-margin-top:70px; }
@@ -268,44 +346,65 @@ td small { color:var(--muted); }
 .boss { border-color:var(--gold); border-width:3px; } .gold { color:var(--gold); }
 .note { padding:12px 16px; border:2px solid var(--ink); border-radius:14px; background:var(--tray); color:var(--muted); font-size:.92rem; } .note b { color:var(--text); }
 .twocol { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr)); gap:16px; align-items:start; }
+.em { display:inline-block; margin-right:.35em; font-style:normal; font-size:1.05em; line-height:1; filter:saturate(1.1); }
+.stats dt .em { font-size:.95rem; }
+.pieces { display:flex; flex-direction:column; gap:6px; padding:8px 10px 10px; border:2px dashed var(--rule); border-radius:12px; } .pp2 { color:var(--muted); font-size:.72rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+.pr { display:flex; flex-wrap:wrap; gap:8px; } .pr figure { margin:0; width:64px; text-align:center; } .pt { aspect-ratio:1; display:grid; place-items:center; border:2px solid var(--ink); border-radius:10px; background:repeating-linear-gradient(90deg,var(--grass) 0 24px,var(--grass2) 24px 48px); } .pt img { width:88%; height:88%; object-fit:contain; } .pr figcaption { font-size:.68rem; color:var(--muted); }
+.lvl .stats dd { font-size:1.05rem; }
+.wtbl th, .wtbl td { padding:6px 8px; text-align:center; } .wtbl tbody th { min-width:0; text-align:center; } .wtbl .zz { color:var(--rule); } .wtbl .mini { margin:auto; }
 @media (max-width:640px) { .lv.four { grid-template-columns:repeat(2,minmax(0,1fr)); } .lv { gap:8px; } .lv figcaption { flex-direction:column; gap:0; } .tb { padding:12px; } .tb header { flex-direction:column; } .chips { justify-content:flex-start; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior:auto; } }
 </style>
 <main>
 <header class="top">
   <h1>Catalog PvE</h1>
-  <p class="lede">Zombii și turnurile din Survival PvE, cu sprite-urile lor și toate cifrele din cod, plus ideile care nu sunt încă în joc. Cifrele sunt citite direct din <code>server.js</code> și <code>structures.js</code> (commit cb5add2, 2026-10-28), nu scrise de mână. Valorile din joc sunt provizorii și se reglează după jocuri reale.</p>
-  <div class="meta"><span class="chip">12 tipuri de zombi în joc</span><span class="chip">6 feluri de turnuri + baricada</span><span class="chip warn">15 turnuri și 19 zombi doar ca idei</span></div>
+  <p class="lede">Zombii, turnurile, nivelurile și valurile din Survival PvE, cu sprite-urile lor din joc și toate cifrele din cod, plus ideile care nu sunt încă în joc. Cifrele sunt citite direct din <code>server.js</code>, <code>structures.js</code> și <code>pve-difficulty.js</code> (commit ${D.git.hash}, ${D.git.date}), nu scrise de mână. Fiecare caracteristică are un emoji (❤️ viață, 💨 viteză, 🗡️ daună jucător, 🧱 daună baricade / bază, 🛡️ armură, ⏳ avânt, 🪙 monede…). Valorile din joc sunt provizorii și se reglează după jocuri reale.</p>
+  <div class="meta"><span class="chip">🧟 ${ORDER.length + BOSSES.length} tipuri de zombi în joc</span><span class="chip">🏰 6 feluri de turnuri + baricada</span><span class="chip">🎚️ 3 niveluri, 20 de valuri</span><span class="chip warn">💡 ${IDEAS2.length + IT_N} turnuri și ${IDEAS3.length + IZ_N} zombi doar ca idei</span></div>
 </header>
-<nav aria-label="Secțiuni"><a href="#zombi">Zombi</a><a href="#turnuri">Turnuri</a><a href="#idei">Idei</a></nav>
+<nav aria-label="Secțiuni"><a href="#zombi">🧟 Zombi</a><a href="#bossi">👑 Bossi</a><a href="#niveluri">🎚️ Niveluri</a><a href="#valuri">🌊 Valuri</a><a href="#turnuri">🏰 Turnuri</a><a href="#idei">💡 Idei</a></nav>
 
 <section class="sec" id="zombi">
-  <header><h2>Zombi în joc</h2><p>Unitățile sunt cele ale hărții (arena are ${AW}×${AH}, un jucător are diametrul ${PLAYER}). Viteza e în unități pe secundă. Sprite-urile sunt cele din joc, văzute de sus.</p></header>
+  <header><h2>🧟 Zombi în joc</h2><p>Unitățile sunt cele ale hărții (arena are ${AW}×${AH}, un jucător are diametrul ${PLAYER}). Viteza e în unități pe secundă. Sprite-urile sunt cele din joc, văzute de sus. Cifrele de la „De la valul” sunt cele ale nivelului Colossus (tabelul de bază).</p></header>
   <div class="rules">
-    <div><b>Viața crește cu valul</b><span>×1 până la valul 6, apoi +6% pe val: ×1,24 la valul 10, ×1,84 la valul 20. Minionii nu cresc.</span></div>
-    <div><b>Mai mulți jucători, mai mulți zombi</b><span>+40% pentru fiecare jucător după primul (×1 / 1,4 / 1,8 / 2,2), cel mult 4 jucători.</span></div>
-    <div><b>De la valul 13</b><span>Ghoul și Stalker (versiunile întunecate) înlocuiesc complet Normalul și Runner-ul.</span></div>
-    <div><b>Baza</b><span>${D.baseHp} viață, nu se mai reface între valuri. Dacă cade, meciul e pierdut.</span></div>
+    <div><b>❤️ Viața crește cu valul</b><span>×1 până la valul 6, apoi +6% pe val: ×1,24 la valul 10, ×1,84 la valul 20. Minionii nu cresc.</span></div>
+    <div><b>🎚️ Dificultatea o dă nivelul</b><span>Votat la începutul meciului (vezi „Niveluri”): numărul și viața zombilor. Numărul jucătorilor nu mai contează.</span></div>
+    <div><b>🌊 De la valul 13</b><span>Ghoul și Stalker (versiunile întunecate) înlocuiesc complet Normalul și Runner-ul.</span></div>
+    <div><b>🏠 Baza</b><span>${D.baseHp} viață, nu se mai reface între valuri. Dacă cade, meciul e pierdut.</span></div>
   </div>
   <div class="zgrid">${ORDER.map(zcard).join('')}</div>
   <h3>Comparație</h3>
-  <div class="scroll"><table class="ztbl"><thead><tr><th>Zombi</th><th>De la val</th><th>Viață</th><th>Viteză</th><th>Daună jucător</th><th>Daună bază / baricade</th><th>Armură</th><th>Monede</th></tr></thead><tbody>${ztable}</tbody></table></div>
+  <div class="scroll"><table class="ztbl"><thead><tr><th>Zombi</th><th>🌊 De la val</th><th>❤️ Viață</th><th>💨 Viteză</th><th>🗡️ Daună jucător</th><th>🧱 Daună bază / baricade</th><th>🛡️ Armură</th><th>🪙 Monede</th></tr></thead><tbody>${ztable}</tbody></table></div>
+</section>
+
+<section class="sec" id="bossi">
+  <header><h2>👑 Bossii finali și ce aduc</h2><p>Bossul valului 20 depinde de nivelul ales prin vot. Brood Mother și Colossus sunt în joc (și în Sandbox); Reaper încă nu. Viața lor fixă nu crește cu valul sau cu nivelul. Ouăle, puii și colosii mici sunt zombi obișnuiți, ca să-i lovească tot ce lovește un zombi.</p></header>
+  <div class="zgrid">${BOSSES.map(zcard).join('')}</div>
+</section>
+
+<section class="sec" id="niveluri">
+  <header><h2>🎚️ Cele trei niveluri</h2><p>Se votează la începutul meciului (10 s, solo se alege pe loc; egalitatea se rezolvă la întâmplare între cele egalate; fără voturi, Colossus). Se schimbă doar numărul și viața zombilor, nu daunele lor. „Până la” înseamnă o rulare completă în care un singur jucător ucide toți zombii nivelului; o echipă împarte zombii.</p></header>
+  <div class="zgrid">${levels}</div>
+</section>
+
+<section class="sec" id="valuri">
+  <header><h2>🌊 Valurile</h2><p>Tabelul de bază (nivelul Colossus): câți zombi de fiecare fel intră în fiecare val. Brood Mother ×0,6 înmulțește numărul, Reaper ×1,5. Viața crește cu 6% pe val de la valul 7. Valul începe cu o pauză de ${D.startGrace} s, iar zombii vin în loturi (cel mult 10); fiecare lot e anunțat cu 0,9 s înainte prin ondulații pe pământ. De la valul 13 ghoul și stalker le înlocuiesc pe normal și runner.</p></header>
+  <div class="scroll"><table class="wtbl"><thead><tr><th>🌊 Val</th>${whead}<th>👥 Total</th><th>❤️ Viață</th></tr></thead><tbody>${wrows}</tbody></table></div>
 </section>
 
 <section class="sec" id="turnuri">
-  <header><h2>Turnuri și baricade în joc</h2><p>Toate turnurile sunt discuri solide pentru jucători și zombi; gloanțele trec prin ele. Au viață pe nivel, zombii le sparg, iar E lipit de ele le repară (1 s nemișcat, jumătate din prețul nivelului, proporțional cu ce lipsește) sau le urcă de nivel. Un Screamer poate amorți orice turn 2 s. Distanțele sunt în unități ale hărții.</p></header>
+  <header><h2>🏰 Turnuri și baricade în joc</h2><p>Toate turnurile sunt discuri solide pentru jucători și zombi; gloanțele trec prin ele. Au viață pe nivel, zombii le sparg, iar E lipit de ele le repară (1 s nemișcat, jumătate din prețul nivelului, proporțional cu ce lipsește) sau le urcă de nivel. Un Screamer poate amorți orice turn 2 s. Distanțele sunt în unități ale hărții.</p></header>
   <div class="rules">
-    <div><b>Turetă: limită pe jucători</b><span>${mgLimit}</span></div>
-    <div><b>Celelalte turnuri</b><span>Tesla, Bomb, Flamethrower și Support: 2 + 1 pentru fiecare jucător în plus. Health Station: 1 + 1.</span></div>
-    <div><b>Plasare</b><span>Fantoma urmează mouse-ul, până la 110 de jucător (baricada 120). Serverul primește până la 170 (180).</span></div>
+    <div><b>🔒 Turetă: limită pe jucători</b><span>${mgLimit}</span></div>
+    <div><b>🔒 Celelalte turnuri</b><span>Tesla, Bomb, Flamethrower și Support: 2 + 1 pentru fiecare jucător în plus. Health Station: 1 + 1.</span></div>
+    <div><b>📍 Plasare</b><span>Fantoma urmează mouse-ul, până la 110 de jucător (baricada 120). Serverul primește până la 170 (180).</span></div>
   </div>
   ${KORDER.map(tblock).join('')}
   ${bblock}
 </section>
 
 <section class="sec" id="idei">
-  <header><h2>Idei care nu sunt în joc</h2><p>Din artefactul „Turnuri și zombi noi”, cu sprite-urile lui. Valorile de mai jos sunt <b>propuneri</b> făcute ca punct de plecare, la scara celor din joc: nu sunt implementate și nu sunt decise.</p><div class="meta"><span class="chip warn">Nimic din asta nu e în joc</span></div></header>
-  <div class="note"><b>Din lista inițială sunt deja în joc:</b> Dronă de reparații (ca Support Tower, tasta 7), Flamethrower (tasta 6), Shielded și Screamer. Rămân de făcut: 3 turnuri din prima listă, 12 turnuri noi, 5 zombi din prima listă și 14 zombi noi (2 boss). Din designul HUD-ului PvE mai lipsesc ridicarea unui coechipier căzut („E Ridică”), scutul și boss-ul; nu au încă cifre.</div>
+  <header><h2>💡 Idei care nu sunt în joc</h2><p>Din artefactul „Turnuri și zombi noi”, cu sprite-urile lui. Valorile de mai jos sunt <b>propuneri</b> făcute ca punct de plecare, la scara celor din joc: nu sunt implementate și nu sunt decise.</p><div class="meta"><span class="chip warn">Nimic din asta nu e în joc</span></div></header>
+  <div class="note"><b>Din liste sunt deja în joc:</b> Dronă de reparații (Support Tower, tasta 7), Flamethrower (6), Shielded, Screamer, jucător doborât și ridicat (E), Brood Mother și Colossus (boss, cu micii lor), votul de nivel. Rămân de făcut: 3 turnuri din prima listă, 12 turnuri noi, 5 zombi din prima listă și 13 zombi noi (Reaper, boss, între ei). Valorile lor sunt propuneri.</div>
   <h3>Prima listă: turnuri și capcane</h3>
   <div class="twocol">${ideasT}</div>
   <h3>Idei noi de turnuri, pe stiluri de joc</h3>
