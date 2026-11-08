@@ -339,7 +339,7 @@ function _heroRender(char) {
     if (lock) {
         lock.hidden = unlocked;
         const txt = document.getElementById('hero-lock-txt');
-        if (txt && !unlocked) txt.innerHTML = !char.shop ? 'SEASON' : char.diamonds > 0 ? ico('gem') + ' ' + char.diamonds : ico('coins') + ' ' + char.coins.toLocaleString();
+        if (txt && !unlocked) txt.textContent = char.rarity === 'season' ? 'SEASON' : 'CHESTS';   // nothing is sold: skins come out of chests, the Season ones from the Battle Pass
     }
 }
 function cycleCharacter(dir) {
@@ -387,7 +387,7 @@ function selectCharacter(id) {
 // Filled from public/data/weapons.json when it loads (WEAPONS_ART_READY), the file the server reads too
 const WEAPONS = [];        // { id, name, desc, class, fireModeLabel, ...ARShared.weaponStats } in file order
 const WEAPON_CLASSES = []; // { id, name } in menu order
-const WEAPON_LOADOUT = {}; // id -> loadout base values and growth per point (HP/DMG/SPD)
+const WEAPON_LOADOUT = {}; // id -> loadout { dmg: one bullet, spd: speed with the gun in hand }
 const _WEAPON_DATA = {};   // id -> its WEAPONS entry
 let WEAPON_RULES = null;   // aimDelay, bulletRadius: the same for every gun
 let DEFAULT_WEAPON = null;
@@ -403,20 +403,14 @@ function _applyWeaponUI() {
     if (!w) return; // weapons.json not in yet
     const icon  = document.getElementById('weapon-preview-icon');
     const nameEl = document.getElementById('weapon-name-display');
-    const titleEl = document.getElementById('loadout-title');
     if (icon)  icon.innerHTML = ARIcons.weaponHtml(w.id, false);
     if (nameEl) nameEl.textContent = w.name.toUpperCase();
-    if (titleEl) titleEl.innerHTML = `<span>${w.name.toUpperCase()}</span> LOADOUT`;
 }
 
 function selectWeapon(id) {
     selectedWeapon = id;
     localStorage.setItem('selectedWeapon', id);
-    // Reset stats la 0 cand schimbi arma (build-ul difera per weapon)
-    stats.hp = 0; stats.dmg = 0; stats.spd = 0;
-    localStorage.setItem('ar_stats', JSON.stringify(stats));
     _applyWeaponUI();
-    updateStatsUI();
 }
 
 // Initializeaza weapon UI la incarcare, once weapons.json is in (it arrives after DOMContentLoaded)
@@ -629,7 +623,7 @@ function _arsBars(wid) {
     for (const w of WEAPONS) {
         const rate = w.fireMode === 'burst' ? w.burstCount / (w.shootCd + (w.burstCount - 1) * w.burstDelay) : 1 / w.shootCd;
         raw[w.id] = {
-            dmg: WEAPON_LOADOUT[w.id].baseDmg * (w.pellets || 1), rate, range: w.bulletSpeed * w.bulletLife,
+            dmg: WEAPON_LOADOUT[w.id].dmg * (w.pellets || 1), rate, range: w.bulletSpeed * w.bulletLife,
             acc: Math.max(0.05, 1 - (w.spread || 0)), ammo: w.ammoMax, reload: w.reloadSeconds,
         };
     }
@@ -777,11 +771,7 @@ function _arsRenderSide() {
         else if (has) foot = `<button type="button" class="ars-blk ars-btn-green ars-mini" onclick="arsEquip('${s.id}')">EQUIP</button>`;
         else if (s.unlock) foot = `<span class="ars-badge ars-badge-lock">${ico('lock')}${s.unlock.kills} kills</span>`;
         else if (s.season) foot = `<span class="ars-badge ars-badge-lock">${ico('lock')}SEASON ITEM</span>`;
-        else {
-            const gem = !!s.price.diamonds, cost = gem ? s.price.diamonds : s.price.coins;
-            const short = (gem ? (p.diamonds || 0) : (p.coins ?? 1000)) < cost;
-            foot = `<button type="button" class="ars-blk ars-btn-gold ars-mini${short ? ' is-short' : ''}" onclick="arsAskBuy('${s.id}')" aria-label="Buy ${s.name} for ${cost} ${gem ? 'diamonds' : 'coins'}">${ico(gem ? 'gem' : 'coins')}${cost.toLocaleString()}</button>`;
-        }
+        else foot = `<span class="ars-badge ars-badge-lock">${ico('lock')}FROM CHESTS</span>`;   // no skin is sold: it comes out of chests
         return `<div class="ars-skin${s.id === _ars.skin ? ' is-sel' : ''}${isEq ? ' is-eq' : ''}${has ? '' : ' is-locked'}" data-skin="${s.id}" style="--rc:${rar.color}">
             <button type="button" class="ars-skin-face" onclick="arsPreviewSkin('${s.id}')" aria-label="Preview ${s.name}" aria-pressed="${s.id === _ars.skin}">
                 <span class="ars-skin-rar">${rar.label}</span>
@@ -823,7 +813,6 @@ async function openArsenal(weaponId, skinId) {
 function closeArsenal() {
     const scr = document.getElementById('screen-arsenal');
     if (scr.style.display === 'none' || scr.classList.contains('is-closing')) return;
-    closeArsConfirm();
     document.removeEventListener('keydown', _arsKey);
     if (_ars.raf) { cancelAnimationFrame(_ars.raf); _ars.raf = 0; }
     document.body.classList.remove('arsenal-open');
@@ -843,7 +832,7 @@ function closeArsenal() {
 }
 function _arsKey(e) {
     if (e.key !== 'Escape') return;
-    if (!document.getElementById('ars-confirm').hidden) closeArsConfirm(); else closeArsenal();
+    closeArsenal();
 }
 function arsSelectWeapon(id) {
     if (!_WEAPON_DATA[id]) return;
@@ -929,51 +918,6 @@ async function arsEquip(skinId) {
     } catch { showToast('Network error. Please try again.'); }
     finally { _ars.busy = false; }
 }
-// Buying asks first. Not enough money: a short note, no request.
-function arsAskBuy(skinId) {
-    const s = _arsSkin(skinId);
-    if (!s || !s.price || _ars.busy) return;
-    const p = currentProfile || {}, gem = !!s.price.diamonds, cost = gem ? s.price.diamonds : s.price.coins;
-    const have = gem ? (p.diamonds || 0) : (p.coins ?? 1000);
-    if (have < cost) { showToast(`You need ${(cost - have).toLocaleString()} more ${gem ? 'diamonds' : 'coins'} for ${s.name}`); return; }
-    _ars.buy = skinId;
-    arsPreviewSkin(skinId);
-    document.getElementById('ars-confirm-icon').innerHTML = _arsIcon(s.weapon, skinId);
-    document.getElementById('ars-confirm-title').textContent = `BUY ${s.name.toUpperCase()}?`;
-    document.getElementById('ars-confirm-text').innerHTML =
-        `${ARS_RARITY[s.rarity].title} skin for ${WEAPON_ART.byId[s.weapon].name}. Costs <b>${ico(gem ? 'gem' : 'coins')}${cost.toLocaleString()}</b> ${gem ? 'diamonds' : 'coins'}; you will have ${(have - cost).toLocaleString()} left.`;
-    const btn = document.getElementById('ars-confirm-buy');
-    btn.disabled = false; btn.textContent = 'BUY';
-    document.getElementById('ars-confirm').hidden = false;
-    btn.focus({ preventScroll: true });
-}
-function closeArsConfirm() {
-    const el = document.getElementById('ars-confirm');
-    if (el) el.hidden = true;
-    _ars.buy = null;
-}
-async function confirmArsBuy() {
-    const skinId = _ars.buy, s = _arsSkin(skinId);
-    if (!s || _ars.busy) return;
-    _ars.busy = true;
-    const btn = document.getElementById('ars-confirm-buy');
-    btn.disabled = true; btn.textContent = '...';
-    try {
-        const r = await _arsPost('/api/weapon-skins/buy', { skinId });
-        closeArsConfirm();
-        if (!r.ok) { showToast(r.error || 'Could not buy skin'); return; }
-        if (currentProfile) {
-            currentProfile.coins = r.coins; currentProfile.diamonds = r.diamonds;
-            if (Array.isArray(r.owned)) currentProfile.owned_weapon_skins = r.owned;
-        }
-        _arsSetMoney();
-        if (_ars.weapon === s.weapon) _ars.skin = skinId;
-        _arsRender();
-        showToast(`You bought ${s.name}. Tap EQUIP to use it.`);
-    } catch { closeArsConfirm(); showToast('Network error. Please try again.'); }
-    finally { _ars.busy = false; }
-}
-
 // "Skin deblocat": the server says so at the end of a match (weapon-skin-unlocked); the notice waits for the
 // lobby and opens the Arsenal on that skin
 const _wskinNotices = [];
@@ -1036,35 +980,18 @@ function renderCharShopGrid(filter) {
     const chars = filter === 'all' ? CHARACTERS : CHARACTERS.filter(c => c.rarity === filter);
     const p  = currentProfile || {};
     const xp = p.xp || 0;
-    let playerLevel = 1, lvlInc = 100, lvlThresh = 0;
-    for (let n = 2; n <= 50; n++) {
-        lvlThresh += lvlInc;
-        if (xp >= lvlThresh) playerLevel = n; else break;
-        if (n >= 3) lvlInc += 50;
-    }
     grid.innerHTML = chars.map(char => {
         const isUnlocked = unlockedCharacters.includes(char.id);
         const isSelected = char.id === selectedCharacterId;
         const col        = RARITY_COLOR[char.rarity];
-        const coins      = p.coins    ?? 1000;
-        const diamonds   = p.diamonds || 0;
-        const lvlOk      = playerLevel >= char.level;
-        const costOk     = char.diamonds > 0 ? diamonds >= char.diamonds : coins >= char.coins;
-        const canAfford  = isUnlocked || (lvlOk && costOk);
-        const costStr    = char.diamonds > 0 ? `${ico('gem')} ${char.diamonds}` : (char.coins === 0 ? 'GRATUIT' : `${ico('coins')} ${char.coins.toLocaleString()}`);
-        const lvlStr     = char.level > 1 ? ` · LV ${char.level}+` : '';
         let actionBtn;
         if (isUnlocked) {
             actionBtn = isSelected
             ? `<button class="cs-action-btn cs-selected-btn">${ico('check')} SELECTED</button>`
                 : `<button class="cs-action-btn cs-select-btn" onclick="selectCharacter('${char.id}');closeCharacterShop()">SELECT</button>`;
-        } else if (!char.shop) {
-            // TODO: season skins are granted through admin or code, never sold here
-            actionBtn = `<button class="cs-action-btn cs-locked-btn" disabled>SEASON</button>`;
-        } else if (canAfford) {
-            actionBtn = `<button class="cs-action-btn cs-unlock-btn" onclick="unlockCharacter('${char.id}',this)">${costStr}${lvlStr}</button>`;
         } else {
-            actionBtn = `<button class="cs-action-btn cs-locked-btn" disabled>${costStr}${lvlStr}</button>`;
+            // nothing is sold: a character skin comes out of a chest, the Season ones from the Battle Pass
+            actionBtn = `<button class="cs-action-btn cs-locked-btn" disabled>${char.rarity === 'season' ? 'BATTLE PASS' : 'FROM CHESTS'}</button>`;
         }
         const shopImgStyle = '';
         return `<div class="char-shop-card cs-r-${char.rarity}${isSelected ? ' cs-card-selected' : ''}${!isUnlocked ? ' cs-card-locked' : ''}" style="--rc:${col}">
@@ -1083,45 +1010,6 @@ function renderCharShopGrid(filter) {
             ${actionBtn}
         </div>`;
     }).join('');
-}
-
-async function unlockCharacter(id, btn) {
-    if (!currentNickname || !sessionToken) return;
-    btn.disabled = true;
-    const origText = btn.textContent;
-    btn.textContent = '...';
-    try {
-        const data = await fetch('/api/characters/unlock', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nickname: currentNickname, token: sessionToken, characterId: id })
-        }).then(r => r.json());
-        if (!data.ok) {
-            btn.disabled = false;
-            btn.textContent = origText;
-            alert(data.error || 'Could not unlock this character.');
-            return;
-        }
-        if (currentProfile) {
-            currentProfile.coins    = data.coins;
-            currentProfile.diamonds = data.diamonds;
-        }
-        unlockedCharacters = data.unlocked_characters;
-        const shopCoinsEl = document.getElementById('shop-coins');
-        const shopDiamEl  = document.getElementById('shop-diamonds');
-        if (shopCoinsEl) shopCoinsEl.textContent = data.coins.toLocaleString();
-        if (shopDiamEl)  shopDiamEl.textContent  = data.diamonds;
-        const coinsEl = document.getElementById('lp-coins');
-        const diamEl  = document.getElementById('lp-crystals');
-        if (coinsEl) coinsEl.textContent = data.coins.toLocaleString();
-        if (diamEl)  diamEl.textContent  = data.diamonds;
-        selectCharacter(id);
-        renderCharShopGrid(_currentShopFilter);
-    } catch {
-        btn.disabled = false;
-        btn.textContent = origText;
-        alert('Network error.');
-    }
 }
 
 // ---------- FRIENDS SYSTEM ----------
@@ -1396,6 +1284,8 @@ function createSessionSocket() {
     _sessionSocket = _watchBuild(io(_ioOpts));
     _sessionSocket.emit('authenticate', { nickname: currentNickname, token: sessionToken });
     _sessionSocket.on('force-logout', showForceLogout);
+    // a message or a reward arrived in the inbox (server.js sendInbox)
+    _sessionSocket.on('inbox-new', (d) => { if (window.LobbyUI && d && d.lobby) { LobbyUI.setLobby(d.lobby); showToast('New message in your inbox'); } });
 
     // server sends array of online friend nicknames
     _sessionSocket.on('friends-online-status', (onlineNicks) => {
@@ -1499,29 +1389,12 @@ function authSuccess(nickname, password, player, token) {
     unlockedCharacters = Array.isArray(player.unlocked_characters) && player.unlocked_characters.length ? player.unlocked_characters : [DEFAULT_SKIN];
     localStorage.setItem('ar_nickname', nickname);
 
-    // Prioritate: DB daca are valori salvate; altfel localStorage (fallback instant)
-    const dbTotal = (player.stat_hp || 0) + (player.stat_dmg || 0) + (player.stat_spd || 0);
-    if (dbTotal > 0) {
-        stats.hp  = player.stat_hp  || 0;
-        stats.dmg = player.stat_dmg || 0;
-        stats.spd = player.stat_spd || 0;
-    } else {
-        try {
-            const s = JSON.parse(localStorage.getItem('ar_stats') || 'null');
-            if (s && (s.hp || 0) + (s.dmg || 0) + (s.spd || 0) > 0) {
-                stats.hp  = Math.min(10, Math.max(0, s.hp  || 0));
-                stats.dmg = Math.min(10, Math.max(0, s.dmg || 0));
-                stats.spd = Math.min(10, Math.max(0, s.spd || 0));
-                if (pointsUsed() > MAX_POINTS) { stats.hp = 0; stats.dmg = 0; stats.spd = 0; }
-            }
-        } catch {}
-    }
-
     document.getElementById('screen-auth').style.display  = 'none';
     document.getElementById('screen-lobby').style.display = 'flex';
     startLobbyBackground();
     prepopulateLobby();
     _applyWeaponUI();
+    if (window.LobbyUI) LobbyUI.init();   // chests, Battle Pass, inbox (lobby-ui.js)
     createSessionSocket();
     loadFriends();
     setTimeout(_arsWarm, 1500);   // the Arsenal's pictures, once the lobby is up
@@ -1662,8 +1535,6 @@ function prepopulateLobby() {
     heroShowSelected();
     // Battle Royale is chosen by default, so PLAY is always ready
     selectGamemode(selectedGamemode || 'br');
-
-    updateStatsUI();
 
     // ── Left panel population ──
     const p = currentProfile || {};
@@ -1829,6 +1700,8 @@ async function claimMission(missionId, btn, coinsReward, diamondsReward) {
             currentProfile.diamonds = diamonds;
             if (Array.isArray(data.missions)) currentProfile.missions = data.missions;
         }
+        if (window.LobbyUI && data.lobby) LobbyUI.setLobby(data.lobby, { wallet: false });   // the Battle Pass XP of the mission (the coins fly below)
+        if (data.rewardXp) showToast(`+${data.rewardXp} Battle Pass XP${data.tiersGained ? ' · TIER UP!' : ''}`);
 
         const coinEl = document.getElementById('lp-coins');
         const diamEl = document.getElementById('lp-crystals');
@@ -2209,56 +2082,6 @@ document.addEventListener('DOMContentLoaded', () => {
 const MOVE_THRESHOLD  = 0.1;
 const SHOOT_THRESHOLD = 0.25;
 
-// ---------- STATISTICI BUILD ----------
-const stats = { hp: 0, dmg: 0, spd: 0 };
-const MAX_POINTS = 10;
-
-function pointsUsed() { return stats.hp + stats.dmg + stats.spd; }
-
-function changeStat(stat, delta) {
-    const newVal = stats[stat] + delta;
-    if (newVal < 0) return;
-    if (newVal > 10) return;
-    if (delta > 0 && pointsUsed() >= MAX_POINTS) return;
-    stats[stat] = newVal;
-    updateStatsUI();
-    localStorage.setItem('ar_stats', JSON.stringify({ hp: stats.hp, dmg: stats.dmg, spd: stats.spd }));
-}
-
-function updateStatsUI() {
-    const remaining = MAX_POINTS - pointsUsed();
-    const ptDisp = document.getElementById('points-display');
-    const ptEl   = document.querySelector('.bc-points');
-    if (ptDisp) ptDisp.textContent = remaining;
-    if (ptEl)   ptEl.classList.toggle('bc-zero', remaining === 0);
-    const valHp  = document.getElementById('val-hp');
-    const valDmg = document.getElementById('val-dmg');
-    const valSpd = document.getElementById('val-spd');
-    const barHp  = document.getElementById('bar-hp');
-    const barDmg = document.getElementById('bar-dmg');
-    const barSpd = document.getElementById('bar-spd');
-    const _wl = WEAPON_LOADOUT[selectedWeapon] || WEAPON_LOADOUT[DEFAULT_WEAPON];
-    if (!_wl) return; // weapons.json not in yet
-    if (valHp)  valHp.textContent  = (_wl.baseHp  + stats.hp  * _wl.hpPer)  + ' HP';
-    if (valDmg) valDmg.textContent = (_wl.baseDmg + stats.dmg * _wl.dmgPer) + ' DMG';
-    if (valSpd) valSpd.textContent = (_wl.baseSpd + stats.spd * _wl.spdPer).toFixed(1) + ' SPD';
-    if (barHp)  barHp.style.width  = (stats.hp  / 10 * 100) + '%';
-    if (barDmg) barDmg.style.width = (stats.dmg / 10 * 100) + '%';
-    if (barSpd) barSpd.style.width = (stats.spd / 10 * 100) + '%';
-}
-
-function updateBuildType() {
-    const buildEl = document.getElementById('build-type');
-    const max = Math.max(stats.hp, stats.dmg, stats.spd);
-    let text = '';
-    if (stats.hp === stats.dmg && stats.dmg === stats.spd) text = 'Balanced build';
-    else if (stats.hp  === max && stats.hp  >= 4) text = 'Tank: tough but slow';
-    else if (stats.dmg === max && stats.dmg >= 4) text = 'Sniper: powerful but fragile';
-    else if (stats.spd === max && stats.spd >= 4) text = 'Runner: very fast but vulnerable';
-    else text = 'Mixed build';
-    buildEl.textContent = text;
-}
-
 // (image upload replaced by character shop system)
 
 // ---------- INTRA IN JOC ----------
@@ -2266,19 +2089,16 @@ function joinGame() {
     const name = currentNickname;
     if (!name) return;
     const char     = getSelectedCharacter();
-
-    if (currentNickname && sessionToken) {
-        fetch('/api/profile/stats', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nickname: currentNickname, token: sessionToken, stat_hp: stats.hp, stat_dmg: stats.dmg, stat_spd: stats.spd })
-        }).catch(() => {});
+    // all four chest slots taken: say so before the match (no chest from it, even for a win); the sandbox has no end, so no chests
+    if (window.LobbyUI && LobbyUI.slotsFull() && selectedGamemode !== 'sandbox' && !joinGame._ack) {
+        LobbyUI.warnSlots(() => { joinGame._ack = true; try { joinGame(); } finally { joinGame._ack = false; } });
+        return;
     }
 
     goFullscreen();
     document.getElementById('screen-lobby').style.display   = 'none';
     document.getElementById('screen-waiting').style.display = 'flex';
-    initGame(name, char.id, stats, pendingRoom);
+    initGame(name, char.id, null, pendingRoom);
 }
 
 // ---------- FULLSCREEN ----------
@@ -3177,7 +2997,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     const socket = _sessionSocket || _watchBuild(io(_ioFallbackOpts));
     _sessionSocket = null;
 
-    const playerData = { name: playerName, skin: playerSkin, stats: playerStats, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode === 'sandbox' ? 'pve' : (selectedGamemode || 'br'), sandbox: selectedGamemode === 'sandbox', proto: ARNet.PROTO, loader: 1 };   // loader: this client has a loading screen: the server waits for match-ready before the 3-2-1
+    const playerData = { name: playerName, skin: playerSkin, xp: currentProfile?.xp || 0, weapon: selectedWeapon, mode: selectedGamemode === 'sandbox' ? 'pve' : (selectedGamemode || 'br'), sandbox: selectedGamemode === 'sandbox', proto: ARNet.PROTO, loader: 1 };   // loader: this client has a loading screen: the server waits for match-ready before the 3-2-1
 
     if (roomAction.action === 'create') {
         socket.emit('create-room', playerData);
@@ -6285,6 +6105,9 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (data.weaponStats) currentProfile.weapon_stats = data.weaponStats;
     });
 
+    // A chest dropped at the end of the match (or would have, with the slots full): the end boards show it, the lobby tray gets it (lobby-ui.js)
+    socket.on('match-chest', (data) => { if (window.LobbyUI) LobbyUI.matchChest(data); });
+
     // A weapon skin unlocked with kills (server.js WEAPON SKINS): a notice in the lobby leads to the Arsenal
     socket.on('weapon-skin-unlocked', (data) => {
         if (!data || !Array.isArray(data.skins) || !currentProfile) return;
@@ -6294,6 +6117,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     // ---------- RESET PENTRU REMATCH ----------
     function resetForNewGame() {
+        if (window.LobbyUI) LobbyUI.resetMatchChest();
         _spriteBurst = true;
         gameEnded  = false;
         _sceneFrozen = false;
@@ -8911,8 +8735,7 @@ function acceptRoomInvite() {
     _sessionSocket = _watchBuild(io(_invIoOpts));
     _sessionSocket.emit('authenticate', { nickname: currentNickname, token: sessionToken });
     const char = getSelectedCharacter();
-    initGame(currentNickname, char.id, stats, pendingRoom);
+    initGame(currentNickname, char.id, null, pendingRoom);
 }
 
 
-updateStatsUI();

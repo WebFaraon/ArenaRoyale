@@ -9,7 +9,7 @@ const bcrypt = require('bcryptjs');
 function makeRow() {
     return {
         id: 'u1', nickname: 'stat_t', password_hash: bcrypt.hashSync('secret', 10), avatar: 'rookie', kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0,
-        unlocked_characters: '["rookie"]', missions_state: null, weapon_stats: {}, owned_weapon_skins: [], equipped_weapon_skins: {}, stat_hp: 0, stat_dmg: 0, stat_spd: 0,
+        unlocked_characters: '["rookie"]', missions_state: null, weapon_stats: {}, owned_weapon_skins: [], equipped_weapon_skins: {}, lobby_state: null,
     };
 }
 
@@ -26,15 +26,24 @@ function fakeSupabase(state) {
                     return res.end(JSON.stringify({ code: 'PGRST000', message: 'unavailable' }));
                 }
                 if (url.searchParams.get('select') === 'password_hash') state.passwordReads++;
+                if (state.noLobbyColumn && /lobby_state/.test(url.searchParams.get('select') || '')) {   // the migration for the lobby state has not run
+                    res.writeHead(400, { 'content-type': 'application/json' });
+                    return res.end(JSON.stringify({ code: '42703', message: 'column players.lobby_state does not exist' }));
+                }
                 res.writeHead(200, { 'content-type': 'application/json' });
                 return res.end(/object/.test(req.headers.accept || '') ? JSON.stringify(state.row) : JSON.stringify([state.row]));
             }
             if (req.method === 'PATCH' && url.pathname === '/rest/v1/players') {
                 state.patches.push(JSON.parse(body || '{}'));
+                if (state.noLobbyColumn && 'lobby_state' in JSON.parse(body || '{}')) {
+                    res.writeHead(400, { 'content-type': 'application/json' });
+                    return res.end(JSON.stringify({ code: 'PGRST204', details: null, hint: null, message: "Could not find the 'lobby_state' column of 'players' in the schema cache" }));
+                }
                 if (state.columnMissing) {
                     res.writeHead(400, { 'content-type': 'application/json' });
                     return res.end(JSON.stringify({ code: 'PGRST204', details: null, hint: null, message: "Could not find the 'stat_hp' column of 'players' in the schema cache" }));
                 }
+                if (state.apply) Object.assign(state.row, JSON.parse(body || '{}'));   // state.apply: the patches change the row, so the next read sees them
                 res.writeHead(204); return res.end();
             }
             res.writeHead(404); res.end('{}');

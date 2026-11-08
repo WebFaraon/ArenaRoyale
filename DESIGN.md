@@ -232,8 +232,8 @@ Saturated toy colors, each with its own lip shade and hover face, over black gla
 ## Layout
 
 A fixed-viewport app with no page scroll; columns scroll internally. The top bar is `bar-h + 10px` tall (56px base, 44px on short landscape) and fully transparent: no strip, border or shade; the logo and blocks float on the field. The lobby and waiting room dim the field with a flat `rgba(3,6,5,.58)` layer so trays and buttons lead. The field itself is still: turf, a faint chalk circle and halfway line (no chalk frame round the screen edge), the trees and rocks of the match (the sprites of `public/images/map/`, laid out from a fixed seed and kept off the middle band), painted once per start or resize, with no moving player dots.
-- **Wide (>= 900px wide and > 600px tall):** three columns of trays straight on the field (`minmax(230px,.82fr) | minmax(0,2fr) | minmax(270px,1fr)`, 16px gaps, max 1640px). Left: profile, record (2x2), chests. Center: the character stage (fills the height) and the loadout. Right: gamemode + PLAY + room code, the daily missions card, the tournament pinned to the bottom. Each column scrolls on its own; between 900 and 1180px the record becomes four label/number rows, mode descriptions hide, and under 820px tall the missions card shows two rows.
-- **Phones and short screens (< 900px wide or <= 600px tall):** the same blocks regroup behind three tabs in the top bar (Profil, Joc, Misiuni); `.lobby-body[data-tab]` picks the layout and the columns become `display: contents`. Joc: character | loadout | mode + PLAY. Misiuni: missions beside the season pill and the tournament. Profil: profile | record | chests. Under 720px wide the panes drop to two columns, under 560px to one.
+- **Wide (>= 900px wide and > 600px tall):** three columns of trays straight on the field (`minmax(230px,.82fr) | minmax(0,2fr) | minmax(270px,1fr)`, 16px gaps, max 1640px). Left: profile, record (2x2), the Battle Pass card. Center: the character stage (fills the height) and the chests tray. Right: gamemode + PLAY + room code, the daily missions card, the tournament pinned to the bottom. Each column scrolls on its own; between 900 and 1180px the record becomes four label/number rows, mode descriptions hide, and under 820px tall the missions card shows two rows.
+- **Phones and short screens (< 900px wide or <= 600px tall):** the same blocks regroup behind three tabs in the top bar (Profil, Joc, Misiuni); `.lobby-body[data-tab]` picks the layout and the columns become `display: contents`. Joc: character | chests | mode + PLAY. Misiuni: missions beside the tournament. Profil: profile | record | Battle Pass. Under 720px wide the panes drop to two columns, under 560px to one.
 - The lobby is always ready to play: Battle Royale is selected on login, the last mode stays selected after a match, PLAY is never disabled.
 - **Trays** stack with 10px gaps and 14px inner padding (10 to 12px on short landscape).
 - **Short landscape (<= 520px tall):** the same blocks, tighter: 2.5px outlines, 54px mode blocks, a 54px PLAY, 36px stat keys.
@@ -272,7 +272,7 @@ Softly rounded toy forms: 8px chips, 10px badges and small keys, 12px buttons an
 - **Focus:** a 3px white outline at a 3px offset.
 
 ### Top bar
-Transparent, a three-part grid: the outlined Blastridge logo (straight, not tilted) on the left, the season pill in the middle, and on the right a sky Friends block, a gold Leaderboard block and a slate Settings block (logout lives inside Settings, shown only in the lobby). On phones the middle holds the tab control instead: a black-glass pill with a 3px outline, where the active tab is a raised orange key. There is no online-players counter.
+Transparent, a grid: the outlined Blastridge logo (straight, not tilted) on the left and on the right a gold Battle Pass block, a green Missions block, a sky Friends block, a gold Leaderboard block, a slate Inbox block (the envelope, with a red badge) and a slate Settings block (logout lives inside Settings, shown only in the lobby). On phones the middle holds the tab control instead: a black-glass pill with a 3px outline, where the active tab is a raised orange key. There is no online-players counter.
 
 ### Auth screen
 Login and sign-up sit on the pitch like the lobby, in two columns (stacked under 700px). Left, the logo lockup in the Display type, tilted -2 degrees with the large stroke: the toy mark (an orange block with a folded corner, ink outline, lip, bevel and ground shadow, tilted -6 degrees, a white "A" with an ink stroke), the stacked wordmark ARENA / ROYALE, and two small mode chips (orange Battle Royale, green Survival PvE). No rules or lines behind the logo. Right, one tray holding the tabs, the fields and the key: the tabs are the black-glass segmented pill of the phone top bar with the active tab a raised orange key; the fields are the sunk inputs with an orange focus ring; an error is a small red block with a triangle icon and white stroked text; the submit is the orange `auth-btn` key. The settings block floats top right (fixed, by id, so the shared button grammar cannot make it `relative`). Text keeps its Romanian diacritics.
@@ -302,7 +302,7 @@ A solid `modal-body` panel with a 20px radius, 3px outline and the modal shadow,
 ### Settings switch
 A pill track sunk in black. On, it fills green with its lip. The knob is a white block with a grey lip that springs across 44px.
 
-### Season pill
+### Season pill (retired from the top bar on 2026-11-08: the season name is on the Battle Pass card)
 A slate pill with a gold ring, a bobbing white ball block, a gold "SEZONUL 1" kicker and the stroked name "Stadium Showdown". It sits centered in the top bar on wide screens and at the top of the Misiuni tab on phones.
 
 ### Character stage
@@ -316,6 +316,18 @@ Rows are separated tray blocks (3px ink edges, 14px corners, 8px apart) under st
 
 ### Character catalog
 Coins and gems sit in slate blocks in the header, like the lobby profile. The selected character's key is a green block with the same stroked lettering as SELECTEAZA. The rarity tabs scroll sideways without a visible scrollbar.
+
+### Chests tray
+The center tray under the character: the stroked title "CHESTS" (CHEST in orange), a slate pill "n / 4 slots" (red when all four are taken), four slots and one hint line. A slot is a dark block with a 3px ink outline, a number top left, a state tag top right (READY green, OPENING gold, WAITING grey, EMPTY), the chest sprite from the Obiecte Arena pack (`public/images/chests/<id>.svg`, drawn by `tools/build-chest-art.js`), its name, a line of time (the countdown of the one that is opening, the waiting time of the others) and a key: green OPEN (ready), orange START (nothing is opening), sky "gem + price" (skip the wait; also on the other chests while one is opening). A ready slot has a green ring and its chest bobs; an empty slot is dashed with the grey outline of a chest. The rarity colours the glow behind the chest (`--rc`). Spending gems always asks first (the confirm box).
+
+### Battle Pass
+**Card** (left column, gold edge): the gold kicker "SEASON 1", a white tier badge tilted 3 degrees, the stroked title "BATTLE PASS", the season name, a gold progress bar with "640 / 1,000 XP", three tiles (the last reward you reached, the next one, the next skin; done in green, claimable in gold, locked dashed) and a gold OPEN key with a red badge for the rewards waiting. **Screen** (`#screen-bp`, the Arsenal's crossfade): a summary tray (season, tier badge, XP bar, CLAIM ALL green, GET BLAST TIER purple with the price), and under it a sideways-scrolling track of 30 columns: a tier key (slate, gold once reached, orange for yours with a white ring), a FREE cell (green glow, many are empty dashed) and a BLAST TIER cell (purple glow, a lock until it is bought). A cell shows the reward art and its amount; claimable cells have a gold edge and a pulsing CLAIM pill, claimed ones are dimmed with a green check, skin cells have a gold edge. Left of the track two fixed tags: FREE (green) and BLAST TIER (purple).
+
+### Chest opening
+A full-screen scrim (`.co`) with the chest alone in the middle: it drops in with a spring, shakes harder and harder (at least 1.7 s), the lid flies off and light, particles and shock rings burst out (by rarity: dust, sparks, confetti, crystal shards, embers; beams from 0 to 18; 0 to 3 rings; a screen shake from Golden up), then the cards come out one at a time over the chest ("2 CARDS LEFT", NEXT) and the last tap shows them all together (COLLECT). A card is a 4px ink border with a ring and a glow in its colour (coins gold, gems sky, skins by rarity), the kind on top, the art, the amount or name below, a red NEW tag or a slate "DUPLICATE: +coins" tag. Under reduced motion there is no shake, no particles and no beams.
+
+### Inbox
+A modal like the missions modal (560px): one tray block per message, the newest first: title, how long ago, text, reward chips (coins, gems, skin), a gold CLAIM key or "CLAIMED", a slate delete key (disabled while a reward is waiting). New ones have a sky edge, ones with a reward a gold edge.
 
 ### Season banner (retired from the lobby)
 A full-width tray at the top of the center column: a floodlit pitch (mown stripes, a chalk centre circle and halfway line), a white ball block that bobs, the season name "Stadium Showdown" in large stroked capitals skewed 8 degrees, a one-line subtitle and a tilted gold "SEZON 1" chip. A slow floodlight sweep crosses it every 6 seconds. On short landscape it slims down to one line.

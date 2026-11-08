@@ -300,7 +300,8 @@ app.post('/api/auth/login', async (req, res) => {
         diagVerifiedSessions.delete(nickname);
         if (!ownedSkins.has(nickname)) ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
         const skin = skinFromAvatar(memAvatars.get(nickname), nickname);
-        return res.json({ ok: true, token, player: { nickname, avatar: skin, skin, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, stat_hp: 0, stat_dmg: 0, stat_spd: 0, missions: await missionsForLogin(nickname), weapon_stats: sanitizeWeaponStats(weaponStatsMem.get(nickname)),
+        const lobby = await lobbyForLogin(nickname);
+        return res.json({ ok: true, token, player: { nickname, avatar: skin, skin, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, ...(lobby ? { coins: lobby.coins, diamonds: lobby.diamonds } : {}), lobby, missions: await missionsForLogin(nickname), weapon_stats: sanitizeWeaponStats(weaponStatsMem.get(nickname)),
             owned_weapon_skins: ownedWeaponSkinList(nickname), equipped_weapon_skins: equippedWeaponSkinMap(nickname) } });
     }
 
@@ -333,6 +334,7 @@ app.post('/api/auth/login', async (req, res) => {
             supabase.from('players').update({ avatar: skin }).eq('nickname', existing.nickname)
                 .then(({ error }) => { if (error) console.error('[Auth/Login] avatar update:', error.message); });
         }
+        const lobby = await lobbyForLogin(existing.nickname);   // chests, Battle Pass, inbox (the skins above are loaded first: it reads them back)
 
         return res.json({ ok: true, token, player: {
             nickname: existing.nickname,
@@ -342,12 +344,10 @@ app.post('/api/auth/login', async (req, res) => {
             kills_total:  existing.kills_total  || 0,
             wins_total:   existing.wins_total   || 0,
             games_played: existing.games_played || 0,
-            stat_hp:  existing.stat_hp  || 0,
-            stat_dmg: existing.stat_dmg || 0,
-            stat_spd: existing.stat_spd || 0,
             xp:       existing.xp       || 0,
             coins:    existing.coins    ?? 1000,
             diamonds: existing.diamonds || 0,
+            lobby,
             missions,
             // totals per weapon ('weapon_stats' is not in the row until the migration ran)
             weapon_stats: sanitizeWeaponStats('weapon_stats' in existing ? existing.weapon_stats : weaponStatsMem.get(existing.nickname)),
@@ -375,7 +375,9 @@ app.post('/api/auth/register', async (req, res) => {
     if (!supabase) {
         ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
         weaponSkinMem.delete(nickname);
-        return res.json({ ok: true, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, missions: await missionsForLogin(nickname), owned_weapon_skins: ownedWeaponSkinList(nickname), equipped_weapon_skins: {} } });
+        memWallet.delete(nickname); lobbyMem.delete(nickname);
+        const lobby = await lobbyForLogin(nickname);
+        return res.json({ ok: true, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, ...(lobby ? { coins: lobby.coins, diamonds: lobby.diamonds } : {}), lobby, missions: await missionsForLogin(nickname), owned_weapon_skins: ownedWeaponSkinList(nickname), equipped_weapon_skins: {} } });
     }
 
     try {
@@ -398,58 +400,18 @@ app.post('/api/auth/register', async (req, res) => {
         diagVerifiedSessions.delete(nickname); // registration does not return a verified user ID
         const missions = await missionsForLogin(nickname);
         ownedSkins.set(nickname, new Set([DEFAULT_SKIN]));
-        weaponSkinMem.delete(nickname);
-        return res.json({ ok: true, token, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, missions, owned_weapon_skins: ownedWeaponSkinList(nickname), equipped_weapon_skins: {} } });
+        weaponSkinMem.delete(nickname); lobbyMem.delete(nickname);
+        const lobby = await lobbyForLogin(nickname);
+        return res.json({ ok: true, token, player: { nickname, avatar: DEFAULT_SKIN, skin: DEFAULT_SKIN, unlocked_characters: ownedSkinList(nickname), kills_total: 0, wins_total: 0, games_played: 0, xp: 0, coins: 1000, diamonds: 0, lobby, missions, owned_weapon_skins: ownedWeaponSkinList(nickname), equipped_weapon_skins: {} } });
     } catch (err) {
         console.error('[Auth/Register] Error:', err);
         return res.json({ ok: false, error: 'Server error. Please try again.' });
     }
 });
 
-// ---------- SKIN UNLOCK ----------
-// Prices and levels come from public/data/skins.json. Season skins are not sold in the shop.
-// TODO: grant season skins (rarity "season", shop: false) through admin or code — there is no path for it yet.
-app.post('/api/characters/unlock', async (req, res) => {
-    const { nickname, token, characterId } = req.body || {};
-    if (!nickname || !token || !characterId) return res.json({ ok: false });
-    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Invalid session' });
-    const skin = SKINS.get(characterId);
-    if (!skin) return res.json({ ok: false, error: 'Invalid skin' });
-    if (!skin.shop) return res.json({ ok: false, error: 'This skin cannot be purchased in the shop' });
-    if (!supabase) return res.json({ ok: false, error: 'Purchases require a database connection' });
-    try {
-        const { data } = await supabase.from('players')
-            .select('xp, coins, diamonds, unlocked_characters')
-            .eq('nickname', nickname).single();
-        if (!data) return res.json({ ok: false });
-        let list = parseUnlocked(data.unlocked_characters);
-        if (ownedFromList(list).has(characterId)) return res.json({ ok: false, error: 'Already unlocked' });
-        const xp = data.xp || 0;
-        let lvl = 1, inc = 100, thresh = 0;
-        for (let n = 2; n <= 50; n++) { thresh += inc; if (xp >= thresh) lvl = n; else break; if (n >= 3) inc += 50; }
-        if (lvl < skin.level) return res.json({ ok: false, error: `Level too low (LV ${skin.level} required)` });
-        const coins    = data.coins    ?? 1000;
-        const diamonds = data.diamonds || 0;
-        if (skin.coins    > 0 && coins    < skin.coins)    return res.json({ ok: false, error: 'Not enough coins' });
-        if (skin.diamonds > 0 && diamonds < skin.diamonds) return res.json({ ok: false, error: 'Not enough gems' });
-        // A legacy list becomes a new-set list here (it gains DEFAULT_SKIN). Keep its old ids for the refund
-        // script and the ids that carry over; drop new-set ids it never really owned (the old free ninja).
-        if (isLegacyList(list)) list = [DEFAULT_SKIN, ...list.filter(id => !SKINS.has(id) || LEGACY_CARRY.has(id))];
-        list.push(characterId);
-        const newCoins    = coins    - skin.coins;
-        const newDiamonds = diamonds - skin.diamonds;
-        await supabase.from('players').update({
-            coins: newCoins, diamonds: newDiamonds,
-            unlocked_characters: JSON.stringify(list),
-            updated_at: new Date().toISOString()
-        }).eq('nickname', nickname);
-        ownedSkins.set(nickname, ownedFromList(list));
-        res.json({ ok: true, coins: newCoins, diamonds: newDiamonds, unlocked_characters: ownedSkinList(nickname) });
-    } catch (err) {
-        console.error('[Characters/Unlock]', err);
-        res.json({ ok: false, error: 'Server error' });
-    }
-});
+// ---------- SKINS ARE NOT SOLD ----------
+// No skin is bought with coins or gems any more: character and weapon skins come out of chests (CHESTS, BATTLE PASS, INBOX), the Season ones from the
+// Battle Pass, and a weapon skin with "unlock" from the kills with its weapon.
 
 // The chosen skin, saved as its id. Only a skin the player owns is accepted.
 app.post('/api/profile/avatar', async (req, res) => {
@@ -474,30 +436,6 @@ app.get('/api/weapon-stats', async (req, res) => {
     catch (err) { console.error('[WeaponStats] read error:', err.message || err); res.json({ ok: false }); }
 });
 
-// The HP / DMG / SPD points of the lobby build (0-10 each, 10 in total), saved on the account so the build follows it
-// to another device. Needs players.stat_hp / stat_dmg / stat_spd (supabase-migration-stat-points.sql).
-let _statPointsMissingLogged = false;
-app.post('/api/profile/stats', async (req, res) => {
-    const { nickname, token, password, stat_hp, stat_dmg, stat_spd } = req.body || {};
-    if (!nickname || !(token || password) || !supabase) return res.json({ ok: false });
-    const hp  = Math.max(0, Math.min(10, Math.floor(+stat_hp  || 0)));
-    const dmg = Math.max(0, Math.min(10, Math.floor(+stat_dmg || 0)));
-    const spd = Math.max(0, Math.min(10, Math.floor(+stat_spd || 0)));
-    if (hp + dmg + spd > 10) return res.json({ ok: false, error: 'Maximum total exceeded' });
-    try {
-        if (!(await authenticated('POST /api/profile/stats', nickname, token, password))) return res.json({ ok: false });
-        const { error } = await supabase.from('players').update({ stat_hp: hp, stat_dmg: dmg, stat_spd: spd, updated_at: new Date().toISOString() }).eq('nickname', nickname);
-        if (error) {
-            // Not saved: say so. Until the migration has run the columns do not exist: that one is logged once, anything else every time.
-            if (/stat_(hp|dmg|spd)/.test(error.message || '')) {
-                if (!_statPointsMissingLogged) { _statPointsMissingLogged = true; console.error('[Stats] Coloanele players.stat_hp/stat_dmg/stat_spd lipsesc: punctele HP/DMG/SPD nu se salveaza pe cont (raman in browser). Ruleaza supabase-migration-stat-points.sql in Supabase. (' + error.message + ')'); }
-            } else console.error('[Profile/Stats] update esuat pentru ' + nickname + ':', error.message);
-            return res.json({ ok: false });
-        }
-        res.json({ ok: true });
-    } catch (err) { console.error('[Profile/Stats] Error:', err); res.json({ ok: false }); }
-});
-
 app.post('/api/missions/claim', async (req, res) => {
     const { nickname, token, missionId } = req.body || {};
     if (!nickname || !token || !missionId) return res.json({ ok: false, error: 'Invalid data' });
@@ -506,17 +444,12 @@ app.post('/api/missions/claim', async (req, res) => {
         const state = await loadMissions(nickname);
         const r = Missions.claim(state, missionId);
         if (!r.ok) return res.json(r);
-        if (!supabase) {
-            await saveMissions(nickname, state);
-            return res.json({ ok: true, coins: null, diamonds: null, rewardCoins: r.coins, rewardDiamonds: r.diamonds, missions: Missions.toClient(state) });
-        }
-        const { data } = await supabase.from('players').select('coins, diamonds').eq('nickname', nickname).single();
-        if (!data) return res.json({ ok: false, error: 'Account not found' });
-        const newCoins    = (data.coins    ?? 1000) + r.coins;
-        const newDiamonds = (data.diamonds || 0)    + r.diamonds;
-        await supabase.from('players').update({ coins: newCoins, diamonds: newDiamonds }).eq('nickname', nickname);
+        // the coins and gems of the mission and its Battle Pass XP (by what the mission pays) go in together, in one update
+        const bpXp = ARBattlePass.xpForMission(r.coins);
+        const paid = await accountOp(nickname, work => { work.coins += r.coins; work.diamonds += r.diamonds; return { ok: true, ...LobbyCore.addXp(work, bpXp) }; });
+        if (!paid || !paid.ok) return res.json({ ok: false, error: (paid && paid.error) || 'Server error' });
         await saveMissions(nickname, state);
-        res.json({ ok: true, coins: newCoins, diamonds: newDiamonds, rewardCoins: r.coins, rewardDiamonds: r.diamonds, missions: Missions.toClient(state) });
+        res.json({ ok: true, coins: paid.lobby.coins, diamonds: paid.lobby.diamonds, rewardCoins: r.coins, rewardDiamonds: r.diamonds, rewardXp: bpXp, bp: paid.lobby.bp, tiersGained: paid.tiersGained, lobby: paid.lobby, missions: Missions.toClient(state) });
     } catch (err) {
         console.error('[Missions/Claim] Error:', err);
         res.json({ ok: false, error: 'Server error' });
@@ -631,7 +564,9 @@ function flushWeaponStats(p) {
 function endPlayerRound(p, isWinner, info) {
     // kills_total is player kills: in PvE p.kills counts zombies (for the team counter of the HUD), which are kept in the round stats instead
     const ws = takeWeaponStats(p), id = p.id, name = p.name, kills = info && info.mode === 'pve' ? 0 : p.kills;
-    setImmediate(() => updatePlayerRoundEnd(id, name, kills, isWinner, { ...info, ws }));
+    // after the stats are written the match may drop a chest (BR: by the place, PvE: by the wave reached or the victory; ARChests.dropFor)
+    const chestInfo = info && info.mode === 'pve' ? { wave: info.wave, victory: isWinner, diff: info.diff } : { placement: info && info.placement, players: info && info.players };
+    setImmediate(() => updatePlayerRoundEnd(id, name, kills, isWinner, { ...info, ws }).catch(() => {}).then(() => grantMatchChest(id, name, (info && info.mode) || 'br', chestInfo)));
 }
 // Weapon missions read the same counts: BR player kills and PvE zombie kills per weapon
 function missionWeaponKills(rs, ws, mode) {
@@ -672,6 +607,9 @@ async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinne
         xp: earnedXP, coins: 1000 + earnedCoins, diamonds: earnedDiamonds, missions, missionNote
     };
     if (!supabase) {
+        const w = memWallet.get(nickname) || { coins: 1000, diamonds: 0 };   // no database: the coins of the account are in memory (the chests read them from there)
+        memWallet.set(nickname, { coins: w.coins + earnedCoins, diamonds: w.diamonds + earnedDiamonds });
+        basic.coins = w.coins + earnedCoins; basic.diamonds = w.diamonds + earnedDiamonds;
         basic.weaponStats = addWeaponStats(weaponStatsMem.get(nickname), info.ws);
         weaponStatsMem.set(nickname, basic.weaponStats);
         const unlocked = weaponSkinsToUnlock(weaponSkinsOf(nickname).owned, basic.weaponStats);
@@ -775,7 +713,7 @@ const WEAPON_RULES   = WEAPON_DATA.rules; // aimDelay, bulletRadius: the same fo
 const DEFAULT_WEAPON = WEAPON_DATA.defaultWeapon;
 // id -> how the gun fires (fireMode, bulletSpeed, bulletLife, shootCd, ammoMax, reserveStart (the reserve you begin with), ammoBox, reloadSeconds, pellets, spread, burstCount, burstDelay)
 const WEAPON_STATS   = {};
-// id -> loadout base values and growth per point (HP/DMG/SPD)
+// id -> loadout: the damage of one bullet and the speed with the gun in hand
 const WEAPON_LOADOUT = {};
 for (const [id, w] of Object.entries(WEAPON_DATA.weapons)) {
     WEAPON_STATS[id]   = ARShared.weaponStats(w);
@@ -885,68 +823,6 @@ function emitWeaponSkinsUnlocked(socketId, nickname, ids) {
         owned: ownedWeaponSkinList(nickname),
     });
 }
-// q filtered on col being v (null-safe: a column that was never set is NULL)
-const whereSame = (q, col, v) => (v === null || v === undefined) ? q.is(col, null) : q.eq(col, v);
-const WEAPON_SKIN_NEEDS_MIGRATION = 'Weapon skins cannot be purchased yet (database migration required)';
-// One purchase, run in the account's write queue (serialStatWrite): a second click waits for the first and
-// then finds the skin owned. The money and the skin go in one update, and only if the money is still what
-// was read (a reward or another purchase in between makes it read again), so it is never spent twice.
-async function _buyWeaponSkin(nickname, skin) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-        const { data, error } = await supabase.from('players')
-            .select('coins, diamonds, owned_weapon_skins').eq('nickname', nickname).maybeSingle();
-        if (error) {
-            if (_weaponSkinsMissing(error)) { _noWeaponSkinsColumn(); return { ok: false, error: WEAPON_SKIN_NEEDS_MIGRATION }; }
-            throw error;
-        }
-        if (!data) return { ok: false, error: 'Account not found' };
-        const owned = sanitizeOwnedWeaponSkins(data.owned_weapon_skins);
-        weaponSkinState(nickname).owned = new Set(owned);
-        if (owned.includes(skin.id)) return { ok: false, error: 'Already owned', owned: ownedWeaponSkinList(nickname) };
-        const coins    = data.coins    ?? 1000;
-        const diamonds = data.diamonds || 0;
-        const cCost = skin.price.coins || 0, dCost = skin.price.diamonds || 0;
-        if (coins    < cCost) return { ok: false, error: 'Not enough coins' };
-        if (diamonds < dCost) return { ok: false, error: 'Not enough gems' };
-        const list = owned.concat(skin.id);
-        let q = supabase.from('players').update({
-            coins: coins - cCost, diamonds: diamonds - dCost,
-            owned_weapon_skins: list, updated_at: new Date().toISOString(),
-        }).eq('nickname', nickname);
-        q = whereSame(whereSame(q, 'coins', data.coins), 'diamonds', data.diamonds);
-        const { data: changed, error: upErr } = await q.select('nickname');
-        if (upErr) {
-            if (_weaponSkinsMissing(upErr)) { _noWeaponSkinsColumn(); return { ok: false, error: WEAPON_SKIN_NEEDS_MIGRATION }; }
-            throw upErr;
-        }
-        if (changed && changed.length) {
-            weaponSkinState(nickname).owned = new Set(list);
-            console.log(`[WeaponSkins] ${nickname} a cumparat ${skin.id} (${cCost ? cCost + ' monede' : dCost + ' diamante'})`);
-            return { ok: true, skinId: skin.id, coins: coins - cCost, diamonds: diamonds - dCost, owned: ownedWeaponSkinList(nickname) };
-        }
-        // the money changed after it was read: read it again
-    }
-    return { ok: false, error: 'Please try again' };
-}
-
-app.post('/api/weapon-skins/buy', async (req, res) => {
-    const { nickname, token, skinId } = req.body || {};
-    if (!nickname || !token || !skinId) return res.json({ ok: false });
-    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Invalid session' });
-    const skin = typeof skinId === 'string' && WEAPON_SKINS.get(skinId);
-    if (!skin) return res.json({ ok: false, error: 'Invalid skin' });
-    if (skin.unlock) return res.json({ ok: false, error: `This skin cannot be purchased. Unlock it by getting ${skin.unlock.kills} kills with the ${WEAPON_DATA.weapons[skin.weapon].name}.` });
-    if (skin.season) return res.json({ ok: false, error: 'Season skins cannot be purchased. Earn them through the season pass.' });
-    if (ownsWeaponSkin(nickname, skin.id)) return res.json({ ok: false, error: 'Already owned', owned: ownedWeaponSkinList(nickname) });
-    if (!supabase) return res.json({ ok: false, error: 'Purchases require a database connection' });
-    if (!weaponSkinsColumn) return res.json({ ok: false, error: WEAPON_SKIN_NEEDS_MIGRATION });
-    try { res.json(await serialStatWrite(nickname, () => _buyWeaponSkin(nickname, skin))); }
-    catch (err) {
-        console.error('[WeaponSkins/Buy]', err.message || err);
-        res.json({ ok: false, error: 'Server error' });
-    }
-});
-
 // skinId "default" takes the skin off. Only a skin the account owns, only on its own weapon.
 app.post('/api/weapon-skins/equip', async (req, res) => {
     const { nickname, token, weapon, skinId } = req.body || {};
@@ -986,6 +862,168 @@ app.get('/api/weapon-skins', async (req, res) => {
         res.json({ ok: true, nickname, owned: UNLOCK_ALL_FOR_TESTING ? [...WEAPON_SKINS.keys()] : s.owned, equipped: s.equipped, unlockAll: UNLOCK_ALL_FOR_TESTING });
     } catch (err) { console.error('[WeaponSkins] read error:', err.message || err); res.json({ ok: false }); }
 });
+// ---------- CHESTS, BATTLE PASS, INBOX ----------
+// lobby-core.js holds the rules (pure); this is the account side. Everything that changes coins, gems, skins, chests, Battle Pass or inbox goes through
+// accountOp: in the account's write queue (serialStatWrite), the row is read into a `work` object, a lobby-core function changes it, and what changed is
+// written back in ONE update (a chest and what comes out of it are saved together). players.lobby_state (supabase-migration-lobby-state.sql) keeps the
+// chests, the Battle Pass and the inbox; without it, or without Supabase, they live in memory only and the server says so once.
+// Without Supabase the coins and gems of the account are kept in memory too (memWallet, 1000 coins to begin with, as the database does).
+const LobbyCore = require('./lobby-core.js');
+const ARChests = require('./public/chests.js');
+const ARBattlePass = require('./public/battlepass.js');
+const memWallet = new Map();   // nickname -> { coins, diamonds } (no Supabase)
+const lobbyMem  = new Map();   // nickname -> the lobby state last read or written
+let lobbyColumn = true;
+const _lobbyMissing = error => !!error && /lobby_state/.test(error.message || '');
+function _noLobbyColumn() {
+    if (!lobbyColumn) return;
+    lobbyColumn = false;
+    console.warn('[Lobby] Coloana players.lobby_state lipseste: chest-urile, Battle Pass-ul si inbox-ul se pastreaza doar in memorie. Ruleaza supabase-migration-lobby-state.sql in Supabase.');
+}
+// CHEST_RNG_FIXED (a number in [0, 1), tests only) makes every roll that number: 0 = a chest always drops, and it is a wooden one
+const chestRng = process.env.CHEST_RNG_FIXED !== undefined ? (() => +process.env.CHEST_RNG_FIXED) : (() => crypto.randomInt(0, 1e9) / 1e9);
+// What a chest can give: the character skins and the weapon skins of each rarity (the default skin, the Season ones and the mythic weapon skins are not in it)
+const CHEST_CATALOG = (() => {
+    const pools = { common: [], rare: [], epic: [], legendary: [] };
+    for (const s of SKINS.values()) if (s.id !== DEFAULT_SKIN && pools[s.rarity]) pools[s.rarity].push({ kind: 'char', id: s.id });
+    for (const s of WEAPON_SKINS.values()) if (!s.season && pools[s.rarity]) pools[s.rarity].push({ kind: 'weapon', id: s.id });
+    return {
+        pools,
+        info(kind, id) {
+            if (kind === 'char') { const s = SKINS.get(id); return s && { name: s.name, rarity: s.rarity, coins: s.coins || 0 }; }
+            const s = WEAPON_SKINS.get(id); return s && { name: s.name, rarity: s.rarity, coins: (s.price && s.price.coins) || 0 };
+        },
+    };
+})();
+
+async function _readWork(nickname) {
+    if (supabase) {
+        const cols = () => 'coins, diamonds, unlocked_characters' + (weaponSkinsColumn ? ', owned_weapon_skins' : '') + (lobbyColumn ? ', lobby_state' : '');
+        let data, error;
+        for (let i = 0; i < 3; i++) {
+            ({ data, error } = await supabase.from('players').select(cols()).eq('nickname', nickname).maybeSingle());
+            if (!error) break;
+            if (_weaponSkinsMissing(error)) _noWeaponSkinsColumn(); else if (_lobbyMissing(error)) _noLobbyColumn(); else throw error;
+        }
+        if (error) throw error;
+        if (!data) return null;
+        const rawList = parseUnlocked(data.unlocked_characters);
+        return {
+            work: {
+                coins: data.coins ?? 1000, diamonds: data.diamonds || 0,
+                chars: ownedFromList(rawList),
+                wskins: weaponSkinsColumn && 'owned_weapon_skins' in data ? new Set(sanitizeOwnedWeaponSkins(data.owned_weapon_skins)) : new Set(weaponSkinsOf(nickname).owned),
+                lobby: LobbyCore.normalizeLobby(lobbyColumn && 'lobby_state' in data ? data.lobby_state : lobbyMem.get(nickname)),
+            },
+            rawList,
+        };
+    }
+    const w = memWallet.get(nickname) || { coins: 1000, diamonds: 0 };
+    return { work: { coins: w.coins, diamonds: w.diamonds, chars: new Set(ownedSkins.get(nickname) || [DEFAULT_SKIN]), wskins: new Set(weaponSkinsOf(nickname).owned), lobby: LobbyCore.normalizeLobby(lobbyMem.get(nickname)) }, rawList: null };
+}
+// fn(work) changes the work and answers { ok: true, ... } or { ok: false, error }; only a success is written
+function accountOp(nickname, fn) {
+    return serialStatWrite(nickname, async () => {
+        const read = await _readWork(nickname);
+        if (!read) return { ok: false, error: 'Account not found' };
+        const { work, rawList } = read;
+        const before = { coins: work.coins, diamonds: work.diamonds, chars: [...work.chars].sort().join(), wskins: [...work.wskins].sort().join(), lobby: JSON.stringify(work.lobby) };
+        const result = fn(work);
+        if (!result || result.ok === false) return result;
+        const changed = {
+            money: work.coins !== before.coins || work.diamonds !== before.diamonds,
+            chars: [...work.chars].sort().join() !== before.chars,
+            wskins: [...work.wskins].sort().join() !== before.wskins,
+            lobby: JSON.stringify(work.lobby) !== before.lobby,
+        };
+        if (supabase) {
+            const row = {};
+            if (changed.money) { row.coins = work.coins; row.diamonds = work.diamonds; }
+            if (changed.chars) {
+                let list = rawList;   // a list from before the new set becomes a new-set list when it is written (it gains the default skin)
+                if (isLegacyList(list)) list = [DEFAULT_SKIN, ...list.filter(id => !SKINS.has(id) || LEGACY_CARRY.has(id))];
+                row.unlocked_characters = JSON.stringify([...new Set(list.concat([...work.chars]))]);
+            }
+            if (changed.wskins && weaponSkinsColumn) row.owned_weapon_skins = [...work.wskins];
+            if (changed.lobby && lobbyColumn) row.lobby_state = JSON.stringify(work.lobby);
+            if (Object.keys(row).length) {
+                row.updated_at = new Date().toISOString();
+                for (let i = 0; i < 3; i++) {
+                    const { error } = await supabase.from('players').update(row).eq('nickname', nickname);
+                    if (!error) break;
+                    if (_weaponSkinsMissing(error)) { _noWeaponSkinsColumn(); delete row.owned_weapon_skins; }
+                    else if (_lobbyMissing(error)) { _noLobbyColumn(); delete row.lobby_state; }
+                    else throw error;
+                }
+            }
+        } else memWallet.set(nickname, { coins: work.coins, diamonds: work.diamonds });
+        ownedSkins.set(nickname, new Set([...work.chars, DEFAULT_SKIN]));
+        weaponSkinState(nickname).owned = new Set(work.wskins);
+        lobbyMem.set(nickname, work.lobby);
+        return { ...result, lobby: LobbyCore.publicLobby(work, Date.now()), unlocked_characters: ownedSkinList(nickname), owned_weapon_skins: ownedWeaponSkinList(nickname) };
+    });
+}
+async function lobbyForLogin(nickname) {
+    try { const r = await accountOp(nickname, () => ({ ok: true })); return r && r.ok ? r.lobby : null; }
+    catch (err) { console.error('[Lobby] load error:', err.message || err); return null; }
+}
+function lobbyAuth(req, res) {
+    const { nickname, token } = req.body || {};
+    if (!nickname || typeof nickname !== 'string' || !token || sessionTokens.get(nickname) !== token) { res.json({ ok: false, error: 'Invalid session' }); return null; }
+    return req.body;
+}
+function lobbyRoute(path, fn) {
+    app.post(path, async (req, res) => {
+        const b = lobbyAuth(req, res); if (!b) return;
+        try { res.json(await accountOp(b.nickname, work => fn(work, b, Date.now()))); }
+        catch (err) { console.error('[Lobby] ' + path + ':', err.message || err); res.json({ ok: false, error: 'Server error' }); }
+    });
+}
+const _slotOf = b => Number.isInteger(b.slot) ? b.slot : -1;
+const _idOf = b => Number.isInteger(b.id) ? b.id : -1;
+lobbyRoute('/api/lobby/state', () => ({ ok: true }));
+lobbyRoute('/api/chests/start', (work, b, now) => LobbyCore.startChest(work, _slotOf(b), now));
+lobbyRoute('/api/chests/open',  (work, b, now) => LobbyCore.openChest(work, _slotOf(b), now, { instant: b.instant === true }, chestRng, CHEST_CATALOG));
+lobbyRoute('/api/battlepass/claim', (work, b) => LobbyCore.claimTier(work, b.track, Number.isInteger(b.tier) ? b.tier : -1, CHEST_CATALOG));
+// Blast Tier costs real money (4.99 USD) and there is no payment system yet: it is only handed out when the server is started for testing (BLAST_TIER_TEST=1)
+lobbyRoute('/api/battlepass/buy-blast', work => process.env.BLAST_TIER_TEST === '1' ? LobbyCore.buyBlast(work) : { ok: false, error: 'Payments are not available yet' });
+lobbyRoute('/api/inbox/claim',  (work, b) => LobbyCore.inboxClaim(work, _idOf(b), CHEST_CATALOG));
+lobbyRoute('/api/inbox/read',   (work, b) => LobbyCore.inboxRead(work, _idOf(b)));
+lobbyRoute('/api/inbox/delete', (work, b) => LobbyCore.inboxDelete(work, _idOf(b)));
+
+// Testing only (LOBBY_DEV=1 in the environment, never in production): hand yourself chests, Battle Pass XP, coins, gems or an inbox message, to try the lobby
+// without playing a match: POST /api/dev/lobby { nickname, token, chest: 'mythical', xp: 2500, coins: 500, diamonds: 50, inbox: { title, text, reward }, blast: true, readyIn: ms }
+if (process.env.LOBBY_DEV === '1') {
+    console.warn('[Lobby] LOBBY_DEV=1: /api/dev/lobby is on (doar pentru teste).');
+    lobbyRoute('/api/dev/lobby', (work, b, now) => {
+        const out = { ok: true };
+        if (typeof b.chest === 'string') { const g = LobbyCore.grantChest(work, b.chest, now); if (!g.ok) return g; if (Number.isFinite(+b.readyIn)) { g.chest.startedAt = now - 1; g.chest.readyAt = now + Math.max(0, +b.readyIn); } }
+        if (Number.isFinite(+b.xp)) LobbyCore.addXp(work, +b.xp);
+        if (Number.isFinite(+b.coins)) work.coins += Math.floor(+b.coins);
+        if (Number.isFinite(+b.diamonds)) work.diamonds += Math.floor(+b.diamonds);
+        if (b.blast === true) LobbyCore.buyBlast(work);
+        if (b.inbox && typeof b.inbox === 'object') LobbyCore.inboxAdd(work, b.inbox, now);
+        return out;
+    });
+}
+
+// A message in the inbox of an account (a reward is { coins, diamonds, charSkin, weaponSkin }); the client is told when it is connected
+function sendInbox(nickname, msg) {
+    return accountOp(nickname, work => LobbyCore.inboxAdd(work, msg, Date.now())).then(r => {
+        if (r && r.ok) for (const [id, sock] of io.sockets.sockets) if (sock._nickname === nickname) io.to(id).emit('inbox-new', { lobby: r.lobby });
+        return r;
+    });
+}
+// The end of a match: a chest drops by how it went (ARChests.dropFor), unless the 4 slots are full (then none, and the end board says so)
+async function grantMatchChest(socketId, nickname, mode, info) {
+    if (!ARChests.dropFor(mode, info)) return;
+    try {
+        const r = await accountOp(nickname, work => LobbyCore.matchChest(work, mode, info, chestRng, Date.now()));
+        if (!r || !r.ok) return;
+        if (r.full) io.to(socketId).emit('match-chest', { full: true, lobby: r.lobby });
+        else if (r.chest) { console.log(`[Chests] ${nickname} a primit un chest ${r.chest.type}`); io.to(socketId).emit('match-chest', { chest: { id: r.chest.id, type: r.chest.type }, slot: r.slot, lobby: r.lobby }); }
+    } catch (err) { console.error('[Chests] grant error:', err.message || err); }
+}
 const PLAYER_SIZE      = 60;
 const ZONE_INITIAL_R   = 1650;
 const ZONE_WAIT        = 30;
@@ -2235,7 +2273,7 @@ function pveFinish(code, room, victory) {
     room._playerArr.forEach(p => {
         const reward = PveRewards.compute({ wavesCleared: board.wavesCleared, victory, kills: p.kills, diff: room.pveDiff });
         io.to(p.id).emit('pve-end', { ...board, reward });
-        endPlayerRound(p, victory, { mode: 'pve', rs: p.rs, wave: room.pveWave, reward });
+        endPlayerRound(p, victory, { mode: 'pve', rs: p.rs, wave: room.pveWave, reward, diff: room.pveDiff });
     });
     setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
     console.log(victory ? `[${code}] PvE Victorie!` : `[${code}] PvE Infrangere (baza distrusa la wave ${room.pveWave})`);
@@ -2340,20 +2378,15 @@ function fastGetRoom(socket) {
 }
 
 function addPlayer(code, room, socket, data) {
-    const s   = data.stats || {};
-    const hp  = Math.min(10, Math.max(0, Math.floor(+s.hp  || 0)));
-    const dmg = Math.min(10, Math.max(0, Math.floor(+s.dmg || 0)));
-    const spd = Math.min(10, Math.max(0, Math.floor(+s.spd || 0)));
-    const total = hp + dmg + spd;
-    const scale = total > 10 ? 10 / total : 1;
-
     const weapon = typeof data.weapon === 'string' && Object.hasOwn(WEAPON_STATS, data.weapon) ? data.weapon : DEFAULT_WEAPON;
     const _wl = WEAPON_LOADOUT[weapon];
     const _ws = WEAPON_STATS[weapon];
 
-    const maxHp  = _wl.baseHp  + Math.round(hp  * scale) * _wl.hpPer;
-    const damage = _wl.baseDmg + Math.round(dmg * scale) * _wl.dmgPer;
-    const speed  = (_wl.baseSpd + Math.round(spd * scale) * _wl.spdPer) * 60;
+    // No points to spend: everybody starts with the same HP, the damage is the gun's and the speed depends on the gun in hand
+    // (weapons.json: rules.playerHp, loadout.dmg, loadout.spd; the speed is in units a tick, so a second is x60)
+    const maxHp  = WEAPON_RULES.playerHp;
+    const damage = _wl.dmg;
+    const speed  = _wl.spd * 60;
 
     // The skin is an id from public/data/skins.json; one the account does not own becomes the default.
     // data.name is the authenticated socket's nickname (set by create-room / join-room).
@@ -3442,11 +3475,11 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
         OPS.endRoom(room);
         if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
 
-        endPlayerRound(player, false, { mode: 'br', rs: player.rs });
-        endPlayerRound(winner, true, { mode: 'br', rs: winner.rs });
+        endPlayerRound(player, false, { mode: 'br', rs: player.rs, placement, players: totalPlayers });
+        endPlayerRound(winner, true, { mode: 'br', rs: winner.rs, placement: 1, players: totalPlayers });
         for (const p of room._playerArr) flushWeaponStats(p); // late bullets of players eliminated earlier
     } else {
-        endPlayerRound(player, false, { mode: 'br', rs: player.rs });
+        endPlayerRound(player, false, { mode: 'br', rs: player.rs, placement, players: totalPlayers });
     }
 
     if (_aliveN === 0) {

@@ -96,7 +96,9 @@
             if (w.pellets !== undefined && !(Number.isInteger(w.pellets) && w.pellets >= 1 && num(w.spread, 0))) bad('pellets / spread');
             if (w.cameraZoom !== undefined && !num(w.cameraZoom, 0.5)) bad('cameraZoom');
             const l = w.loadout || {};
-            for (const k of ['baseHp', 'baseDmg', 'baseSpd', 'hpPer', 'dmgPer', 'spdPer']) if (!num(l[k], 0)) bad('loadout.' + k);
+            // loadout: the damage of one bullet (one pellet) and the speed with this gun in hand; no points to spend, the same for everybody
+            if (!num(l.dmg, 0.001)) bad('loadout.dmg');
+            if (!num(l.spd, 0.001) || (data.rules && num(data.rules.baseSpeed, 0.001) && l.spd > data.rules.baseSpeed)) bad('loadout.spd (positive, at most rules.baseSpeed)');
             if (!Array.isArray(w.muzzle) || !Array.isArray(w.hands)) bad('muzzle / hands');
         }
         return errs;

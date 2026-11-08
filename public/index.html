@@ -245,10 +245,6 @@
         <div class="lb-topbar-left">
             <span class="lb-topbar-title wordmark brand-lockup" aria-label="Blastridge"><img class="brand-emblem" src="/images/blastridge-logo-256.png" alt=""><span>BLAST</span><span class="wm-r">RIDGE</span></span>
         </div>
-        <div class="season-pill" aria-label="Current season: Stadium Showdown">
-            <span class="sp-ball" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#ball"/></svg></span>
-            <span class="sp-text"><span class="sp-kick">SEASON 1</span><span class="sp-name">STADIUM SHOWDOWN</span></span>
-        </div>
         <!-- Tabs (phones and narrow screens) -->
         <nav class="lobby-tabs-inline" aria-label="Lobby sections">
             <button class="lti-btn" id="tab-left" onclick="switchLobbyTab('left')"><svg class="ic" aria-hidden="true"><use href="#id-card"/></svg><span>Profile</span></button>
@@ -256,6 +252,10 @@
             <button class="lti-btn" id="tab-right" onclick="switchLobbyTab('right')"><img class="pic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false"><span>Missions</span></button>
         </nav>
         <div class="lb-topbar-right">
+            <button class="lb-btn bp-nav-btn" onclick="openBattlePass()" id="bp-nav-btn" aria-label="Battle Pass">
+                <img class="pic" src="/images/ui/battlepass.svg" alt="" aria-hidden="true" draggable="false"><span class="lb-btn-text">BATTLE PASS</span>
+                <span id="bp-nav-badge" class="friends-nav-badge" style="display:none"></span>
+            </button>
             <button class="lb-btn missions-nav-btn" onclick="openMissions()" id="missions-nav-btn" aria-label="Missions">
                 <img class="pic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false"><span class="lb-btn-text">MISSIONS</span>
             </button>
@@ -264,6 +264,10 @@
                 <span id="friends-nav-badge" class="friends-nav-badge" style="display:none"></span>
             </button>
             <a href="#" class="lb-btn lb-gold" onclick="openLeaderboard(); return false;"><img class="pic" src="/images/ui/leaderboard.svg" alt="" aria-hidden="true" draggable="false"><span class="lb-btn-text">LEADERBOARD</span></a>
+            <button class="lb-btn lb-btn-icon inbox-nav-btn" onclick="openInbox()" id="inbox-nav-btn" title="Inbox" aria-label="Inbox">
+                <img class="pic" src="/images/ui/inbox.svg" alt="" aria-hidden="true" draggable="false">
+                <span id="inbox-nav-badge" class="friends-nav-badge" style="display:none"></span>
+            </button>
             <button class="lb-btn lb-btn-icon" id="btn-settings-lobby" onclick="openSettings()" title="Settings" aria-label="Settings"><img class="pic" src="/images/ui/setari.svg" alt="" aria-hidden="true" draggable="false"></button>
         </div>
     </header>
@@ -305,18 +309,22 @@
             </div>
         </section>
 
-        <section class="lp-card chest-row">
-            <div class="chest-row-header">
-                <h2 class="lp-card-title chest-row-title">CHESTS</h2>
-                <span class="chest-row-sub">0 / 4 slots</span>
+        <section class="lp-card bp-card" id="bp-card">
+            <div class="bp-card-head">
+                <span class="bp-kick" id="bp-card-kick">SEASON 1</span>
+                <span class="bp-tier-badge" id="bp-card-tier">TIER 1</span>
             </div>
-            <div class="chest-slots">
-                <div class="chest-slot"><img class="pic chest-slot-icon" src="/images/ui/loc_gol.svg" alt="" aria-hidden="true" draggable="false"></div>
-                <div class="chest-slot"><img class="pic chest-slot-icon" src="/images/ui/loc_gol.svg" alt="" aria-hidden="true" draggable="false"></div>
-                <div class="chest-slot"><img class="pic chest-slot-icon" src="/images/ui/loc_gol.svg" alt="" aria-hidden="true" draggable="false"></div>
-                <div class="chest-slot"><img class="pic chest-slot-icon" src="/images/ui/loc_gol.svg" alt="" aria-hidden="true" draggable="false"></div>
+            <h2 class="bp-card-title">BATTLE PASS</h2>
+            <div class="bp-card-season" id="bp-card-season">STADIUM SHOWDOWN</div>
+            <div class="bp-card-prog">
+                <div class="bp-prog-label"><span>PROGRESS</span><span id="bp-card-xp">0 / 1,000 XP</span></div>
+                <div class="bp-bar"><div class="bp-bar-fill" id="bp-card-fill" style="width:0%"></div></div>
             </div>
-            <p class="chest-hint">Win matches to earn chests.</p>
+            <div class="bp-card-tiles" id="bp-card-tiles"></div>
+            <button type="button" class="bp-open-btn" id="bp-card-open" onclick="openBattlePass()">
+                <span>OPEN</span><svg class="ic" aria-hidden="true"><use href="#arrow-right"/></svg>
+                <span class="bp-open-badge" id="bp-card-badge" hidden>0</span>
+            </button>
         </section>
     </aside>
 
@@ -346,44 +354,18 @@
             </div>
         </section>
 
-        <section class="build-card">
-            <div class="bc-header">
-                <h2 class="bc-title" id="loadout-title">LOADOUT</h2>
-                <span class="bc-points"><span id="points-display" data-flap>10</span><span class="bc-points-max"> points remaining</span></span>
+        <section class="build-card chests-card" id="chests-card">
+            <div class="cc-head">
+                <h2 class="bc-title"><span><span class="cc-title-a">CHEST</span>S</span></h2>
+                <span class="cc-count" id="cc-count">0 / 4 slots</span>
             </div>
-
-            <div class="stat-row stat-hp">
-                <span class="stat-name">HP</span>
-                <button class="stat-btn minus" onclick="changeStat('hp',-1)" aria-label="Decrease HP"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
-                <div class="stat-bar"><div class="stat-fill red" id="bar-hp" style="width:10%"></div></div>
-                <button class="stat-btn plus"  onclick="changeStat('hp', 1)" aria-label="Increase HP"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
-                <span class="stat-value" id="val-hp" data-flap>500 HP</span>
-            </div>
-
-            <div class="stat-row stat-dmg">
-                <span class="stat-name">DMG</span>
-                <button class="stat-btn minus" onclick="changeStat('dmg',-1)" aria-label="Decrease damage"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
-                <div class="stat-bar"><div class="stat-fill orange" id="bar-dmg" style="width:10%"></div></div>
-                <button class="stat-btn plus"  onclick="changeStat('dmg', 1)" aria-label="Increase damage"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
-                <span class="stat-value" id="val-dmg" data-flap>10 DMG</span>
-            </div>
-
-            <div class="stat-row stat-spd">
-                <span class="stat-name">SPD</span>
-                <button class="stat-btn minus" onclick="changeStat('spd',-1)" aria-label="Decrease speed"><svg class="ic" aria-hidden="true"><use href="#minus"/></svg></button>
-                <div class="stat-bar"><div class="stat-fill blue" id="bar-spd" style="width:10%"></div></div>
-                <button class="stat-btn plus"  onclick="changeStat('spd', 1)" aria-label="Increase speed"><svg class="ic" aria-hidden="true"><use href="#plus"/></svg></button>
-                <span class="stat-value" id="val-spd" data-flap>2.5 SPD</span>
-            </div>
+            <div class="cc-slots" id="cc-slots"></div>
+            <p class="cc-hint" id="cc-hint">Finish in the top 5 of a Battle Royale with 8 or more players, or reach wave 10 in PvE, for a chance at a chest.</p>
         </section>
     </main>
 
     <!-- Right: mode + play, missions, tournament -->
     <aside class="lobby-panel-right lb-col">
-        <div class="season-pill season-pill-m" aria-hidden="true">
-            <span class="sp-ball"><svg class="ic" aria-hidden="true"><use href="#ball"/></svg></span>
-            <span class="sp-text"><span class="sp-kick">SEASON 1</span><span class="sp-name">STADIUM SHOWDOWN</span></span>
-        </div>
         <section class="gamemode-panel play-card" id="room-section">
             <h2 class="gm-label">GAMEMODE</h2>
             <button class="gm-card gm-br" id="gm-br" onclick="selectGamemode('br')">
@@ -540,18 +522,6 @@
             <section class="ars-tray ars-skins" id="ars-skins"></section>
         </div>
     </div>
-    </div>
-    <!-- buying asks first -->
-    <div class="ars-confirm" id="ars-confirm" hidden>
-        <div class="ars-confirm-card ars-tray" role="alertdialog" aria-modal="true" aria-labelledby="ars-confirm-title">
-            <div class="ars-confirm-icon" id="ars-confirm-icon"></div>
-            <h2 class="ars-confirm-title" id="ars-confirm-title">BUY THIS SKIN?</h2>
-            <p class="ars-confirm-text" id="ars-confirm-text"></p>
-            <div class="ars-confirm-actions">
-                <button type="button" class="ars-blk ars-btn-slate" onclick="closeArsConfirm()">CANCEL</button>
-                <button type="button" class="ars-blk ars-btn-gold" id="ars-confirm-buy" onclick="confirmArsBuy()">BUY</button>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -897,6 +867,8 @@
                 </div>
             </div>
 
+            <div class="mc-box" id="go-chest" hidden aria-live="polite"></div>
+
             <button id="btn-spectate" style="display:none" onclick="window._startSpectating && window._startSpectating()">SPECTATE</button>
 
             <div class="gameover-actions">
@@ -996,6 +968,7 @@
                         <div class="pe-why-row"><span>Victory bonus</span><b id="pe-w-win-c"></b></div>
                         <div class="pe-why-row is-sum"><span id="pe-w-gem-note"></span><b class="is-gem" id="pe-w-gems"></b></div>
                     </div>
+                    <div class="mc-box" id="pe-chest" hidden aria-live="polite"></div>
                     <div class="pe-mission" id="pe-mission" hidden>
                         <div class="pe-mission-h" id="pe-mis-h"></div>
                         <div class="pe-mission-row"><span id="pe-mis-title"></span><b id="pe-mis-val"></b></div>
@@ -1117,6 +1090,91 @@
 </div>
 
 <!-- ========== SCRIPTURI ========== -->
+<!-- ========== BATTLE PASS (a screen over the lobby, like the Arsenal) ========== -->
+<div id="screen-bp" style="display:none" role="dialog" aria-modal="true" aria-labelledby="bp-title">
+    <header class="bp-top">
+        <button type="button" class="ars-blk ars-back" onclick="closeBattlePass()" aria-label="Back to lobby"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+        <h1 class="ars-title" id="bp-title"><img class="pic bp-title-ic" src="/images/ui/battlepass.svg" alt="" aria-hidden="true" draggable="false"><span>BATTLE PASS</span></h1>
+        <div class="ars-wallet">
+            <span class="ars-cur ars-cur-gold"><img class="pic" src="/images/ui/monede.svg" alt="" aria-hidden="true" draggable="false"><span id="bp-coins">0</span></span>
+            <span class="ars-cur ars-cur-gem"><img class="pic" src="/images/ui/diamante.svg" alt="" aria-hidden="true" draggable="false"><span id="bp-diamonds">0</span></span>
+        </div>
+    </header>
+    <div class="bp-body">
+        <section class="bp-summary">
+            <div class="bp-sum-left">
+                <span class="bp-kick" id="bp-kick">SEASON 1</span>
+                <span class="bp-sum-season" id="bp-season">STADIUM SHOWDOWN</span>
+            </div>
+            <div class="bp-sum-mid">
+                <div class="bp-sum-tier"><span class="bp-tier-badge" id="bp-sum-tier">TIER 1</span><span class="bp-sum-xp" id="bp-sum-xp">0 / 1,000 XP</span></div>
+                <div class="bp-bar bp-bar-big"><div class="bp-bar-fill" id="bp-sum-fill" style="width:0%"></div></div>
+            </div>
+            <div class="bp-sum-actions">
+                <button type="button" class="ars-blk ars-btn-green" id="bp-claim-all" onclick="bpClaimAll()">CLAIM ALL</button>
+                <button type="button" class="ars-blk bp-blast-btn" id="bp-blast-btn" onclick="bpBuyBlast()"><span id="bp-blast-txt">GET BLAST TIER</span></button>
+            </div>
+        </section>
+        <section class="bp-track-wrap">
+            <div class="bp-rows" aria-hidden="true">
+                <span class="bp-row-tag bp-row-tier">TIER</span>
+                <span class="bp-row-tag bp-row-free">FREE</span>
+                <span class="bp-row-tag bp-row-blast">BLAST TIER</span>
+            </div>
+            <div class="bp-track" id="bp-track" tabindex="0" aria-label="Battle Pass rewards"></div>
+        </section>
+    </div>
+</div>
+
+<!-- ========== CHESTS: opening, confirm, a reward, the slots-full note ========== -->
+<div id="chest-open" class="co" hidden role="dialog" aria-modal="true" aria-label="Opening a chest">
+    <canvas class="co-fx" id="co-fx" aria-hidden="true"></canvas>
+    <div class="co-stage" id="co-stage">
+        <div class="co-glow" id="co-glow"></div>
+        <div class="co-cardbox" id="co-cardbox" aria-live="polite"></div>
+        <div class="co-chest" id="co-chest">
+            <img class="co-body" id="co-body" alt="" draggable="false">
+            <div class="co-inside" id="co-inside"></div>
+            <img class="co-lid" id="co-lid" alt="" draggable="false">
+        </div>
+        <div class="co-name" id="co-name"></div>
+        <div class="co-left" id="co-left"></div>
+        <button type="button" class="co-btn" id="co-btn" onclick="coNext()">TAP</button>
+    </div>
+</div>
+<div id="cf-overlay" class="cf" hidden>
+    <div class="cf-backdrop" onclick="cfCancel()"></div>
+    <div class="cf-card" role="alertdialog" aria-modal="true" aria-labelledby="cf-title">
+        <div class="cf-icon" id="cf-icon"></div>
+        <h2 class="cf-title" id="cf-title"></h2>
+        <p class="cf-text" id="cf-text"></p>
+        <div class="cf-actions">
+            <button type="button" class="ars-blk ars-btn-slate" id="cf-cancel" onclick="cfCancel()">CANCEL</button>
+            <button type="button" class="ars-blk ars-btn-gold" id="cf-ok" onclick="cfOk()">OK</button>
+        </div>
+    </div>
+</div>
+<div id="reward-overlay" class="cf" hidden>
+    <div class="cf-backdrop" onclick="closeReward()"></div>
+    <div class="cf-card cf-reward" role="dialog" aria-modal="true" aria-labelledby="rw-title">
+        <h2 class="cf-title" id="rw-title">REWARD</h2>
+        <div class="rw-cards" id="rw-cards"></div>
+        <div class="cf-actions"><button type="button" class="ars-blk ars-btn-green" onclick="closeReward()">COLLECT</button></div>
+    </div>
+</div>
+
+<!-- ========== INBOX ========== -->
+<div id="inbox-overlay" style="display:none">
+    <div class="missions-backdrop" onclick="closeInbox()"></div>
+    <div class="missions-modal inbox-modal" role="dialog" aria-label="Inbox">
+        <div class="missions-header">
+            <span class="missions-title"><img class="pic" src="/images/ui/inbox.svg" alt="" aria-hidden="true" draggable="false">INBOX</span>
+            <button class="missions-close" onclick="closeInbox()" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
+        </div>
+        <div class="missions-body" id="inbox-list"></div>
+    </div>
+</div>
+
 <script src="/socket-msgpack-parser.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
@@ -1136,7 +1194,10 @@
 <script src="blackbox.js"></script>
 <script src="arena-art.js"></script>
 <script src="ground-layer.js"></script>
+<script src="chests.js"></script>
+<script src="battlepass.js"></script>
 <script src="game.js"></script>
+<script src="lobby-ui.js"></script>
 
 <script>
 (function () {
