@@ -63,18 +63,24 @@
 
     // { chance, w } for a finished match, or null when it earns no chest
     // info: BR { placement (1 = winner), players (how many started) }; PvE { wave: wave reached, victory, diff: 'brood' | 'colossus' | 'reaper' }
+    // A WIN always drops a chest (chance 1) in both modes, whatever the level; the level and the place only change what kind of chest.
     function dropFor(mode, info) {
         info = info || {};
-        if (mode === 'br') return (+info.players >= BR_MIN_PLAYERS && BR_DROP[Math.floor(+info.placement)]) || null;
+        if (mode === 'br') {
+            const row = +info.players >= BR_MIN_PLAYERS && BR_DROP[Math.floor(+info.placement)];
+            if (!row) return null;
+            return Math.floor(+info.placement) === 1 ? { chance: 1, w: row.w } : row;
+        }
         if (mode === 'pve') {
             const wave = info.victory ? 21 : Math.floor(+info.wave) || 0;
             let row = null;
             for (const r of PVE_DROP) if (wave >= r.from) row = r;
-            const lv = row && PVE_LEVEL[info.diff];
-            if (!lv || (lv.mult === 1 && !lv.easy)) return row;
+            if (!row) return null;
+            const lv = PVE_LEVEL[info.diff] || { mult: 1 };
+            if (!info.victory && lv.mult === 1 && !lv.easy) return row;
             const w = row.w.slice();
             if (lv.easy) { w[2] += w[3] + w[4]; w[3] = 0; w[4] = 0; }
-            return { from: row.from, chance: Math.min(1, row.chance * lv.mult), w };
+            return { from: row.from, chance: info.victory ? 1 : Math.min(1, row.chance * lv.mult), w };
         }
         return null;
     }

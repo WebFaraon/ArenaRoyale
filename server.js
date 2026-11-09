@@ -1016,12 +1016,14 @@ function sendInbox(nickname, msg) {
 }
 // The end of a match: a chest drops by how it went (ARChests.dropFor), unless the 4 slots are full (then none, and the end board says so)
 async function grantMatchChest(socketId, nickname, mode, info) {
-    if (!ARChests.dropFor(mode, info)) return;
+    // every outcome is told to the end board: a chest, full slots, "not this time" or "this match earns none" (+ why)
+    if (!ARChests.dropFor(mode, info)) { io.to(socketId).emit('match-chest', { mode, none: true, notEligible: true, small: mode === 'br' && +info.players < ARChests.BR_MIN_PLAYERS }); return; }
     try {
         const r = await accountOp(nickname, work => LobbyCore.matchChest(work, mode, info, chestRng, Date.now()));
         if (!r || !r.ok) return;
-        if (r.full) io.to(socketId).emit('match-chest', { full: true, lobby: r.lobby });
-        else if (r.chest) { console.log(`[Chests] ${nickname} a primit un chest ${r.chest.type}`); io.to(socketId).emit('match-chest', { chest: { id: r.chest.id, type: r.chest.type }, slot: r.slot, lobby: r.lobby }); }
+        if (r.full) io.to(socketId).emit('match-chest', { mode, full: true, lobby: r.lobby });
+        else if (r.none) io.to(socketId).emit('match-chest', { mode, none: true, lobby: r.lobby });
+        else if (r.chest) { console.log(`[Chests] ${nickname} a primit un chest ${r.chest.type}`); io.to(socketId).emit('match-chest', { mode, chest: { id: r.chest.id, type: r.chest.type }, slot: r.slot, lobby: r.lobby }); }
     } catch (err) { console.error('[Chests] grant error:', err.message || err); }
 }
 const PLAYER_SIZE      = 60;
@@ -2275,7 +2277,7 @@ function pveFinish(code, room, victory) {
         io.to(p.id).emit('pve-end', { ...board, reward });
         endPlayerRound(p, victory, { mode: 'pve', rs: p.rs, wave: room.pveWave, reward, diff: room.pveDiff });
     });
-    setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
+    setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, ENDED_ROOM_MS);
     console.log(victory ? `[${code}] PvE Victorie!` : `[${code}] PvE Infrangere (baza distrusa la wave ${room.pveWave})`);
 }
 function pveVictory(code, room) { pveFinish(code, room, true); }
@@ -3488,7 +3490,7 @@ function eliminatePlayer(code, room, player, killerId, weaponId) {
         OPS.endRoom(room);
         for (const p of room._playerArr) flushWeaponStats(p);
         if (room.gameLoop) { clearTimeout(room.gameLoop); clearImmediate(room.gameLoop); room.gameLoop = null; }
-        setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, 60000);
+        setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, ENDED_ROOM_MS);
     }
 }
 
@@ -3591,6 +3593,8 @@ function triggerRematch(code, room) {
     console.log(`[${code}] Rematch pornit`);
 }
 
+// A finished room stays while someone is still on its end board (a room with nobody left closes at once, on disconnect); an abandoned one goes after this.
+const ENDED_ROOM_MS = process.env.ENDED_ROOM_MS ? Math.max(500, +process.env.ENDED_ROOM_MS || 0) || 30 * 60 * 1000 : 30 * 60 * 1000;   // (ENDED_ROOM_MS: only tests)
 function closeRoom(code, room) {
     OPS.endRoom(room, 'closed');
     const diagState = NET_DIAG.forRoom(code);

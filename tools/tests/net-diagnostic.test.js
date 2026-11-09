@@ -254,7 +254,7 @@ test('game cleanup ends the recording after RAF cancellation and disconnect is n
     assert.ok(cleanup);
     assert.ok(cleanup[1].indexOf('cancelAnimationFrame(rafId)') < cleanup[1].indexOf('_BB.gameplayEnded(); _BB.detach()'));
     assert.match(source, /socket\.on\('game-rematch',[\s\S]*?_BB\.gameplayEnded\(\)/);
-    assert.match(source, /socket\.on\('game-reset', reloadAfterDiagnostic\)/);
+    assert.match(source, /socket\.on\('game-reset', \(\) => \{ if \(window\._arMatchOver\) return; reloadAfterDiagnostic\(\); \}\)/);   // a reset in the middle of a match still reloads after the diagnostic save; one after the end does not
     assert.match(source, /bb\.whenSaved\(2000\)\.then\(\(\) => location\.reload\(\)/);
 });
 

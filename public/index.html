@@ -345,7 +345,7 @@
             <div class="hero-foot">
                 <button type="button" class="hero-weapon hero-chars" onclick="openCharacterShop()" aria-label="All characters">
                     <span class="weapon-preview-icon hc-icon"><img class="pic" src="/images/ui/personaje.svg" alt="" aria-hidden="true" draggable="false"></span>
-                    <span class="hw-text"><span class="hw-kick">SKIN <b id="hero-skin-idx">1</b> / <span id="hero-skin-total">30</span></span><span class="hw-name">CHARACTERS</span></span>
+                    <span class="hw-text"><span class="hw-name">CHARACTERS</span></span>
                 </button>
                 <button type="button" class="hero-weapon hero-arms" id="weapon-ring" onclick="openArsenal()" aria-label="Arsenal: weapons and skins">
                     <span class="weapon-preview-icon" id="weapon-preview-icon"><img class="wicon" src="/images/weapon-icons/pistol.png" alt="" draggable="false"></span>
@@ -1101,27 +1101,48 @@
         </div>
     </header>
     <div class="bp-body">
-        <section class="bp-summary">
-            <div class="bp-sum-left">
-                <span class="bp-kick" id="bp-kick">SEASON 1</span>
-                <span class="bp-sum-season" id="bp-season">STADIUM SHOWDOWN</span>
+        <section class="bpx-head">
+            <div class="bpx-banner" aria-hidden="false">
+                <span class="bpx-beam bpx-b1"></span><span class="bpx-beam bpx-b2"></span><span class="bpx-beam bpx-b3"></span>
+                <svg class="ic bpx-ball" aria-hidden="true"><use href="#ball"/></svg>
+                <img class="bpx-hero bpx-hero-a" id="bp-hero-a" alt="" draggable="false">
+                <img class="bpx-hero bpx-hero-b" id="bp-hero-b" alt="" draggable="false">
+                <div class="bpx-bn-txt">
+                    <span class="bp-kick" id="bp-kick">SEASON 1</span>
+                    <span class="bp-sum-season" id="bp-season">STADIUM SHOWDOWN</span>
+                    <span class="bpx-ends" id="bp-ends"><svg class="ic" aria-hidden="true"><use href="#clock"/></svg><span id="bp-ends-txt"></span></span>
+                </div>
             </div>
-            <div class="bp-sum-mid">
-                <div class="bp-sum-tier"><span class="bp-tier-badge" id="bp-sum-tier">TIER 1</span><span class="bp-sum-xp" id="bp-sum-xp">0 / 1,000 XP</span></div>
+            <div class="bpx-ring" id="bp-ring" style="--p:0%"><div class="bpx-ring-in"><small>TIER</small><b id="bp-sum-tier">1</b></div></div>
+            <div class="bpx-xp">
+                <span class="bp-sum-xp" id="bp-sum-xp">0 / 1,000 XP</span>
                 <div class="bp-bar bp-bar-big"><div class="bp-bar-fill" id="bp-sum-fill" style="width:0%"></div></div>
+                <div class="bpx-help">
+                    <button type="button" class="bpx-help-btn" id="bp-help-btn" aria-expanded="false" aria-controls="bp-help"><i>?</i><span>How do I earn XP?</span></button>
+                    <div class="bpx-help-box" id="bp-help" hidden>Finish your daily missions and claim them: each one gives <b>100 to 350 XP</b>. Every <b>1,000 XP</b> is a new tier.
+                        <button type="button" class="ars-blk ars-mini bpx-help-go" id="bp-help-go">OPEN MISSIONS</button></div>
+                </div>
             </div>
             <div class="bp-sum-actions">
-                <button type="button" class="ars-blk ars-btn-green" id="bp-claim-all" onclick="bpClaimAll()">CLAIM ALL</button>
-                <button type="button" class="ars-blk bp-blast-btn" id="bp-blast-btn" onclick="bpBuyBlast()"><span id="bp-blast-txt">GET BLAST TIER</span></button>
+                <button type="button" class="ars-blk bpx-claimall" id="bp-claim-all" onclick="bpClaimAll()" disabled>CLAIM ALL</button>
+                <div class="bpx-buy">
+                    <button type="button" class="ars-blk bp-blast-btn" id="bp-blast-btn" onclick="bpBuyBlast()"><span id="bp-blast-txt">GET BLAST TIER</span></button>
+                    <span class="bpx-blast-sub" id="bp-blast-sub"></span>
+                </div>
             </div>
         </section>
-        <section class="bp-track-wrap">
-            <div class="bp-rows" aria-hidden="true">
-                <span class="bp-row-tag bp-row-tier">TIER</span>
-                <span class="bp-row-tag bp-row-free">FREE</span>
-                <span class="bp-row-tag bp-row-blast">BLAST TIER</span>
+        <section class="bpx-wrap">
+            <div class="bpx-rows" aria-hidden="true">
+                <span class="bpx-row-gap"></span>
+                <span class="bpx-row-tag bpx-row-free">FREE</span>
+                <span class="bpx-row-tag bpx-row-blast"><svg class="ic" aria-hidden="true"><use href="#crown"/></svg>BLAST TIER<i class="bpx-sp bpx-sp1"></i><i class="bpx-sp bpx-sp2"></i><i class="bpx-sp bpx-sp3"></i></span>
             </div>
-            <div class="bp-track" id="bp-track" tabindex="0" aria-label="Battle Pass rewards"></div>
+            <div class="bpx-view">
+                <button type="button" class="bpx-arrow bpx-prev" id="bp-prev" aria-label="Scroll left"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+                <div class="bp-track" id="bp-track" tabindex="0" aria-label="Battle Pass rewards"></div>
+                <button type="button" class="bpx-arrow bpx-next" id="bp-next" aria-label="Scroll right"><svg class="ic" aria-hidden="true"><use href="#chevron-right"/></svg></button>
+                <button type="button" class="bpx-jump" id="bp-jump" hidden><svg class="ic" aria-hidden="true"><use href="#flag"/></svg><span>CURRENT TIER</span></button>
+            </div>
         </section>
     </div>
 </div>

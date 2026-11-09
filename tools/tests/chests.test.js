@@ -54,12 +54,13 @@ test('a match that went badly earns no chest: BR below the 5th place, PvE below 
     assert.equal(C.dropFor('br', { players: 20, placement: 6 }), null);
     assert.equal(C.dropFor('br', { players: 20, placement: 20 }), null);
     assert.equal(C.dropFor('br', {}), null);
-    assert.equal(C.dropFor('br', { players: 20, placement: 1 }), C.BR_DROP[1]);
+    assert.deepEqual(C.dropFor('br', { players: 20, placement: 1 }), { chance: 1, w: C.BR_DROP[1].w }, 'a win always drops a chest');
     assert.ok(C.dropFor('br', { players: 20, placement: 5 }));
     assert.equal(C.dropFor('pve', { wave: 9 }), null);
     assert.equal(C.dropFor('pve', { wave: 1 }), null);
     assert.ok(C.dropFor('pve', { wave: 10 }));
-    assert.equal(C.dropFor('pve', { wave: 20, victory: true }), C.PVE_DROP[C.PVE_DROP.length - 1], 'a victory is the top row');
+    const top = C.PVE_DROP[C.PVE_DROP.length - 1];
+    assert.deepEqual(C.dropFor('pve', { wave: 20, victory: true }), { from: top.from, chance: 1, w: top.w }, 'a victory is the top row, and a sure chest');
     assert.equal(C.dropFor('pve', { wave: 20, victory: false }), C.PVE_DROP[3], 'falling at wave 20 is not a victory');
     assert.equal(C.dropFor('x', {}), null);
 });
@@ -75,7 +76,7 @@ test('about wave 15 the golden chest is the likeliest, and a win gives the rare 
 test('rolling: the shares come out about as the table says, the chance too, and the same random numbers give the same chest', () => {
     const rng = seeded(7), N = 40000, counts = {}; let drops = 0;
     for (let i = 0; i < N; i++) { const t = C.rollChest('br', { players: 20, placement: 1 }, rng); if (t) { drops++; counts[t] = (counts[t] || 0) + 1; } }
-    assert.ok(Math.abs(drops / N - 0.85) < 0.01, 'chance ' + drops / N);
+    assert.equal(drops, N, 'a win (1st place) is a sure chest');
     C.TYPES.forEach((t, i) => assert.ok(Math.abs((counts[t.id] || 0) / drops - C.BR_DROP[1].w[i] / 100) < 0.012, t.id + ' ' + (counts[t.id] || 0) / drops));
     assert.equal(C.rollChest('br', { players: 20, placement: 9 }, seeded(1)), null);
     const a = C.rollChest('pve', { wave: 15 }, seeded(99)), b = C.rollChest('pve', { wave: 15 }, seeded(99));
@@ -117,7 +118,7 @@ test('slots: always four, junk is dropped, one chest opening at a time is how th
 test('Battle Royale: a chest only from a match that started with at least 8 players (friends in a small room cannot hand each other chests)', () => {
     assert.equal(C.BR_MIN_PLAYERS, 8);
     for (const n of [1, 2, 3, 7]) { assert.equal(C.dropFor('br', { players: n, placement: 1 }), null, n + ' players'); assert.equal(C.rollChest('br', { players: n, placement: 1 }, () => 0), null); }
-    assert.equal(C.dropFor('br', { players: 8, placement: 1 }), C.BR_DROP[1]);
+    assert.equal(C.dropFor('br', { players: 8, placement: 1 }).chance, 1);
     assert.equal(C.dropFor('br', { placement: 1 }), null, 'no player count: no chest');
     assert.equal(C.dropFor('br', { players: 'x', placement: 1 }), null);
 });
@@ -139,4 +140,17 @@ test('PvE level: the chance x0.5 on the easy level, x1 on the medium one, x1.3 o
     // rolled: the easy level never gives a diamond or a mythical chest
     const rng = seeded(11);
     for (let i = 0; i < 5000; i++) { const t = C.rollChest('pve', { wave: 20, victory: true, diff: 'brood' }, rng); assert.ok(t !== 'diamond' && t !== 'mythical'); }
+});
+
+test('a win is a sure chest in both modes and on every level; only the kind of chest changes with the level', () => {
+    for (const diff of ['brood', 'colossus', 'reaper', undefined]) {
+        const d = C.dropFor('pve', { wave: 20, victory: true, diff });
+        assert.equal(d.chance, 1, 'PvE win, ' + diff);
+        for (let i = 0; i < 200; i++) assert.ok(C.rollChest('pve', { wave: 20, victory: true, diff }, seeded(i + 1)), 'always a chest');
+    }
+    assert.deepEqual(C.dropFor('pve', { wave: 20, victory: true, diff: 'brood' }).w.slice(3), [0, 0], 'the easy level still has no Diamond or Mythical');
+    assert.equal(C.dropFor('br', { players: 12, placement: 1 }).chance, 1);
+    assert.ok(C.dropFor('br', { players: 12, placement: 2 }).chance < 1, 'a 2nd place is not sure');
+    assert.ok(C.dropFor('pve', { wave: 20, victory: false, diff: 'reaper' }).chance < 1, 'falling at wave 20 is not sure');
+    assert.equal(C.dropFor('br', { players: 7, placement: 1 }), null, 'the 8-player rule still holds for a win');
 });

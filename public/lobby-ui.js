@@ -5,7 +5,7 @@
 'use strict';
 const LobbyUI = (function () {
     const C = window.ARChests, BP = window.ARBattlePass;
-    const S = { lobby: null, skew: 0, tick: 0, busy: false };
+    const S = { lobby: null, skew: 0, tick: 0, busy: false, incoming: [] };   // incoming: chests won in a match that have not flown into their slot yet
 
     const $ = id => document.getElementById(id);
     const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -72,7 +72,9 @@ const LobbyUI = (function () {
     function renderChests() {
         const box = $('cc-slots'); if (!box || !S.lobby) return;
         const t = now(), slots = S.lobby.slots, openingAt = C.openingSlot(slots, t);
-        box.innerHTML = slots.map((c, i) => slotHtml(c, i, t, openingAt)).join('');
+        // a chest that is still on its way from the end board shows as an empty slot until it lands (playIncoming)
+        const wait = new Set(S.incoming.map(x => x.id));
+        box.innerHTML = slots.map((c, i) => slotHtml(c && wait.has(c.id) ? null : c, i, t, openingAt)).join('');
         const n = slots.filter(Boolean).length;
         $('cc-count').textContent = `${n} / ${C.SLOTS} slots`;
         $('cc-count').classList.toggle('is-full', n === C.SLOTS);
@@ -352,37 +354,116 @@ const LobbyUI = (function () {
     }
 
     // ---------- BATTLE PASS: the screen ----------
-    function cellHtml(track, t, b) {
+    // the colour of a reward: the rarity colours of the Arsenal (epic purple, legendary gold ...); coins and gems have their own
+    const RCOL = { common: 'var(--c-slate)', rare: 'var(--c-sky)', epic: 'var(--c-purple)', legendary: 'var(--c-gold)', mythic: '#FFC21F', season: 'var(--c-orange)', gems: 'var(--c-sky)', coins: 'var(--c-gold)' };
+    function rarityOf(r) {
+        if (r.charSkin) { const ch = getCharacterById(r.charSkin); return ch ? ch.rarity : 'season'; }
+        if (r.weaponSkin) { const s = typeof _arsSkin === 'function' ? _arsSkin(r.weaponSkin) : null; return s ? s.rarity : 'epic'; }
+        return r.diamonds ? 'gems' : 'coins';
+    }
+    // how wide a tier is by what it holds: a skin is a big card, gems a medium one, coins a small one
+    function tierSize(t) {
+        const a = BP.FREE[t], b = BP.BLAST[t];
+        if (isSkin(a) || isSkin(b)) return 'lg';
+        return (a && a.diamonds) || (b && b.diamonds) ? 'md' : 'sm';
+    }
+    function cellName(r) {
+        if (r.charSkin || r.weaponSkin) return rewardLabel(r);
+        return r.coins && r.diamonds ? 'COINS + GEMS' : r.diamonds ? 'GEMS' : 'COINS';
+    }
+    function cellChips(r, rar) {
+        if (isSkin(r)) return `<span class="bpx-chip bpx-chip-rar">${rar === 'season' ? 'SEASON' : (ARS_RARITY[rar] ? ARS_RARITY[rar].label : esc(String(rar).toUpperCase()))}</span>`;
+        return (r.coins ? `<span class="bpx-chip">×${num(r.coins)}</span>` : '') + (r.diamonds ? `<span class="bpx-chip bpx-chip-gem">×${r.diamonds}</span>` : '');
+    }
+    function cellHtml(track, t, b, size) {
         const r = rewardOf(track, t), tier = BP.tierOf(b.xp);
-        if (!r) return `<div class="bpc-cell bpc-none" aria-label="No reward"><span>·</span></div>`;
+        if (!r) return `<div class="bpx-cell bpx-none" aria-hidden="true"><i></i></div>`;
         const claimed = b.claimed[track].includes(t), reached = t <= tier, unlocked = track === 'free' || b.blast, can = !claimed && reached && unlocked;
-        const cls = ['bpc-cell', 'bpc-' + track, claimed ? 'is-done' : '', can ? 'is-can' : '', !reached ? 'is-far' : '', !unlocked ? 'is-locked' : '', isSkin(r) ? 'is-skin' : ''].join(' ');
-        const state = claimed ? `<span class="bpc-state bpc-ok">${ico('check')}</span>` : (!unlocked ? `<span class="bpc-state bpc-lock">${ico('lock')}</span>` : (!reached ? '' : `<span class="bpc-state bpc-claim">CLAIM</span>`));
-        return `<button type="button" class="${cls}" data-track="${track}" data-tier="${t}" ${can ? '' : 'tabindex="-1"'} aria-label="${track === 'free' ? 'Free' : 'Blast Tier'} reward, tier ${t}${claimed ? ', claimed' : can ? ', claim' : ''}"><span class="bpc-ic">${rewardIcon(r)}</span><span class="bpc-lbl">${rewardLabel(r)}</span>${state}</button>`;
+        const rar = rarityOf(r), skin = isSkin(r);
+        const cls = ['bpx-cell', 'bpx-' + track, size === 'lg' ? 'is-big' : '', claimed ? 'is-done' : '', can ? 'is-can' : '', !reached ? 'is-far' : '', !unlocked ? 'is-locked' : '', skin ? 'is-skin' : '', skin && (rar === 'epic' || rar === 'legendary' || rar === 'mythic' || rar === 'season') ? 'is-shiny' : ''].join(' ');
+        const badge = claimed ? `<span class="bpx-state bpx-ok">${ico('check')}</span>` : (!unlocked ? `<span class="bpx-state bpx-lock">${ico('lock')}</span>` : '');
+        const claim = can ? `<span class="bpx-claim">CLAIM</span>` : '';
+        return `<button type="button" class="${cls}" style="--rc:${RCOL[rar] || RCOL.coins}" data-track="${track}" data-tier="${t}" ${can ? '' : 'tabindex="-1"'} aria-label="${track === 'free' ? 'Free' : 'Blast Tier'} reward, tier ${t}${claimed ? ', claimed' : can ? ', claim' : !unlocked ? ', locked' : ''}">`
+            + `${skin ? '<span class="bpx-rays"></span>' : ''}<span class="bpx-chips">${cellChips(r, rar)}</span><span class="bpx-ic">${rewardIcon(r)}</span><span class="bpx-lbl">${cellName(r)}</span>${badge}${claim}</button>`;
+    }
+    function endsText() {
+        const end = BP.SEASON.endsAt; if (!end) return '';
+        const ms = end - now();
+        if (ms <= 0) return 'Season ended';
+        const d = Math.ceil(ms / 86400000);
+        return d > 1 ? `Ends in ${d} days` : `Ends in ${Math.max(1, Math.ceil(ms / 3600000))} h`;
     }
     function renderBp() {
         if (!S.lobby) return;
         const b = BP.normalize(bp()), tier = BP.tierOf(b.xp), into = BP.intoTier(b.xp);
         $('bp-kick').textContent = BP.SEASON.kicker; $('bp-season').textContent = BP.SEASON.name;
-        $('bp-sum-tier').textContent = 'TIER ' + tier;
+        $('bp-ends-txt').textContent = endsText(); $('bp-ends').hidden = !BP.SEASON.endsAt;
+        const ha = $('bp-hero-a'), hb = $('bp-hero-b');
+        if (!ha.getAttribute('src') && typeof skinPreviewSrc === 'function') { ha.src = skinPreviewSrc('goalkeeper', SKIN_PREVIEW.full); hb.src = skinPreviewSrc('captain', SKIN_PREVIEW.full); }
+        $('bp-sum-tier').textContent = tier;
+        $('bp-ring').style.setProperty('--p', (tier >= BP.TIERS ? 100 : into / BP.XP_PER_TIER * 100).toFixed(1) + '%');
         $('bp-sum-xp').textContent = tier >= BP.TIERS ? 'MAX TIER' : `${num(into)} / ${num(BP.XP_PER_TIER)} XP to tier ${tier + 1}`;
         $('bp-sum-fill').style.width = (into / BP.XP_PER_TIER * 100) + '%';
-        const n = claimables().length;
-        $('bp-claim-all').disabled = !n; $('bp-claim-all').textContent = n ? `CLAIM ALL (${n})` : 'CLAIM ALL';
+        const n = claimables().length, ca = $('bp-claim-all');
+        ca.disabled = !n; ca.classList.toggle('is-live', n > 0); ca.textContent = n ? `CLAIM ALL (${n})` : 'CLAIM ALL';
         const bb = $('bp-blast-btn'); bb.classList.toggle('is-owned', b.blast); bb.disabled = b.blast;
         $('bp-blast-txt').innerHTML = b.blast ? `${ico('check')}BLAST TIER ACTIVE` : `GET BLAST TIER · $${BP.BLAST_PRICE_USD}`;
+        $('bp-blast-sub').textContent = b.blast ? '' : `Unlock ${Object.keys(BP.BLAST).length} rewards`;
         $('bp-coins').textContent = num(S.lobby.coins); $('bp-diamonds').textContent = num(S.lobby.diamonds);
         const track = $('bp-track'), keep = track.scrollLeft;
         let html = '';
-        for (let t = 1; t <= BP.TIERS; t++) html += `<div class="bpc${t === tier ? ' is-cur' : ''}${t <= tier ? ' is-reached' : ''}" data-tier="${t}"><div class="bpc-tier">${t}</div>${cellHtml('free', t, b)}${cellHtml('blast', t, b)}</div>`;
+        for (let t = 1; t <= BP.TIERS; t++) {
+            const size = tierSize(t);
+            // the line through the tiers: lit up to the current one, dim after it; a flag stands on the current tier
+            const node = `<div class="bpx-node${t <= tier ? ' is-reached' : ''}${t === tier ? ' is-cur' : ''}${t < tier ? ' line-r' : ''}${t <= tier ? ' line-l' : ''}"><b>${t}</b>${t === tier ? `<svg class="ic bpx-flag" aria-hidden="true"><use href="#flag"/></svg>` : ''}</div>`;
+            html += `<div class="bpx-col bpx-${size}${t === tier ? ' is-cur' : ''}" data-tier="${t}">${node}${cellHtml('free', t, b, size)}${cellHtml('blast', t, b, size)}</div>`;
+        }
         track.innerHTML = html; track.scrollLeft = keep;
+        navState();
+    }
+    // ---- moving along the track: arrows, drag, wheel, "current tier" ----
+    function curCol() { return document.querySelector('#bp-track .bpx-col.is-cur'); }
+    function scrollToCur(smooth) {
+        const cur = curCol(), track = $('bp-track'); if (!cur) return;
+        track.scrollTo({ left: Math.max(0, cur.offsetLeft - track.clientWidth / 2 + cur.offsetWidth / 2), behavior: smooth ? 'smooth' : 'auto' });
+    }
+    function navState() {
+        const track = $('bp-track'); if (!track) return;
+        const max = track.scrollWidth - track.clientWidth, x = track.scrollLeft;
+        $('bp-prev').disabled = x <= 4; $('bp-next').disabled = x >= max - 4;
+        const cur = curCol();
+        $('bp-jump').hidden = !cur || (cur.offsetLeft + cur.offsetWidth > x + 8 && cur.offsetLeft < x + track.clientWidth - 8);
+    }
+    function bindBpNav() {
+        const track = $('bp-track'); if (!track || track._nav) return; track._nav = true;
+        track.addEventListener('scroll', () => { if (!track._raf) track._raf = requestAnimationFrame(() => { track._raf = 0; navState(); }); }, { passive: true });
+        $('bp-prev').addEventListener('click', () => { track.scrollBy({ left: -track.clientWidth * 0.7, behavior: 'smooth' }); sfx('click'); });
+        $('bp-next').addEventListener('click', () => { track.scrollBy({ left: track.clientWidth * 0.7, behavior: 'smooth' }); sfx('click'); });
+        $('bp-jump').addEventListener('click', () => { scrollToCur(true); sfx('click'); });
+        track.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { track.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
+        // dragging with the mouse (touch scrolls by itself)
+        let d = null;
+        track.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse' || e.button !== 0) return; d = { x: e.clientX, left: track.scrollLeft, moved: false, id: e.pointerId }; });
+        track.addEventListener('pointermove', e => {
+            if (!d || e.pointerId !== d.id) return;
+            const dx = e.clientX - d.x;
+            if (!d.moved && Math.abs(dx) > 6) { d.moved = true; track.classList.add('is-drag'); try { track.setPointerCapture(d.id); } catch (_) { /* gone */ } }
+            if (d.moved) track.scrollLeft = d.left - dx;
+        });
+        const end = () => { if (!d) return; const was = d.moved; d = null; track.classList.remove('is-drag'); if (was) track._noClick = performance.now() + 60; };
+        track.addEventListener('pointerup', end); track.addEventListener('pointercancel', end);
+        track.addEventListener('click', e => { if (track._noClick && performance.now() < track._noClick) { e.stopPropagation(); e.preventDefault(); } }, true);
+        const hb = $('bp-help-btn'), hx = $('bp-help');
+        hb.addEventListener('click', () => { const open = hx.hidden; hx.hidden = !open; hb.setAttribute('aria-expanded', String(open)); sfx('click'); });
+        $('bp-help-go').addEventListener('click', () => { hx.hidden = true; hb.setAttribute('aria-expanded', 'false'); if (typeof openMissions === 'function') openMissions(); });
+        window.addEventListener('resize', () => { if ($('screen-bp').style.display === 'flex') navState(); });
     }
     function openBattlePass() {
         const scr = $('screen-bp'); if (!S.lobby || scr.style.display === 'flex') return;
         scr.classList.remove('is-closing'); scr.style.display = 'flex'; document.body.classList.add('arsenal-open');
+        bindBpNav(); $('bp-help').hidden = true; $('bp-help-btn').setAttribute('aria-expanded', 'false');
         renderBp(); sfx('click');
-        const cur = document.querySelector('#bp-track .bpc.is-cur'), track = $('bp-track');
-        if (cur) track.scrollLeft = Math.max(0, cur.offsetLeft - track.clientWidth / 2 + cur.offsetWidth / 2);
+        scrollToCur(false); navState();   // it opens on the tier you are on
         document.addEventListener('keydown', bpKey);
         const back = scr.querySelector('.ars-back'); if (back) back.focus({ preventScroll: true, focusVisible: false });
     }
@@ -393,25 +474,50 @@ const LobbyUI = (function () {
         const onEnd = e => { if (e.target === scr) fin(); };
         scr.classList.add('is-closing'); scr.addEventListener('animationend', onEnd); setTimeout(fin, 450);
     }
-    function bpKey(e) { if (e.key === 'Escape' && $('cf-overlay').hidden && $('reward-overlay').hidden) closeBattlePass(); }
+    function bpKey(e) {
+        if (e.key === 'Escape' && $('cf-overlay').hidden && $('reward-overlay').hidden) closeBattlePass();
+        else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('input')) { $('bp-track').scrollBy({ left: (e.key === 'ArrowRight' ? 1 : -1) * $('bp-track').clientWidth * 0.5, behavior: 'smooth' }); }
+    }
     async function claim(track, tier) {
         const r = await post('/api/battlepass/claim', { track, tier });
         if (!r.ok) { showToast(r.error || 'Could not claim'); if (r.lobby) setLobby(r.lobby); return null; }
         applyOwned(r); setLobby(r.lobby); return r;
     }
+    // After a claim: the coins and the gems fly from where they were taken to the counters at the top, the counters count up when they land;
+    // a skin gets its card (the coins alone do not need a window). Without "Fine effects" the counters just change.
+    function claimFx(fromEl, cards, before, title) {
+        let coins = 0, gems = 0, skins = false;
+        for (const c of cards) { if (c.kind === 'coins') coins += c.amount; else if (c.kind === 'gems') gems += c.amount; else skins = true; }
+        const cEl = $('bp-coins'), gEl = $('bp-diamonds');
+        if (juice() && fromEl && typeof spawnCoinFly === 'function') {
+            cEl.textContent = num(before.coins); gEl.textContent = num(before.diamonds);
+            if (coins) spawnCoinFly(fromEl, cEl.closest('.ars-cur'), coins, 'coins');
+            if (gems) setTimeout(() => spawnCoinFly(fromEl, gEl.closest('.ars-cur'), gems, 'gem'), 250);
+            setTimeout(() => {
+                const to = S.lobby || { coins: 0, diamonds: 0 };
+                if (coins) { if (window.ARJuice && ARJuice.roll) ARJuice.roll(cEl, to.coins); else cEl.textContent = num(to.coins); }
+                if (gems) { if (window.ARJuice && ARJuice.roll) ARJuice.roll(gEl, to.diamonds); else gEl.textContent = num(to.diamonds); }
+                setTimeout(() => { cEl.textContent = num(to.coins); gEl.textContent = num(to.diamonds); }, 1200);
+            }, 800);
+        }
+        if (skins) setTimeout(() => showReward(cards, title), juice() ? 950 : 0);
+        else if (!coins && !gems) showToast('Claimed');
+        else if (!juice()) showToast(`+${coins ? num(coins) + ' coins' : ''}${coins && gems ? ' · ' : ''}${gems ? '+' + gems + ' gems' : ''}`);
+    }
     async function bpCellClick(e) {
-        const c = e.target.closest('.bpc-cell.is-can'); if (!c || S.busy) return;
+        const c = e.target.closest('.bpx-cell.is-can'); if (!c || S.busy) return;
         S.busy = true;
-        try { const r = await claim(c.dataset.track, +c.dataset.tier); if (r) showReward(r.cards, `TIER ${c.dataset.tier} REWARD`); }
+        const before = { coins: S.lobby.coins, diamonds: S.lobby.diamonds };
+        try { const r = await claim(c.dataset.track, +c.dataset.tier); if (r) claimFx(c, r.cards, before, `TIER ${c.dataset.tier} REWARD`); }
         catch (err) { showToast('Network error. Please try again.'); } finally { S.busy = false; }
     }
     async function bpClaimAll() {
         if (S.busy) return;
         const list = claimables(); if (!list.length) return;
-        S.busy = true; const all = [];
+        S.busy = true; const all = [], before = { coins: S.lobby.coins, diamonds: S.lobby.diamonds }, from = $('bp-claim-all');
         try {
             for (const { track, tier } of list) { const r = await claim(track, tier); if (!r) break; all.push(...r.cards); }
-            if (all.length) showReward(mergeCards(all), 'REWARDS');
+            if (all.length) claimFx(from, mergeCards(all), before, 'REWARDS');
         } catch (err) { showToast('Network error. Please try again.'); } finally { S.busy = false; }
     }
     // the coins and the gems of several rewards as one card each
@@ -478,26 +584,80 @@ const LobbyUI = (function () {
         confirmBox({ icon: `<img class="cf-chest" src="${chestImg('wooden')}" alt="">`, title: 'ALL CHEST SLOTS ARE FULL', text: 'You will not get a chest from this match, even if you win. Open or wait for one of your chests first to make room.', ok: 'PLAY ANYWAY', go });
     }
     // the end boards show it (BR: #screen-gameover, PvE: #pve-end)
+    function matchChestHtml(d) {
+        if (!d) return '';
+        if (d.chest) return `<img class="mc-img" src="${chestImg(d.chest.type)}" alt=""><span class="mc-txt"><b>${C.BY_ID[d.chest.type].name.toUpperCase()} CHEST</b><span>Added to your chests</span></span>`;
+        const gray = `<img class="mc-img mc-gray" src="${chestImg('wooden')}" alt="">`;
+        if (d.full) return `${gray}<span class="mc-txt"><b>NO CHEST</b><span>All your chest slots are full</span></span>`;
+        if (d.notEligible) {
+            const why = d.small ? `Battle Royale chests need ${C.BR_MIN_PLAYERS}+ players` : d.mode === 'pve' ? 'Reach wave 10 to earn a chest' : 'Finish in the top 5 to earn a chest';
+            return `${gray}<span class="mc-txt"><b>NO CHEST</b><span>${why}</span></span>`;
+        }
+        return `${gray}<span class="mc-txt"><b>NO CHEST</b><span>Not this time. A win always drops one</span></span>`;
+    }
     function matchChest(d) {
+        // a chest that comes with a chest: it waits (as an empty slot) until the lobby is on screen, then it flies in
+        if (d && d.chest) S.incoming.push({ id: d.chest.id, slot: d.slot, type: d.chest.type });
         if (d && d.lobby) setLobby(d.lobby);
         S.matchChest = d || null;
-        const html = !d ? '' : d.chest ? `<img class="mc-img" src="${chestImg(d.chest.type)}" alt=""><span class="mc-txt"><b>${C.BY_ID[d.chest.type].name.toUpperCase()} CHEST</b><span>Added to your chests</span></span>`
-            : d.full ? `<img class="mc-img mc-gray" src="${chestImg('wooden')}" alt=""><span class="mc-txt"><b>NO CHEST</b><span>All your chest slots are full</span></span>` : '';
-        for (const id of ['go-chest', 'pe-chest']) { const el = $(id); if (!el) continue; el.innerHTML = html; el.hidden = !html; el.classList.toggle('mc-full', !!(d && d.full)); }
+        const html = matchChestHtml(d);
+        for (const id of ['go-chest', 'pe-chest']) {
+            const el = $(id); if (!el) continue;
+            el.innerHTML = html; el.hidden = !html;
+            el.classList.toggle('mc-full', !!(d && !d.chest));
+            el.classList.remove('is-pop'); if (html && d.chest) { void el.offsetWidth; el.classList.add('is-pop'); }
+        }
+        const lb = $('screen-lobby'); if (S.incoming.length && lb && lb.style.display === 'flex') setTimeout(playIncoming, 300);   // the lobby is already up
     }
-    function resetMatchChest() { S.matchChest = null; for (const id of ['go-chest', 'pe-chest']) { const el = $(id); if (el) { el.innerHTML = ''; el.hidden = true; } } }
+    function resetMatchChest() { S.matchChest = null; for (const id of ['go-chest', 'pe-chest']) { const el = $(id); if (el) { el.innerHTML = ''; el.hidden = true; el.classList.remove('is-pop'); } } }
+
+    // ---------- the lobby is on screen: the chest(s) won flies from the middle of the screen into its slot ----------
+    function land(it) {
+        S.incoming = S.incoming.filter(x => x !== it);
+        renderChests();
+        const el = document.querySelector(`#cc-slots .cs[data-slot="${it.slot}"]`);
+        if (el && juice()) { el.classList.add('cs-land'); setTimeout(() => el.classList.remove('cs-land'), 900); }
+        sfx('select');
+    }
+    function fly(it, delay) {
+        setTimeout(() => {
+            if (!S.incoming.includes(it)) return;
+            const slot = document.querySelector(`#cc-slots .cs[data-slot="${it.slot}"]`);
+            const tgt = slot && (slot.querySelector('.cs-img') || slot), r = tgt && tgt.getBoundingClientRect();
+            if (!r || r.width < 8 || !juice() || !tgt.animate) { land(it); if (!r || r.width < 8) showToast(`${C.BY_ID[it.type].name} chest added to your chests`); return; }   // another phone tab, or effects off
+            const size = Math.min(150, Math.max(90, Math.min(innerWidth, innerHeight) * 0.28));
+            const img = document.createElement('img');
+            img.className = 'cs-fly'; img.src = chestImg(it.type); img.alt = ''; img.draggable = false; img.style.width = img.style.height = size + 'px';
+            document.body.appendChild(img);
+            const sx = innerWidth / 2 - size / 2, sy = innerHeight / 2 - size / 2, tx = r.left + r.width / 2 - size / 2, ty = r.top + r.height / 2 - size / 2, k = r.width / size;
+            const mx = (sx + tx) / 2, my = Math.min(sy, ty) - size * 0.5;   // up and over, then down into the slot
+            sfx('click');
+            const a = img.animate([
+                { transform: `translate(${sx}px,${sy}px) scale(0.2) rotate(-12deg)`, opacity: 0, offset: 0 },
+                { transform: `translate(${sx}px,${sy}px) scale(1.15) rotate(4deg)`, opacity: 1, offset: 0.22 },
+                { transform: `translate(${mx}px,${my}px) scale(1) rotate(-4deg)`, offset: 0.55 },
+                { transform: `translate(${tx}px,${ty}px) scale(${k * 1.12}) rotate(0deg)`, offset: 0.9 },
+                { transform: `translate(${tx}px,${ty}px) scale(${k}) rotate(0deg)`, offset: 1 },
+            ], { duration: 950, easing: 'cubic-bezier(.45,.05,.4,1)', fill: 'forwards' });
+            const done = () => { img.remove(); land(it); };
+            a.onfinish = done; a.oncancel = done;
+        }, delay);
+    }
+    // game.js calls it when the lobby comes back after a match
+    function playIncoming() { S.incoming.slice().forEach((it, i) => fly(it, i * 450)); }
+    function onLobbyShown() { if (S.incoming.length) setTimeout(playIncoming, 450); }
 
     // ---------- start ----------
     function init() {
         if (currentProfile && currentProfile.lobby) setLobby(currentProfile.lobby);
         if (!S.tick) S.tick = setInterval(tickChests, 1000);
         const slots = $('cc-slots'); if (slots && !slots._bound) { slots._bound = true; slots.addEventListener('click', slotClick); }
-        const track = $('bp-track'); if (track && !track._bound) { track._bound = true; track.addEventListener('click', bpCellClick); }
+        const track = $('bp-track'); if (track && !track._bound) { track._bound = true; track.addEventListener('click', bpCellClick); bindBpNav(); }
         const inb = $('inbox-list'); if (inb && !inb._bound) { inb._bound = true; inb.addEventListener('click', inboxClick); }
         const co = $('chest-open'); if (co && !co._bound) { co._bound = true; co.addEventListener('click', e => { if (e.target.closest('#co-btn')) return; CO.next(); }); }
         document.addEventListener('visibilitychange', () => { if (!document.hidden) { renderChests(); renderBadges(); } });
     }
-    return { init, setLobby, get lobby() { return S.lobby; }, slotsFull, warnSlots, matchChest, resetMatchChest, openBattlePass, closeBattlePass, bpClaimAll, bpBuyBlast, openInbox, closeInbox, cfCancel, cfOk, closeReward, coNext: () => CO.next(), renderAll, CO };
+    return { init, setLobby, get lobby() { return S.lobby; }, slotsFull, warnSlots, matchChest, resetMatchChest, onLobbyShown, openBattlePass, closeBattlePass, bpClaimAll, bpBuyBlast, openInbox, closeInbox, cfCancel, cfOk, closeReward, coNext: () => CO.next(), renderAll, CO };
 })();
 window.LobbyUI = LobbyUI;
 // the handlers the HTML calls

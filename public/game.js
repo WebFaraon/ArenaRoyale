@@ -1664,7 +1664,10 @@ function _renderMissionsFull(list) {
         const tags = (m.tag === 'pve' ? '<span class="mm-tag mm-pve">PvE</span>' : m.tag === 'br' ? '<span class="mm-tag mm-br">BR</span>' : '')
             + (m.weapon ? '<span class="mm-tag mm-wpn">' + ((_WEAPON_DATA[m.weapon] && _WEAPON_DATA[m.weapon].name) || m.weapon).toUpperCase() + '</span>' : '')
             + (m.slot === 'hard' ? '<span class="mm-tag mm-hard">HARD</span>' : '');
-        const reward = '<span class="rw rw-coin">+' + m.coins + ico('coins') + '</span>' + (m.diamonds ? '<span class="rw rw-gem">+' + m.diamonds + ico('gem') + '</span>' : '');
+        // coins, gems and the Battle Pass XP the mission gives when it is claimed (ARBattlePass.xpForMission, the same rule the server uses)
+        const xp = window.ARBattlePass ? ARBattlePass.xpForMission(m.coins) : 0;
+        const reward = '<span class="rw rw-coin">+' + m.coins + ico('coins') + '</span>' + (m.diamonds ? '<span class="rw rw-gem">+' + m.diamonds + ico('gem') + '</span>' : '')
+            + (xp ? '<span class="rw rw-xp" title="Battle Pass XP">+' + xp + '<b>XP</b>' + pic('battlepass') + '</span>' : '');
         const action = m.claimed ? '<span class="mm-claimed">' + ico('check') + 'Claimed</span>'
             : done ? '<button class="mission-claim-btn mm-claim" onclick="claimMission(\'' + m.id + '\',this,' + m.coins + ',' + m.diamonds + ')">Claim</button>' : '';
         return '<div class="mm-row mm-' + kind + (done ? ' is-done' : '') + (m.claimed ? ' is-claimed' : '') + '" id="mission-full-' + m.id + '">'
@@ -1951,6 +1954,7 @@ function returnToLobby() {
     prepopulateLobby();
     createSessionSocket();
     loadFriends();
+    if (window.LobbyUI) LobbyUI.onLobbyShown();   // a chest won in the match flies into its slot
 }
 
 // ---------- LEADERBOARD OVERLAY ----------
@@ -3138,6 +3142,7 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     }
 
     socket.on('game-start', (data) => {
+        window._arMatchOver = false;
         if (data && data.playersMeta)  { gameControl.pendingMeta = data.playersMeta; gameControl.matchMeta = data.playersMeta; }   // (matchMeta stays for the vote: names and slots)
         if (data && data.obstacles)    gameControl.pendingObstacles = data.obstacles;
         if (data && data.mode)         gameControl.mode             = data.mode;
@@ -3279,7 +3284,9 @@ function initGame(playerName, playerSkin, playerStats, roomAction) {
     // The server says every loading screen is gone: now the 3, 2, 1
     socket.on('countdown-start', () => { _pvClose(); showCountdown(); });
 
-    socket.on('game-reset', reloadAfterDiagnostic);
+    // The server closes a finished room (and says so) while the end board may still be up: that must not reload the page (a reload lands on the
+    // login screen). The board stays, and LOBBY still works; only a reset in the middle of a match reloads.
+    socket.on('game-reset', () => { if (window._arMatchOver) return; reloadAfterDiagnostic(); });
 
     window._gameSocket = socket;
 }
@@ -6042,6 +6049,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     };
 
     socket.on('game-ended', () => {
+        window._arMatchOver = true;
         // Ascunde butonul spectate indiferent de situatie
         const specBtn = document.getElementById('btn-spectate');
         if (specBtn) specBtn.style.display = 'none';
@@ -6081,6 +6089,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
 
     socket.on('winner', ({ kills } = {}) => {
         gameEnded = true;
+        window._arMatchOver = true;
         moveDir.x = 0; moveDir.y = 0; isShooting = false; aimStartTime = null;
         setTimeout(() => {
             document.getElementById('gameover-title').textContent = '1ST PLACE — YOU WON!';
@@ -6120,6 +6129,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         if (window.LobbyUI) LobbyUI.resetMatchChest();
         _spriteBurst = true;
         gameEnded  = false;
+        window._arMatchOver = false;
         _sceneFrozen = false;
         _selfDead  = false;
         _selfDown = false; _selfOut = false; for (const k in _down) delete _down[k]; _downHudMode('');
@@ -7027,6 +7037,7 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
     }
     socket.on('pve-end', (d) => {
         gameEnded = true;
+        window._arMatchOver = true;
         _sceneFrozen = true;
         if (gameControl.closeVote) gameControl.closeVote();   // (the vote is long over; it never stays on top of the board)
         moveDir.x = 0; moveDir.y = 0; isShooting = false;
@@ -8468,7 +8479,8 @@ function startGameLoop(socket, canvas, ctx, playerImages, gameControl) {
         // (the weapon block that stood here, an orange square with the gun, is now the gun icon and name of the bottom HUD block)
 
         // --- WATCHDOG ---
-        if (lastGameStateTime > 0 && (performance.now() - lastGameStateTime) > 10000) {
+        // (not once the match is over: the server stops sending states then, and the end board is up for as long as the player likes)
+        if (lastGameStateTime > 0 && !window._arMatchOver && (performance.now() - lastGameStateTime) > 10000) {
             ctx.save();
             ctx.scale(dpr, dpr);
             ctx.fillStyle = 'rgba(0,0,0,0.72)';

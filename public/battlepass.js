@@ -10,7 +10,8 @@
     'use strict';
     const TIERS = 30;
     const XP_PER_TIER = 1000;
-    const SEASON = { id: 1, kicker: 'SEASON 1', name: 'STADIUM SHOWDOWN' };
+    // endsAt: only what the screen counts down to ("Ends in 60 days"); nothing expires yet, what happens to unclaimed rewards at the end is not decided. Provisional.
+    const SEASON = { id: 1, kicker: 'SEASON 1', name: 'STADIUM SHOWDOWN', endsAt: Date.UTC(2027, 0, 8) };
     const BLAST_PRICE_USD = 4.99;   // real money: there is no payment system yet (the server only sells it when BLAST_TIER_TEST=1)
 
     // XP a mission gives when it is claimed, by what it pays in coins: the simple ones 100, the ones that ask for a weapon in a mode 200, the hard ones 350
