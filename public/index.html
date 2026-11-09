@@ -258,6 +258,7 @@
             </button>
             <button class="lb-btn missions-nav-btn" onclick="openMissions()" id="missions-nav-btn" aria-label="Missions">
                 <img class="pic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false"><span class="lb-btn-text">MISSIONS</span>
+                <span id="missions-nav-badge" class="friends-nav-badge is-dot" style="display:none" aria-label="Missions to claim"></span>
             </button>
             <button class="lb-btn friends-nav-btn" onclick="openFriendsPanel()" id="friends-nav-btn">
                 <img class="pic" src="/images/ui/prieteni.svg" alt="" aria-hidden="true" draggable="false"><span class="lb-btn-text">FRIENDS</span>
@@ -266,7 +267,7 @@
             <a href="#" class="lb-btn lb-gold" onclick="openLeaderboard(); return false;"><img class="pic" src="/images/ui/leaderboard.svg" alt="" aria-hidden="true" draggable="false"><span class="lb-btn-text">LEADERBOARD</span></a>
             <button class="lb-btn lb-btn-icon inbox-nav-btn" onclick="openInbox()" id="inbox-nav-btn" title="Inbox" aria-label="Inbox">
                 <img class="pic" src="/images/ui/inbox.svg" alt="" aria-hidden="true" draggable="false">
-                <span id="inbox-nav-badge" class="friends-nav-badge" style="display:none"></span>
+                <span id="inbox-nav-badge" class="friends-nav-badge is-dot" style="display:none" aria-label="New messages"></span>
             </button>
             <button class="lb-btn lb-btn-icon" id="btn-settings-lobby" onclick="openSettings()" title="Settings" aria-label="Settings"><img class="pic" src="/images/ui/setari.svg" alt="" aria-hidden="true" draggable="false"></button>
         </div>
@@ -310,11 +311,12 @@
         </section>
 
         <section class="lp-card bp-card" id="bp-card">
+            <span class="bpk-beam bpk-b1" aria-hidden="true"></span><span class="bpk-beam bpk-b2" aria-hidden="true"></span><span class="bpk-pitch" aria-hidden="true"></span>
             <div class="bp-card-head">
                 <span class="bp-kick" id="bp-card-kick">SEASON 1</span>
                 <span class="bp-tier-badge" id="bp-card-tier">TIER 1</span>
             </div>
-            <h2 class="bp-card-title">BATTLE PASS</h2>
+            <h2 class="bp-card-title"><svg class="ic bpk-ball" aria-hidden="true"><use href="#ball"/></svg>BATTLE PASS</h2>
             <div class="bp-card-season" id="bp-card-season">STADIUM SHOWDOWN</div>
             <div class="bp-card-prog">
                 <div class="bp-prog-label"><span>PROGRESS</span><span id="bp-card-xp">0 / 1,000 XP</span></div>
@@ -427,18 +429,6 @@
     </aside>
 
     </div>
-    </div>
-
-    <!-- ── Missions Modal (all six of today's missions) ── -->
-    <div id="missions-overlay" style="display:none">
-        <div class="missions-backdrop" onclick="closeMissions()"></div>
-        <div class="missions-modal" role="dialog" aria-label="Daily missions">
-            <div class="missions-header">
-                <span class="missions-title"><img class="pic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false">DAILY MISSIONS</span>
-                <button class="missions-close" onclick="closeMissions()" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#x"/></svg></button>
-            </div>
-            <div class="missions-body" id="missions-modal-list"></div>
-        </div>
     </div>
 
     <!-- ── Friends Modal ── -->
@@ -1090,6 +1080,26 @@
 </div>
 
 <!-- ========== SCRIPTURI ========== -->
+<!-- ========== MISSIONS (a screen over the lobby: daily, weekly, season) ========== -->
+<div id="screen-missions" style="display:none" role="dialog" aria-modal="true" aria-labelledby="ms-title" data-tab="daily">
+    <header class="bp-top">
+        <button type="button" class="ars-blk ars-back" onclick="closeMissions()" aria-label="Back to lobby"><svg class="ic" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+        <h1 class="ars-title" id="ms-title"><img class="pic bp-title-ic" src="/images/ui/misiuni.svg" alt="" aria-hidden="true" draggable="false"><span>MISSIONS</span></h1>
+        <div class="ars-wallet">
+            <span class="ars-cur ars-cur-gold"><img class="pic" src="/images/ui/monede.svg" alt="" aria-hidden="true" draggable="false"><span id="ms-coins">0</span></span>
+            <span class="ars-cur ars-cur-gem"><img class="pic" src="/images/ui/diamante.svg" alt="" aria-hidden="true" draggable="false"><span id="ms-diamonds">0</span></span>
+        </div>
+    </header>
+    <div class="ms-body">
+        <nav class="ms-tabs" id="ms-tabs" role="tablist" aria-label="Mission types">
+            <button type="button" class="ms-tab is-on" data-tab="daily" role="tab"><span>DAILY</span><i class="ms-dot" id="ms-dot-daily" hidden></i></button>
+            <button type="button" class="ms-tab" data-tab="week" role="tab"><span>WEEKLY</span><i class="ms-dot" id="ms-dot-week" hidden></i></button>
+            <button type="button" class="ms-tab" data-tab="season" role="tab"><span>SEASON</span><b class="ms-new">NEW</b><i class="ms-dot" id="ms-dot-season" hidden></i></button>
+        </nav>
+        <section class="ms-pane" id="ms-pane" aria-live="polite"></section>
+    </div>
+</div>
+
 <!-- ========== BATTLE PASS (a screen over the lobby, like the Arsenal) ========== -->
 <div id="screen-bp" style="display:none" role="dialog" aria-modal="true" aria-labelledby="bp-title">
     <header class="bp-top">
@@ -1219,6 +1229,7 @@
 <script src="battlepass.js"></script>
 <script src="game.js"></script>
 <script src="lobby-ui.js"></script>
+<script src="missions-ui.js"></script>
 
 <script>
 (function () {

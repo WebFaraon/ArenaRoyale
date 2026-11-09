@@ -136,7 +136,8 @@ const LobbyUI = (function () {
     // one card, big (in the opening) or small (in a list)
     function cardHtml(card, small) {
         let art, top, bottom, col;
-        if (card.kind === 'coins') { art = pic('monede'); top = 'COINS'; bottom = '+' + num(card.amount); col = '#FFC72E'; }
+        if (card.kind === 'chest') { art = `<img class="pic cd-chest" src="${chestImg(card.type)}" alt="">`; top = 'CHEST'; bottom = C.BY_ID[card.type].name.toUpperCase(); col = COL[card.type] || '#FFC72E'; }
+        else if (card.kind === 'coins') { art = pic('monede'); top = 'COINS'; bottom = '+' + num(card.amount); col = '#FFC72E'; }
         else if (card.kind === 'gems') { art = pic('diamante'); top = 'GEMS'; bottom = '+' + num(card.amount); col = '#38A7F2'; }
         else {
             col = RAR_COL[card.rarity] || '#9FB0BA'; art = skinArt(card);
@@ -330,27 +331,33 @@ const LobbyUI = (function () {
         $('bp-card-tier').textContent = 'TIER ' + tier;
         $('bp-card-xp').textContent = tier >= BP.TIERS ? 'MAX' : `${num(into)} / ${num(BP.XP_PER_TIER)} XP`;
         $('bp-card-fill').style.width = (into / BP.XP_PER_TIER * 100) + '%';
-        // three tiles: the last reward you reached, the next one, the next skin
+        // three tiles: what you can take now (else the next free reward), the next gems, the next skin
         const has = t => BP.FREE[t] || BP.BLAST[t];
-        let last = 0; for (let t = tier; t >= 1; t--) if (BP.FREE[t]) { last = t; break; }
-        let nextT = 0; for (let t = tier + 1; t <= BP.TIERS; t++) if (has(t)) { nextT = t; break; }
+        const can = BP.claimable(b)[0];
+        let freeT = 0; for (let t = tier + 1; t <= BP.TIERS; t++) if (BP.FREE[t]) { freeT = t; break; }
+        let gemT = 0, gemTrack = 'blast'; for (let t = tier + 1; t <= BP.TIERS; t++) { if (BP.BLAST[t] && BP.BLAST[t].diamonds) { gemT = t; break; } if (BP.FREE[t] && BP.FREE[t].diamonds) { gemT = t; gemTrack = 'free'; break; } }
         let skinT = 0, skinTrack = 'blast'; for (let t = tier + 1; t <= BP.TIERS; t++) { if (isSkin(BP.BLAST[t])) { skinT = t; skinTrack = 'blast'; break; } if (isSkin(BP.FREE[t])) { skinT = t; skinTrack = 'free'; break; } }
         const tile = (t, track, kind) => {
             if (!t) return '<div class="bpt bpt-none"></div>';
             const r = rewardOf(track, t) || rewardOf(track === 'free' ? 'blast' : 'free', t);
             const tr = rewardOf(track, t) ? track : (track === 'free' ? 'blast' : 'free');
-            const claimed = b.claimed[tr].includes(t), can = !claimed && t <= tier && (tr === 'free' || b.blast);
+            const rar = rarityOf(r), claimed = b.claimed[tr].includes(t), canNow = !claimed && t <= tier && (tr === 'free' || b.blast);
             const lock = t > tier || (tr === 'blast' && !b.blast && !claimed);
-            return `<div class="bpt${claimed ? ' is-done' : ''}${can ? ' is-can' : ''}${lock && !can ? ' is-lock' : ''}${kind === 'skin' ? ' is-skin' : ''}"><span class="bpt-ic">${rewardIcon(r)}</span><span class="bpt-lbl">${claimed ? ico('check') : (lock && !can ? ico('lock') : '')}${kind === 'last' ? 'TIER ' + t : kind === 'skin' ? 'SKIN · ' + t : '+ · ' + t}</span></div>`;
+            const big = isSkin(r) || !!r.diamonds;
+            const cls = ['bpt', claimed ? 'is-done' : '', canNow ? 'is-can' : '', lock && !canNow ? 'is-lock' : '', big ? 'is-big' : '', isSkin(r) ? 'is-skin' : ''].join(' ');
+            return `<div class="${cls}" style="--rc:${RCOL[rar] || RCOL.coins}">${isSkin(r) ? '<span class="bpt-rays"></span>' : ''}<span class="bpt-tier">${canNow ? 'TAKE' : 'T' + t}</span><span class="bpt-ic">${rewardIcon(r)}</span><span class="bpt-lbl">${claimed ? ico('check') : (lock && !canNow ? ico('lock') : '')}${rewardLabel(r)}</span></div>`;
         };
-        $('bp-card-tiles').innerHTML = tile(last, 'free', 'last') + tile(nextT, BP.FREE[nextT] ? 'free' : 'blast', 'next') + tile(skinT, skinTrack, 'skin');
+        const first = can ? tile(can.tier, can.track, 'can') : tile(freeT, 'free', 'next');
+        $('bp-card-tiles').innerHTML = first + tile(gemT, gemTrack, 'gem') + tile(skinT, skinTrack, 'skin');
     }
     function renderBadges() {
         const n = claimables().length;
-        const set = (id, v) => { const el = $(id); if (!el) return; el.hidden = !v; el.style.display = v ? '' : 'none'; el.textContent = v; };
+        const set = (id, v, dot) => { const el = $(id); if (!el) return; el.hidden = !v; el.style.display = v ? '' : 'none'; el.textContent = v && !dot ? v : ''; };
         set('bp-card-badge', n); set('bp-nav-badge', n);
+        // the envelope shows a red dot only when there is a message not read yet or a reward not taken
         const inb = S.lobby ? S.lobby.inbox.filter(m => !m.read || (m.reward && !m.claimed)).length : 0;
-        set('inbox-nav-badge', inb);
+        set('inbox-nav-badge', inb, true);
+        const ib = $('inbox-nav-btn'); if (ib) ib.title = inb ? `Inbox (${inb} new)` : 'Inbox';
     }
 
     // ---------- BATTLE PASS: the screen ----------
@@ -657,7 +664,7 @@ const LobbyUI = (function () {
         const co = $('chest-open'); if (co && !co._bound) { co._bound = true; co.addEventListener('click', e => { if (e.target.closest('#co-btn')) return; CO.next(); }); }
         document.addEventListener('visibilitychange', () => { if (!document.hidden) { renderChests(); renderBadges(); } });
     }
-    return { init, setLobby, get lobby() { return S.lobby; }, slotsFull, warnSlots, matchChest, resetMatchChest, onLobbyShown, openBattlePass, closeBattlePass, bpClaimAll, bpBuyBlast, openInbox, closeInbox, cfCancel, cfOk, closeReward, coNext: () => CO.next(), renderAll, CO };
+    return { init, setLobby, get lobby() { return S.lobby; }, slotsFull, warnSlots, matchChest, resetMatchChest, onLobbyShown, showReward, openBattlePass, closeBattlePass, bpClaimAll, bpBuyBlast, openInbox, closeInbox, cfCancel, cfOk, closeReward, coNext: () => CO.next(), renderAll, CO };
 })();
 window.LobbyUI = LobbyUI;
 // the handlers the HTML calls

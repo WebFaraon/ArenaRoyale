@@ -436,12 +436,41 @@ app.get('/api/weapon-stats', async (req, res) => {
     catch (err) { console.error('[WeaponStats] read error:', err.message || err); res.json({ ok: false }); }
 });
 
+// What a mission, a weekly reward or a season phase pays: coins, gems, Battle Pass XP and maybe a chest, in one update of the account. A chest needs a free slot:
+// with all four taken nothing is paid and nothing is marked (the player makes room and claims again).
+async function payMissionReward(nickname, rw) {
+    return accountOp(nickname, work => {
+        if (rw.chest && ARChests.isFull(work.lobby.slots)) return { ok: false, full: true, error: 'All your chest slots are full. Open a chest first.' };
+        work.coins += rw.coins || 0; work.diamonds += rw.diamonds || 0;
+        let chest = null;
+        if (rw.chest) { const g = LobbyCore.grantChest(work, rw.chest, Date.now()); if (!g.ok) return { ok: false, full: true, error: 'All your chest slots are full. Open a chest first.' }; chest = { id: g.chest.id, type: g.chest.type, slot: g.slot }; }
+        return { ok: true, chest, ...LobbyCore.addXp(work, rw.xp || 0) };
+    });
+}
+function missionPayload(state, rw, paid) {
+    return { ok: true, coins: paid.lobby.coins, diamonds: paid.lobby.diamonds, rewardCoins: rw.coins || 0, rewardDiamonds: rw.diamonds || 0, rewardXp: rw.xp || 0, chest: paid.chest || null, bp: paid.lobby.bp, tiersGained: paid.tiersGained, lobby: paid.lobby, missions: Missions.toClient(state), ex: Missions.toClientEx(state) };
+}
+// the daily list, the weekly one and the season one (the missions screen asks for it when it opens)
+app.post('/api/missions/state', async (req, res) => {
+    const { nickname, token } = req.body || {};
+    if (!nickname || !token || sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Invalid session' });
+    try { const state = await loadMissions(nickname); await saveMissions(nickname, state); res.json({ ok: true, missions: Missions.toClient(state), ex: Missions.toClientEx(state) }); }
+    catch (err) { console.error('[Missions/State] Error:', err); res.json({ ok: false, error: 'Server error' }); }
+});
 app.post('/api/missions/claim', async (req, res) => {
-    const { nickname, token, missionId } = req.body || {};
+    const { nickname, token, missionId, kind } = req.body || {};
     if (!nickname || !token || !missionId) return res.json({ ok: false, error: 'Invalid data' });
     if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Invalid session' });
     try {
         const state = await loadMissions(nickname);
+        if (kind === 'week') {   // a weekly mission: its coins, gems and its own Battle Pass XP
+            const info = Missions.weekMissionInfo(state, missionId);
+            if (!info.ok) return res.json(info);
+            const paid = await payMissionReward(nickname, info.reward);
+            if (!paid || !paid.ok) return res.json({ ok: false, error: (paid && paid.error) || 'Server error' });
+            Missions.weekMissionMark(state, missionId); await saveMissions(nickname, state);
+            return res.json(missionPayload(state, info.reward, paid));
+        }
         const r = Missions.claim(state, missionId);
         if (!r.ok) return res.json(r);
         // the coins and gems of the mission and its Battle Pass XP (by what the mission pays) go in together, in one update
@@ -449,9 +478,28 @@ app.post('/api/missions/claim', async (req, res) => {
         const paid = await accountOp(nickname, work => { work.coins += r.coins; work.diamonds += r.diamonds; return { ok: true, ...LobbyCore.addXp(work, bpXp) }; });
         if (!paid || !paid.ok) return res.json({ ok: false, error: (paid && paid.error) || 'Server error' });
         await saveMissions(nickname, state);
-        res.json({ ok: true, coins: paid.lobby.coins, diamonds: paid.lobby.diamonds, rewardCoins: r.coins, rewardDiamonds: r.diamonds, rewardXp: bpXp, bp: paid.lobby.bp, tiersGained: paid.tiersGained, lobby: paid.lobby, missions: Missions.toClient(state) });
+        res.json({ ok: true, coins: paid.lobby.coins, diamonds: paid.lobby.diamonds, rewardCoins: r.coins, rewardDiamonds: r.diamonds, rewardXp: bpXp, bp: paid.lobby.bp, tiersGained: paid.tiersGained, lobby: paid.lobby, missions: Missions.toClient(state), ex: Missions.toClientEx(state) });
     } catch (err) {
         console.error('[Missions/Claim] Error:', err);
+        res.json({ ok: false, error: 'Server error' });
+    }
+});
+// The prize of the week (2, 4 or 6 missions done) or of a season phase (its three missions done): { kind: 'week' | 'season', index }
+app.post('/api/missions/claim-reward', async (req, res) => {
+    const { nickname, token, kind, index } = req.body || {};
+    if (!nickname || !token || (kind !== 'week' && kind !== 'season') || !Number.isInteger(index)) return res.json({ ok: false, error: 'Invalid data' });
+    if (sessionTokens.get(nickname) !== token) return res.json({ ok: false, error: 'Invalid session' });
+    try {
+        const state = await loadMissions(nickname);
+        const info = kind === 'week' ? Missions.weekRewardInfo(state, index) : Missions.seasonRewardInfo(state, index);
+        if (!info.ok) return res.json(info);
+        const paid = await payMissionReward(nickname, info.reward);
+        if (!paid || !paid.ok) return res.json({ ok: false, full: !!(paid && paid.full), error: (paid && paid.error) || 'Server error' });
+        if (kind === 'week') Missions.weekRewardMark(state, index); else Missions.seasonRewardMark(state, index);
+        await saveMissions(nickname, state);
+        res.json(missionPayload(state, info.reward, paid));
+    } catch (err) {
+        console.error('[Missions/ClaimReward] Error:', err);
         res.json({ ok: false, error: 'Server error' });
     }
 });
@@ -590,7 +638,7 @@ async function _updatePlayerRoundEnd(socketId, nickname, killsThisRound, isWinne
     try {
         const before = await loadMissions(nickname);
         const prog0 = new Map(before.list.map(e => [e.id, e.prog]));
-        const ms = Missions.applyRound(before, { mode: info.mode || 'br', rs: info.rs, wave: info.wave, isWinner });
+        const ms = Missions.applyRound(before, { mode: info.mode || 'br', rs: info.rs, wave: info.wave, isWinner, placement: info.placement, wavesCleared: info.wavesCleared });
         await saveMissions(nickname, ms);
         missions = Missions.toClient(ms);
         if (info.mode === 'pve') missionNote = Missions.roundNote(prog0, ms);   // the mission the PvE end board shows
@@ -1004,6 +1052,18 @@ if (process.env.LOBBY_DEV === '1') {
         if (b.blast === true) LobbyCore.buyBlast(work);
         if (b.inbox && typeof b.inbox === 'object') LobbyCore.inboxAdd(work, b.inbox, now);
         return out;
+    });
+    // { day: true, week: n, phases: k }: finish the six of the day, n of the week and k season phases (to try the missions screen without playing)
+    app.post('/api/dev/missions', async (req, res) => {
+        const b = lobbyAuth(req, res); if (!b) return;
+        try {
+            const st = await loadMissions(b.nickname);
+            if (b.day) for (const e of st.list) e.prog = Missions.POOL.find(m => m.id === e.id).goal;
+            if (Number.isInteger(b.week)) for (const e of st.week.list.slice(0, b.week)) e.prog = Missions.WEEK_POOL.find(m => m.id === e.id).goal;
+            if (Number.isInteger(b.phases)) for (const ph of Missions.SEASON_PHASES.slice(0, b.phases)) for (const id of ph.missions) st.season.list.find(e => e.id === id).prog = Missions.SEASON_POOL.find(m => m.id === id).goal;
+            await saveMissions(b.nickname, st);
+            res.json({ ok: true });
+        } catch (err) { res.json({ ok: false, error: String(err && err.message || err) }); }
     });
 }
 
@@ -2275,7 +2335,7 @@ function pveFinish(code, room, victory) {
     room._playerArr.forEach(p => {
         const reward = PveRewards.compute({ wavesCleared: board.wavesCleared, victory, kills: p.kills, diff: room.pveDiff });
         io.to(p.id).emit('pve-end', { ...board, reward });
-        endPlayerRound(p, victory, { mode: 'pve', rs: p.rs, wave: room.pveWave, reward, diff: room.pveDiff });
+        endPlayerRound(p, victory, { mode: 'pve', rs: p.rs, wave: room.pveWave, reward, diff: room.pveDiff, wavesCleared: board.wavesCleared });
     });
     setTimeout(() => { if (rooms.has(code) && room.gameEnded) closeRoom(code, room); }, ENDED_ROOM_MS);
     console.log(victory ? `[${code}] PvE Victorie!` : `[${code}] PvE Infrangere (baza distrusa la wave ${room.pveWave})`);

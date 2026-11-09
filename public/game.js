@@ -1395,6 +1395,7 @@ function authSuccess(nickname, password, player, token) {
     prepopulateLobby();
     _applyWeaponUI();
     if (window.LobbyUI) LobbyUI.init();   // chests, Battle Pass, inbox (lobby-ui.js)
+    if (window.MissionsUI) MissionsUI.init();   // the missions screen (missions-ui.js)
     createSessionSocket();
     loadFriends();
     setTimeout(_arsWarm, 1500);   // the Arsenal's pictures, once the lobby is up
@@ -1636,51 +1637,9 @@ function renderMissions(list) {
             + '<span class="mc-bar"><span class="mc-fill" style="width:' + pct + '%"></span></span>'
             + '<span class="mc-prog">' + fmt(prog) + '<i> / ' + fmt(m.goal) + '</i></span></div>';
     }).join('');
-    _renderMissionsFull(list);
+    if (window.MissionsUI) MissionsUI.setDaily(list);
 }
-function openMissions() {
-    _renderMissionsFull(_missionsCache);
-    const o = document.getElementById('missions-overlay');
-    if (o) o.style.display = 'flex';
-}
-function closeMissions() {
-    const o = document.getElementById('missions-overlay');
-    if (o) o.style.display = 'none';
-}
-// Full list for the modal: the detailed mission rows
-function _renderMissionsFull(list) {
-    const el = document.getElementById('missions-modal-list');
-    if (!el || !Array.isArray(list)) return;
-    const fmt = (v, big) => big && v >= 1000 ? (v / 1000).toFixed(1).replace('.0', '') + 'k' : v;
-    el.innerHTML = list.map(m => {
-        const prog = Math.min(m.prog || 0, m.goal);
-        const done = prog >= m.goal;
-        const pct = Math.min(100, Math.round(prog / m.goal * 100));
-        const big = m.goal >= 100;
-        // the tile says what kind of mission it is: weapon, mode, or general
-        const kind = m.weapon ? 'wpn' : m.tag === 'pve' ? 'pve' : m.tag === 'br' ? 'br' : 'gen';
-        const tileIco = done ? 'check' : kind === 'pve' ? 'biohazard' : kind === 'br' ? 'swords' : 'target';
-        const tileHtml = !done && m.weapon ? ARIcons.weaponHtml(m.weapon, true) : ico(tileIco);
-        const tags = (m.tag === 'pve' ? '<span class="mm-tag mm-pve">PvE</span>' : m.tag === 'br' ? '<span class="mm-tag mm-br">BR</span>' : '')
-            + (m.weapon ? '<span class="mm-tag mm-wpn">' + ((_WEAPON_DATA[m.weapon] && _WEAPON_DATA[m.weapon].name) || m.weapon).toUpperCase() + '</span>' : '')
-            + (m.slot === 'hard' ? '<span class="mm-tag mm-hard">HARD</span>' : '');
-        // coins, gems and the Battle Pass XP the mission gives when it is claimed (ARBattlePass.xpForMission, the same rule the server uses)
-        const xp = window.ARBattlePass ? ARBattlePass.xpForMission(m.coins) : 0;
-        const reward = '<span class="rw rw-coin">+' + m.coins + ico('coins') + '</span>' + (m.diamonds ? '<span class="rw rw-gem">+' + m.diamonds + ico('gem') + '</span>' : '')
-            + (xp ? '<span class="rw rw-xp" title="Battle Pass XP">+' + xp + '<b>XP</b>' + pic('battlepass') + '</span>' : '');
-        const action = m.claimed ? '<span class="mm-claimed">' + ico('check') + 'Claimed</span>'
-            : done ? '<button class="mission-claim-btn mm-claim" onclick="claimMission(\'' + m.id + '\',this,' + m.coins + ',' + m.diamonds + ')">Claim</button>' : '';
-        return '<div class="mm-row mm-' + kind + (done ? ' is-done' : '') + (m.claimed ? ' is-claimed' : '') + '" id="mission-full-' + m.id + '">'
-            + '<span class="mm-tile">' + tileHtml + '</span>'
-            + '<span class="mm-title">' + m.title + '</span>'
-            + '<span class="mm-reward">' + reward + '</span>'
-            + '<span class="mm-tags">' + tags + '</span>'
-            + '<span class="mm-bar"><span class="mm-fill" style="width:' + pct + '%"></span></span>'
-            + '<span class="mm-prog">' + fmt(prog, big) + '<i> / ' + fmt(m.goal, big) + '</i></span>'
-            + (action ? '<span class="mm-act">' + action + '</span>' : '')
-            + '</div>';
-    }).join('');
-}
+// (the missions screen, with the weekly and the season missions: public/missions-ui.js)
 
 async function claimMission(missionId, btn, coinsReward, diamondsReward) {
     if (!currentNickname || !sessionToken) return;
